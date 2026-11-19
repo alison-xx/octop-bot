@@ -110,6 +110,9 @@
     "retryMember": "请这位成员重试"
   },
   "botDirectory": {
+    "quote": "引用到输入框",
+    "collapse": "收起通讯录",
+    "expand": "展开通讯录",
     "modelSaved": "已保存默认模型",
     "find": "搜索团队和会话",
     "contactHint": "搜索成员、群名或职责",
@@ -156,6 +159,7 @@
     }
   },
   "botClient": {
+    "showOrb": "显示悬浮球",
     "activity": {
       "schedules": "定时任务",
       "usage": "Token 用量",

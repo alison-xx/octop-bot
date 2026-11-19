@@ -3,6 +3,7 @@ import { useNavigate, type NavigateOptions } from "react-router-dom";
 
 export const ChatRouteContext = createContext<{
   basePath: string;
+  recipient?: { id: string; name: string };
   isChief?: boolean;
   openSide: (question: string) => void;
   openReference: (insert: (text: string) => void) => void;
@@ -14,6 +15,9 @@ export const ChatRouteContext = createContext<{
 } | null>(null);
 
 export const useEmbeddedChat = () => useContext(ChatRouteContext);
+export const QuoteMessageContext = createContext<
+  ((quote: string) => void) | null
+>(null);
 
 /** Keep existing thread actions inside the workspace that mounted the chat. */
 export function useChatNavigate() {

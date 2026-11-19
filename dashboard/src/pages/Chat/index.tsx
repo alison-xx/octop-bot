@@ -9,7 +9,11 @@ import BotClientWelcome, {
   BotConversationIntro,
 } from "../OctopBot/BotClientWelcome";
 import botStyles from "../OctopBot/botConversation.module.less";
-import { useChatNavigate, useEmbeddedChat } from "./ChatRouteContext";
+import {
+  QuoteMessageContext,
+  useChatNavigate,
+  useEmbeddedChat,
+} from "./ChatRouteContext";
 import {
   PanelLeftOpen,
   GraduationCap,
@@ -193,6 +197,10 @@ function ChatPageInner() {
   );
   // Imperative handle to push a new prefill into the already-mounted ChatInput.
   const chatInputRef = useRef<ChatInputHandle | null>(null);
+  const quoteMessage = useCallback(
+    (quote: string) => chatInputRef.current?.insertQuote(quote),
+    [],
+  );
 
   // Clear the router state after consuming prefillInput so it doesn't persist
   // on subsequent visits or page refreshes.
@@ -229,7 +237,8 @@ function ChatPageInner() {
     refresh: refreshAgents,
     loading: agentsLoading,
   } = useAgent();
-  const resolvedAgentId = routeAgentId || activeAgentId;
+  const resolvedAgentId =
+    (focused && embedded?.recipient?.id) || routeAgentId || activeAgentId;
   const hitlEnabled = useHitlEnabled(resolvedAgentId);
   const activeAgent = useMemo(
     () => agents.find((a) => a.agent_id === resolvedAgentId) ?? null,
@@ -1734,7 +1743,9 @@ function ChatPageInner() {
                   isTeam={isTeamChat}
                 />
               ) : (
-                <>
+                <QuoteMessageContext.Provider
+                  value={focused ? quoteMessage : null}
+                >
                   <ChatAgentProfileProvider
                     canOpen={
                       !focused &&
@@ -1801,7 +1812,7 @@ function ChatPageInner() {
                       }
                     />
                   </ChatAgentProfileProvider>
-                </>
+                </QuoteMessageContext.Provider>
               )}
             </div>
 
@@ -2072,7 +2083,11 @@ function ChatPageInner() {
               </div>
             ) : null}
             <ChatInput
-              botName={focused ? activeAgent?.name : undefined}
+              botName={
+                focused
+                  ? embedded?.recipient?.name ?? activeAgent?.name
+                  : undefined
+              }
               ref={chatInputRef}
               onSend={wrappedHandleSend}
               onSideChat={embedded?.openSide}

@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import { BOT_CLIENT_FLAG } from "../shared/product";
 import {
   IPC_CHANNELS,
+  type BotShortcut,
   type ClientSettings,
   type IssuedSession,
   type PlatformInfo,
@@ -31,7 +32,13 @@ let wsEndpointCache: WsRelayEndpoint | null | undefined;
 const botOnly = process.argv.includes(BOT_CLIENT_FLAG);
 let settingsRequestPending = false;
 let openBotSettings: (() => void) | null = null;
+let pendingShortcut: BotShortcut | null = null;
+let botShortcut: ((action: BotShortcut) => void) | null = null;
 if (botOnly) {
+  ipcRenderer.on(IPC_CHANNELS.botShortcut, (_event, action: BotShortcut) => {
+    if (botShortcut) botShortcut(action);
+    else pendingShortcut = action;
+  });
   ipcRenderer.on(IPC_CHANNELS.openBotSettings, () => {
     if (openBotSettings) openBotSettings();
     else settingsRequestPending = true;
@@ -40,6 +47,16 @@ if (botOnly) {
 
 const bridge = {
   botOnly,
+  showBotOrb() { if (botOnly) ipcRenderer.send(IPC_CHANNELS.showBotOrb); },
+  onBotShortcut(callback: (action: BotShortcut) => void): () => void {
+    botShortcut = callback;
+    if (pendingShortcut) {
+      const action = pendingShortcut;
+      pendingShortcut = null;
+      callback(action);
+    }
+    return () => { if (botShortcut === callback) botShortcut = null; };
+  },
   onOpenBotSettings(callback: () => void): () => void {
     openBotSettings = callback;
     if (settingsRequestPending) {

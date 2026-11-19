@@ -1,12 +1,19 @@
-import { memo, useMemo, useState, useCallback, useRef, useEffect } from "react";
+import {
+  memo,
+  useContext,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+} from "react";
 import { Image, Tooltip } from "antd";
-import { message as antMessage } from "@/utils/antdMessage";
+import { CopyButton, QuoteButton } from "./MessageTextActions";
+import { QuoteMessageContext } from "../ChatRouteContext";
 
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import botStyles from "../../OctopBot/botConversation.module.less";
 import {
-  Copy,
-  Check,
   RotateCcw,
   Pencil,
   Undo2,
@@ -34,7 +41,6 @@ import {
 } from "../../../utils/toolMediaBlocks";
 import { isImeComposing } from "../../../utils/ime";
 import { formatMessageTime } from "../../../utils/formatMessageTime";
-import { copyText } from "../../../utils/copyText";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { isBotOnlyDesktop } from "../../../utils/desktopBridge";
 import { useVoiceOutputContext } from "../../../context/VoiceOutputContext";
@@ -349,35 +355,6 @@ function FileAttachmentList({
   );
 }
 
-function CopyButton({ text }: { text: string }) {
-  const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(async () => {
-    if (!text) return;
-    const ok = await copyText(text);
-    if (!ok) {
-      antMessage.error(t("common.copyFailed"));
-      return;
-    }
-    setCopied(true);
-    antMessage.success(t("common.copied"));
-    setTimeout(() => setCopied(false), 2000);
-  }, [text, t]);
-
-  return (
-    <button
-      className={styles.msgCopyBtn}
-      onClick={handleCopy}
-      title={t("common.copy", "复制")}
-      type="button"
-      aria-label={t("common.copy", "复制")}
-    >
-      {copied ? <Check size={14} /> : <Copy size={14} />}
-    </button>
-  );
-}
-
 function canDockToolUi(
   registration: ToolRendererRegistration | null,
   parsed: ParsedToolOutput,
@@ -603,6 +580,7 @@ function MessageBubble({
   const navigate = useNavigate();
   const serverTimezone = useServerTimezone();
   const botOnly = isBotOnlyDesktop();
+  const quoteMessage = useContext(QuoteMessageContext);
   const user = useCurrentUser();
   const isOwnMessage =
     message.author == null ||
@@ -865,6 +843,7 @@ function MessageBubble({
 
   return (
     <div
+      data-quotable-message=""
       className={cx(
         styles.messageBubble,
         botOnly && (isUser ? botStyles.userMessage : botStyles.botMessage),
@@ -925,6 +904,7 @@ function MessageBubble({
               ) : (
                 <div
                   className={cx(styles.userText, botOnly && botStyles.outgoing)}
+                  data-quote-body=""
                 >
                   {imageAttachments.length > 0 && (
                     <ImageGallery images={imageAttachments} agentId={agentId} />
@@ -965,7 +945,14 @@ function MessageBubble({
                       agentId={agentId}
                     />
                   )}
-                  {message.content && <div>{message.content}</div>}
+                  {message.content &&
+                    (botOnly && message.content.startsWith("> ") ? (
+                      <div className={botStyles.quotedReply}>
+                        <Markdown content={message.content} />
+                      </div>
+                    ) : (
+                      <div>{message.content}</div>
+                    ))}
                 </div>
               )}
             </div>
@@ -1048,6 +1035,7 @@ function MessageBubble({
                   groupCls,
                   botOnly && botStyles.incoming,
                 )}
+                data-quote-body=""
               >
                 {imageAttachments.length > 0 && (
                   <ImageGallery images={imageAttachments} agentId={agentId} />
@@ -1105,6 +1093,7 @@ function MessageBubble({
         {isLastInGroup &&
           !hasToolData &&
           (message.timestamp > 0 ||
+            (quoteMessage && textContent && !isStreaming) ||
             usageLine.length > 0 ||
             (isUser &&
               !isEditing &&
@@ -1154,30 +1143,35 @@ function MessageBubble({
                     ) : null}
                   </div>
                 )}
-              {message.timestamp > 0 && (
+              {(message.timestamp > 0 || (quoteMessage && textContent)) && (
                 <div
                   className={cx(styles.msgTime, isUser && styles.msgTimeRight)}
                 >
                   {formatMessageTime(message.timestamp, serverTimezone)}
+                  {!isUser && !isStreaming && textContent && (
+                    <CopyButton text={textContent} />
+                  )}
+                  {quoteMessage &&
+                    textContent &&
+                    !isStreaming &&
+                    !isEditing && (
+                      <QuoteButton text={textContent} onQuote={quoteMessage} />
+                    )}
                   {!isUser && !isStreaming && readAloud && speechText && (
-                    <>
-                      <CopyButton text={textContent} />
-                      <button
-                        className={cx(
-                          styles.msgActionBtn,
-                          speakingId === message.id &&
-                            styles.msgActionBtnActive,
-                        )}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          speak(message.id, textContent);
-                        }}
-                        title={t("voice.readAloud", "朗读")}
-                        type="button"
-                      >
-                        <Volume2 size={13} />
-                      </button>
-                    </>
+                    <button
+                      className={cx(
+                        styles.msgActionBtn,
+                        speakingId === message.id && styles.msgActionBtnActive,
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        speak(message.id, textContent);
+                      }}
+                      title={t("voice.readAloud", "朗读")}
+                      type="button"
+                    >
+                      <Volume2 size={13} />
+                    </button>
                   )}
                   {!isUser && !isStreaming && onRegenerate && (
                     <button

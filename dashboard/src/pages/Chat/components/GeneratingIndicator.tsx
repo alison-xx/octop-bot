@@ -119,6 +119,7 @@ export default function GeneratingIndicator({
         {showAvatar ? <GeneratingAvatar agentId={agentId} /> : null}
         <div
           className={styles.generatingStatus}
+          data-generation-status=""
           role="status"
           aria-live="polite"
         >

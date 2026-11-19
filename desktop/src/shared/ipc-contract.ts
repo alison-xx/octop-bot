@@ -23,6 +23,8 @@ export interface PlatformInfo {
   isDesktop: true;
 }
 
+export type BotShortcut = "search" | "newChat" | "cloud";
+
 export interface UpdateCheckResult {
   status: "update-available" | "up-to-date" | "error";
   currentVersion: string;
@@ -71,6 +73,9 @@ export const IPC_CHANNELS = {
   windowsMenuModel: "octop:windows-menu:model",
   windowsMenuInvoke: "octop:windows-menu:invoke",
   openBotSettings: "octop:bot:open-settings",
+  botShortcut: "octop:bot:shortcut",
+  showBotOrb: "octop:bot:show-orb",
+  orbPointer: "octop:orb:pointer",
   /** Linux square caption buttons. No-op on the other platforms. */
   windowMinimize: "octop:window-minimize",
   windowToggleMaximize: "octop:window-toggle-maximize",

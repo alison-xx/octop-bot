@@ -21,6 +21,7 @@ import { pathToFileURL } from "node:url";
 
 import {
   IPC_CHANNELS,
+  type BotShortcut,
   type ClientSettings,
   type IssuedSession,
   type PlatformInfo,
@@ -83,6 +84,7 @@ import { createEarlyWindow } from "./windows/early-window";
 import { createMainWindow, installDashboardGuards } from "./windows/main-window";
 import type { EarlyWindow } from "./windows/early-window";
 import { isWindowOnScreen, presentWindows, shouldKeepWindowOnClose } from "./windows/present";
+import { BotOrb } from "./windows/bot-orb";
 import {
   shouldInstallSystemTray,
   trayExecutableFallback,
@@ -153,6 +155,7 @@ let tray: Tray | null = null;
 let trayIcon: NativeImage | null = null;
 // Set once the Dashboard has opened, so a later Dock click can open it again.
 let dashboardOrigin: string | null = null;
+let botOrb: BotOrb | null = null;
 // Current loopback port of the sidecar. Read per request (not captured), so a
 // restart after a failed install can hand the proxy a new port.
 let backendPort = 0;
@@ -428,6 +431,7 @@ async function runShellUpdate(
 }
 
 function registerIpcHandlers(): void {
+  ipcMain.on(IPC_CHANNELS.showBotOrb, () => botOrb?.show(true));
   ipcMain.handle(IPC_CHANNELS.getPlatformInfo, (): PlatformInfo => ({
     platform: process.platform as PlatformInfo["platform"],
     arch: process.arch,
@@ -628,6 +632,7 @@ function openExternal(url: string): void {
 
 /** Close-to-tray and the "backend ready" signal. Shared by the first window and a later one. */
 function watchDashboardLifetime(win: BrowserWindow): void {
+  win.once("closed", () => botOrb?.window?.destroy());
   win.on("close", (event) => {
     if (
       !shouldKeepWindowOnClose({
@@ -651,6 +656,7 @@ function watchDashboardLifetime(win: BrowserWindow): void {
   win.webContents.on("did-finish-load", () => {
     if (win.isDestroyed()) return;
     win.webContents.send(IPC_CHANNELS.onBackendReady, { ok: true });
+    botOrb?.show();
   });
 }
 
@@ -723,7 +729,7 @@ function raiseHiddenWindows(windows: readonly BrowserWindow[]): void {
 /** Dock click, tray click, and a second launch. Show what is already open, or open it. */
 function revealAppWindow(): void {
   if (quitting) return;
-  const windows = BrowserWindow.getAllWindows();
+  const windows = BrowserWindow.getAllWindows().filter(win => win !== botOrb?.window);
   if (presentWindows(windows) > 0) {
     // The click is the user asking for this app. Steal so a hidden window
     // comes forward even when another app was active.
@@ -865,14 +871,22 @@ function installAppMenu(version: string): void {
 }
 
 function openBotSettings(): void {
+  runBotShortcut("settings");
+}
+
+function runBotShortcut(action: BotShortcut | "settings" | "resume"): void {
   if (!botOnly || !dashboardOrigin) return;
   revealAppWindow();
-  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  if (action === "resume") return;
+  const win = BrowserWindow.getAllWindows().find(candidate => candidate !== botOrb?.window);
   if (!win) return;
   const contents = win.webContents;
-  const requestSettings = () => contents.send(IPC_CHANNELS.openBotSettings);
-  if (contents.isLoadingMainFrame()) contents.once("did-finish-load", requestSettings);
-  else requestSettings();
+  const dispatch = () => {
+    if (action === "settings") contents.send(IPC_CHANNELS.openBotSettings);
+    else contents.send(IPC_CHANNELS.botShortcut, action);
+  };
+  if (contents.isLoadingMainFrame()) contents.once("did-finish-load", dispatch);
+  else dispatch();
 }
 
 function readGitStamp(args: readonly string[]): string | null {
@@ -926,6 +940,7 @@ async function installSystemTray(): Promise<void> {
   const labels = trayMenuLabels(app.getLocale(), botOnly);
   const menu = Menu.buildFromTemplate([
     { label: labels.show, click: () => revealAppWindow() },
+    ...(botOnly ? [{ label: app.getLocale().startsWith("zh") ? "显示桌面悬浮球" : "Show floating button", click: () => botOrb?.show(true) }] : []),
     { type: "separator" },
     { label: labels.quit, click: () => app.quit() },
   ]);
@@ -1160,6 +1175,7 @@ async function boot(): Promise<void> {
   // Stay in the splash window. Closing it and opening another one is the
   // flash the user sees when "正在准备本地服务" finishes.
   const appOrigin = dashboardDev ? windowOrigin : PACKAGED_APP_ORIGIN;
+  if (botOnly) botOrb = new BotOrb(runBotShortcut);
   continueInEarlyWindow(early, appOrigin);
 }
 

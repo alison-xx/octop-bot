@@ -110,6 +110,9 @@
     "retryMember": "Ask this member again"
   },
   "botDirectory": {
+    "quote": "Quote in reply",
+    "collapse": "Collapse directory",
+    "expand": "Expand directory",
     "modelSaved": "Default model saved",
     "find": "Search team and conversations",
     "contactHint": "Search names, groups or roles",
@@ -156,6 +159,7 @@
     }
   },
   "botClient": {
+    "showOrb": "Show floating button",
     "activity": {
       "schedules": "Scheduled tasks",
       "usage": "Token usage",

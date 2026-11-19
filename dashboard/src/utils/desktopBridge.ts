@@ -71,6 +71,10 @@ export interface DesktopSessionBridge {
 }
 
 export interface OctopDesktopBridge {
+  showBotOrb?: () => void;
+  onBotShortcut?: (
+    callback: (action: "search" | "newChat" | "cloud") => void,
+  ) => () => void;
   botOnly?: boolean;
   onOpenBotSettings?: (callback: () => void) => () => void;
   session?: DesktopSessionBridge;

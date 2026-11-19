@@ -29,6 +29,8 @@ import {
   Settings2,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import type { MentionsRef } from "antd/es/mentions";
+import { CopyButton, QuoteButton } from "../Chat/components/MessageTextActions";
 import { useTranslation } from "react-i18next";
 import {
   octopBotApi,
@@ -43,6 +45,7 @@ import { useServerTimezone } from "../../hooks/useServerTimezone";
 import { apiErrorMessage } from "../../utils/apiError";
 import {
   formatMessageTime,
+  formatServerHourMinute,
   formatServerYmd,
 } from "../../utils/formatMessageTime";
 import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
@@ -112,6 +115,7 @@ function GroupRoomView({
   const [historyError, setHistoryError] = useState("");
   const [newMessages, setNewMessages] = useState(0);
   const [away, setAway] = useState(false);
+  const input = useRef<MentionsRef>(null);
   const previousCount = useRef(0);
   const setText = (value: string) => composer.patch({ text: value });
   const attach = (path: string) => {
@@ -251,7 +255,11 @@ function GroupRoomView({
         JSON.stringify(it.paths) === JSON.stringify(state.attachments),
     );
     if (prior) return deliver(prior);
-    const names = Mentions.getMentions(message).map((m) => m.value);
+    const addressedText = message
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith(">"))
+      .join("\n");
+    const names = Mentions.getMentions(addressedText).map((m) => m.value);
     return deliver({
       id: Array.from(crypto.getRandomValues(new Uint32Array(4)), (word) =>
         word.toString(16).padStart(8, "0"),
@@ -485,12 +493,21 @@ function GroupRoomView({
                       className={conversation.date}
                       dateTime={new Date(stamp).toISOString()}
                     >
-                      {formatMessageTime(stamp, timezone)}
+                      {formatServerYmd(stamp, timezone)}
                     </time>
                   )}
+                  {standalone &&
+                    newMessages > 0 &&
+                    index === rows.length - newMessages && (
+                      <div className={conversation.date}>
+                        {t("botGroupChat.newMessages", { count: newMessages })}
+                      </div>
+                    )}
                   <article
+                    data-quotable-message=""
                     className={standalone ? directory.message : styles.message}
                     data-role={row.role}
+                    data-wrap-up={(standalone && row.is_wrap_up) || undefined}
                     style={
                       standalone && speaker
                         ? colorStyle(appearanceOf(speaker).color)
@@ -531,10 +548,25 @@ function GroupRoomView({
                           )
                         )}
                         <small>
-                          {formatMessageTime(row.created_at * 1000, timezone)}
+                          {standalone
+                            ? formatServerHourMinute(stamp, timezone)
+                            : formatMessageTime(stamp, timezone)}
                         </small>
+                        {standalone && row.text.trim() && (
+                          <span className={directory.messageActions}>
+                            <CopyButton text={row.text} />
+                            <QuoteButton
+                              text={row.text}
+                              onQuote={(quote) => {
+                                setText(quote + composer.read().text);
+                                input.current?.focus();
+                              }}
+                            />
+                          </span>
+                        )}
                       </header>
                       <div
+                        data-quote-body=""
                         className={
                           standalone
                             ? [
@@ -635,7 +667,16 @@ function GroupRoomView({
                     >
                       <header>
                         <strong>{speaker?.name ?? draft.agent_id}</strong>
-                        <Spin size="small" />
+                        {standalone ? (
+                          <span
+                            role="status"
+                            className={conversation.liveStatus}
+                          >
+                            {t("chat.generating")}
+                          </span>
+                        ) : (
+                          <Spin size="small" />
+                        )}
                       </header>
                       <div
                         className={
@@ -806,6 +847,7 @@ function GroupRoomView({
             />
           )}
           <Mentions
+            ref={input}
             value={text}
             onChange={setText}
             aria-label={t("octopBot.message")}

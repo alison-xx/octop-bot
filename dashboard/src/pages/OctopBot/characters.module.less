@@ -17,6 +17,7 @@
 .mascot,
 .photo {
   display: block;
+  pointer-events: none;
   height: 100%;
   width: 100%;
   overflow: visible;
@@ -162,46 +163,125 @@
   text-overflow: ellipsis;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .mark > :is(.model, .mascot) {
-    animation: breathe var(--bot-breath) ease-in-out var(--bot-phase) infinite;
+  .mark[data-hovered] {
+    --bot-lift: -9%;
+    --bot-lean: -10deg;
+    --bot-scan-left: -8deg;
+    --bot-scan-right: 8deg;
+    --bot-nod: 0.91;
+    > :is(.model, .mascot, .photo) {
+      transform-origin: 50% 84%;
+      animation:
+        greet 550ms ease-out,
+        sway 2.8s ease-in-out 550ms infinite;
+    }
+    &[data-gesture="hop"] > :is(.model, .mascot, .photo) {
+      animation-name: greet, hop;
+    }
+    .eye {
+      animation: blink 4s ease-in-out infinite;
+    }
+    &[data-motion="working"] > :is(.model, .mascot, .photo) {
+      animation: bob 1s ease-in-out infinite;
+    }
+    &[data-motion="thinking"] > :is(.model, .mascot, .mascotPortrait, .photo) {
+      animation: think 2.4s ease-in-out infinite;
+    }
+    &[data-motion="searching"] > :is(.model, .mascot, .mascotPortrait, .photo) {
+      animation: scan 1.8s ease-in-out infinite;
+    }
+    &[data-motion="searching"] .pupil {
+      animation: look 1.8s ease-in-out infinite;
+    }
+    &[data-motion="waiting"] > :is(.model, .mascot, .mascotPortrait, .photo) {
+      animation: nod 2.4s ease-in-out infinite;
+    }
+  }
+  .mark[data-chief] {
+    > :is(.model, .mascot) {
+      animation: breathe var(--bot-breath) ease-in-out var(--bot-phase) infinite;
+    }
+    .eye {
+      animation: blink 5.8s ease-in-out var(--bot-phase) infinite;
+    }
+    &[data-motion="working"] > :is(.model, .mascot) {
+      animation: bob 1.05s ease-in-out var(--bot-phase) infinite;
+    }
+    &[data-motion="thinking"] > :is(.model, .mascot, .mascotPortrait) {
+      animation: think 2.8s ease-in-out var(--bot-phase) infinite;
+    }
+    &[data-motion="thinking"] .face {
+      transform: translateY(-1.5px);
+    }
+    &[data-motion="searching"] > :is(.model, .mascot, .mascotPortrait) {
+      animation: scan 2.2s ease-in-out var(--bot-phase) infinite;
+    }
+    &[data-motion="searching"] .pupil {
+      animation: look 2.2s ease-in-out var(--bot-phase) infinite;
+    }
+    &[data-motion="waiting"] > :is(.model, .mascot, .mascotPortrait) {
+      animation: nod 3.8s ease-in-out var(--bot-phase) infinite;
+    }
+    &[data-motion="waiting"] .badge {
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+    &[data-compact] .eye {
+      animation: none;
+    }
+  }
+  .cluster:not(:hover) .mark[data-chief] :is(.model, .mascot, .eye) {
+    animation: none;
   }
   .mascotPortrait .mascot {
     transform: scale(1.1);
-  }
-  .eye {
-    animation: blink 5.8s ease-in-out var(--bot-phase) infinite;
-  }
-  .mark[data-motion="working"] > :is(.model, .mascot) {
-    animation: bob 1.05s ease-in-out var(--bot-phase) infinite;
-  }
-  .mark[data-motion="thinking"] > :is(.model, .mascot, .mascotPortrait) {
-    animation: think 2.8s ease-in-out var(--bot-phase) infinite;
-  }
-  .mark[data-motion="thinking"] .face {
-    transform: translateY(-1.5px);
-  }
-  .mark[data-motion="searching"] > :is(.model, .mascot, .mascotPortrait) {
-    animation: scan 2.2s ease-in-out var(--bot-phase) infinite;
-  }
-  .mark[data-motion="searching"] .pupil {
-    animation: look 2.2s ease-in-out var(--bot-phase) infinite;
-  }
-  .mark[data-motion="waiting"] > :is(.model, .mascot, .mascotPortrait) {
-    animation: nod 3.8s ease-in-out var(--bot-phase) infinite;
-  }
-  .mark[data-motion="waiting"] .badge {
-    animation: pulse 1.8s ease-in-out infinite;
-  }
-  .mark[data-compact] .eye,
-  .cluster:not(:hover) :is(.model, .mascot, .eye),
-  .choice:not(:hover):not(:focus-visible):not([aria-pressed="true"])
-    :is(.model, .mascot, .eye) {
-    animation: none;
   }
 }
 @keyframes breathe {
   50% {
     transform: translateY(-2%) scale(1.012, 1.027);
+  }
+}
+@keyframes sway {
+  0%,
+  16%,
+  48%,
+  100% {
+    transform: none;
+  }
+  26% {
+    transform: translateX(-3%) rotate(-9deg);
+  }
+  38% {
+    transform: translateX(3%) rotate(6deg);
+  }
+}
+@keyframes hop {
+  0%,
+  34%,
+  64%,
+  100% {
+    transform: none;
+  }
+  40% {
+    transform: scale(1.07, 0.91);
+  }
+  48% {
+    transform: translateY(-12%) rotate(5deg) scale(0.97, 1.04);
+  }
+  55% {
+    transform: scale(1.06, 0.94);
+  }
+}
+@keyframes greet {
+  0%,
+  100% {
+    transform: none;
+  }
+  32% {
+    transform: translateY(-9%) rotate(-12deg);
+  }
+  65% {
+    transform: rotate(7deg);
   }
 }
 @keyframes blink {
@@ -217,21 +297,21 @@
 }
 @keyframes bob {
   50% {
-    transform: translateY(-4%) scale(0.99, 1.025);
+    transform: translateY(var(--bot-lift, -4%)) scale(0.99, 1.025);
   }
 }
 @keyframes think {
   42%,
   60% {
-    transform: rotate(-4deg) translateY(-1%);
+    transform: rotate(var(--bot-lean, -4deg)) translateY(-1%);
   }
 }
 @keyframes scan {
   25% {
-    transform: rotate(-3deg);
+    transform: rotate(var(--bot-scan-left, -3deg));
   }
   70% {
-    transform: rotate(3deg);
+    transform: rotate(var(--bot-scan-right, 3deg));
   }
 }
 @keyframes look {
@@ -245,7 +325,7 @@
 @keyframes nod {
   14%,
   32% {
-    transform: translateY(2%) scaleY(0.976);
+    transform: translateY(2%) scaleY(var(--bot-nod, 0.976));
   }
   0%,
   24%,

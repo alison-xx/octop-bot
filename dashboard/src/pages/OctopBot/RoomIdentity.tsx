@@ -1,4 +1,4 @@
-import { Menu, ArrowLeft } from "lucide-react";
+import { PanelLeftOpen, ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import styles from "./directory.module.less";
 
@@ -23,7 +23,7 @@ export default function RoomIdentity({
           onClick={onList}
           aria-label={t("octopBot.switchChat")}
         >
-          <Menu size={18} />
+          <PanelLeftOpen size={17} />
         </button>
       )}
       <button
@@ -34,7 +34,11 @@ export default function RoomIdentity({
         title={t("botDirectory.details")}
       >
         {children}
-        {expanded && <ArrowLeft size={13} />}
+        {expanded ? (
+          <ChevronUp size={14} aria-hidden />
+        ) : (
+          <ChevronDown size={14} aria-hidden />
+        )}
       </button>
     </header>
   );

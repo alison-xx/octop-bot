@@ -228,6 +228,7 @@ export default function BotChat({
   const host = useMemo(
     () => ({
       basePath: "/octop-bot/bots",
+      recipient: { id: bot.agent_id, name: bot.name },
       isChief: bot.is_main,
       openSide,
       openReference,
@@ -241,12 +242,20 @@ export default function BotChat({
           <BotCharacter
             bot={sender}
             size={size}
-            state={working ? "working" : "idle"}
+            state={
+              working
+                ? sender.agent_id === bot.agent_id &&
+                  motion &&
+                  motion !== "idle"
+                  ? motion
+                  : "working"
+                : "idle"
+            }
           />
         ) : null;
       },
     }),
-    [openSide, openReference, bot, roster],
+    [openSide, openReference, bot, roster, motion],
   );
   const standalone = isBotOnlyDesktop();
   const agent = agents.find((a) => a.agent_id === bot.agent_id);

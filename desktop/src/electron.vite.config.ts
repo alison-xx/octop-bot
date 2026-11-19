@@ -47,6 +47,7 @@ export default defineConfig({
           // Separate, much smaller bridge for the shell's own pages (splash +
           // fatal error). They must not be handed the Dashboard's API.
           early: resolve(__dirname, "preload/early.ts"),
+          orb: resolve(__dirname, "preload/orb.ts"),
         },
       },
     },

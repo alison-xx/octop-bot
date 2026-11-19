@@ -71,6 +71,7 @@ import styles from "../index.module.less";
 
 /** Imperative handle exposed via ref for programmatic text injection. */
 export interface ChatInputHandle {
+  insertQuote: (quote: string) => void;
   setPrefillText: (text: string) => void;
   setPrefillComposer: (text: string, attachments?: ChatAttachment[]) => void;
   focusComposer: () => void;
@@ -324,6 +325,15 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     useImperativeHandle(
       ref,
       () => ({
+        insertQuote: (quote: string) => {
+          userHasEditedRef.current = true;
+          setText((draft) => quote + draft);
+          requestAnimationFrame(() => {
+            const el = textareaRef.current;
+            el?.focus();
+            el?.setSelectionRange(el.value.length, el.value.length);
+          });
+        },
         setPrefillText: (newText: string) => {
           userHasEditedRef.current = false;
           ignoreInitialTextRef.current = null;
@@ -954,6 +964,11 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               }}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
+              aria-label={
+                botName
+                  ? t("botClient.messageTo", { name: botName })
+                  : undefined
+              }
               placeholder={
                 isStreaming || holdSend
                   ? t(

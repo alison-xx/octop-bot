@@ -1,28 +1,30 @@
 // Scoped to the dedicated desktop workspace and its portal surfaces.
 .surface() {
-  --bot-paper: #fcfbfa;
-  --bot-rail: #f6f6f5;
-  --bot-line: #e3e2df;
-  --bot-ink: #272725;
-  --bot-muted: #767672;
-  --bot-incoming: #efefed;
-  --bot-outgoing: #181817;
+  --bot-paper: #fbf9f6;
+  --bot-rail: #f5f1ec;
+  --bot-line: #ded8d1;
+  --bot-ink: #302b29;
+  --bot-muted: #71665f;
+  --bot-incoming: #f1ece5;
+  --bot-outgoing: #493831;
   --bot-outgoing-ink: #fff;
-  --bot-selection: #e4e4e1;
-  --bot-hover: #ededeb;
+  --bot-accent: #ac4c38;
+  --bot-selection: #f2dfd5;
+  --bot-hover: #ece6df;
   --bot-card: #fff;
   --bot-shadow: 0 2px 5px rgba(36, 32, 28, 0.06),
     0 1px 2px rgba(36, 32, 28, 0.025);
   :global(html[data-theme="dark"]) & {
-    --bot-paper: #191a1b;
-    --bot-rail: #202123;
-    --bot-line: #363739;
-    --bot-ink: #efefec;
-    --bot-muted: #acaeaf;
+    --bot-paper: #1f1e21;
+    --bot-rail: #252326;
+    --bot-line: #403b3e;
+    --bot-ink: #f7f0e9;
+    --bot-muted: #b5aaa7;
     --bot-incoming: #292a2c;
     --bot-outgoing: #e6e6e3;
     --bot-outgoing-ink: #171819;
-    --bot-selection: #363739;
+    --bot-accent: #f2ab91;
+    --bot-selection: #47352f;
     --bot-hover: #2b2c2e;
     --bot-card: #232425;
     --bot-shadow: 0 2px 5px rgba(0, 0, 0, 0.14);
@@ -71,7 +73,7 @@
 .directory {
   display: flex;
   flex-direction: column;
-  flex: 0 0 244px;
+  flex: 0 0 clamp(232px, 22vw, 292px);
   color: var(--bot-ink);
   background: var(--bot-rail);
   border-inline-end: 1px solid var(--bot-line);
@@ -82,6 +84,7 @@
 }
 .navHeader,
 .roomHeader {
+  border-bottom: 1px solid var(--bot-line);
   -webkit-app-region: drag;
 }
 .navHeader button,
@@ -98,9 +101,124 @@
 }
 .navHeader strong {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 14px;
   letter-spacing: -0.025em;
   font-weight: 650;
+}
+.directoryToggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--bot-muted);
+  cursor: pointer;
+  &:hover,
+  &:focus-visible {
+    color: var(--bot-ink);
+    background: var(--bot-hover);
+  }
+}
+.directory[data-collapsed] {
+  box-sizing: border-box;
+  flex-basis: 76px;
+  padding: 0 0 8px;
+  .contacts {
+    order: -1;
+    padding: 14px 0 8px;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+  }
+  .contacts section {
+    width: 48px;
+    margin: 7px auto 0;
+    padding: 7px 0 0;
+    border-block-start: 1px solid var(--bot-line);
+  }
+  .contact {
+    width: 48px;
+    min-height: 48px;
+    margin: 2px auto;
+  }
+  .contact .contactButton {
+    width: 48px;
+    height: 48px;
+    justify-content: center;
+    padding: 0;
+  }
+  .contactText,
+  .navHeader > [data-shape],
+  .navHeader strong {
+    display: none;
+  }
+  .contactButton > b {
+    position: absolute;
+    inset: 0 0 auto auto;
+    max-width: 30px;
+    padding: 0 4px;
+    border-radius: 8px;
+    font-size: 9px;
+    pointer-events: none;
+  }
+  .navHeader {
+    height: auto;
+    min-height: 0;
+    flex-direction: column;
+    flex: none;
+    gap: 1px;
+    padding: 4px 0 0;
+    border: 0;
+  }
+  .iconButton,
+  .railFooter > button {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    width: 32px;
+    height: 30px;
+    color: var(--bot-muted);
+    border: none;
+    background: transparent;
+    box-shadow: none;
+  }
+  .railFooter {
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+  }
+  .accountAvatar {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--bot-card);
+    font-size: 12px;
+    font-weight: 550;
+  }
+  .unreadJump {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    margin-bottom: 4px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--fn-color-brand);
+    color: white;
+    cursor: pointer;
+  }
 }
 .navHeader .iconButton,
 .mobileList,
@@ -126,6 +244,8 @@
 }
 .contacts {
   flex: 1;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -165,6 +285,7 @@
 }
 .contact[data-selected="true"] {
   background: var(--bot-selection);
+  box-shadow: inset 3px 0 var(--bot-accent);
 }
 .contactButton {
   display: flex;
@@ -198,7 +319,7 @@
 }
 .contactText strong {
   font-size: 14px;
-  font-weight: 540;
+  font-weight: 600;
 }
 .contactText small {
   font-size: 12px;
@@ -243,6 +364,36 @@
   border-radius: 5px;
   padding: 1px 5px;
   color: var(--bot-muted);
+}
+.directory:not([data-collapsed]) .contact[data-chief="true"] {
+  width: auto;
+  min-height: 78px;
+  margin: 10px 2px 18px;
+  border: 1px solid var(--bot-line);
+  border-radius: 16px;
+  background: linear-gradient(115deg, var(--bot-card), var(--bot-selection));
+  .contactButton {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 10px 12px;
+  }
+  .contactText {
+    align-items: flex-start;
+  }
+}
+.shell :is(button, a):focus-visible {
+  outline: 2px solid var(--bot-accent);
+  outline-offset: -2px;
+}
+@media (hover: none) {
+  .directory:not([data-collapsed]) .contact > :global(.octop-btn) {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .directory:not([data-collapsed]) .contactButton {
+    padding-inline-end: 32px;
+  }
 }
 .settings {
   justify-content: flex-start;
@@ -312,20 +463,20 @@
 }
 .message {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 9px;
   margin: 0 0 15px;
   min-width: 0;
 }
 .message > [data-shape] {
-  margin-bottom: 5px;
+  margin-top: 2px;
 }
 .messageBody {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   min-width: 0;
-  max-width: min(83%, 690px);
+  max-width: min(calc(100% - 39px), 680px);
   overflow-wrap: anywhere;
 }
 .message header {
@@ -344,6 +495,14 @@
     var(--bot-ink)
   );
   font-weight: 600;
+}
+.message[data-wrap-up] .bubble {
+  border-inline-start: 3px solid var(--bot-accent);
+  background: linear-gradient(
+    115deg,
+    color-mix(in srgb, var(--bot-selection) 52%, var(--bot-card)),
+    var(--bot-card)
+  );
 }
 :global(html[data-theme="dark"]) .message header strong {
   color: var(--bot-dark, var(--bot-ink));
@@ -370,6 +529,34 @@
 }
 .message[data-role="user"] .messageBody {
   align-items: flex-end;
+  max-width: min(83%, 610px);
+}
+.messageActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  .message[data-role="user"] & {
+    order: -1;
+  }
+  button {
+    color: var(--bot-muted);
+    border: 0;
+    background: transparent;
+    &:hover,
+    &:focus-visible {
+      background: var(--bot-hover);
+      color: var(--bot-ink);
+    }
+  }
+}
+@media (hover: hover) {
+  .message:not(:hover):not(:focus-within) .messageActions {
+    opacity: 0;
+  }
+}
+.compose:focus-within {
+  border-color: var(--bot-muted);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bot-muted) 13%, transparent);
 }
 .message[data-role="user"] header {
   margin-inline-end: 3px;

@@ -87,6 +87,8 @@ export function BotCharacter({
       : null;
   const { src } = useAuthImageSrc(url ?? "");
   const [failed, setFailed] = useState("");
+  const [hovered, setHovered] = useState(false);
+  const chief = Boolean(bot?.is_main);
   const showPhoto = Boolean(src && src !== failed);
   const badge = !badges
     ? null
@@ -107,6 +109,14 @@ export function BotCharacter({
         look.shape === octopCharacter.shape ? octopCharacter.color : look.color
       }
       data-motion={state}
+      data-chief={chief || undefined}
+      data-hovered={(!chief && hovered) || undefined}
+      onPointerEnter={(event) => {
+        if (!chief && event.pointerType === "mouse") setHovered(true);
+      }}
+      onPointerLeave={() => setHovered(false)}
+      onPointerCancel={() => setHovered(false)}
+      data-gesture={phase % 2 === 0 ? "hop" : "sway"}
       data-compact={size < 24 || undefined}
       className={styles.mark}
       style={
@@ -128,7 +138,7 @@ export function BotCharacter({
           onError={() => setFailed(src)}
         />
       ) : look.shape === octopCharacter.shape ? (
-        size >= 48 && animatedPortrait ? (
+        size >= 48 && animatedPortrait && (chief || hovered) ? (
           <picture className={styles.mascotPortrait}>
             <source
               media="(prefers-reduced-motion: no-preference)"

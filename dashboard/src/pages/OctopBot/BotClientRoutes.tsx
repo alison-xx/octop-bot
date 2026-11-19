@@ -47,6 +47,24 @@ export default function BotClientRoutes() {
   const location = useLocation();
   useEffect(
     () =>
+      getDesktopBridge()?.onBotShortcut?.((action) => {
+        if (action === "cloud") {
+          if (location.pathname !== BOT_CLOUD)
+            navigate(BOT_CLOUD, { state: { from: location.pathname } });
+          return;
+        }
+        const inDirectory = /^\/octop-bot\/(bots|groups)\//.test(
+          location.pathname,
+        );
+        navigate(inDirectory ? location.pathname : BOT_HOME, {
+          state: { botShortcut: action },
+          replace: inDirectory,
+        });
+      }),
+    [location.pathname, navigate],
+  );
+  useEffect(
+    () =>
       getDesktopBridge()?.onOpenBotSettings?.(() => {
         if (location.pathname !== BOT_SETTINGS)
           navigate(BOT_SETTINGS, { state: { from: location.pathname } });

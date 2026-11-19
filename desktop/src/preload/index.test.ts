@@ -46,4 +46,16 @@ test("preload publishes the product synchronously and preserves Settings until t
   assert.equal(count, 2);
   bot.onOpenBotSettings(() => { count++; });
   assert.equal(count, 3);
+  const shortcut = (action: string) => ipcRenderer.emit(IPC_CHANNELS.botShortcut, {}, action);
+  shortcut("search");
+  shortcut("newChat");
+  const actions: string[] = [];
+  const stop = bot.onBotShortcut(action => actions.push(action));
+  assert.deepEqual(actions, ["newChat"]);
+  shortcut("cloud");
+  stop();
+  shortcut("search");
+  assert.deepEqual(actions, ["newChat", "cloud"]);
+  bot.onBotShortcut(action => actions.push(action));
+  assert.deepEqual(actions, ["newChat", "cloud", "search"]);
 });

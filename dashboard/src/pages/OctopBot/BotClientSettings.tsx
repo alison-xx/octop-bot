@@ -24,6 +24,7 @@ import { holdDesktopLocalAutoLogin } from "../../api/desktopSession";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import ThemeSwitcher from "../../components/ThemeSwitcher";
 import { applyGuestLocale } from "../../utils/locale";
+import { getDesktopBridge } from "../../utils/desktopBridge";
 import { userCan } from "../../utils/permissions";
 import {
   BOT_HOME,
@@ -301,6 +302,15 @@ export default function BotClientSettings() {
               onClick={() => navigate(BOT_GUIDE, { state: { returnTo: back } })}
             >
               {t("botGuide.title")}
+            </Button>
+          )}
+          {getDesktopBridge()?.showBotOrb && (
+            <Button
+              type="text"
+              size="small"
+              onClick={() => getDesktopBridge()?.showBotOrb?.()}
+            >
+              {t("botClient.showOrb")}
             </Button>
           )}
           <ThemeSwitcher compact />

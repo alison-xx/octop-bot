@@ -10,10 +10,13 @@ import {
 } from "antd";
 import {
   Search,
+  ArrowDown,
   Bot,
   Cloud,
   Ellipsis,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pin,
   Plus,
   Settings2,
@@ -39,7 +42,13 @@ import { BOT_GUIDE, botGuideSeenKey } from "../../utils/botClientRoute";
 import { pickPreferredSession, toSession } from "../Chat/hooks/useSessions";
 import { useAgent } from "../../context/AgentContext";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import {
+  accountDisplayName,
+  accountInitials,
+} from "../Chat/utils/accountDisplayName";
+import { ProfileAvatar } from "../Admin/Users/ProfileAvatar";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useListPanelCollapsed } from "../../hooks/useListPanelCollapsed";
 import { apiErrorMessage } from "../../utils/apiError";
 import { navAllowed } from "../../utils/permissions";
 import { isBotOnlyDesktop } from "../../utils/desktopBridge";
@@ -95,6 +104,10 @@ export default function OctopBotPage() {
   const [workspace, setWorkspace] = useState<BotWorkspace | null>(null);
   const [error, setError] = useState("");
   const [showList, setShowList] = useState(false);
+  const { collapsed, toggle } = useListPanelCollapsed(
+    "octop.bot.directory.collapsed",
+  );
+  const compactDirectory = standalone && !mobile && collapsed;
   const directoryMenu = useDirectoryContextMenu(
     workspace?.revision,
     location.pathname,
@@ -321,6 +334,23 @@ export default function OctopBotPage() {
       sections: moveEntries(workspace.sections, [key], createIn),
     });
   };
+  const shortcut = location.state?.botShortcut;
+  useEffect(() => {
+    if (!workspace || !shortcut || (!agentId && !groupId && workspace.chief_id))
+      return;
+    const target = agentId ?? workspace.chief_id ?? workspace.bots[0]?.agent_id;
+    if (shortcut === "newChat" && target) {
+      setSearchOpen(false);
+      setShowList(false);
+      navigate(BASE + "/bots/" + encodeURIComponent(target), {
+        replace: true,
+        state: { newChat: true },
+      });
+    } else {
+      navigate(location.pathname, { replace: true, state: null });
+      setSearchOpen(shortcut === "search");
+    }
+  }, [shortcut, workspace, agentId, groupId, navigate, location.pathname]);
   if (!workspace)
     return (
       <div className={styles.center}>
@@ -344,6 +374,7 @@ export default function OctopBotPage() {
       standalone &&
       user &&
       !location.state?.prefillInput &&
+      !shortcut &&
       workspace.bots.length === 1 &&
       !workspace.groups.length &&
       !localStorage.getItem(botGuideSeenKey(user.id))
@@ -353,8 +384,8 @@ export default function OctopBotPage() {
     return (
       <Navigate
         replace
-        to={BASE + "/bots/" + encodeURIComponent(workspace.chief_id)}
         state={location.state}
+        to={BASE + "/bots/" + encodeURIComponent(workspace.chief_id)}
       />
     );
   }
@@ -568,11 +599,22 @@ export default function OctopBotPage() {
           type="button"
           onClick={() => (standalone ? pickContact(item) : jump(urlFor(item)))}
           aria-label={standalone ? item.name : undefined}
+          title={compactDirectory ? item.name : undefined}
           aria-current={picked === item.key ? "page" : undefined}
         >
           {portrait(
             item,
-            chief ? (standalone ? 58 : 37) : standalone ? 35 : 29,
+            compactDirectory
+              ? chief
+                ? 39
+                : 33
+              : chief
+              ? standalone
+                ? 58
+                : 37
+              : standalone
+              ? 35
+              : 29,
           )}
           {standalone ? (
             <span className={directory.contactText}>
@@ -587,9 +629,9 @@ export default function OctopBotPage() {
           {countUnread(item) > 0 && (
             <b className={styles.unread}>{countUnread(item)}</b>
           )}
-          {isPinned && !chief && <Pin size={12} />}
+          {isPinned && !chief && !compactDirectory && <Pin size={12} />}
         </button>
-        {!chief && (
+        {!chief && !compactDirectory && (
           <Dropdown
             trigger={["click"]}
             menu={menu}
@@ -612,10 +654,11 @@ export default function OctopBotPage() {
     items: Item[],
     options?: { section: BotSection; index: number },
   ) =>
-    (options || items.length > 0) && (
+    (items.length > 0 || (options && !compactDirectory)) && (
       <section
         className={styles.section}
         data-section-name={options?.section.name}
+        aria-label={compactDirectory ? name : undefined}
         ref={(node) => {
           if (!options) return;
           if (node) sectionNodes.current.set(name, node);
@@ -625,7 +668,7 @@ export default function OctopBotPage() {
         onDragOver={onDragOver}
         onDrop={(e) => onDrop(e, options?.index)}
       >
-        {options ? (
+        {compactDirectory ? null : options ? (
           <SectionHeader
             section={options.section}
             count={items.length}
@@ -693,7 +736,8 @@ export default function OctopBotPage() {
         ) : (
           <h3>{name}</h3>
         )}
-        {!options?.section.collapsed && ordered(items).map(renderItem)}
+        {(compactDirectory || !options?.section.collapsed) &&
+          ordered(items).map(renderItem)}
         {options && !options.section.collapsed && items.length === 0 && (
           <Button
             type="text"
@@ -735,9 +779,16 @@ export default function OctopBotPage() {
       }
     />
   );
+  const toggleLabel = t(
+    compactDirectory ? "botDirectory.expand" : "botDirectory.collapse",
+  );
+  const unreadTarget = compactDirectory
+    ? all.find((item) => item.key !== picked && countUnread(item) > 0)
+    : undefined;
   const sidebar = (
     <nav
       className={standalone ? directory.directory : styles.nav}
+      data-collapsed={compactDirectory || undefined}
       aria-label={t("nav.octopBot")}
     >
       <div className={standalone ? directory.navHeader : styles.navHeader}>
@@ -751,6 +802,34 @@ export default function OctopBotPage() {
           <Bot size={19} />
         )}
         <strong>{t("nav.octopBot")}</strong>
+        {unreadTarget && (
+          <button
+            type="button"
+            className={directory.unreadJump}
+            title={t("chat.unreadMessages") + " · " + unreadTarget.name}
+            aria-label={t("chat.unreadMessages") + " · " + unreadTarget.name}
+            onClick={() => pickContact(unreadTarget)}
+          >
+            <ArrowDown size={15} />
+          </button>
+        )}
+        {standalone && (
+          <button
+            className={directory.directoryToggle}
+            type="button"
+            title={toggleLabel}
+            aria-label={toggleLabel}
+            aria-expanded={!compactDirectory}
+            aria-controls="octop-bot-contacts"
+            onClick={mobile ? () => setShowList(false) : toggle}
+          >
+            {compactDirectory ? (
+              <PanelLeftOpen size={16} />
+            ) : (
+              <PanelLeftClose size={16} />
+            )}
+          </button>
+        )}
         {standalone && (
           <Button
             type="text"
@@ -807,12 +886,14 @@ export default function OctopBotPage() {
             size="small"
             className={standalone ? directory.iconButton : undefined}
             aria-label={t("octopBot.add")}
+            title={t("octopBot.add")}
             icon={<Plus size={17} />}
           />
         </Dropdown>
       </div>
       <div
         className={standalone ? directory.contacts : styles.railList}
+        id="octop-bot-contacts"
         role="group"
         aria-label={t("botDirectory.teamTab")}
         tabIndex={0}
@@ -829,7 +910,7 @@ export default function OctopBotPage() {
             {t("octopBot.sectionUI.dropUngrouped")}
           </div>
         )}
-        {(!mobile || showList) && layoutAlert}
+        {!compactDirectory && (!mobile || showList) && layoutAlert}
 
         {standalone ? (
           <>
@@ -859,19 +940,21 @@ export default function OctopBotPage() {
                   !assigned.has(it.key),
               ),
             )}
-            {all.length === 1 && navAllowed(user, "experts") && (
-              <Button
-                className={directory.firstMember}
-                type="dashed"
-                block
-                icon={<Plus size={15} />}
-                onClick={() => {
-                  openCreation("bot");
-                }}
-              >
-                {t("botDirectory.addFirst")}
-              </Button>
-            )}
+            {!compactDirectory &&
+              all.length === 1 &&
+              navAllowed(user, "experts") && (
+                <Button
+                  className={directory.firstMember}
+                  type="dashed"
+                  block
+                  icon={<Plus size={15} />}
+                  onClick={() => {
+                    openCreation("bot");
+                  }}
+                >
+                  {t("botDirectory.addFirst")}
+                </Button>
+              )}
           </>
         ) : (
           <>
@@ -899,16 +982,38 @@ export default function OctopBotPage() {
         )}
       </div>
       {standalone ? (
-        <div className={sectionStyles.footer}>
+        <div
+          className={
+            compactDirectory ? directory.railFooter : sectionStyles.footer
+          }
+        >
           <Button
             type="text"
             className={directory.settings}
-            icon={<Settings2 size={16} />}
+            aria-label={t("botClient.settings")}
+            title={t("botClient.settings")}
+            icon={
+              compactDirectory ? (
+                user?.avatar_url || user?.avatar_icon ? (
+                  <ProfileAvatar
+                    className={directory.accountAvatar}
+                    url={user.avatar_url}
+                    icon={user.avatar_icon}
+                  />
+                ) : (
+                  <span className={directory.accountAvatar}>
+                    {accountInitials(accountDisplayName(user))}
+                  </span>
+                )
+              ) : (
+                <Settings2 size={16} />
+              )
+            }
             onClick={() =>
               navigate(BOT_SETTINGS, { state: { from: location.pathname } })
             }
           >
-            {t("botClient.settings")}
+            {!compactDirectory && t("botClient.settings")}
           </Button>
           <Button
             type="text"
@@ -1038,7 +1143,10 @@ export default function OctopBotPage() {
         />
       )}
       <main className={standalone ? directory.main : styles.main}>
-        {mobile && !showList && layoutAlert}
+        {((mobile && !showList) || compactDirectory) && layoutAlert}
+        {mobile && standalone && !selectedItem && (
+          <Button onClick={listButton}>{t("botDirectory.expand")}</Button>
+        )}
         {error && (
           <Alert
             type="error"
