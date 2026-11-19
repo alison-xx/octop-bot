@@ -1,23 +1,35 @@
 # Octop Bot
 
-[简体中文](README.md) · [English](README_EN.md)
+[简体中文](README.md) · [English](README_EN.md) · [Product website](https://octop-bot.lynxce.cn/)
 
-Octop Bot is a Windows desktop app for working with a team of AI assistants. Tell Chief, your octopus assistant, what you want to make. Chief can create Bots with different jobs and bring them into a group chat. You can also keep a one-to-one conversation with any member, or send a job to Lynxce Cloud when it needs to run while your PC is off.
+Octop Bot is a desktop app for Windows and Apple Silicon Macs for working with a team of AI assistants. Tell Chief, your octopus assistant, what you want to make. Chief can create Bots with different jobs and bring them into a group chat. You can also keep a one-to-one conversation with any member, or send a job to Lynxce Cloud when it needs to run while your PC is off.
 
-**Download for Windows x64**　[Installer](https://github.com/alison-xx/octop-bot/releases/download/octop-bot-v1.0.3-beta.7/Octop-Bot-Setup-1.0.3-beta.7-x64.exe) · [Portable ZIP](https://github.com/alison-xx/octop-bot/releases/download/octop-bot-v1.0.3-beta.7/Octop-Bot-1.0.3-beta.7-x64.zip) · [Release notes and SHA-256 checksums](https://github.com/alison-xx/octop-bot/releases/tag/octop-bot-v1.0.3-beta.7)
+Watch Chief put a book club’s invitation together with a planner and writer in the **30-second product film**. Choose the [English film](https://octop-bot.lynxce.cn/media/intro-en.mp4), [Chinese film](https://octop-bot.lynxce.cn/media/intro-zh.mp4), or [interactive walkthrough](https://octop-bot.lynxce.cn/#demo).
 
-![Octop Bot group chat. Chief coordinates a researcher, an editor, and a designer to put together a weekend city guide.](docs/assets/octop-bot/team-en.png)
+## Desktop downloads
+
+[Get Octop Bot and its SHA-256 checksums from the official download page](https://octop-bot.lynxce.cn/#download). Choose the package for your computer. The page lists the current version and serves the release files from Lynxce OSS.
+
+| Computer | Package | How to install |
+| --- | --- | --- |
+| Windows x64 | Installer (EXE) | Run the installer, follow the setup wizard, then open Octop Bot. |
+| Windows x64 | Portable archive (ZIP) | Extract the entire ZIP to a folder, then open `Octop Bot.exe` from that folder. |
+| Mac with Apple Silicon (M series) | Disk image (DMG) | Open the DMG, drag **Octop Bot** to **Applications**, then launch it there. |
+
+Version **1.0.3-beta.7** is available for both platforms. The packages include Python and the local Octop service. To verify a download, compare the SHA-256 digest of your file with the checksum listed for that filename on the download page.
+
+![Octop Bot group chat. Chief coordinates a researcher, an editor, and a designer to put together a weekend city guide.](https://octop-bot.lynxce.cn/assets/screen-team-en.webp)
 
 *These screenshots show the Windows app. The City Desk team, conversations, and cloud schedules use sample data.*
 
 ## Get started
 
-1. **Open the app.** Run the installer, or extract the ZIP and double-click `Octop Bot.exe`. On first launch, choose **Get started** to open your local workspace. The Windows download includes Python and the Octop service.
+1. **Open your workspace.** After first launch, choose **Get started**. Your own Chief appears in the team directory.
 2. **Connect a chat model.** Choose **Lynxce account**, authorize in your system browser, then return to the app to select and save an available model. Model calls use credits from that account. **Other model sources** lets you connect your own cloud provider, a compatible endpoint, or a local model. Choose **Set up later** to explore the team first, then connect a model before sending a message.
 3. **If you need a Lynxce account,** select **Create a Lynxce account**, open the **Register** tab on the official site, and complete registration. Return to the app and sign in or authorize from the same screen. [Lynxce account site](https://admin.lynxce.cn/profile/login)
 4. **Send Chief your first message.** The getting-started guide introduces private chats, directory sections, and the cloud workspace. Choose an example for building a team, planning a project, or assigning work, and select **Edit in Chief’s chat**. Edit the draft and send it when you’re ready. To reopen the guide, choose **Account and models → Getting started** at the bottom of the directory.
 
-![The getting-started guide lets you choose a sample request for Chief.](docs/assets/octop-bot/guide-en.png)
+![The getting-started guide lets you choose a sample request for Chief.](https://octop-bot.lynxce.cn/assets/screen-guide-en.webp)
 
 After connecting Lynxce, open **Account and models** to view your credit balance. **Top up** opens that account’s Lynxce checkout in your system browser. If your earlier authorization covered chat only, choose **Authorize top-ups** and approve the request on Lynxce to continue. After reconnecting the account, select and save a chat model from its list of available models. Your balance refreshes when you return to the app, or you can use the refresh icon beside it.
 
@@ -32,11 +44,20 @@ To try the City Desk from the screenshots, paste this prompt into Chief’s chat
 | Pick up a private chat | Select a member in the directory to resume your latest conversation. Click their name at the top to open their profile and change their avatar, role, or model. Use `/side` to ask a follow-up while the main task runs. |
 | Work on a shared deliverable | Choose **+** to create a group chat, or ask Chief to create one. Send the brief to the group or mention a member with `@`. For larger jobs, use a Goal to agree on acceptance criteria, stages, and owners. |
 | Organize a project | Right-click an empty part of the directory to create a section or move items in bulk. Right-click a member to move it into an existing section. Right-click a section heading to rename, recolor, reorder, or start a group chat with its Bots. Dissolving the section preserves its members and chats. |
-| Find an earlier conversation | Press `Ctrl+K` to search for members and sections. Switch to private chat history and search by title or message text to open the original conversation. |
+| Find an earlier conversation | Press `Ctrl+K` (or `⌘K` on Mac) to search for members and sections. Switch to private chat history and search by title or message text to open the original conversation. |
 
-![Context menu for the Editorial & Design directory section, with options for organizing members, starting a group chat, reordering, and ungrouping.](docs/assets/octop-bot/groups-en.png)
+![Context menu for the Editorial & Design directory section, with options for organizing members, starting a group chat, reordering, and ungrouping.](https://octop-bot.lynxce.cn/assets/screen-groups-en.webp)
 
-## Keep working with your PC off
+### Try another brief
+
+| Workflow | First message | What to look for |
+| --- | --- | --- |
+| Project review | Upload the meeting notes to a group. Ask one Bot to extract decisions and another to check owners and dates. | A checklist that quotes its sources and marks the open questions. |
+| Weekday stand-up | Give a briefing Bot the latest work notes. In its profile, schedule a weekday task to summarize yesterday’s progress, today’s priorities and open questions. | A brief you can follow up on. Local schedules need the Octop service running; cloud schedules need inputs the cloud can access. |
+
+[Copy a complete prompt from the website](https://octop-bot.lynxce.cn/#scenarios).
+
+## Keep working while your computer is off
 
 Open **Cloud workspace** at the bottom of the directory and sign in separately with your Lynxce account. Start a cloud chat or create a schedule. Sign in with the same account on another PC to check accepted jobs, read their results, and continue the conversation. Your account determines the available cloud models, permissions, and credits. The workspace shows the signed-in cloud account’s balance at the top. Select **Top up** to add credits to that account.
 
@@ -44,7 +65,7 @@ Open **Cloud workspace** at the bottom of the directory and sign in separately w
 - **Schedule cloud work.** Under **Cloud schedules**, enter the instructions and time. A saved cloud schedule runs in its configured time zone, even when your PC is off. Use **Continue in result chat** to follow up.
 - **Move a local schedule.** Pause the original under **Scheduled tasks** in the Bot’s profile. Choose the option to create a cloud schedule from its configuration, review the instructions and time, and save. Local files, scripts, and installed apps stay on your PC. Run jobs that need them locally, with the PC awake and Octop Bot running in the background.
 
-![Cloud schedules for a morning story brief, a Friday route check, and a paused monthly reader-letters job.](docs/assets/octop-bot/cloud-en.png)
+![Cloud schedules for a morning story brief, a Friday route check, and a paused monthly reader-letters job.](https://octop-bot.lynxce.cn/assets/screen-cloud-en.webp)
 
 The standalone Windows app stores its local workspace in `%USERPROFILE%\.octop-bot` by default. For group files, shared notes, avatar settings, and computer control, see the [user guide in Chinese](docs/octop-bot.md).
 
