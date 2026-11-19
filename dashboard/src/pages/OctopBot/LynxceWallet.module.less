@@ -1,0 +1,27 @@
+.wallet {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  small {
+    color: var(--fn-text-secondary);
+    line-height: 1.45;
+  }
+}
+.line,
+.amount {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.line {
+  flex-wrap: wrap;
+}
+.amount {
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  strong {
+    color: var(--fn-text-primary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+}

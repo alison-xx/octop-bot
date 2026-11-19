@@ -9,6 +9,8 @@ import {
   type LynxceStatus,
 } from "../../api/modules/lynxceBot";
 import { apiErrorMessage, isNotFoundApiError } from "../../utils/apiError";
+import WalletBalance from "./WalletBalance";
+import LynxceRegistration from "./LynxceRegistration";
 import styles from "./BotClientSettings.module.less";
 
 function externalUrl(value: string) {
@@ -41,6 +43,7 @@ function savedAttempt(key: string): LynxceAttempt | null {
 
 export default function LynxceAccount({
   owner,
+  compact = false,
   status,
   statusError,
   onReload,
@@ -48,6 +51,7 @@ export default function LynxceAccount({
   onSwitch,
 }: {
   owner: string;
+  compact?: boolean;
   status: LynxceStatus | null;
   statusError: string;
   onReload: () => void;
@@ -69,6 +73,8 @@ export default function LynxceAccount({
   const [revision, setRevision] = useState(0);
   const mounted = useRef(false);
   const pendingId = useRef(attempt?.attempt_id);
+  const rechargeAttempt = useRef<{ id: string; binding: string }>();
+  const [resumeCheckout, setResumeCheckout] = useState<string>();
   const refreshed = useRef(onSaved);
   useEffect(() => {
     refreshed.current = onSaved;
@@ -96,7 +102,15 @@ export default function LynxceAccount({
         setAttempt(null);
         if (reply.state === "failed")
           setError(reply.detail || t("botClient.lynxce.authFailed"));
-        else refreshed.current();
+        else {
+          setResumeCheckout(
+            rechargeAttempt.current?.id === id
+              ? rechargeAttempt.current.binding
+              : undefined,
+          );
+          refreshed.current();
+        }
+        rechargeAttempt.current = undefined;
       } catch (e) {
         if (controller.signal.aborted || pendingId.current !== id) return;
         if (isNotFoundApiError(e)) {
@@ -117,7 +131,7 @@ export default function LynxceAccount({
   }, [attempt, key, pollRevision, t]);
 
   useEffect(() => {
-    if (!status?.connected || attempt) return;
+    if (!status?.connected || attempt || compact) return;
     let current = true;
     setModelError("");
     setModels(null);
@@ -138,7 +152,7 @@ export default function LynxceAccount({
     return () => {
       current = false;
     };
-  }, [status, attempt, revision, t]);
+  }, [status, attempt, revision, compact, t]);
 
   const run = async (action: string, work: () => Promise<void>) => {
     if (busy) return;
@@ -153,7 +167,7 @@ export default function LynxceAccount({
       if (mounted.current) setBusy("");
     }
   };
-  const login = () =>
+  const login = (rechargeBinding?: string) =>
     run("login", async () => {
       const result = await lynxceBotApi.login();
       const url = externalUrl(result.authorization_url);
@@ -164,6 +178,9 @@ export default function LynxceAccount({
       sessionStorage.setItem(key, JSON.stringify(result));
       if (!mounted.current) return;
       pendingId.current = result.attempt_id;
+      rechargeAttempt.current = rechargeBinding
+        ? { id: result.attempt_id, binding: rechargeBinding }
+        : undefined;
       setPollError("");
       setAttempt(result);
       window.open(url, "_blank", "noopener,noreferrer");
@@ -201,6 +218,14 @@ export default function LynxceAccount({
           : "botClient.lynxce.login",
       )}
     </Button>
+  );
+  const wallet = (
+    <WalletBalance
+      source="model"
+      onAuthorize={login}
+      resumeCheckout={resumeCheckout}
+      onResumeHandled={() => setResumeCheckout(undefined)}
+    />
   );
   return (
     <div className={styles.form} data-lynxce-account>
@@ -261,6 +286,8 @@ export default function LynxceAccount({
           <p>{t("botClient.lynxce.hint")}</p>
           {loginButton}
         </>
+      ) : compact ? (
+        wallet
       ) : (
         <>
           <div className={styles.accountHeading}>
@@ -273,6 +300,7 @@ export default function LynxceAccount({
               onClick={() => setRevision((n) => n + 1)}
             />
           </div>
+          {wallet}
           {modelError ? (
             <Alert
               type="error"
@@ -345,7 +373,8 @@ export default function LynxceAccount({
           </div>
         </>
       )}
-      {onSwitch && !attempt && (
+      {!status?.connected && (status || attempt) && <LynxceRegistration />}
+      {onSwitch && !attempt && !compact && (
         <Button
           disabled={!!busy}
           loading={busy === "switch"}

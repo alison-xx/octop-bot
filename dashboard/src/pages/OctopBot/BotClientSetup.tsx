@@ -9,7 +9,7 @@ import {
   type AuthStatus,
 } from "../../api/modules/auth";
 import { getAuthToken, setAuthToken } from "../../api/request";
-import { BOT_HOME, BOT_SETTINGS } from "../../utils/botClientRoute";
+import { BOT_GUIDE, BOT_HOME, BOT_SETTINGS } from "../../utils/botClientRoute";
 import { apiErrorMessage } from "../../utils/apiError";
 import { isDesktopShell } from "../../utils/desktopBridge";
 import {
@@ -19,6 +19,7 @@ import {
 } from "../Setup/wizardClient";
 import PasswordStep from "../Setup/steps/PasswordStep";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
+import LynxceRegistration from "./LynxceRegistration";
 import styles from "./index.module.less";
 import intro from "./BotClientSetup.module.less";
 
@@ -173,7 +174,7 @@ export default function BotClientSetup() {
                 onClick={() =>
                   navigate(BOT_SETTINGS, {
                     replace: true,
-                    state: { source: "lynxce" },
+                    state: { source: "lynxce", from: BOT_GUIDE },
                   })
                 }
               >
@@ -184,7 +185,7 @@ export default function BotClientSetup() {
                 onClick={() =>
                   navigate(BOT_SETTINGS, {
                     replace: true,
-                    state: { source: "other" },
+                    state: { source: "other", from: BOT_GUIDE },
                   })
                 }
               >
@@ -193,7 +194,12 @@ export default function BotClientSetup() {
               <Button
                 type="text"
                 size="large"
-                onClick={() => navigate(BOT_HOME, { replace: true })}
+                onClick={() =>
+                  navigate(BOT_GUIDE, {
+                    replace: true,
+                    state: { step: "team" },
+                  })
+                }
               >
                 {t("botClient.later")}
               </Button>
@@ -264,6 +270,7 @@ export default function BotClientSetup() {
           ) : (
             <Spin />
           )}
+          {ready && <LynxceRegistration />}
         </section>
       </div>
     </main>

@@ -22,7 +22,9 @@ from octop.infra.errors import ErrorCode, OctopError
 _ORIGIN = "https://api.lynxce.cn"
 _ID = r"(?!\.{1,2}(?:/|$))[A-Za-z0-9_.-]{1,256}"
 _WEB_ID = r"[A-Za-z0-9._:-]{4,96}"
+CHECKOUT_PATH = "/api/billing/recharge/checkout-link"
 _READS = {
+    "/api/user/quota": set(),
     "/api/user/cloud-work/capabilities": set(),
     "/api/user/cloud-work/tasks": {"sessionId"},
     "/api/user/web-chat-sessions": {"limit", "cursor"},
@@ -249,7 +251,7 @@ def _allowed(method: str, path: str, params: Mapping[str, str | int]) -> bool:
     # Web history identifiers support a literal or URL-encoded colon (e.g. cowork:uuid).
     path = path.replace("%3A", ":").replace("%3a", ":")
     if method == "POST":
-        return not params and _WRITES.fullmatch(path) is not None
+        return not params and (path == CHECKOUT_PATH or _WRITES.fullmatch(path) is not None)
     if method != "GET":
         return False
     if path in _READS:
@@ -290,6 +292,7 @@ async def request_cloud(
         not bot_desktop_enabled()
         or not _allowed(method, path, params or {})
         or (method == "GET" and json is not None)
+        or (path == CHECKOUT_PATH and (json is not None or not expected_account_id))
         or (path.endswith("/actions") and not _allowed_action(json or {}))
     ):
         raise OctopError.localized(ErrorCode.FORBIDDEN)

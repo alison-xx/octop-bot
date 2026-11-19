@@ -10,6 +10,7 @@ import BrandLoading from "../../components/BrandLoading";
 import {
   BOT_HOME,
   BOT_CLOUD,
+  BOT_GUIDE,
   BOT_SETTINGS,
   botClientDestination,
 } from "../../utils/botClientRoute";
@@ -20,6 +21,7 @@ const Workspace = lazy(() => import("./index"));
 const CloudWorkspace = lazy(() => import("./CloudWorkspace"));
 const Settings = lazy(() => import("./BotClientSettings"));
 const Setup = lazy(() => import("./BotClientSetup"));
+const Guide = lazy(() => import("./BotGettingStarted"));
 
 export function BotClientSetupRoute() {
   return (
@@ -57,6 +59,7 @@ export default function BotClientRoutes() {
         <Routes>
           <Route path={BOT_HOME} element={<Workspace />} />
           <Route path={BOT_CLOUD} element={<CloudWorkspace />} />
+          <Route path={BOT_GUIDE} element={<Guide />} />
           <Route
             path="/octop-bot/bots/:agentId/:threadId?"
             element={<Workspace />}

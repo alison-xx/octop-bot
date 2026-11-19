@@ -9,6 +9,7 @@ import httpx
 
 ISSUER = "https://api.lynxce.cn"
 ENDPOINT = ISSUER + "/api/oauth/mcp"
+REQUESTED_SCOPE = "chat recharge"
 
 
 class ProviderError(Exception):
@@ -47,7 +48,7 @@ async def register(redirect: str) -> str:
             "token_endpoint_auth_method": "none",
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],
-            "scope": "chat",
+            "scope": REQUESTED_SCOPE,
         },
     )
     client_id = result.get("client_id")
@@ -68,7 +69,7 @@ def authorize_url(client_id: str, redirect: str, state: str, challenge: str) -> 
                 "state": state,
                 "code_challenge": challenge,
                 "code_challenge_method": "S256",
-                "scope": "chat",
+                "scope": REQUESTED_SCOPE,
             }
         )
     )

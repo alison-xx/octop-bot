@@ -15,6 +15,7 @@ from octop.api.routers.bot_cloud_import import router as cloud_import_router
 from octop.api.routers.bot_cloud_work import router as cloud_work_router
 from octop.api.routers.bot_computer import router as computer_router
 from octop.api.routers.bot_lynxce import router as lynxce_router
+from octop.api.routers.bot_wallet import router as wallet_router
 from octop.infra.agents.bot_appearance import Appearance, Character, set_character
 from octop.infra.agents.bot_sections import (
     Layout,
@@ -42,6 +43,7 @@ router.include_router(cloud_import_router)
 router.include_router(cloud_work_router)
 router.include_router(computer_router)
 router.include_router(lynxce_router)
+router.include_router(wallet_router)
 
 
 class Bot(BaseModel):

@@ -3,10 +3,15 @@ import { isBotOnlyDesktop } from "./desktopBridge";
 export const BOT_HOME = "/octop-bot";
 export const BOT_SETTINGS = BOT_HOME + "/settings";
 export const BOT_CLOUD = BOT_HOME + "/cloud";
+export const BOT_GUIDE = BOT_HOME + "/guide";
+
+export function botGuideSeenKey(userId: number) {
+  return `octop.bot.guide.seen.${userId}`;
+}
 
 export function botClientDestination(path: string): string {
   if (
-    /^\/octop-bot(?:\/settings|\/cloud|\/bots\/[^/?#\\]+(?:\/[^/?#\\]+)?|\/groups\/[^/?#\\]+)?\/?$/.test(
+    /^\/octop-bot(?:\/settings|\/cloud|\/guide|\/bots\/[^/?#\\]+(?:\/[^/?#\\]+)?|\/groups\/[^/?#\\]+)?\/?$/.test(
       path,
     )
   )

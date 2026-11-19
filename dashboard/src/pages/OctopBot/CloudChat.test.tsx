@@ -1,8 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { botCloudApi, type CloudTask } from "../../api/modules/botCloud";
+import { lynxceWalletApi } from "../../api/modules/lynxceWallet";
+import { octopBotApi } from "../../api/modules/octopBot";
 import CloudChat from "./CloudChat";
 import CloudImport from "./CloudImport";
+import CloudWorkspace from "./CloudWorkspace";
 
 const t = (key: string) => key;
 vi.mock("react-i18next", () => ({
@@ -36,10 +40,89 @@ const base = {
   onAccepted: vi.fn(),
 };
 describe("the hosted Bot chat", () => {
+  it("shows the signed-in cloud wallet on arrival and clears it on logout", async () => {
+    vi.spyOn(botCloudApi, "account").mockResolvedValue({
+      connected: true,
+      account_id: "acct-cloud",
+      display_name: "Cloud user",
+    });
+    vi.spyOn(botCloudApi, "logout").mockResolvedValue(undefined);
+    vi.spyOn(botCloudApi, "capabilities").mockResolvedValue({
+      enabled: true,
+      reason: null,
+      models: ["m"],
+      default_model: "m",
+    });
+    vi.spyOn(botCloudApi, "sessions").mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    });
+    vi.spyOn(octopBotApi, "workspace").mockResolvedValue({
+      chief_id: "",
+      bots: [],
+      groups: [],
+      pinned: [],
+      sections: [],
+      revision: 0,
+    });
+    const balance = vi.spyOn(lynxceWalletApi, "balance").mockResolvedValue({
+      source: "cloud",
+      account_id: "acct-cloud",
+      connection_id: null,
+      credits: 77,
+      status: "available",
+      recharge_mode: "ticket",
+    });
+    render(
+      <MemoryRouter>
+        <CloudWorkspace />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("77")).toBeInTheDocument();
+    expect(balance).toHaveBeenCalledExactlyOnceWith(
+      "cloud",
+      expect.any(AbortSignal),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "botCloud.signOut" }));
+    await screen.findByRole("textbox", { name: "botCloud.account" });
+    expect(screen.queryByText("77")).toBeNull();
+    expect(screen.queryByText("botWallet.recharge")).toBeNull();
+  });
+  it("keeps the cloud sign-in form and its typed account while registration opens separately", async () => {
+    const status = vi.spyOn(botCloudApi, "account").mockResolvedValue({
+      connected: false,
+      account_id: null,
+      display_name: null,
+    });
+    const login = vi.spyOn(botCloudApi, "login");
+    render(
+      <MemoryRouter>
+        <CloudWorkspace />
+      </MemoryRouter>,
+    );
+    const registration = await screen.findByRole("link", {
+      name: "botClient.lynxce.register",
+    });
+    expect(registration).toHaveAttribute("target", "_blank");
+    expect(registration).toHaveAttribute("rel", "noopener noreferrer");
+    const input = screen.getByRole("textbox", { name: "botCloud.account" });
+    fireEvent.change(input, { target: { value: "example@account.test" } });
+    // The system browser returning focus refreshes cloud status.
+    fireEvent.focus(window);
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+    expect(input).toHaveValue("example@account.test");
+    expect(login).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    for (const api of [botCloudApi, lynxceWalletApi, octopBotApi]) {
+      for (const method of Object.values(api)) {
+        if (vi.isMockFunction(method)) method.mockRestore();
+      }
+    }
+  });
   it("reuses the request id when the first cloud submission has an uncertain result", async () => {
     const submit = vi
       .spyOn(botCloudApi, "turn")

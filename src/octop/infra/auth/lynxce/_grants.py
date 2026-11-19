@@ -72,6 +72,16 @@ def _load(services: SharedServices, user_id: int) -> dict[str, Any]:
     return decrypt_json(services.secret_repo, _PURPOSE, blob)
 
 
+def require_recharge_scope(
+    services: SharedServices, user_id: int, expected_connection_id: str
+) -> None:
+    current = _load(services, user_id)
+    if current["connection_id"] != expected_connection_id:
+        raise auth_required()
+    if "recharge" not in current["scope"].split():
+        raise OctopError.localized(ErrorCode.BOT_LYNXCE_RECHARGE_AUTH_REQUIRED)
+
+
 def save(services: SharedServices, user_id: int, grant: dict[str, Any]) -> None:
     repo = services.secret_repo
     repo.put(grant_key(user_id), encrypt_json(repo, _PURPOSE, grant))
@@ -98,6 +108,9 @@ def grant_from_tokens(
         raise _provider.ProviderError("invalid_response")
     if not isinstance(scope, str) or "chat" not in scope.split():
         raise _provider.ProviderError("missing_chat_scope")
+    if previous is not None:
+        # Additional rights require fresh interactive consent, never a refresh.
+        scope = " ".join(value for value in scope.split() if value in previous["scope"].split())
     return {
         "access_token": access,
         "refresh_token": refresh,

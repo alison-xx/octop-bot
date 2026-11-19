@@ -35,6 +35,7 @@ import {
   type WorkspaceBot,
 } from "../../api/modules/octopBot";
 import { octopThreadsApi } from "../../api/modules/octopThreads";
+import { BOT_GUIDE, botGuideSeenKey } from "../../utils/botClientRoute";
 import { pickPreferredSession, toSession } from "../Chat/hooks/useSessions";
 import { useAgent } from "../../context/AgentContext";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -338,13 +339,25 @@ export default function OctopBotPage() {
         )}
       </div>
     );
-  if (!agentId && !groupId && workspace.chief_id)
+  if (!agentId && !groupId && workspace.chief_id) {
+    if (
+      standalone &&
+      user &&
+      !location.state?.prefillInput &&
+      workspace.bots.length === 1 &&
+      !workspace.groups.length &&
+      !localStorage.getItem(botGuideSeenKey(user.id))
+    ) {
+      return <Navigate replace to={BOT_GUIDE} />;
+    }
     return (
       <Navigate
         replace
         to={BASE + "/bots/" + encodeURIComponent(workspace.chief_id)}
+        state={location.state}
       />
     );
+  }
   const { bots, groups, sections, pinned } = workspace;
   const selectedBot = bots.find((bot) => bot.agent_id === agentId);
   const selectedGroup = groups.find((group) => group.group_id === groupId);

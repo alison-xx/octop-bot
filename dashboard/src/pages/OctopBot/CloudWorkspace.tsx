@@ -30,6 +30,8 @@ import { octopBotApi, type WorkspaceBot } from "../../api/modules/octopBot";
 import { BOT_HOME, botClientDestination } from "../../utils/botClientRoute";
 import { apiErrorMessage } from "../../utils/apiError";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
+import WalletBalance from "./WalletBalance";
+import LynxceRegistration from "./LynxceRegistration";
 import CloudChat from "./CloudChat";
 import CloudSchedules from "./CloudSchedules";
 import CloudImport from "./CloudImport";
@@ -185,6 +187,7 @@ export default function CloudWorkspace() {
                 {t("botCloud.signIn")}
               </Button>
             </Form>
+            <LynxceRegistration />
           </section>
         </div>
       ) : (
@@ -357,6 +360,7 @@ function Connected({
             },
           ]}
         />
+        <WalletBalance key={accountId} source="cloud" accountId={accountId} />
       </div>
       {tab === "schedules" ? (
         <CloudSchedules

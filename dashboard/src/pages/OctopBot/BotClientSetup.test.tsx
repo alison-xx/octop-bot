@@ -36,6 +36,7 @@ function openSetup(path = "/setup") {
       <Routes>
         <Route path="/setup" element={<BotClientSetup />} />
         <Route path="/octop-bot/settings" element={<Source />} />
+        <Route path="/octop-bot/guide" element={<h1>Team guide</h1>} />
         <Route path="/octop-bot" element={<h1>Chat</h1>} />
       </Routes>
     </MemoryRouter>,
@@ -96,7 +97,7 @@ describe("standalone onboarding", () => {
     expect(getAuthToken()).toBe("issued-session");
     fireEvent.click(screen.getByRole("button", { name: "botClient.later" }));
     expect(
-      await screen.findByRole("heading", { name: "Chat" }),
+      await screen.findByRole("heading", { name: "Team guide" }),
     ).toBeInTheDocument();
   });
 
@@ -110,6 +111,13 @@ describe("standalone onboarding", () => {
     openSetup("/setup?localAccount=1");
     fireEvent.click(
       await screen.findByRole("button", { name: "botClient.begin" }),
+    );
+    const registration = await screen.findByRole("link", {
+      name: "botClient.lynxce.register",
+    });
+    expect(registration).toHaveAttribute("target", "_blank");
+    expect(registration).toHaveAccessibleDescription(
+      "botClient.lynxce.registerHint",
     );
     fireEvent.click(
       await screen.findByRole("button", { name: "botClient.lynxce.source" }),

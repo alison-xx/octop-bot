@@ -49,6 +49,9 @@ function renderWelcome(needsModel: boolean, isChief = true) {
 describe("first conversation", () => {
   it("uses the actual welcome as a message and prefills Chief's team request", () => {
     const pick = renderWelcome(false);
+    expect(
+      screen.queryByRole("link", { name: "botClient.lynxce.register" }),
+    ).toBeNull();
     expect(screen.getByText("My configured welcome")).toBeInTheDocument();
     expect(screen.queryByRole("heading")).toBeNull();
     fireEvent.click(
@@ -58,6 +61,9 @@ describe("first conversation", () => {
   });
   it("carries the intended task and private conversation through model setup", () => {
     const pick = renderWelcome(true);
+    expect(
+      screen.getByRole("link", { name: "botClient.lynxce.register" }),
+    ).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: "botClient.assignLabel" }),
     );

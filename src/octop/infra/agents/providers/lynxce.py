@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import uuid4
 
 import httpx
@@ -126,25 +126,51 @@ def _connection(services: SharedServices, user_id: int) -> str:
     return grant
 
 
-async def _models(services: SharedServices, user_id: int, grant: str) -> list[dict[str, str]]:
+async def personal_gateway(
+    services: SharedServices,
+    user_id: int,
+    grant: str,
+    endpoint: Literal["models", "account", "account/recharge-link"],
+) -> object:
     from octop.infra.auth.lynxce import get_access_token
 
     bearer = await get_access_token(services, user_id, expected_connection_id=grant)
+    if endpoint == "account/recharge-link":
+        from octop.infra.auth.lynxce._grants import require_recharge_scope
+
+        await asyncio.to_thread(require_recharge_scope, services, user_id, grant)
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            reply = await client.get(
-                BASE_URL + "/models", headers={"Authorization": f"Bearer {bearer}"}
+        async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
+            reply = await client.request(
+                "POST" if endpoint == "account/recharge-link" else "GET",
+                BASE_URL + "/" + endpoint,
+                headers={"Authorization": f"Bearer {bearer}"},
             )
         reply.raise_for_status()
-        return lynxce_chat_models(reply.json())
+        return reply.json()
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
+        if endpoint == "account/recharge-link" and status == 403:
+            try:
+                error = reply.json().get("error")
+            except (ValueError, AttributeError):
+                error = None
+            if isinstance(error, dict) and error.get("code") == "insufficient_scope":
+                raise OctopError.localized(ErrorCode.BOT_LYNXCE_RECHARGE_AUTH_REQUIRED) from None
         if status in (401, 403):
             raise _auth_required() from None
         raise OctopError.localized(
             ErrorCode.INTERNAL_ERROR, status=status if status in (402, 429) else 502
         ) from None
     except (httpx.RequestError, ValueError):
+        raise OctopError.localized(ErrorCode.INTERNAL_ERROR, status=502) from None
+
+
+async def _models(services: SharedServices, user_id: int, grant: str) -> list[dict[str, str]]:
+    data = await personal_gateway(services, user_id, grant, "models")
+    try:
+        return lynxce_chat_models(data)
+    except ValueError:
         raise OctopError.localized(ErrorCode.INTERNAL_ERROR, status=502) from None
 
 

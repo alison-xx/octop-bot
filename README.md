@@ -1,34 +1,56 @@
 # Octop Bot
 
-<img src="dashboard/src/assets/avatars/octop-mascot.webp" width="88" alt="Octop Bot 的八爪鱼助手 Chief" />
+[简体中文](README.md) · [English](README_EN.md)
 
-Octop Bot 是基于 Octop 的独立 Electron 桌面客户端。你可以和八爪鱼助手 Chief 私聊，让它创建有不同分工的 Bot，或把几位成员拉进同一个群聊协作。连接灵策智算账号后，还可以把任务交给云端，在另一台电脑上接着聊。
+Octop Bot 是一款 Windows 桌面应用。告诉八爪鱼助手 Chief 你想完成什么，它可以创建分工不同的 Bot，让它们在同一个群里接力工作。你也可以只和一位成员长聊，或者把适合在云端执行的任务交给灵策。
 
-**Windows x64 下载**　[安装程序](https://github.com/alison-xx/octop-bot/releases/download/octop-bot-v1.0.3-beta.7/Octop-Bot-Setup-1.0.3-beta.7-x64.exe) · [免安装 ZIP](https://github.com/alison-xx/octop-bot/releases/download/octop-bot-v1.0.3-beta.7/Octop-Bot-1.0.3-beta.7-x64.zip) · [版本说明与校验值](https://github.com/alison-xx/octop-bot/releases)
+**下载 Windows x64**　[安装程序](https://github.com/alison-xx/octop-bot/releases/download/octop-bot-v1.0.3-beta.7/Octop-Bot-Setup-1.0.3-beta.7-x64.exe) · [免安装 ZIP](https://github.com/alison-xx/octop-bot/releases/download/octop-bot-v1.0.3-beta.7/Octop-Bot-1.0.3-beta.7-x64.zip) · [版本说明与 SHA-256 校验值](https://github.com/alison-xx/octop-bot/releases/tag/octop-bot-v1.0.3-beta.7)
+
+![Octop Bot 群聊实拍。Chief 把一份周末城市指南交给调研、编辑和设计三位成员。](docs/assets/octop-bot/team-zh.png)
+
+*截图来自 Windows 客户端。文中的城市编辑部、聊天和云端任务均为演示数据。*
 
 ## 第一次使用
 
-1. 打开 Octop Bot，点击「开始使用」。选择「灵策智算账号」、其他模型来源，或者「稍后配置」。本机聊天需要先连接可用模型。
-2. 选择灵策时，在系统浏览器完成账号授权，回到客户端选定聊天模型。模型调用使用该账号的积分和额度。
-3. 给 Chief 发一句「帮我建一个自媒体团队，安排选题策划、文案写作和视觉设计」。使用支持工具调用的模型时，Chief 可以创建成员并组建群聊。打开群聊后，可以直接发需求，也可以用 `@` 指定成员。
+1. **打开客户端。** 运行安装程序，或解压 ZIP 后双击 `Octop Bot.exe`。首次打开点击「开始使用」，进入自己的本机工作区。Windows 版已包含 Python 和 Octop 服务。
+2. **连接聊天模型。** 选择「灵策智算账号」，在系统浏览器完成授权，返回客户端选择并保存一个可用模型。使用模型时，灵策会从这个账号扣除积分。也可以选择「其他模型来源」，连接自己的云服务、自定义兼容地址或本机模型。「稍后配置」可以先浏览团队，发消息前再连接模型。
+3. **如果还没有灵策账号，** 点击「注册灵策智算账号」，在官网选择「注册」标签。完成后回到客户端，按原来的入口登录或授权。[灵策账号官网](https://admin.lynxce.cn/profile/login)
+4. **把第一条消息交给 Chief。** 新手引导会带你认识私聊、分组和云端工作区。选择建团队、做计划或分配工作的示例，点「在 Chief 对话中编辑」。修改草稿后点发送。以后可从通讯录底部的「账号与模型 → 新手引导」重新打开。
 
-## 日常操作
+![首次使用引导，可选择一个示例交给 Chief。](docs/assets/octop-bot/guide-zh.png)
 
-| 想做什么 | 从哪里开始 |
+连接灵策后，可在「账号与模型」查看积分余额。点「充值」会在系统浏览器打开该账号的灵策充值页。如果以前仅授权过聊天，第一次充值时点「授权充值」，在灵策确认后即可继续。重新绑定账号后，请从该账号可用的聊天模型中选一个并保存。返回客户端会刷新余额，也可以点余额旁的刷新图标。
+
+如果想试试截图里的城市编辑部，可以把这段文字贴给 Chief，再换成你自己的项目。自动建队需要使用支持工具调用的模型。
+
+> 请帮我创建「周末城市指南」群。邀请一位调研员核对路线，一位编辑写开篇，一位设计师画地图。第一期是 90 分钟的河岸散步，请先给我三个候选站点。
+
+## 让团队一起工作
+
+| 你想做什么 | 从哪里开始 |
 | --- | --- |
-| 整理通讯录 | 右键空白处新建分组。右键 Bot 或群聊可以移入已有分组，或为当前条目建组。 |
-| 找回对话 | 按 `Ctrl+K` 搜索团队，切到「历史私聊」可按标题或消息内容查找。 |
-| 调整 Bot | 点击私聊顶部的名字，修改角色、头像或聊天模型。Chief 和角色头像支持动效，并跟随系统的减少动态效果设置。 |
-| 换电脑接着聊 | 打开通讯录底部的「云端工作区」，登录灵策账号。在另一台电脑登录同一账号，打开原云端会话即可继续。 |
-| 关机后执行任务 | 在「云端工作区 → 云端定时任务」设定指令和时间。灵策调度器执行后，可点「打开结果并续聊」。 |
+| 和某位 Bot 继续聊 | 单击通讯录成员即可恢复最近私聊。点击对话顶部的名字可打开资料，调整头像、角色或模型。工作中可用 `/side` 私下追问。 |
+| 让几位成员一起交付 | 在「＋」中新建群聊，或请 Chief 建群。在群中发需求，用 `@` 点名成员。复杂任务可以在 Goal 里约定验收条件、阶段和负责人。 |
+| 整理项目成员 | 右键通讯录空白处新建分组或批量移组；右键成员可移入已有分组。右键分组标题可以改名、设置颜色、调整顺序，或用组内 Bot 发起群聊。解散分组会保留成员和聊天。 |
+| 找回上次说过的话 | 按 `Ctrl+K` 搜索成员和分组。切到「历史私聊」，输入标题或消息关键词，可回到原会话。 |
 
-云端工作区首次使用时需要单独登录。现有本机私聊可以在 Bot 资料里选择「把当前私聊带到云端」，预览并确认要带入的文字。云端任务使用账号的权限、模型和积分。已经在本机运行的定时任务要转到云端时，先暂停原任务，再选择「用此配置创建云端任务」。
+![编辑与设计分组的右键菜单，可整理成员、用组内 Bot 发起群聊、调整顺序或解散分组。](docs/assets/octop-bot/groups-zh.png)
 
-Windows 独立版默认把本机数据保存在 `%USERPROFILE%\.octop-bot`。更多操作见[使用指南](docs/octop-bot.md)。
+## 关机后继续工作
 
-## 从源码启动 Windows 客户端
+打开通讯录底部的**云端工作区**，单独登录灵策账号。这里可以新建云端会话，或设置定时任务。在另一台电脑上登录同一灵策账号，即可查看已接收任务的状态和结果，并继续对话。云端可用的模型、权限和积分取决于当前账号。工作区顶部显示当前云端账号的积分，点「充值」可为这个账号充值。
 
-准备 Git、uv、Node.js 24 和 pnpm 12.15.0。在 PowerShell 中运行以下命令。
+- **带上已有会话。** 在本机 Bot 的私聊中点击顶部名字，选择「把当前私聊带到云端」。先预览，再确认。一次最多带入最近 20 条可见文字，附件、工具记录和思考过程留在本机。
+- **安排定时任务。** 在「云端定时任务」填写指令和时间。电脑关机后，已保存的云端任务仍按配置的时区执行。任务完成后，点「打开结果并续聊」。
+- **把本机任务转到云端。** 先在 Bot 资料的「定时任务」里暂停原任务，再选「用此配置创建云端任务」，核对指令与时间后保存。本机文件、脚本和已安装的应用留在这台电脑上。依赖这些资源的任务应在本机运行，并保持电脑唤醒、Octop Bot 在后台运行。
+
+![云端定时任务实拍，展示晨间选题简报、周五路线校对和已暂停的读者来信整理。](docs/assets/octop-bot/cloud-zh.png)
+
+Windows 独立版默认将本机工作区保存在 `%USERPROFILE%\.octop-bot`。群文件、共享笔记、头像设置和电脑控制等操作见[使用指南](docs/octop-bot.md)。
+
+## 从源码运行
+
+准备 Git、uv、Node.js 24 和 pnpm 12.15.0。在 Windows PowerShell 中运行以下命令。
 
 ```powershell
 git clone https://github.com/alison-xx/octop-bot.git
@@ -39,27 +61,25 @@ pnpm --dir desktop/src install --frozen-lockfile
 .\desktop\src\scripts\run-dev.ps1 -Bot
 ```
 
-脚本会构建 Electron 并启动本地 Octop 服务和前端开发服务器。开发版使用独立的数据目录 `desktop/src/.dev-runtime/windows/bot-home`。
+脚本构建 Electron，并启动本地 Octop 服务和前端开发服务器。开发版使用独立数据目录 `desktop/src/.dev-runtime/windows/bot-home`。
 
-## 构建 Windows x64 安装包
+### 构建 Windows x64 安装包
 
-在已安装上述依赖的 Windows x64 环境中，从仓库根目录运行以下命令。
+在已装好上述依赖的 Windows x64 环境中，从仓库根目录运行以下命令。
 
 ```powershell
 uv run --frozen python desktop/src/scripts/package-bot-windows.py
 ```
 
-构建脚本会编译前端、构建本仓库的 Octop wheel，并把 Python 运行时一起打包。安装程序、免安装 ZIP 和解包后的客户端位于 `desktop/src/release/octop-bot/`。安装版和免安装版均可直接在 Windows 上运行。
-
-发布带 Authenticode 签名的版本时，在运行打包命令前将环境变量 `OCTOP_BOT_SIGN_CERT_SHA1` 设为发布者在 Windows 证书存储中的签名证书指纹。打包程序使用 SHA-256 和 RFC 3161 时间戳签署客户端、卸载程序和安装程序。
+脚本编译前端、构建 Octop wheel，并随包附上 Python 运行时。安装程序、免安装 ZIP 和解包后的客户端位于 `desktop/src/release/octop-bot/`。发布带 Authenticode 签名的版本时，先把环境变量 `OCTOP_BOT_SIGN_CERT_SHA1` 设置为发布者在 Windows 证书存储中的证书指纹。打包程序使用 SHA-256 和 RFC 3161 时间戳签署客户端、卸载程序和安装程序。
 
 ## 源码与许可
 
 | 目录 | 内容 |
 | --- | --- |
 | [desktop/src](desktop/src/) | Electron 主进程、预加载脚本、启动与打包 |
-| [dashboard/src/pages/OctopBot](dashboard/src/pages/OctopBot/) | 通讯录、角色、群聊、账号与云端工作区界面 |
+| [dashboard/src/pages/OctopBot](dashboard/src/pages/OctopBot/) | 通讯录、群聊、账号与云端工作区界面 |
 | [src/octop](src/octop/) | Python 服务、会话、定时调度与灵策接口 |
 | [tests](tests/) | 后端单元与集成测试 |
 
-本项目基于 [TencentCloud/Octop](https://github.com/TencentCloud/Octop/tree/976803d6292dfb2e28e525823aa28d2e33a755a8)，保留上游提交历史和 [MIT 许可证](LICENSE)。角色图形和部分内容渲染代码的来源与许可分别见 [DS Bot 声明](dashboard/public/licenses/ds-bot.txt)和 [Deep View 声明](dashboard/public/licenses/deep-view.txt)。
+项目保留上游 Octop 的提交历史和 MIT 许可证。部分角色图形改编自 DS Bot，公式渲染使用了 Deep View 的代码。[上游 Octop](https://github.com/TencentCloud/Octop/tree/976803d6292dfb2e28e525823aa28d2e33a755a8) · [MIT 许可证](LICENSE) · [DS Bot 声明](dashboard/public/licenses/ds-bot.txt) · [Deep View 声明](dashboard/public/licenses/deep-view.txt)

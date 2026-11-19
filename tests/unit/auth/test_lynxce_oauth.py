@@ -120,7 +120,7 @@ async def test_native_pkce_state_owner_locale_and_encrypted_grant(
     attempt, url = await lynxce.start_login(services, 1)
     args = query(url)
     assert await lynxce.start_login(services, 1) == (attempt, url)
-    assert args["scope"] == "chat" and args["code_challenge_method"] == "S256"
+    assert args["scope"] == "chat recharge" and args["code_challenge_method"] == "S256"
     assert args["response_type"] == "code" and args["state"] != attempt
     assert issuer.registrations == [
         {
@@ -129,7 +129,7 @@ async def test_native_pkce_state_owner_locale_and_encrypted_grant(
             "token_endpoint_auth_method": "none",
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],
-            "scope": "chat",
+            "scope": "chat recharge",
         }
     ]
     assert urlsplit(args["redirect_uri"]).hostname == "127.0.0.1"
@@ -233,6 +233,34 @@ async def test_simultaneous_refresh_survives_cancelled_caller_and_preserves_conn
         and issuer.refreshes[0]["refresh_token"] == "test-refresh-initial1"
     )
     assert lynxce.connection_id(services, 1) == connection
+
+
+async def test_old_chat_grant_keeps_working_until_recharge_consent_succeeds(
+    services: SharedServices, issuer: SimpleNamespace
+) -> None:
+    issuer.scope, issuer.ttl = "chat", 1
+    await connect(services)
+    old = lynxce.connection_id(services, 1)
+    assert old
+    issuer.scope, issuer.ttl = "chat recharge", 3600
+    # Even an issuer returning extra scopes on refresh cannot grant new consent.
+    assert await lynxce.get_access_token(services, 1) == "test-access-rotated1"
+    with pytest.raises(OctopError) as needed:
+        _grants.require_recharge_scope(services, 1, old)
+    assert needed.value.code == ErrorCode.BOT_LYNXCE_RECHARGE_AUTH_REQUIRED
+    await asyncio.gather(*tuple(lynxce._closing))
+    attempt, auth_url = await lynxce.start_login(services, 1)
+    assert (await callback(auth_url, error="access_denied")).status_code == 400
+    assert await lynxce.poll_login(services, 1, attempt) == ("failed", "access_denied")
+    assert (
+        await lynxce.get_access_token(services, 1, expected_connection_id=old)
+        == "test-access-rotated1"
+    )
+    await asyncio.gather(*tuple(lynxce._closing))
+    await connect(services)
+    fresh = lynxce.connection_id(services, 1)
+    assert fresh and fresh != old
+    _grants.require_recharge_scope(services, 1, fresh)
 
 
 async def test_refresh_failure_keeps_transient_grant_and_removes_invalid_grant(

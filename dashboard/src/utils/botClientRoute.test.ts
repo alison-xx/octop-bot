@@ -15,6 +15,7 @@ describe("standalone Bot navigation", () => {
     ["/octop-bot/groups/team", "/octop-bot/groups/team"],
     ["/octop-bot/settings", "/octop-bot/settings"],
     ["/octop-bot/cloud", "/octop-bot/cloud"],
+    ["/octop-bot/guide", "/octop-bot/guide"],
     ["/admin/users", "/octop-bot"],
     ["/invite", "/octop-bot"],
     ["//external.test", "/octop-bot"],

@@ -3,6 +3,7 @@ import { Alert, Button, Radio, Select, Spin } from "antd";
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   Cloud,
   Cpu,
   Link2,
@@ -26,6 +27,7 @@ import { applyGuestLocale } from "../../utils/locale";
 import { userCan } from "../../utils/permissions";
 import {
   BOT_HOME,
+  BOT_GUIDE,
   BOT_SETTINGS,
   botClientDestination,
 } from "../../utils/botClientRoute";
@@ -257,6 +259,7 @@ export default function BotClientSettings() {
   const personalModel =
     account.status?.connected && account.status.selected_model;
   const ready = Boolean(personalModel || models?.length);
+  const showConnections = adding || !ready;
   const sources = [
     ["lynxce", "botClient.lynxce.source", UserRound],
     ...(cloud
@@ -270,7 +273,12 @@ export default function BotClientSettings() {
   const returnToChat = () =>
     navigate(back, {
       replace: true,
-      state: prefillInput ? { prefillInput } : null,
+      state:
+        back === BOT_GUIDE
+          ? { step: "team", returnTo: location.state?.guideReturnTo }
+          : prefillInput
+          ? { prefillInput }
+          : null,
     });
   return (
     <section className={styles.clientSettings}>
@@ -283,9 +291,18 @@ export default function BotClientSettings() {
           icon={<ArrowLeft size={17} />}
           onClick={returnToChat}
         >
-          {t("common.backToChat")}
+          {t(back === BOT_GUIDE ? "botGuide.resume" : "common.backToChat")}
         </Button>
         <div className={styles.account}>
+          {back !== BOT_GUIDE && !prefillInput && (
+            <Button
+              type="text"
+              icon={<BookOpen size={16} />}
+              onClick={() => navigate(BOT_GUIDE, { state: { returnTo: back } })}
+            >
+              {t("botGuide.title")}
+            </Button>
+          )}
           <ThemeSwitcher compact />
           <span>{user?.display_name || user?.username}</span>
           <Button
@@ -384,7 +401,9 @@ export default function BotClientSettings() {
                 {prefillInput && <p>{t("botClient.draftKept")}</p>}
                 <Button type="primary" block onClick={returnToChat}>
                   {t(
-                    location.state?.from
+                    back === BOT_GUIDE
+                      ? "botGuide.resume"
+                      : location.state?.from
                       ? "common.backToChat"
                       : "botClient.startChat",
                   )}
@@ -407,7 +426,7 @@ export default function BotClientSettings() {
               </>
             )}
             {models && !ready && !error && <p>{t("botClient.connectHint")}</p>}
-            {(adding || !ready) && (
+            {showConnections && (
               <div className={settings.form} id="bot-connection-form">
                 {sources.length > 1 && (
                   <Radio.Group
@@ -435,17 +454,7 @@ export default function BotClientSettings() {
                     }
                   />
                 )}
-                {source === "lynxce" ? (
-                  <LynxceAccount
-                    key={user?.username}
-                    owner={user?.username ?? ""}
-                    status={account.status}
-                    statusError={account.error}
-                    onReload={account.reload}
-                    onSaved={refreshSource}
-                    onSwitch={models?.length ? activateOtherSource : undefined}
-                  />
-                ) : (
+                {source !== "lynxce" && (
                   <>
                     {Boolean(models?.length) && (
                       <Button
@@ -464,6 +473,20 @@ export default function BotClientSettings() {
                   </>
                 )}
               </div>
+            )}
+            {(showConnections
+              ? source === "lynxce"
+              : account.status?.connected) && (
+              <LynxceAccount
+                key={user?.username}
+                owner={user?.username ?? ""}
+                compact={!showConnections}
+                status={account.status}
+                statusError={account.error}
+                onReload={account.reload}
+                onSaved={refreshSource}
+                onSwitch={models?.length ? activateOtherSource : undefined}
+              />
             )}
             {(cloud || local) && (
               <Button type="link" size="small" onClick={() => setFull(true)}>

@@ -9,6 +9,7 @@ import {
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { lynxceBotApi, type LynxceStatus } from "../../api/modules/lynxceBot";
+import { lynxceWalletApi } from "../../api/modules/lynxceWallet";
 import { providerApi } from "../../api/modules/provider";
 import BotClientSettings from "./BotClientSettings";
 
@@ -101,6 +102,14 @@ function openSettings(from?: string) {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(lynxceWalletApi, "balance").mockResolvedValue({
+    source: "model",
+    connection_id: "grant-a",
+    account_id: null,
+    credits: 0,
+    status: "available",
+    recharge_mode: "ticket",
+  });
   sessionStorage.clear();
   vi.mocked(lynxceBotApi.status).mockResolvedValue({
     connected: false,
@@ -120,6 +129,60 @@ beforeEach(() => {
 });
 
 describe("standalone chat model settings", () => {
+  it("shows the wallet on the overview and reauthorizes only when a legacy grant requires it", async () => {
+    vi.mocked(lynxceBotApi.status).mockResolvedValue({
+      connected: true,
+      selected_model: "personal",
+    });
+    const binding = {
+      source: "model",
+      connection_id: "grant-b",
+      account_id: null,
+      credits: 23,
+      status: "available",
+      recharge_mode: "ticket",
+    } as const;
+    const checkout = vi
+      .spyOn(lynxceWalletApi, "recharge")
+      .mockRejectedValueOnce(
+        new Error(
+          'Request failed: 403 Forbidden - {"error":{"code":"BOT_LYNXCE_RECHARGE_AUTH_REQUIRED"}}',
+        ),
+      )
+      .mockResolvedValueOnce({
+        url: "https://admin.lynxce.cn/recharge?token=mcrt1." + "s".repeat(43),
+        expires_at: new Date(Date.now() + 900000).toISOString(),
+      });
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    vi.mocked(lynxceBotApi.login).mockResolvedValue({
+      attempt_id: "consent",
+      authorization_url:
+        "https://api.lynxce.cn/api/oauth/mcp/authorize?state=test",
+    });
+    vi.mocked(lynxceBotApi.poll).mockImplementationOnce(async () => {
+      vi.mocked(lynxceWalletApi.balance).mockResolvedValue(binding);
+      return { state: "connected", detail: null };
+    });
+    openSettings();
+    expect(await screen.findByText("0")).toBeInTheDocument();
+    expect(screen.queryByRole("radio")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "botWallet.recharge" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "botWallet.authorize" }),
+    );
+    await screen.findByText("23");
+    expect(
+      await screen.findByText("botWallet.authorizedHint"),
+    ).toBeInTheDocument();
+    expect(checkout).toHaveBeenCalledTimes(1);
+    expect(lynxceBotApi.logout).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "botWallet.recharge" }));
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+    expect(checkout).toHaveBeenLastCalledWith(binding, expect.any(AbortSignal));
+    open.mockRestore();
+    checkout.mockRestore();
+  });
   it("shows real model and provider, expands connection controls on demand, and returns the selected prompt to its original thread", async () => {
     openSettings(thread);
     const list = await screen.findByRole("list", {
@@ -225,6 +288,14 @@ describe("standalone chat model settings", () => {
         }),
     );
     openSettings();
+    const register = await screen.findByRole("link", {
+      name: "botClient.lynxce.register",
+    });
+    expect(register).toHaveAttribute(
+      "href",
+      "https://admin.lynxce.cn/profile/login",
+    );
+    expect(register).toHaveAttribute("rel", "noopener noreferrer");
     fireEvent.click(
       await screen.findByRole("button", { name: "botClient.lynxce.login" }),
     );

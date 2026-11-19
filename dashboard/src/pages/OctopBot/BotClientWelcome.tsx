@@ -13,6 +13,7 @@ import {
   formatServerYmd,
 } from "../../utils/formatMessageTime";
 import type { WelcomeQuickCard } from "../Chat/components/WelcomeScreen";
+import LynxceRegistration from "./LynxceRegistration";
 import styles from "./botConversation.module.less";
 
 export function BotConversationIntro({
@@ -142,6 +143,7 @@ export default function BotClientWelcome({
                 )}
               </div>
             )}
+            {isChief && needsModel && canConfigure && <LynxceRegistration />}
             {!ready && !needsModel && (
               <button
                 className={styles.start}
