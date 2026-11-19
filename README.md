@@ -6,14 +6,17 @@ Octop Bot 是一款运行在 Windows 和 Apple Silicon Mac 上的桌面应用。
 
 在 **30 秒产品短片**里看 Chief 如何拉上策划与写手，为读书会定下一句招募文案。可以看[中文短片](https://octop-bot.lynxce.cn/media/intro-zh.mp4)、[英文短片](https://octop-bot.lynxce.cn/media/intro-en.mp4)，也可以亲自切换[交互演示](https://octop-bot.lynxce.cn/#demo)中的协作阶段。
 
-## 客户端下载 · 1.0.3-beta.7
+## 客户端下载
 
-| 平台 | 安装包 | 校验 |
+[从官网下载 Octop Bot 和 SHA-256 校验文件](https://octop-bot.lynxce.cn/#download)。下载页按系统列出当前版本，安装包由灵策 OSS 分发。
+
+| 你的电脑 | 选择的安装包 | 安装方式 |
 | --- | --- | --- |
-| Windows x64 | [安装版 EXE](https://octop-bot.lynxce.cn/downloads/1.0.3-beta.7/Octop-Bot-Setup-1.0.3-beta.7-x64.exe) · [免安装 ZIP](https://octop-bot.lynxce.cn/downloads/1.0.3-beta.7/Octop-Bot-1.0.3-beta.7-x64.zip) | [SHA-256 校验值](https://octop-bot.lynxce.cn/downloads/1.0.3-beta.7/SHA256SUMS.txt) |
-| macOS Apple Silicon（M 系列芯片） | [磁盘映像 DMG](https://github.com/alison-xx/octop-bot/releases/download/octop-bot-v1.0.3-beta.7-macos/Octop-Bot-1.0.3-beta.7-mac-arm64.dmg) | [SHA-256 校验值](https://github.com/alison-xx/octop-bot/releases/download/octop-bot-v1.0.3-beta.7-macos/Octop-Bot-1.0.3-beta.7-mac-arm64.dmg.sha256) · [版本说明](https://github.com/alison-xx/octop-bot/releases/tag/octop-bot-v1.0.3-beta.7-macos) |
+| Windows x64 | 安装版 EXE | 运行安装向导，完成后打开 Octop Bot。 |
+| Windows x64 | 免安装 ZIP | 完整解压到一个文件夹，再打开里面的 `Octop Bot.exe`。 |
+| Apple Silicon Mac（M 系列芯片） | 磁盘映像 DMG | 打开 DMG，把 **Octop Bot** 拖入「应用程序」后启动。 |
 
-Windows 可按安装向导操作，或完整解压 ZIP 后打开文件夹里的 `Octop Bot.exe`。Mac 打开 DMG，把 **Octop Bot** 拖入「应用程序」后启动。两个平台的安装包都内置了 Python 和本地 Octop 服务。
+两个平台均提供 **1.0.3-beta.7**，并内置 Python 和本地 Octop 服务。需要校验下载时，在下载页找到对应文件名的 SHA-256，与本机文件的计算结果比对。
 
 ![Octop Bot 群聊实拍。Chief 把一份周末城市指南交给调研、编辑和设计三位成员。](https://octop-bot.lynxce.cn/assets/screen-team-zh.webp)
 

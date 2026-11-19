@@ -6,14 +6,17 @@ Octop Bot is a desktop app for Windows and Apple Silicon Macs for working with a
 
 Watch Chief put a book club’s invitation together with a planner and writer in the **30-second product film**. Choose the [English film](https://octop-bot.lynxce.cn/media/intro-en.mp4), [Chinese film](https://octop-bot.lynxce.cn/media/intro-zh.mp4), or [interactive walkthrough](https://octop-bot.lynxce.cn/#demo).
 
-## Downloads · 1.0.3-beta.7
+## Desktop downloads
 
-| Platform | Package | Verify |
+[Get Octop Bot and its SHA-256 checksums from the official download page](https://octop-bot.lynxce.cn/#download). Choose the package for your computer. The page lists the current version and serves the release files from Lynxce OSS.
+
+| Computer | Package | How to install |
 | --- | --- | --- |
-| Windows x64 | [Installer EXE](https://octop-bot.lynxce.cn/downloads/1.0.3-beta.7/Octop-Bot-Setup-1.0.3-beta.7-x64.exe) · [Portable ZIP](https://octop-bot.lynxce.cn/downloads/1.0.3-beta.7/Octop-Bot-1.0.3-beta.7-x64.zip) | [SHA-256 checksums](https://octop-bot.lynxce.cn/downloads/1.0.3-beta.7/SHA256SUMS.txt) |
-| macOS on Apple Silicon (M series) | [Disk image (DMG)](https://github.com/alison-xx/octop-bot/releases/download/octop-bot-v1.0.3-beta.7-macos/Octop-Bot-1.0.3-beta.7-mac-arm64.dmg) | [SHA-256 checksum](https://github.com/alison-xx/octop-bot/releases/download/octop-bot-v1.0.3-beta.7-macos/Octop-Bot-1.0.3-beta.7-mac-arm64.dmg.sha256) · [Release notes](https://github.com/alison-xx/octop-bot/releases/tag/octop-bot-v1.0.3-beta.7-macos) |
+| Windows x64 | Installer (EXE) | Run the installer, follow the setup wizard, then open Octop Bot. |
+| Windows x64 | Portable archive (ZIP) | Extract the entire ZIP to a folder, then open `Octop Bot.exe` from that folder. |
+| Mac with Apple Silicon (M series) | Disk image (DMG) | Open the DMG, drag **Octop Bot** to **Applications**, then launch it there. |
 
-On Windows, run the installer, or extract the entire ZIP and open `Octop Bot.exe` from that folder. On macOS, open the DMG, drag **Octop Bot** to **Applications**, then launch it there. Both packages include Python and the local Octop service.
+Version **1.0.3-beta.7** is available for both platforms. The packages include Python and the local Octop service. To verify a download, compare the SHA-256 digest of your file with the checksum listed for that filename on the download page.
 
 ![Octop Bot group chat. Chief coordinates a researcher, an editor, and a designer to put together a weekend city guide.](https://octop-bot.lynxce.cn/assets/screen-team-en.webp)
 
