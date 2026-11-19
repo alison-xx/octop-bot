@@ -1,0 +1,139 @@
+.filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 5px;
+}
+.cloud {
+  color: var(--bot-muted);
+  height: 34px;
+  width: 34px;
+}
+.menuAnchor {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.modal {
+  max-width: calc(100vw - 24px);
+}
+.editor {
+  display: grid;
+  gap: 12px;
+  max-height: min(62vh, 540px);
+  overflow: auto;
+}
+.editor p {
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  margin: 0;
+}
+.field {
+  display: grid;
+  gap: 5px;
+  > label {
+    font-weight: 550;
+  }
+  > small {
+    color: var(--fn-color-error);
+  }
+}
+.filter > span:last-child {
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+}
+.choices {
+  max-height: min(32vh, 280px);
+  min-height: 50px;
+  overflow: auto;
+  border: 1px solid var(--fn-border);
+  border-radius: 10px;
+  > label {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    min-height: 43px;
+    padding: 4px 8px;
+  }
+  > label:hover {
+    background: var(--fn-bg-hover);
+  }
+  > label > span:last-child {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    gap: 8px;
+    padding-inline-end: 0;
+  }
+  > p {
+    padding: 10px;
+  }
+}
+.identity {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  > * {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  > strong {
+    font-weight: 520;
+  }
+  > small {
+    font-size: 11px;
+    color: var(--fn-text-secondary);
+  }
+}
+.owner {
+  font-size: 11px;
+  color: var(--fn-text-secondary);
+  max-width: 32%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cluster {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  > span + span {
+    margin-inline-start: -3px;
+  }
+}
+.empty {
+  font-size: 12px;
+  margin: 2px 6px 6px;
+  color: var(--fn-text-secondary);
+}
+
+.drop {
+  font-size: 12px;
+  text-align: center;
+  padding: 10px 4px;
+  color: var(--fn-text-secondary);
+  border: 1px dashed var(--fn-border);
+  border-radius: 8px;
+  margin-bottom: 7px;
+}
+
+@media (hover: none) {
+  .contactActions[data-chief="false"] > button:last-child {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .contactActions[data-chief="false"] > button:first-child {
+    padding-inline-end: 30px;
+  }
+}

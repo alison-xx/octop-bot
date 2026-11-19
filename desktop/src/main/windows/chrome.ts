@@ -95,8 +95,9 @@ export const PACKAGED_APP_ORIGIN = "octop://app";
 export function dashboardEntryUrl(
   scheme: "system" | "light" | "dark",
   appOrigin: string = PACKAGED_APP_ORIGIN,
+  pathname: string = "/",
 ): string {
-  return `${appOrigin}/?${DASHBOARD_THEME_QUERY}=${scheme}`;
+  return `${appOrigin}${pathname}?${DASHBOARD_THEME_QUERY}=${scheme}`;
 }
 
 /** In-app navigations, including a Vite full reload on the dev origin. */

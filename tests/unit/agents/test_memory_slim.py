@@ -16,6 +16,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
 from octop.infra.agents.memory.slim_control import MemorySlimControl, request_memory_slim
+from octop.infra.control.desktop.bot_apps import BotComputer
 
 
 def make_manager(tmp_path):
@@ -31,6 +32,7 @@ def make_manager(tmp_path):
     memory = Memory("test_slim", backend_config={"db_path": str(path)})
     agent = SimpleNamespace(_memory_runtime=SimpleNamespace(memory=memory))
     registry = AgentManager.__new__(AgentManager)
+    registry.bot_computer = BotComputer()
     registry._active_invocations = {}
     registry._invocation_waiters = {}
     registry._history_backfills = {}

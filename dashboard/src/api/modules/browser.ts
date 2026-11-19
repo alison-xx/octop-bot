@@ -1,3 +1,4 @@
+import { scopedBrowserUrl } from "../../utils/browserProfile";
 import { bridgeAgentHeaders, request, getAuthToken } from "../request";
 import { getApiUrl, getWsUrl } from "../config";
 import type {
@@ -129,11 +130,13 @@ export const browserApi = {
   // -- Sessions --
 
   getSessions: () =>
-    request<BrowserSessionsResponse>("/browser/harness-sessions"),
+    request<BrowserSessionsResponse>(
+      scopedBrowserUrl("/browser/harness-sessions"),
+    ),
 
   handoff: (sessionId: string, target: "agent" | "user", reason = "") =>
     request<{ ok: boolean; session: BrowserSession }>(
-      `/browser/sessions/${sessionId}/handoff`,
+      scopedBrowserUrl(`/browser/sessions/${sessionId}/handoff`),
       {
         method: "POST",
         body: JSON.stringify({ target, reason }),
@@ -142,9 +145,12 @@ export const browserApi = {
 
   /** Stop the local Chrome process. Login cookies stay in the on-disk profile. */
   shutdown: () =>
-    request<{ ok: boolean; profile: string }>("/browser/shutdown", {
-      method: "POST",
-    }),
+    request<{ ok: boolean; profile: string }>(
+      scopedBrowserUrl("/browser/shutdown"),
+      {
+        method: "POST",
+      },
+    ),
 
   // -- Browser stream (WebSocket CDP screencast, ~10 fps) --
 
@@ -173,37 +179,48 @@ export const browserApi = {
       params.set("token", token);
     }
     const wsUrl = `${getWsUrl("/browser-stream/ws")}?${params.toString()}`;
-    return new WebSocket(wsUrl);
+    return new WebSocket(scopedBrowserUrl(wsUrl));
   },
 
   // -- Browser record/replay --
 
   recordReplayStatus: () =>
-    request<BrowserRecordReplayStatus>("/browser/record-replay/status"),
+    request<BrowserRecordReplayStatus>(
+      scopedBrowserUrl("/browser/record-replay/status"),
+    ),
 
   startRecording: (payload: BrowserRecordStartRequest) =>
-    request<BrowserRecordStartResponse>("/browser/record-replay/start", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+    request<BrowserRecordStartResponse>(
+      scopedBrowserUrl("/browser/record-replay/start"),
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
 
   stopRecording: (payload: BrowserRecordStopRequest) =>
-    request<BrowserRecordStopResponse>("/browser/record-replay/stop", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+    request<BrowserRecordStopResponse>(
+      scopedBrowserUrl("/browser/record-replay/stop"),
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
 
   replayRecording: (payload: BrowserReplayRequest) =>
-    request<BrowserReplayResponse>("/browser/record-replay/replay", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+    request<BrowserReplayResponse>(
+      scopedBrowserUrl("/browser/record-replay/replay"),
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
 
   // -- Stop recording + generate skill --
 
   stopAndGenerateSkill: (payload: BrowserRecordStopAndGenerateSkillRequest) =>
     request<BrowserRecordStopAndGenerateSkillResponse>(
-      "/browser/record-replay/stop-and-generate-skill",
+      scopedBrowserUrl("/browser/record-replay/stop-and-generate-skill"),
       {
         method: "POST",
         body: JSON.stringify(payload),
@@ -214,7 +231,7 @@ export const browserApi = {
 
   getSkillContent: (payload: BrowserSkillContentRequest) =>
     request<BrowserSkillContentResponse>(
-      "/browser/record-replay/skill-content",
+      scopedBrowserUrl("/browser/record-replay/skill-content"),
       {
         method: "POST",
         body: JSON.stringify(payload),

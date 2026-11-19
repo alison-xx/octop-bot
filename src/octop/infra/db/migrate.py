@@ -2707,6 +2707,23 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_thread_shares_schema(db)
     _ensure_user_last_login_schema(db)
     _ensure_instance_lease_schema(db)
+    # A pre-squash install can carry a higher watermark without the Bot tables.
+    if _table_exists(db, "users") and not all(
+        _table_exists(db, name)
+        for name in (
+            "bot_groups",
+            "bot_group_turns",
+            "bot_group_messages",
+            "bot_group_drafts",
+            "thread_compaction_boundaries",
+            "bot_avatar_photos",
+        )
+    ):
+        path = next(p for version, p in _discover(db.dialect) if version == 26)
+        sql = path.read_text(encoding="utf-8").split("UPDATE _schema_version", 1)[0]
+        with db.transaction() as conn:
+            for statement in _split_pg_sql(sql):
+                conn.execute(statement)
     _ensure_control_blobs_schema(db)
     _ensure_thread_contributed_schema(db)
     _grant_default_nav_permissions(db)

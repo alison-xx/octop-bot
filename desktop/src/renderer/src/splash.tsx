@@ -1,5 +1,7 @@
 import logoDarkUrl from "./assets/logo_horizontal_dark.png";
 import logoWhiteUrl from "./assets/logo_horizontal_white.png";
+import mascotUrl from "../../../../dashboard/src/assets/avatars/octop-mascot.webp";
+import { BOT_PRODUCT_NAME } from "../../shared/product";
 import { LinuxWindowControls } from "./linux-window-controls";
 import { mount } from "./mount";
 import "./base.less";
@@ -19,23 +21,33 @@ import styles from "./splash.module.less";
  */
 function Splash() {
   const version = new URLSearchParams(window.location.search).get("version");
+  const botOnly = window.octopDesktop?.botOnly === true;
 
   return (
     <main className={styles.splash} role="status" aria-live="polite">
       <LinuxWindowControls />
       <div className={styles.stack}>
-        <img
-          className={`${styles.logo} ${styles.logoLight}`}
-          src={logoDarkUrl}
-          alt="Octop"
-          height={72}
-        />
-        <img
-          className={`${styles.logo} ${styles.logoDark}`}
-          src={logoWhiteUrl}
-          alt="Octop"
-          height={72}
-        />
+        {botOnly ? (
+          <div className={styles.botBrand}>
+            <img src={mascotUrl} alt="" width={74} height={74} />
+            <strong>{BOT_PRODUCT_NAME}</strong>
+          </div>
+        ) : (
+          <>
+            <img
+              className={`${styles.logo} ${styles.logoLight}`}
+              src={logoDarkUrl}
+              alt="Octop"
+              height={72}
+            />
+            <img
+              className={`${styles.logo} ${styles.logoDark}`}
+              src={logoWhiteUrl}
+              alt="Octop"
+              height={72}
+            />
+          </>
+        )}
         <p className={styles.status}>
           <span className={styles.spinner} aria-hidden="true">
             <span className={styles.track} />

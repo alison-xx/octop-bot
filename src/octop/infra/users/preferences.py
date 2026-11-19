@@ -23,6 +23,7 @@ PREFERENCES_KEY_ONBOARDING_COMPLETED = "onboarding_completed"
 SIDEBAR_NAV_KEYS = frozenset(
     {
         "chat",
+        "octop-bot",
         "experts",
         "tasks",
         "token-usage",

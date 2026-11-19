@@ -77,7 +77,13 @@ class HitlAnswerOutcome:
 # ``octop_harness.security.tool_guard.engine.format_block_message``). Security
 # approvals must never be auto-approved by a per-session "allow all" choice:
 # one click would otherwise disable the command guard for the rest of the chat.
-_TOOL_GUARD_MARKERS = ("command guard", "command-guard", "命令护栏")
+_TOOL_GUARD_MARKERS = (
+    "command guard",
+    "command-guard",
+    "命令护栏",
+    "private bot approval",
+    "隐私 bot 授权",
+)
 
 
 def _is_tool_guard_request(request: dict[str, Any]) -> bool:
@@ -88,6 +94,8 @@ def _is_tool_guard_request(request: dict[str, Any]) -> bool:
     for action in actions:
         if not isinstance(action, dict):
             continue
+        if action.get("name") == "octop_bot_delete":
+            return True
         description = str(action.get("description") or "").lower()
         if any(marker in description for marker in _TOOL_GUARD_MARKERS):
             return True

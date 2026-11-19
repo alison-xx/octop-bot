@@ -1,7 +1,15 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
+import { useLynxceStatus } from "../../hooks/useLynxceStatus";
+import { isBotOnlyDesktop } from "../../utils/desktopBridge";
+import { BOT_SETTINGS } from "../../utils/botClientRoute";
+import BotClientWelcome, {
+  BotConversationIntro,
+} from "../OctopBot/BotClientWelcome";
+import botStyles from "../OctopBot/botConversation.module.less";
+import { useChatNavigate, useEmbeddedChat } from "./ChatRouteContext";
 import {
   PanelLeftOpen,
   GraduationCap,
@@ -129,7 +137,7 @@ export default function ChatPage() {
 
 function ChatPageInner() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
+  const navigate = useChatNavigate();
   const location = useLocation();
   prefetchVoiceConfig();
   const { agentId: routeAgentId, threadId } = useParams<{
@@ -145,8 +153,11 @@ function ChatPageInner() {
   const { layoutMode } = useLayoutMode();
   const isMinimalLayout = layoutMode === "minimal";
   const canTerminal = userCan(user, "terminal");
-  const canConfigureModels = navAllowed(user, "models");
   const chatHistoryRail = useChatHistoryRail();
+  const embedded = useEmbeddedChat();
+  const focused = Boolean(embedded) && isBotOnlyDesktop();
+  const account = useLynxceStatus(focused);
+  const canConfigureModels = focused || navAllowed(user, "models");
   const [shareTarget, setShareTarget] = useState<{
     agentId: string;
     threadId: string;
@@ -593,14 +604,14 @@ function ChatPageInner() {
   }, [agents]);
 
   const {
-    selectedModel,
+    selectedModel: sharedSelection,
     setSelectedModel,
     selectedConnectors,
     selectedKnowledgeBaseIds,
     chatConnectors,
     chatKnowledgeBases,
     availableModels,
-    modelsReady,
+    modelsReady: sharedModelsReady,
     activeModelRef,
     preferredModel,
     reasoningMode,
@@ -627,13 +638,26 @@ function ChatPageInner() {
     composerSession?.owned !== false,
   );
 
+  const personalModel =
+    focused && !isManagedChat && account.status?.connected
+      ? account.status.selected_model
+      : null;
+  const selectedModel = personalModel ? null : sharedSelection;
+  const defaultModel = personalModel
+    ? null
+    : activeAgent?.default_model ?? null;
+  const hasChatModel = Boolean(personalModel || availableModels.length);
+  const modelsReady = Boolean(
+    personalModel ||
+      (sharedModelsReady && (!focused || account.status || account.error)),
+  );
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(
     messages,
     contextUsage,
     selectedModel,
     availableModels,
-    activeAgent?.default_model,
-    preferredModel || activeModelRef,
+    defaultModel,
+    personalModel ? null : preferredModel || activeModelRef,
     activeAgent,
   );
 
@@ -761,7 +785,8 @@ function ChatPageInner() {
     conversationMode,
     sessionMode,
     hitlPolicy,
-    defaultModel: activeAgent?.default_model ?? null,
+    defaultModel,
+    useWorkspaceModel: !!personalModel,
     sendMessage,
     createSession,
     onAutoRecordingStarted: useCallback((recordingId: string) => {
@@ -1469,7 +1494,7 @@ function ChatPageInner() {
         closeToolUiPanel={closeToolUiPanel}
         focusToolUiPanel={focusToolUiTab}
       >
-        {chatHistoryRail
+        {!embedded && chatHistoryRail
           ? createPortal(chatSidebarPanel, chatHistoryRail)
           : null}
         <div
@@ -1487,11 +1512,12 @@ function ChatPageInner() {
           <div
             className={cx(
               styles.chatMain,
+              focused && botStyles.conversation,
               turnRailVisible && styles.chatMainWithTurnRail,
             )}
           >
             {/* Mobile toolbar — session list + optional title + agent profile */}
-            {isMobile && (
+            {isMobile && !embedded && (
               <div className={styles.mobileToolbar}>
                 <button
                   className={styles.menuBtn}
@@ -1590,7 +1616,8 @@ function ChatPageInner() {
               </div>
             )}
 
-            {!isMobile &&
+            {!focused &&
+              !isMobile &&
               (activeSession && activeSessionTitle ? (
                 <ChatTitleBar
                   session={activeSession}
@@ -1667,15 +1694,35 @@ function ChatPageInner() {
                 }
               />
             )}
-            <div className={styles.chatContent}>
-              {!agentChatReady || noAgents ? (
+            <div
+              className={cx(
+                styles.chatContent,
+                focused && botStyles.chatContent,
+              )}
+            >
+              {focused && showWelcome ? (
+                <BotClientWelcome
+                  avatar={embedded?.renderAvatar?.(resolvedAgentId, 28, false)}
+                  isChief={Boolean(embedded?.isChief)}
+                  welcome={activeAgent?.welcome_message || welcomeSuffix}
+                  prompts={expertQuickCards}
+                  agent={activeAgent}
+                  loading={agentsLoading || !modelsReady}
+                  needsModel={!isManagedChat && modelsReady && !hasChatModel}
+                  ready={agentChatReady}
+                  canConfigure={canConfigureModels}
+                  onRefresh={() => refreshAgents({ silent: true, force: true })}
+                  onPick={(text) => handlePromptClick(text, { prefill: true })}
+                />
+              ) : (!agentChatReady || noAgents) &&
+                !(embedded && activeThreadId && hasMessages) ? (
                 <AgentNotReadyScreen
                   agent={activeAgent}
                   noAgents={noAgents}
                   loading={agentsLoading}
                   canConfigureModels={canConfigureModels}
                 />
-              ) : showWelcome && modelsReady && availableModels.length === 0 ? (
+              ) : showWelcome && modelsReady && !hasChatModel ? (
                 <ModelConfigEmpty canConfigure={canConfigureModels} />
               ) : showWelcome ? (
                 <WelcomeScreen
@@ -1689,7 +1736,11 @@ function ChatPageInner() {
               ) : (
                 <>
                   <ChatAgentProfileProvider
-                    canOpen={Boolean(resolvedAgentId) && !sharedExpertViewer}
+                    canOpen={
+                      !focused &&
+                      Boolean(resolvedAgentId) &&
+                      !sharedExpertViewer
+                    }
                     onOpen={(agentId) => {
                       setProfileAgentId(
                         agentId && agentId !== resolvedAgentId ? agentId : null,
@@ -1699,6 +1750,24 @@ function ChatPageInner() {
                     isTeam={isTeamChat}
                   >
                     <MessageList
+                      introduction={
+                        focused ? (
+                          <BotConversationIntro
+                            avatar={embedded?.renderAvatar?.(
+                              resolvedAgentId,
+                              28,
+                              false,
+                            )}
+                            name={activeAgent?.name}
+                            text={
+                              activeAgent?.welcome_message ||
+                              welcomeSuffix ||
+                              activeAgent?.description
+                            }
+                            timestamp={messages[0]?.timestamp}
+                          />
+                        ) : undefined
+                      }
                       messages={messages}
                       agentId={resolvedAgentId}
                       composerLookups={composerLookups}
@@ -1713,7 +1782,9 @@ function ChatPageInner() {
                       thinkingStartedAt={thinkingStartedAt}
                       sessionKey={activeThreadId ?? undefined}
                       onRegenerate={handleRegenerate}
-                      onDisableStreamUsage={handleDisableStreamUsage}
+                      onDisableStreamUsage={
+                        personalModel ? undefined : handleDisableStreamUsage
+                      }
                       onEditUserMessage={handleEditUserMessage}
                       onWithdrawSteer={handleWithdrawSteer}
                       onForkAssistantMessage={handleForkAssistantMessage}
@@ -1723,16 +1794,19 @@ function ChatPageInner() {
                       onHitlDecision={handleHitlDecision}
                       onTurnRailVisibilityChange={setTurnRailVisible}
                       onOpenBrowser={
-                        hasBrowserTool ? openBrowserTab : undefined
+                        !focused && hasBrowserTool ? openBrowserTab : undefined
                       }
-                      onEditFile={sharedExpertViewer ? undefined : openFileList}
+                      onEditFile={
+                        focused || sharedExpertViewer ? undefined : openFileList
+                      }
                     />
                   </ChatAgentProfileProvider>
                 </>
               )}
             </div>
 
-            {!isMobile &&
+            {!focused &&
+              !isMobile &&
               !dockOpen &&
               !agentProfileOpen &&
               !trajectoryDrawerOpen && (
@@ -1918,7 +1992,9 @@ function ChatPageInner() {
                 </div>
               )}
 
-            <ChatComposerChrome sessionUsageLabel={sessionUsageLabel} />
+            {!focused && (
+              <ChatComposerChrome sessionUsageLabel={sessionUsageLabel} />
+            )}
             {pendingAsk ? (
               <div className={styles.askQuestionDock}>
                 <div className={styles.askQuestionDockInner}>
@@ -1962,10 +2038,7 @@ function ChatPageInner() {
                 </div>
               </div>
             ) : null}
-            {!showWelcome &&
-            !isManagedChat &&
-            modelsReady &&
-            availableModels.length === 0 ? (
+            {!showWelcome && !isManagedChat && modelsReady && !hasChatModel ? (
               <div className={styles.modelConfigDock}>
                 <div className={styles.modelConfigDockInner}>
                   <Alert
@@ -1982,7 +2055,13 @@ function ChatPageInner() {
                         <Button
                           type="primary"
                           size="small"
-                          onClick={() => navigate("/admin/models")}
+                          onClick={() =>
+                            focused
+                              ? navigate(BOT_SETTINGS, {
+                                  state: { from: location.pathname },
+                                })
+                              : navigate("/admin/models")
+                          }
                         >
                           {t("modelConfig.configureButton")}
                         </Button>
@@ -1993,8 +2072,10 @@ function ChatPageInner() {
               </div>
             ) : null}
             <ChatInput
+              botName={focused ? activeAgent?.name : undefined}
               ref={chatInputRef}
               onSend={wrappedHandleSend}
+              onSideChat={embedded?.openSide}
               onQueue={enqueueUnlessSharedBusy}
               queuedItems={displayQueuedItems}
               onRemoveQueued={removeQueued}
@@ -2009,8 +2090,7 @@ function ChatPageInner() {
                 !agentChatReady ||
                 noAgents ||
                 memoryMaintBlocking ||
-                (!isManagedChat &&
-                  (!modelsReady || availableModels.length === 0))
+                (!isManagedChat && (!modelsReady || !hasChatModel))
               }
               initialText={prefillInputRef.current}
               onComposerCleared={() => {
@@ -2018,7 +2098,18 @@ function ChatPageInner() {
               }}
               availableModels={availableModels}
               selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
+              onModelChange={personalModel ? undefined : setSelectedModel}
+              workspaceModel={
+                personalModel
+                  ? {
+                      name: personalModel,
+                      onOpen: () =>
+                        navigate(BOT_SETTINGS, {
+                          state: { source: "lynxce", from: location.pathname },
+                        }),
+                    }
+                  : undefined
+              }
               reasoningMode={reasoningMode}
               reasoningEffort={reasoningEffort}
               onReasoningChange={handleReasoningChange}
@@ -2057,9 +2148,9 @@ function ChatPageInner() {
               agentId={resolvedAgentId}
               threadId={activeThreadId}
               managed={isManagedChat}
-              defaultModel={activeAgent?.default_model ?? null}
+              defaultModel={defaultModel}
               contextUsedTokens={contextUsedTokens}
-              contextMaxTokens={contextMaxTokens}
+              contextMaxTokens={personalModel ? undefined : contextMaxTokens}
               decisionSaved={decisionSaved}
             />
           </div>
@@ -2088,7 +2179,7 @@ function ChatPageInner() {
             addTab={dockAddTab}
           />
 
-          {!sharedExpertViewer && (
+          {!focused && !sharedExpertViewer && (
             <AgentProfileDrawer
               open={agentProfileOpen}
               agent={profileAgent}
@@ -2099,7 +2190,7 @@ function ChatPageInner() {
               }}
             />
           )}
-          {trajectoryEnabled && (
+          {!focused && trajectoryEnabled && (
             <TrajectoryDrawer
               agentId={resolvedAgentId ?? ""}
               threadId={activeThreadId}

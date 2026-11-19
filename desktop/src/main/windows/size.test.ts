@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "./size";
+import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE, minimumWindowSize } from "./size";
+
+test("Bot can open a compact conversation with its drawer", () => {
+  assert.deepEqual(minimumWindowSize(true), { width: 480, height: 520 });
+  assert.deepEqual(minimumWindowSize(false), MIN_WINDOW_SIZE);
+});
 
 /**
  * The window refuses to shrink below `MIN_WINDOW_SIZE`, so that number has to

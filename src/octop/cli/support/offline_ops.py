@@ -315,6 +315,7 @@ resolve_acting_user_id_offline = resolve_cron_user_id
 
 
 def delete_agent_offline(agent_id: str, *, home: Path | None = None) -> None:
+    from octop.infra.agents.bot_workspace import assert_removable_bot, is_private_bot
     from octop.infra.agents.memory.thread_cleanup import (
         agent_config_from_row,
         delete_agent_memory_and_checkpoints,
@@ -325,6 +326,10 @@ def delete_agent_offline(agent_id: str, *, home: Path | None = None) -> None:
         row = svc.agent_repo.get(agent_id)
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        assert_removable_bot(svc.repos, row)
+        if is_private_bot(row):
+            svc.agent_repo.delete(agent_id)
+            return
         workspace_dir = workspace_dir_from_config_json(
             row.config_json, paths=svc.paths, agent_id=agent_id
         )

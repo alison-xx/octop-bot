@@ -226,7 +226,8 @@ async def _bootstrap_default_agent(
 ) -> None:
     """Create the first default agent for a user.
 
-    Fresh setup pins ``main``. A desktop ``local`` account added later leaves
+    The Bot client starts with Chief. Full Octop pins ``main`` on first setup.
+    A desktop ``local`` account added later leaves
     the id unset so an existing ``main`` stays with its owner. Workspace root
     comes from that user's policy inside ``bootstrap_first_expert``.
     """
@@ -234,9 +235,15 @@ async def _bootstrap_default_agent(
         SETUP_DEFAULT_AGENT_ID,
         bootstrap_first_expert,
     )
+    from octop.infra.desktop import bot_desktop_enabled  # noqa: PLC0415
 
     if server.app_runtime is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "app_runtime not ready")
+    if bot_desktop_enabled():
+        from octop.infra.agents.bot_workspace import ensure_chief  # noqa: PLC0415
+
+        await ensure_chief(server.services, server.app_runtime.agent_registry, user_id)
+        return
     await bootstrap_first_expert(
         server,
         user_id=user_id,
@@ -524,7 +531,7 @@ async def finish(
     server: Any = Depends(get_server),
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
-    """Apply optional provider draft, bootstrap default ``main`` agent, clear wizard token."""
+    """Apply the provider draft, create the product's first assistant, and close setup."""
     _enforce_wizard_token_phase(request, server)
     require_database(server)
     assert server.user_manager is not None

@@ -698,6 +698,8 @@ async def patch_thread(
     registry = server.app_runtime.gateway.thread_registry
     if "contributed" in body.model_fields_set:
         if body.contributed:
+            if getattr(row, "channel_type", None) == ThreadRegistry.CHANNEL_BOT_GROUP:
+                raise OctopError.localized(ErrorCode.FORBIDDEN)
             agent_row = require_agent_row(agent_id, user=user, as_user=as_user, server=server)
             if not agent_is_shared(agent_row):
                 raise OctopError(

@@ -145,6 +145,7 @@ test("窗口底色与仪表盘启动地址跟设备主题走", () => {
   assert.equal(chrome.windowBackground("dark"), "#0e0e0e");
   assert.equal(chrome.dashboardEntryUrl("system"), "octop://app/?octopTheme=system");
   assert.equal(chrome.dashboardEntryUrl("dark"), "octop://app/?octopTheme=dark");
+  assert.equal(chrome.dashboardEntryUrl("dark", "octop://app", "/octop-bot"), "octop://app/octop-bot?octopTheme=dark");
   assert.equal(
     chrome.dashboardEntryUrl("system", "http://127.0.0.1:5173"),
     "http://127.0.0.1:5173/?octopTheme=system",

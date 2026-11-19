@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import {
+  Bot,
   Monitor,
   MessageSquareText,
   Timer,
@@ -66,6 +67,7 @@ export interface NavSection {
 /** Every nav item key the sidebar can show. Keep in sync with `SIDEBAR_NAV_KEYS` in `octop.infra.users.preferences`. */
 export const SIDEBAR_NAV_KEYS = [
   "chat",
+  "octop-bot",
   "experts",
   "tasks",
   "token-usage",
@@ -157,6 +159,12 @@ export function buildNavSections(
       path: "/chat",
       icon: <MessageSquareText size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.chat",
+    },
+    {
+      key: "octop-bot",
+      path: "/octop-bot",
+      icon: <Bot size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.octopBot",
     },
   ];
   if (navAllowed(user, "experts")) {

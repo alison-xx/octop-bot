@@ -35,10 +35,11 @@ export default function WindowsAppMenu() {
     left: number;
   } | null>(null);
   const showRow = desktopChrome === "windows";
+  const standalone = getDesktopBridge()?.botOnly === true;
 
   useEffect(() => {
     const root = document.documentElement;
-    if (!showRow) {
+    if (!showRow || standalone) {
       delete root.dataset.octopCaptionRow;
       root.style.removeProperty("--octop-caption-row");
       return;
@@ -52,10 +53,10 @@ export default function WindowsAppMenu() {
       delete root.dataset.octopCaptionRow;
       root.style.removeProperty("--octop-caption-row");
     };
-  }, [showRow]);
+  }, [showRow, standalone]);
 
   useEffect(() => {
-    if (!showRow) return;
+    if (!showRow || standalone) return;
     const menu = getDesktopBridge()?.windowsMenu;
     if (!menu) return;
     let cancelled = false;
@@ -65,7 +66,7 @@ export default function WindowsAppMenu() {
     return () => {
       cancelled = true;
     };
-  }, [showRow]);
+  }, [showRow, standalone]);
 
   useLayoutEffect(() => {
     if (open === null) {
@@ -106,6 +107,21 @@ export default function WindowsAppMenu() {
   }, [open]);
 
   if (!showRow) return null;
+  if (standalone)
+    return createPortal(
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          height: WINDOWS_CAPTION_HEIGHT,
+          zIndex: 1001,
+        }}
+      >
+        <LinuxWindowControls />
+      </div>,
+      chromeSlot(),
+    );
 
   const titles = model?.titles ?? [];
   const entries = open === null ? [] : model?.menus[open] ?? [];

@@ -70,6 +70,7 @@ export const IPC_CHANNELS = {
   installUpdate: "octop:install-update",
   windowsMenuModel: "octop:windows-menu:model",
   windowsMenuInvoke: "octop:windows-menu:invoke",
+  openBotSettings: "octop:bot:open-settings",
   /** Linux square caption buttons. No-op on the other platforms. */
   windowMinimize: "octop:window-minimize",
   windowToggleMaximize: "octop:window-toggle-maximize",

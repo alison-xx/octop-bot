@@ -339,6 +339,10 @@ async def managed_mcp_specs(
     row = manager.get_row(agent_id)
     if not is_managed_agent(row):
         return None
+    # The agent-scoped loopback file/memory tools point at the personal workspace.
+    # Group turns already delegate through room mentions and share files via their cwd.
+    if request.get("source") == "octop_bot_group/octop-bot":
+        return {}, None
 
     configurable = request.get("configurable")
     cfg = configurable if isinstance(configurable, dict) else {}

@@ -4,6 +4,32 @@ import pytest
 from langgraph.prebuilt.tool_node import ToolCallRequest
 
 from octop.infra.agents.middleware import browser_profile
+from octop.infra.control.browser.handoff import set_control_owner
+
+
+@pytest.mark.asyncio
+async def test_bot_controls_are_isolated_and_respect_manual_handoff(monkeypatch) -> None:
+    monkeypatch.setattr(browser_profile, "browser_enabled", lambda: True)
+    monkeypatch.setattr(
+        browser_profile,
+        "get_config",
+        lambda: {"configurable": {"user": "42", "octop_bot_browser": True}},
+    )
+    handler = AsyncMock(return_value=object())
+    request = _request("browser_use", {"action": "navigate", "profile": "user-42"})
+    first = browser_profile.BrowserProfileMiddleware("A")
+    second = browser_profile.BrowserProfileMiddleware("a")
+    set_control_owner("user-42-bot-41", "user")
+    try:
+        result = await first.awrap_tool_call(request, handler)
+        assert getattr(result, "status", None) == "error"
+        handler.assert_not_awaited()
+        await second.awrap_tool_call(request, handler)
+        assert handler.await_args.args[0].tool_call["args"]["profile"] == "user-42-bot-61"
+    finally:
+        set_control_owner("user-42-bot-41", "agent")
+    await first.awrap_tool_call(request, handler)
+    assert handler.await_args.args[0].tool_call["args"]["profile"] == "user-42-bot-41"
 
 
 def _request(name: str, args: dict[str, object]) -> ToolCallRequest:

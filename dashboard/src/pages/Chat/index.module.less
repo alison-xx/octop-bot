@@ -469,3 +469,107 @@
   line-height: 1.6;
   color: var(--fn-text-secondary);
 }
+
+.focusedChat {
+  --chat-column-max: 760px;
+  .messageListInner {
+    max-width: 812px;
+  }
+  .chatInput {
+    padding-bottom: clamp(14px, 3vh, 28px);
+  }
+  .inputWrapper {
+    max-width: 740px;
+    min-width: 0;
+    border-radius: 22px;
+  }
+  .sendBtn {
+    border-radius: 50%;
+  }
+}
+.focusedEmpty {
+  justify-content: center;
+  padding-bottom: clamp(10px, 7vh, 72px);
+  overflow-y: auto;
+  .chatContent {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+  .chatInput {
+    flex: 0 0 auto;
+    padding-top: 21px;
+  }
+}
+.focusedWelcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px 0;
+  text-align: center;
+}
+.focusedWelcome h1 {
+  font-size: clamp(25px, 3.2vw, 39px);
+  line-height: 1.25;
+  letter-spacing: -0.04em;
+  font-weight: 600;
+  margin: 0;
+}
+.focusedWelcome p {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+}
+.promptChoices,
+.focusedActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.promptChoices {
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+.promptChoices button,
+.focusedModel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  border-radius: 18px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--fn-text-secondary);
+}
+.promptChoices button {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid var(--fn-border-primary);
+}
+.focusedModel {
+  border: 0;
+  padding: 5px 9px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.promptChoices button:hover,
+.focusedModel:hover {
+  background: var(--fn-bg-hover);
+  color: var(--fn-text-primary);
+}
+@media (max-height: 460px) {
+  .focusedEmpty {
+    justify-content: flex-start;
+    padding: 0;
+  }
+  .focusedWelcome {
+    gap: 5px;
+  }
+  .focusedWelcome > :first-child {
+    display: none;
+  }
+}

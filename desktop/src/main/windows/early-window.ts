@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 
 import { EARLY_IPC } from "../../shared/early-ipc";
+import { BOT_CLIENT_FLAG, BOT_PRODUCT_NAME } from "../../shared/product";
 import { encodeShellError, SHELL_ERROR_PARAM, type ShellFailure } from "../../shared/shell-error";
 import {
   concealWindowsMenuBar,
@@ -8,7 +9,7 @@ import {
   windowChrome,
   type WindowChromeTheme,
 } from "./chrome";
-import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "./size";
+import { DEFAULT_WINDOW_SIZE, minimumWindowSize } from "./size";
 
 /**
  * Early Window (§4): shown immediately so the cold start never shows a blank
@@ -23,6 +24,8 @@ export interface EarlyWindowOptions {
   errorFile: string;
   /** Stamped onto the failure page so a report always names the running build. */
   version: string;
+  botOnly: boolean;
+  icon?: string;
   /**
    * Device light/dark preference, already resolved. The splash cannot read the
    * Dashboard's localStorage (different origin), so the colour has to arrive
@@ -44,15 +47,17 @@ export interface EarlyWindow {
 export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
   registerRelaunchHandler();
   const mode = options.theme.mode;
+  const minimum = minimumWindowSize(options.botOnly);
 
   const win = new BrowserWindow({
-    title: "Octop",
+    title: options.botOnly ? BOT_PRODUCT_NAME : "Octop",
+    icon: options.icon,
     width: DEFAULT_WINDOW_SIZE.width,
     height: DEFAULT_WINDOW_SIZE.height,
     // Same floor as the Dashboard: this window becomes the Dashboard, so a
     // size the page would refuse has to be refused here too.
-    minWidth: MIN_WINDOW_SIZE.width,
-    minHeight: MIN_WINDOW_SIZE.height,
+    minWidth: minimum.width,
+    minHeight: minimum.height,
     show: false,
     // Same native chrome as the Dashboard window, so the swap from splash to
     // Dashboard does not move the traffic lights / caption buttons. Glyph colour
@@ -60,12 +65,14 @@ export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
     ...windowChrome(mode),
     backgroundColor: windowBackground(mode),
     webPreferences: {
+      additionalArguments: options.botOnly ? [BOT_CLIENT_FLAG] : [],
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       ...(options.preload ? { preload: options.preload } : {}),
     },
   });
+  if (options.botOnly) win.on("page-title-updated", (event) => event.preventDefault());
   // Before the first paint: the splash is a loading page and draws no menu.
   concealWindowsMenuBar(win);
   win.once("ready-to-show", () => {

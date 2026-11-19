@@ -32,7 +32,7 @@ export const SHELL_ERROR_PARAM = "payload";
  */
 const MAX_DETAIL_LENGTH = 4000;
 
-export const FALLBACK_ERROR_MESSAGE = "启动过程中出现未预期的错误，请重新打开 Octop。";
+export const FALLBACK_ERROR_MESSAGE = "启动过程中出现未预期的错误，请重新打开应用。";
 
 function toBase64Url(text: string): string {
   const bytes = new TextEncoder().encode(text);

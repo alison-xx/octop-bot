@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import type { TFunction } from "i18next";
-import { useNavigate } from "react-router-dom";
+import { useChatNavigate } from "../ChatRouteContext";
 import type { ChatAttachment, UserComposerContext } from "./useChat";
 import {
   isPendingThread,
@@ -32,6 +32,7 @@ interface UseChatSendParams {
   sessionMode?: string;
   hitlPolicy?: HitlSessionPolicy;
   defaultModel?: string | null;
+  useWorkspaceModel?: boolean;
   sendMessage: (
     text: string,
     sessionKey: string,
@@ -84,12 +85,13 @@ export function useChatSend({
   sessionMode,
   hitlPolicy,
   defaultModel,
+  useWorkspaceModel = false,
   sendMessage,
   createSession,
   onAutoRecordingStarted,
   t,
 }: UseChatSendParams) {
-  const navigate = useNavigate();
+  const navigate = useChatNavigate();
 
   /** @returns false when the send was rejected before starting a turn. */
   const handleSend = useCallback(
@@ -118,13 +120,16 @@ export function useChatSend({
       const targetAgents = restricted
         ? []
         : overrides?.selectedTargetAgents ?? selectedTargetAgents;
-      const modelSelection =
-        overrides?.selectedModel !== undefined
-          ? overrides.selectedModel
-          : selectedModel;
+      const modelSelection = useWorkspaceModel
+        ? null
+        : overrides?.selectedModel !== undefined
+        ? overrides.selectedModel
+        : selectedModel;
 
       const composerContext =
-        overrides?.composerContext ??
+        (useWorkspaceModel && overrides?.composerContext
+          ? { ...overrides.composerContext, model: undefined }
+          : overrides?.composerContext) ??
         buildComposerContext({
           skills: restricted ? [] : parseSkillSlugsInText(trimmed),
           connectors,
@@ -137,10 +142,11 @@ export function useChatSend({
             overrides?.composerContext?.reasoningEffort ?? reasoningEffort,
         });
 
-      const modelOverride =
-        overrides?.modelRef !== undefined
-          ? overrides.modelRef
-          : resolveTurnModelRef(modelSelection, defaultModel);
+      const modelOverride = useWorkspaceModel
+        ? null
+        : overrides?.modelRef !== undefined
+        ? overrides.modelRef
+        : resolveTurnModelRef(modelSelection, defaultModel);
 
       const runSend = (tid: string) => {
         sendMessage(
@@ -236,6 +242,7 @@ export function useChatSend({
       sessionMode,
       hitlPolicy,
       defaultModel,
+      useWorkspaceModel,
       t,
     ],
   );

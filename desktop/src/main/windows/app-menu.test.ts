@@ -15,6 +15,20 @@ function roles(item: MenuItemConstructorOptions): string[] {
   return submenu.flatMap((entry) => (entry.role ? [entry.role] : []));
 }
 
+test("Bot's File/Settings shortcut and About use its own product identity", () => {
+  let opened = false;
+  const menu = windowsApplicationMenu("en-US", () => {}, () => { opened = true; });
+  const file = menu[0]?.submenu;
+  assert.ok(Array.isArray(file));
+  assert.equal(file[0]?.id, "settings");
+  assert.equal(file[0]?.accelerator, "Ctrl+,");
+  file[0]?.click?.({} as never, undefined, {} as never);
+  assert.equal(opened, true);
+  assert.deepEqual(windowsMenuModel("zh-CN", true).menus[3][0], {
+    kind: "command", id: "about", label: "关于 Octop Bot", accelerator: null,
+  });
+});
+
 test("菜单名跟随语言", () => {
   assert.deepEqual(windowsAppMenuLabels("zh-CN"), {
     file: "文件",

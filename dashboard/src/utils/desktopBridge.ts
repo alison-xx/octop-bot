@@ -71,6 +71,8 @@ export interface DesktopSessionBridge {
 }
 
 export interface OctopDesktopBridge {
+  botOnly?: boolean;
+  onOpenBotSettings?: (callback: () => void) => () => void;
   session?: DesktopSessionBridge;
   /**
    * Where to dial WebSockets (§5.2). Absent on an older shell, and null when the
@@ -126,6 +128,10 @@ declare global {
   interface Window {
     octopDesktop?: OctopDesktopBridge;
   }
+}
+
+export function isBotOnlyDesktop(): boolean {
+  return getDesktopBridge()?.botOnly === true;
 }
 
 export function isDesktopShell(): boolean {

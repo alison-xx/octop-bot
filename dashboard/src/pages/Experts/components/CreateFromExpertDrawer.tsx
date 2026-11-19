@@ -123,6 +123,7 @@ export type CreateFromTemplateSource =
   | { kind: "market"; expert: MarketExpert };
 
 interface CreateFromExpertDrawerProps {
+  avatarEditor?: React.ReactNode;
   open: boolean;
   source: CreateFromTemplateSource | null;
   lang: "zh" | "en";
@@ -229,6 +230,7 @@ export default function CreateFromExpertDrawer({
   lang,
   onClose,
   onCreated,
+  avatarEditor,
 }: CreateFromExpertDrawerProps) {
   const { t } = useTranslation();
   const allowedBackendTypes = useCurrentUser()?.allowed_backend_types;
@@ -731,55 +733,63 @@ export default function CreateFromExpertDrawer({
           label={t("experts.avatar")}
           className={avatarPickerStyles.formItem}
         >
-          <ExpertAvatarPicker
-            iconUrl={
-              avatarPreview ??
-              (avatarPresetTouched
-                ? expertPresetSrc(avatarPresetId ?? "default")
-                : sourceIcon(source).iconUrl)
-            }
-            iconName={sourceIcon(source).iconName}
-            color={
-              isCuratedPalette(colorPalette)
-                ? expertPaletteColor(colorPalette)
-                : colorPalette
-            }
-            disabled={submitting}
-            onPick={(file) => {
-              setAvatarFile(file);
-              setAvatarPresetId(null);
-              setAvatarPresetTouched(false);
-              setAvatarPreview((prev) => {
-                if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-                return URL.createObjectURL(file);
-              });
-            }}
-            onSelectPreset={(presetId) => {
-              setAvatarFile(null);
-              setAvatarPresetId(presetId);
-              setAvatarPresetTouched(true);
-              setAvatarPreview((prev) => {
-                if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-                return null;
-              });
-            }}
-            onRemove={
-              avatarFile || avatarPreview
-                ? () => {
-                    setAvatarFile(null);
-                    setAvatarPreview((prev) => {
-                      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-                      return null;
-                    });
-                  }
-                : undefined
-            }
-          />
+          {avatarEditor ?? (
+            <ExpertAvatarPicker
+              iconUrl={
+                avatarPreview ??
+                (avatarPresetTouched
+                  ? expertPresetSrc(avatarPresetId ?? "default")
+                  : sourceIcon(source).iconUrl)
+              }
+              iconName={sourceIcon(source).iconName}
+              color={
+                isCuratedPalette(colorPalette)
+                  ? expertPaletteColor(colorPalette)
+                  : colorPalette
+              }
+              disabled={submitting}
+              onPick={(file) => {
+                setAvatarFile(file);
+                setAvatarPresetId(null);
+                setAvatarPresetTouched(false);
+                setAvatarPreview((prev) => {
+                  if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+                  return URL.createObjectURL(file);
+                });
+              }}
+              onSelectPreset={(presetId) => {
+                setAvatarFile(null);
+                setAvatarPresetId(presetId);
+                setAvatarPresetTouched(true);
+                setAvatarPreview((prev) => {
+                  if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+                  return null;
+                });
+              }}
+              onRemove={
+                avatarFile || avatarPreview
+                  ? () => {
+                      setAvatarFile(null);
+                      setAvatarPreview((prev) => {
+                        if (prev?.startsWith("blob:"))
+                          URL.revokeObjectURL(prev);
+                        return null;
+                      });
+                    }
+                  : undefined
+              }
+            />
+          )}
         </Form.Item>
 
-        <Form.Item label={t("experts.color")} extra={t("experts.colorHint")}>
-          <ExpertColorPicker value={colorPalette} onChange={setColorPalette} />
-        </Form.Item>
+        {!avatarEditor && (
+          <Form.Item label={t("experts.color")} extra={t("experts.colorHint")}>
+            <ExpertColorPicker
+              value={colorPalette}
+              onChange={setColorPalette}
+            />
+          </Form.Item>
+        )}
 
         <Form.Item
           name="name"

@@ -1,3 +1,4 @@
+import { loginDestination } from "../../utils/botClientRoute";
 import { useEffect, useRef, useState } from "react";
 import { Button, Result, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
@@ -80,7 +81,7 @@ export default function OidcComplete() {
     void authApi
       .exchangeOidcCode(code)
       .then(async (res) => {
-        const dest = safeRedirect(redirect);
+        const dest = loginDestination(safeRedirect(redirect));
         if (bind) {
           // Account-link popups: opener already holds the session — do not
           // overwrite its storage from the popup's empty sessionStorage.

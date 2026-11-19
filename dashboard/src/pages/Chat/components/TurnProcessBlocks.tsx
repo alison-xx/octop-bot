@@ -84,6 +84,7 @@ export function TurnProcessBlocks({
           {showAvatar && (expert || avatarProfileId) ? (
             <div className={styles.avatarCol}>
               <ExpertMessageAvatar
+                working={isStreaming}
                 name={expert?.name || avatarProfileId}
                 color={expert?.color}
                 iconName={expert?.icon_name}

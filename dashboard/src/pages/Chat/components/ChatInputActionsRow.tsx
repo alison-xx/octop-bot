@@ -1,8 +1,12 @@
+import { isBotOnlyDesktop } from "../../../utils/desktopBridge";
+import { BOT_SETTINGS } from "../../../utils/botClientRoute";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Send,
+  ArrowUp,
+  ChevronDown,
   Square,
   MessageSquarePlus,
   Paperclip,
@@ -31,6 +35,7 @@ import {
 } from "lucide-react";
 import { Tooltip, Popover } from "antd";
 import cx from "classnames";
+import botStyles from "../../OctopBot/botConversation.module.less";
 import { message } from "@/utils/antdMessage";
 import {
   catalogOffersUnattendedMode,
@@ -128,7 +133,11 @@ function PlusMenuCount({
   );
 }
 
+export type WorkspaceModelAction = { name: string; onOpen: () => void };
+
 interface ChatInputActionsRowProps {
+  workspaceModel?: WorkspaceModelAction;
+  onReference?: () => void;
   isMobile: boolean;
   isStreaming: boolean;
   /** Team host room — stop control uses clearer wording. */
@@ -204,6 +213,8 @@ interface ChatInputActionsRowProps {
 }
 
 export default function ChatInputActionsRow({
+  workspaceModel,
+  onReference,
   isMobile,
   isStreaming,
   isTeam = false,
@@ -275,6 +286,7 @@ export default function ChatInputActionsRow({
   const modeChange = lockThreadSettings ? undefined : onConversationModeChange;
   const hitlChange = lockThreadSettings ? undefined : onHitlPolicyChange;
   const navigate = useNavigate();
+  const location = useLocation();
   const remoteManaged = Boolean(agentId?.startsWith("bridge:"));
   const skillDisplayName = useSkillDisplayName();
   const actionsRowRef = useRef<HTMLDivElement | null>(null);
@@ -317,7 +329,8 @@ export default function ChatInputActionsRow({
     null,
   );
 
-  const useCompactControls = isMobile || isCompact;
+  const botOnly = isBotOnlyDesktop();
+  const useCompactControls = botOnly || isMobile || isCompact;
 
   useLayoutEffect(() => {
     if (!plusMenuEl || isMobile) {
@@ -430,9 +443,14 @@ export default function ChatInputActionsRow({
   ).filter((key): key is ToolbarPickerKey => key !== null);
   // A narrow dock already folds every control into the plus menu.
   const flattenOverflow =
-    !useCompactControls && overflowKeys.length > 0 && overflowKeys.length < 3;
+    !onReference &&
+    !useCompactControls &&
+    overflowKeys.length > 0 &&
+    overflowKeys.length < 3;
   const showOverflowMenu =
-    useCompactControls || (!flattenOverflow && overflowKeys.length > 0);
+    !!onReference ||
+    useCompactControls ||
+    (!flattenOverflow && overflowKeys.length > 0);
 
   const overflowBadgeCount =
     selectedConnectors.length +
@@ -730,7 +748,9 @@ export default function ChatInputActionsRow({
                 return;
               }
               closePlusMenu();
-              navigate("/admin/models");
+              if (isBotOnlyDesktop())
+                navigate(BOT_SETTINGS, { state: { from: location.pathname } });
+              else navigate("/admin/models");
             }}
           >
             {remoteManaged ? (
@@ -787,8 +807,45 @@ export default function ChatInputActionsRow({
     ? sessionModeIcon(sessionMode)
     : conversationModeIcon(conversationMode);
 
+  const approvalPicker = (
+    <>
+      {onHitlPolicyChange &&
+      managed &&
+      !catalogOffersUnattendedMode(sessionModes ?? []) ? (
+        <ManagedApprovalPicker
+          policy={hitlPolicy ?? { mode: "ask" }}
+          onChange={hitlChange ?? onHitlPolicyChange}
+          disabled={lockThreadSettings}
+          disabledHint={settingsLockedHint}
+        />
+      ) : null}
+      {onHitlPolicyChange && !managed ? (
+        <HitlPolicyPicker
+          policy={hitlPolicy ?? { mode: "ask" }}
+          onChange={hitlChange ?? onHitlPolicyChange}
+          disabled={lockThreadSettings}
+          disabledHint={settingsLockedHint}
+        />
+      ) : null}
+    </>
+  );
   const renderPlusMenu = () => (
     <div className={styles.mobileOverflowMenu}>
+      {onReference && (
+        <button
+          type="button"
+          className={styles.mobileOverflowItem}
+          onClick={() => {
+            closePlusMenu();
+            onReference();
+          }}
+        >
+          <span className={styles.mobileOverflowItemMain}>
+            <Link2 size={16} />
+            <span>{t("octopBot.reference")}</span>
+          </span>
+        </button>
+      )}
       {showModePicker && (
         <button
           type="button"
@@ -818,7 +875,7 @@ export default function ChatInputActionsRow({
           </span>
         </button>
       )}
-      {showModelPicker && (
+      {showModelPicker && !botOnly && (
         <button
           type="button"
           className={cx(
@@ -1000,6 +1057,45 @@ export default function ChatInputActionsRow({
             <span>{t("chat.polish.tooltip")}</span>
           </span>
         </button>
+      )}
+      {botOnly && (
+        <>
+          <button
+            type="button"
+            className={styles.mobileOverflowItem}
+            onClick={() => {
+              closePlusMenu();
+              onNewChat();
+            }}
+          >
+            <span className={styles.mobileOverflowItemMain}>
+              <MessageSquarePlus size={16} />
+              {t("chatWelcome.newChat")}
+            </span>
+          </button>
+          {onHitlPolicyChange &&
+            (!managed || !catalogOffersUnattendedMode(sessionModes ?? [])) && (
+              <div className={botStyles.menuSetting}>
+                {t("chat.hitl.policy.picker")}
+                {approvalPicker}
+              </div>
+            )}
+          {!managed && (
+            <div className={botStyles.menuSetting}>
+              {t("chat.contextWindow.breakdownTitle")}
+              <ContextWindowRing
+                usedTokens={contextUsedTokens}
+                usageEstimated={contextUsedTokens == null}
+                maxTokens={contextMaxTokens}
+                agentId={agentId}
+                threadId={threadId}
+                selectedConnectors={selectedConnectors}
+                isMobile={isMobile}
+                decisionSaved={decisionSaved}
+              />
+            </div>
+          )}
+        </>
       )}
       {useCompactControls &&
         (onStartBrowserRecording || onStopBrowserRecording) && (
@@ -1311,24 +1407,7 @@ export default function ChatInputActionsRow({
             </Tooltip>
           </Popover>
         )}
-        {onHitlPolicyChange &&
-        managed &&
-        !catalogOffersUnattendedMode(sessionModes ?? []) ? (
-          <ManagedApprovalPicker
-            policy={hitlPolicy ?? { mode: "ask" }}
-            onChange={hitlChange ?? onHitlPolicyChange}
-            disabled={lockThreadSettings}
-            disabledHint={settingsLockedHint}
-          />
-        ) : null}
-        {onHitlPolicyChange && !managed ? (
-          <HitlPolicyPicker
-            policy={hitlPolicy ?? { mode: "ask" }}
-            onChange={hitlChange ?? onHitlPolicyChange}
-            disabled={lockThreadSettings}
-            disabledHint={settingsLockedHint}
-          />
-        ) : null}
+        {!botOnly && approvalPicker}
         {!useCompactControls && !managed && (
           <Popover
             trigger="click"
@@ -1380,6 +1459,120 @@ export default function ChatInputActionsRow({
       </>
     );
   };
+
+  const voiceButton = (
+    <Tooltip
+      title={
+        !_sttAvailable
+          ? t("voice.sttNotAvailable", "此设备不支持语音输入（需要 HTTPS）")
+          : voiceHoldToTalk
+          ? recording
+            ? t("voice.releaseToStop", "松开结束")
+            : t("voice.holdToTalk", "按住说话")
+          : recording
+          ? t("voice.stopRecording", "停止录音")
+          : transcribing
+          ? t("voice.transcribing", "识别中…")
+          : t("voice.startRecording", "语音输入")
+      }
+      mouseEnterDelay={0.4}
+    >
+      <button
+        className={cx(
+          styles.secondaryBtn,
+          (recording || transcribing) && styles.secondaryBtnActive,
+        )}
+        type="button"
+        // Dictation only fills the composer, so it stays available while a
+        // reply is still streaming.
+        disabled={disabled || transcribing || !_sttAvailable}
+        onClick={voiceHoldToTalk ? undefined : onToggleVoice}
+        onPointerDown={
+          voiceHoldToTalk
+            ? (event) => {
+                event.preventDefault();
+                handleVoicePressStart();
+              }
+            : undefined
+        }
+        onPointerUp={voiceHoldToTalk ? handleVoicePressEnd : undefined}
+        onPointerLeave={voiceHoldToTalk ? handleVoicePressEnd : undefined}
+        onPointerCancel={voiceHoldToTalk ? handleVoicePressEnd : undefined}
+        onContextMenu={
+          voiceHoldToTalk ? (event) => event.preventDefault() : undefined
+        }
+        style={
+          voiceHoldToTalk
+            ? { touchAction: "none", userSelect: "none" }
+            : undefined
+        }
+      >
+        <Mic size={16} />
+      </button>
+    </Tooltip>
+  );
+
+  if (botOnly) {
+    const stop = isStreaming && !canSend;
+    const sendLabel = t(
+      stop ? "chat.stop" : isStreaming ? "chat.queue.action" : "chat.send",
+    );
+    return (
+      <div className={botStyles.composerActions}>
+        <div className={botStyles.leading}>{renderSecondaryActions()}</div>
+        <div className={botStyles.trailing}>
+          {!managed && workspaceModel && (
+            <button
+              type="button"
+              className={botStyles.model}
+              onClick={workspaceModel.onOpen}
+              title={t("botClient.lynxce.source") + " · " + workspaceModel.name}
+              aria-label={t("botClient.lynxce.manage")}
+            >
+              <span>{workspaceModel.name}</span>
+              <ChevronDown size={12} />
+            </button>
+          )}
+          {!managed && !workspaceModel && (
+            <Popover
+              trigger="click"
+              placement="topRight"
+              open={compactPicker === "model" && !overflowPopoverOpen}
+              onOpenChange={(open) => {
+                if (open) {
+                  setOverflowPopoverOpen(false);
+                  openCompactPicker("model");
+                } else closeCompactPicker();
+              }}
+              content={modelMenu}
+            >
+              <button
+                type="button"
+                className={botStyles.model}
+                disabled={lockThreadSettings}
+                title={selectedModelTriggerLabel}
+                aria-label={t("models.chatModelsTab")}
+              >
+                <span>{selectedModelTriggerLabel}</span>
+                <ChevronDown size={12} />
+              </button>
+            </Popover>
+          )}
+          {voiceButton}
+          <button
+            type="button"
+            className={cx(styles.sendBtn, botStyles.send)}
+            title={sendLabel}
+            aria-label={sendLabel}
+            disabled={!stop && !canSend}
+            onClick={stop ? onCancel : onSubmit}
+          >
+            {stop ? <Square size={16} /> : <ArrowUp size={18} />}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1446,55 +1639,7 @@ export default function ChatInputActionsRow({
             </Tooltip>
           </>
         )}
-        <Tooltip
-          title={
-            !_sttAvailable
-              ? t("voice.sttNotAvailable", "此设备不支持语音输入（需要 HTTPS）")
-              : voiceHoldToTalk
-              ? recording
-                ? t("voice.releaseToStop", "松开结束")
-                : t("voice.holdToTalk", "按住说话")
-              : recording
-              ? t("voice.stopRecording", "停止录音")
-              : transcribing
-              ? t("voice.transcribing", "识别中…")
-              : t("voice.startRecording", "语音输入")
-          }
-          mouseEnterDelay={0.4}
-        >
-          <button
-            className={cx(
-              styles.secondaryBtn,
-              (recording || transcribing) && styles.secondaryBtnActive,
-            )}
-            type="button"
-            // Dictation only fills the composer, so it stays available while a
-            // reply is still streaming.
-            disabled={disabled || transcribing || !_sttAvailable}
-            onClick={voiceHoldToTalk ? undefined : onToggleVoice}
-            onPointerDown={
-              voiceHoldToTalk
-                ? (event) => {
-                    event.preventDefault();
-                    handleVoicePressStart();
-                  }
-                : undefined
-            }
-            onPointerUp={voiceHoldToTalk ? handleVoicePressEnd : undefined}
-            onPointerLeave={voiceHoldToTalk ? handleVoicePressEnd : undefined}
-            onPointerCancel={voiceHoldToTalk ? handleVoicePressEnd : undefined}
-            onContextMenu={
-              voiceHoldToTalk ? (event) => event.preventDefault() : undefined
-            }
-            style={
-              voiceHoldToTalk
-                ? { touchAction: "none", userSelect: "none" }
-                : undefined
-            }
-          >
-            <Mic size={16} />
-          </button>
-        </Tooltip>
+        {voiceButton}
         {(onStartBrowserRecording || onStopBrowserRecording) &&
           (!useCompactControls || browserRecording) && (
             <Tooltip

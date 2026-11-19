@@ -42,11 +42,13 @@ from starlette.websockets import WebSocketState
 
 from octop.api.deps import resolve_user_from_token
 from octop.api.routers.browser.harness import (
-    control_owner_for,
     harness_list_tabs,
     harness_page_url,
     resolve_harness_session,
 )
+from octop.api.routers.browser.profile import owned_browser_profile
+from octop.infra.control.browser.handoff import control_owner_for
+from octop.infra.errors import OctopError
 from octop.infra.utils.browser_media import user_browser_profile
 
 logger = logging.getLogger(__name__)
@@ -402,6 +404,12 @@ async def browser_stream_ws(
         await websocket.close(code=4001, reason=f"auth failed: {exc}")
         return
 
+    try:
+        profile = owned_browser_profile(server, user, websocket.query_params.get("bot_id"))
+    except OctopError:
+        await websocket.close(code=4003, reason="Bot not found")
+        return
+
     await websocket.accept()
 
     async def send_json(payload: dict[str, Any]) -> None:
@@ -419,6 +427,7 @@ async def browser_stream_ws(
             is_connected=is_connected,
             receive_text=receive_text,
             user_id=int(user.id),
+            profile=profile,
             listen_only=bool(listen_only),
             default_width=width,
             default_height=height,
@@ -441,6 +450,7 @@ async def run_browser_stream_session(
     default_width: int = 1280,
     default_height: int = 800,
     start_msg: dict[str, Any] | None = None,
+    profile: str | None = None,
 ) -> None:
     """Run one screencast / listen-only session over arbitrary send/receive hooks.
 
@@ -448,7 +458,7 @@ async def run_browser_stream_session(
     the same Chrome / harness lifecycle.
     """
     sess: Any | None = None
-    profile = user_browser_profile(user_id)
+    profile = profile or user_browser_profile(user_id)
     stream_task: asyncio.Task[None] | None = None
 
     try:

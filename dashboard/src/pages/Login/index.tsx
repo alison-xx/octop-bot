@@ -1,3 +1,4 @@
+import { loginDestination } from "../../utils/botClientRoute";
 import {
   useState,
   useEffect,
@@ -180,7 +181,7 @@ export default function LoginPage() {
         return;
       }
       setAuthToken(issued.access_token, true);
-      navigate("/chat", { replace: true });
+      navigate(loginDestination(), { replace: true });
     });
     return () => {
       cancelled = true;
@@ -286,7 +287,7 @@ export default function LoginPage() {
       if (event.data.access_token) {
         setAuthToken(event.data.access_token, event.data.remember ?? true);
       }
-      window.location.replace(event.data.redirect || "/chat");
+      window.location.replace(loginDestination(event.data.redirect || "/chat"));
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -305,7 +306,7 @@ export default function LoginPage() {
       setMfaCode("");
       const applied = await applyUserLocale(locale);
       void refreshServerLabels(applied);
-      navigate("/chat", { replace: true });
+      navigate(loginDestination(), { replace: true });
     },
     [navigate, remember],
   );
@@ -383,7 +384,10 @@ export default function LoginPage() {
       popup = openSsoPopup();
     }
     try {
-      const { authorization_url } = await authApi.startOauth(kind, "/chat");
+      const { authorization_url } = await authApi.startOauth(
+        kind,
+        loginDestination("/chat", false),
+      );
       if (kind === "oidc") {
         window.location.href = authorization_url;
         return;
@@ -422,7 +426,7 @@ export default function LoginPage() {
         return;
       }
       setAuthToken(issued.access_token, true);
-      navigate("/chat", { replace: true });
+      navigate(loginDestination(), { replace: true });
     } finally {
       setLocalLoading(false);
     }

@@ -86,6 +86,10 @@ def team_icon_url(stored: str | None) -> str:
 
 
 def _user_may_use_member(row: AgentRow, user: Any) -> bool:
+    from octop.infra.agents.bot_workspace import is_private_bot
+
+    if is_private_bot(row):
+        return False
     if getattr(user, "is_admin", False):
         return True
     if row.user_id is not None and row.user_id == getattr(user, "id", None):

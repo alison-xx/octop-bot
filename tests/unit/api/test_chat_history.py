@@ -88,26 +88,29 @@ def test_isolated_sqlite_history_supports_pypi_memory_0_9_7(tmp_path: Path) -> N
     )
     checkpoint = empty_checkpoint()
     checkpoint["channel_values"] = {
-        "messages": [HumanMessage(content="hi", id="u1"), AIMessage(content="ok", id="a1")]
+        "messages": [HumanMessage(content="hi", id="u1"), AIMessage(content="ok", id="a1")],
+        "_summarization_event": {"cutoff_index": 1},
     }
-    checkpoint["channel_versions"] = {"messages": 1}
+    checkpoint["channel_versions"] = {"messages": 1, "_summarization_event": 1}
     memory.put(
         {"configurable": {"thread_id": "thr", "checkpoint_ns": ""}},
         checkpoint,
         {},
-        {"messages": 1},
+        checkpoint["channel_versions"],
     )
     # Prove the migration opens its own read-only connection rather than using
     # octop-memory 0.9.7's live synchronous saver connection.
     memory._checkpointer.conn.close()
     try:
         harness = SimpleNamespace(_checkpointer_instance=memory)
-        messages = _isolated_sqlite_checkpoint_messages(harness, "thr")
+        boundaries: set[str] = set()
+        messages = _isolated_sqlite_checkpoint_messages(harness, "thr", boundaries)
     finally:
         memory._backend.close()
 
     assert messages is not None
     assert [message.id for message in messages] == ["u1", "a1"]
+    assert boundaries == {"a1"}
 
 
 @pytest.mark.parametrize("warm_cache", [False, True])

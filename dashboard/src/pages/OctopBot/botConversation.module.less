@@ -1,0 +1,338 @@
+.conversation.conversation {
+  --chat-column-max: 780px;
+  --chat-column-pad-x: clamp(12px, 3vw, 38px);
+  min-width: 0;
+  background: var(--bot-paper, var(--fn-bg-primary));
+}
+.conversation .chatContent {
+  background: transparent;
+}
+.conversation [data-message-list-inner] {
+  --chat-column-max: 780px;
+  --chat-msg-avatar-slot: 30px;
+  --chat-msg-gutter: 8px;
+  box-sizing: border-box;
+  width: min(100%, calc(780px + 2 * var(--chat-column-pad-x)));
+  margin-inline: auto;
+  padding-inline: var(--chat-column-pad-x);
+}
+.firstConversation {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+  padding: 6px var(--chat-column-pad-x) 20px;
+}
+.introduction {
+  box-sizing: border-box;
+  width: min(100%, 780px);
+  margin: 0 auto 14px;
+}
+.creation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 24px;
+  margin: 1px 0;
+  font-size: 12px;
+  color: var(--bot-muted, var(--fn-text-tertiary));
+}
+.creation a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--bot-muted, var(--fn-text-secondary));
+  text-decoration: none;
+}
+.creation a:hover,
+.creation a:focus-visible {
+  color: var(--bot-ink, var(--fn-text-primary));
+  text-decoration: underline;
+}
+.creationAvatars {
+  display: inline-flex;
+  align-items: center;
+}
+.creationAvatars > span + span {
+  margin-left: -5px;
+}
+.date {
+  display: block;
+  margin: 13px 0 20px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--bot-muted, var(--fn-text-tertiary));
+}
+.greetingRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.greetingAvatar {
+  width: 30px;
+  flex: none;
+  padding-top: 3px;
+}
+.greetingContent {
+  min-width: 0;
+  max-width: min(78%, 600px);
+}
+.greetingContent > .incoming {
+  white-space: pre-line;
+}
+.incoming,
+.outgoing {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  border: 0;
+  border-radius: 15px;
+  box-shadow: none;
+}
+.incoming {
+  background: var(--bot-incoming, var(--fn-bg-secondary));
+  color: var(--bot-ink, var(--fn-text-primary));
+}
+.outgoing {
+  background: var(--bot-outgoing, #222);
+  color: var(--bot-outgoing-ink, white);
+}
+.conversation .botMessage,
+.conversation .userMessage {
+  grid-template-columns: 30px minmax(0, 1fr);
+  column-gap: 8px;
+  margin: 0 0 7px;
+}
+.botMessage.botMessage > .body {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  max-width: min(87%, 640px);
+}
+.userMessage.userMessage > .body {
+  grid-column: 1 / -1;
+  justify-self: end;
+  max-width: min(78%, 610px);
+}
+.conversation .body .incoming,
+.conversation .body .outgoing {
+  padding: 10px 14px;
+  border-radius: 15px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.body .incoming {
+  background: var(--bot-incoming, var(--fn-bg-secondary));
+}
+.body .outgoing {
+  background: var(--bot-outgoing, #222);
+  color: var(--bot-outgoing-ink, white);
+}
+.meta {
+  color: var(--bot-muted, var(--fn-text-tertiary));
+  font-size: 11px;
+}
+.conversation .usage {
+  visibility: hidden;
+}
+.conversation .botMessage:hover .usage,
+.conversation .botMessage:focus-within .usage {
+  visibility: visible;
+}
+.conversation .meta {
+  opacity: 0.74;
+  min-height: 15px;
+  margin-top: 2px;
+}
+@media (hover: hover) {
+  .conversation .meta button {
+    opacity: 0;
+  }
+  .conversation .botMessage:hover .meta button,
+  .conversation .userMessage:hover .meta button,
+  .conversation .botMessage:focus-within .meta button,
+  .conversation .userMessage:focus-within .meta button {
+    opacity: 1;
+  }
+}
+.connect,
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 10px;
+  margin-top: 10px;
+}
+.connect {
+  color: var(--bot-muted, var(--fn-text-tertiary));
+  font-size: 12px;
+  line-height: 1.55;
+}
+.connect button,
+.start,
+.suggestions button,
+.model {
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.connect button,
+.start {
+  background: transparent;
+  border: 0;
+  padding: 2px 0;
+  color: var(--fn-text-brand);
+}
+.start {
+  margin-top: 8px;
+}
+.suggestions {
+  gap: 6px;
+}
+.suggestions button {
+  background: transparent;
+  color: var(--bot-ink, var(--fn-text-secondary));
+  border: 1px solid var(--bot-line, var(--fn-border-primary));
+  border-radius: 14px;
+  padding: 4px 9px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.suggestions button:hover,
+.model:hover {
+  background: var(--bot-incoming, var(--fn-bg-hover));
+}
+.suggestions svg {
+  color: var(--bot-muted, var(--fn-text-tertiary));
+}
+.conversation .composer {
+  background: transparent;
+  padding: 7px var(--chat-column-pad-x)
+    max(12px, env(safe-area-inset-bottom, 0px));
+}
+.composerShell {
+  box-sizing: border-box;
+  border: 1px solid var(--bot-line, var(--fn-border-primary));
+  border-radius: 17px;
+  background: var(--bot-paper, var(--fn-bg-primary));
+  box-shadow: 0 1px 3px #0000000a;
+}
+.composer .composerShell {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0 5px;
+  align-items: end;
+  min-width: 0;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 5px 6px;
+  border-radius: 17px;
+  box-shadow: 0 1px 3px #0000000a;
+}
+.composer .composerShell:focus-within {
+  border-color: var(--fn-text-tertiary);
+  box-shadow: 0 1px 4px #0000000b;
+}
+.composerShell > * {
+  grid-column: 1 / -1;
+}
+.composerShell > .inputRow {
+  grid-column: 2;
+  order: 2;
+  min-width: 0;
+  align-self: center;
+}
+.composer .composerActions {
+  display: contents;
+}
+.composer .leading {
+  grid-column: 1;
+  order: 1;
+}
+.composer .trailing {
+  grid-column: 3;
+  order: 3;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.composer .leading button,
+.composer .trailing button:not(.model) {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 10px;
+}
+.composer .leading button {
+  background: var(--bot-incoming, var(--fn-bg-secondary));
+  color: var(--bot-muted, var(--fn-text-secondary));
+}
+.inputText.inputText {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  min-height: 32px;
+  height: 32px;
+  padding: 6px 1px;
+  line-height: 20px;
+  font-size: 14px;
+  margin: 0;
+  border: 0;
+}
+.model {
+  min-width: 0;
+  max-width: 130px;
+  color: var(--bot-muted, var(--fn-text-secondary));
+  white-space: nowrap;
+  border: 0;
+  background: transparent;
+  padding: 5px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+.model span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.model svg {
+  flex: none;
+}
+.send,
+.composer .send {
+  border: 0;
+  background: var(--bot-outgoing, #242424);
+  color: var(--bot-outgoing-ink, white);
+}
+.composer .send:disabled {
+  background: var(--bot-incoming, var(--fn-bg-secondary));
+  color: var(--bot-muted, var(--fn-text-tertiary));
+  box-shadow: none;
+}
+.menuSetting {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 10px;
+  font-size: 13px;
+}
+@container chat-main (max-width: 520px) {
+  .conversation .botMessage > .body,
+  .greetingContent {
+    max-width: 94%;
+  }
+  .conversation .userMessage > .body {
+    max-width: 87%;
+  }
+  .model {
+    max-width: 82px;
+  }
+}

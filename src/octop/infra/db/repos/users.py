@@ -377,6 +377,8 @@ class UserRepo:
 
     def delete(self, user_id: int) -> None:
         with self._db.transaction() as conn:
+            grant = f"lynxce.cloud.user.{user_id}"
+            conn.execute("DELETE FROM secrets WHERE k IN (?,?)", (grant, grant + ".fernet"))
             conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
     def count(self) -> int:

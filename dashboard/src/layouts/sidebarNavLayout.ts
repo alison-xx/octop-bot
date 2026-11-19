@@ -113,6 +113,12 @@ export function editorFromCatalog(
       ungrouped.push(item.key);
     }
   }
+  // Older saved layouts predate the Bot workspace. Keep explicit hiding and
+  // placement once the user saves the new item in their layout.
+  if (catalogKeys.has("octop-bot") && !seen.has("octop-bot")) {
+    ungrouped.splice(ungrouped.indexOf("chat") + 1, 0, "octop-bot");
+    seen.add("octop-bot");
+  }
   for (const key of defaultKeyOrder(base)) {
     if (!seen.has(key)) hidden.push(key);
   }

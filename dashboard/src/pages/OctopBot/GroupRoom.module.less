@@ -1,0 +1,74 @@
+.timelineArea {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.jump {
+  position: absolute;
+  bottom: 10px;
+  inset-inline-end: 18px;
+  max-width: calc(100% - 36px);
+  border-radius: 15px;
+  box-shadow: 0 2px 7px #0002;
+  z-index: 1;
+}
+.status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--bot-muted, var(--fn-text-secondary));
+  overflow-wrap: anywhere;
+}
+.failure {
+  width: 100%;
+  min-width: 0;
+}
+.failure :global(.octop-alert-description) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+@media (max-width: 600px) {
+  .failure {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .failure :global(.octop-alert-content) {
+    min-width: 0;
+    flex: 1;
+  }
+  .jump {
+    inset-inline-end: 9px;
+  }
+}
+
+.attachments {
+  min-width: 0;
+  max-width: 100%;
+}
+.attachments :global(.octop-tag) {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  gap: 3px;
+}
+.attachments :global(.octop-tag) > span:first-child {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.failures {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  max-height: min(135px, 24vh);
+  overflow: auto;
+}

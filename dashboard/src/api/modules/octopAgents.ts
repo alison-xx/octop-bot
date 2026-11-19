@@ -1,6 +1,20 @@
 import { request, requestUpload } from "../request";
 
 export const octopAgentsApi = {
+  createTeammate: (name: string, role: string) =>
+    request<{ agent_id: string }>("/agents", {
+      method: "POST",
+      body: JSON.stringify({ name, description: role, system_prompt: role }),
+    }),
+  setDefaultModel: (agentId: string, model: string | null) =>
+    request<void>(`/agents/${encodeURIComponent(agentId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ default_model: model }),
+    }),
+  start: (agentId: string) =>
+    request("/agents/" + encodeURIComponent(agentId) + "/start", {
+      method: "POST",
+    }),
   markRead: (agentId: string) =>
     request<void>(`/agents/${encodeURIComponent(agentId)}/read`, {
       method: "POST",

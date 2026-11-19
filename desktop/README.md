@@ -17,10 +17,41 @@ is expanded before the user launches: NSIS `tar.exe` on Windows, and the tree
 green zips and bundles each one with the Electron shell and Dashboard in a
 matching native installer.
 
+## Octop Bot standalone client
+
+The **Octop Bot** Electron product opens directly into the conversation workspace. Its
+sidebar contains bots and groups, including Chief. Model configuration is available
+inside the client. The window, tray, and single-instance identity belong to Octop Bot.
+The packaged app starts its own loopback server from the bundled Python interpreter
+and the Octop wheel built from this checkout.
+
+The packaged client stores its data under `~/.octop-bot` by default.
+`OCTOP_HOME` selects a different data directory. Use separate data directories
+when running multiple Octop servers at the same time.
+
+To build the Windows x64 installer and portable ZIP, run `pnpm run package:bot:win`
+in `desktop/src` after installing the Dashboard and Electron dependencies. The
+build uses uv to install the locked Python dependencies and the project's wheel.
+Find the installer, ZIP, and directly runnable `win-unpacked/Octop Bot.exe`
+under `desktop/src/release/octop-bot/`. Extract the entire ZIP before launching.
+
+For Windows development, run
+`powershell -ExecutionPolicy Bypass -File desktop/src/scripts/run-dev.ps1 -Bot`
+from the repository root. This uses a separate development profile and Vite port
+5174. On macOS or Linux run `pnpm dev -- --octop-bot` in `desktop/src`.
+
 Inside the Electron package everything sits directly under `src/`: `main/`,
 `preload/`, `renderer/`, `shared/`.
 
 ## Electron shell (pnpm + Node 24)
+
+On Windows, run `uv sync` at the repository root, `npm ci` in `dashboard`,
+and `pnpm install` in `desktop/src`. From the repository root, launch with
+`powershell -ExecutionPolicy Bypass -File desktop/src/scripts/run-dev.ps1`.
+The script builds Electron and opens the live Dashboard with the project venv.
+It keeps development accounts and Electron storage under
+`desktop/src/.dev-runtime/windows/home` by default. Set `OCTOP_HOME` to select
+another development data directory. Pass `-NoBuild` to reuse the shell build.
 
 `desktop/src` is an independent Node package managed by **pnpm 12.15.0**
 (the version `corepack use pnpm` resolves under Node 24). The version is declared

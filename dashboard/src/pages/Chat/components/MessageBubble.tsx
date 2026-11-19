@@ -3,6 +3,7 @@ import { Image, Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 
 import Markdown from "../../../components/Markdown/LazyMarkdown";
+import botStyles from "../../OctopBot/botConversation.module.less";
 import {
   Copy,
   Check,
@@ -35,6 +36,7 @@ import { isImeComposing } from "../../../utils/ime";
 import { formatMessageTime } from "../../../utils/formatMessageTime";
 import { copyText } from "../../../utils/copyText";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import { isBotOnlyDesktop } from "../../../utils/desktopBridge";
 import { useVoiceOutputContext } from "../../../context/VoiceOutputContext";
 import { prepareSpeechText } from "../../../utils/plainTextForSpeech";
 import {
@@ -600,6 +602,7 @@ function MessageBubble({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const serverTimezone = useServerTimezone();
+  const botOnly = isBotOnlyDesktop();
   const user = useCurrentUser();
   const isOwnMessage =
     message.author == null ||
@@ -848,6 +851,7 @@ function MessageBubble({
     </Tooltip>
   ) : expert || avatarProfileId ? (
     <ExpertMessageAvatar
+      working={isStreaming}
       name={expert?.name || avatarProfileId}
       color={expert?.color}
       iconName={expert?.icon_name}
@@ -863,6 +867,7 @@ function MessageBubble({
     <div
       className={cx(
         styles.messageBubble,
+        botOnly && (isUser ? botStyles.userMessage : botStyles.botMessage),
         isUser ? styles.userBubble : styles.assistantBubble,
         showUserComposerTags && styles.userBubbleWithTags,
         isError && styles.errorBubble,
@@ -878,7 +883,7 @@ function MessageBubble({
           lookups={composerLookups}
         />
       ) : null}
-      <div className={styles.bubbleContent}>
+      <div className={cx(styles.bubbleContent, botOnly && botStyles.body)}>
         {isUser ? (
           <div className={styles.userMsgRow}>
             <div className={styles.userMsgColumn}>
@@ -918,7 +923,9 @@ function MessageBubble({
                   </div>
                 </div>
               ) : (
-                <div className={styles.userText}>
+                <div
+                  className={cx(styles.userText, botOnly && botStyles.outgoing)}
+                >
                   {imageAttachments.length > 0 && (
                     <ImageGallery images={imageAttachments} agentId={agentId} />
                   )}
@@ -1035,7 +1042,13 @@ function MessageBubble({
                 )}
               </div>
             ) : (
-              <div className={cx(styles.assistantText, groupCls)}>
+              <div
+                className={cx(
+                  styles.assistantText,
+                  groupCls,
+                  botOnly && botStyles.incoming,
+                )}
+              >
                 {imageAttachments.length > 0 && (
                   <ImageGallery images={imageAttachments} agentId={agentId} />
                 )}
@@ -1101,6 +1114,7 @@ function MessageBubble({
             <div
               className={cx(
                 styles.msgMetaRow,
+                botOnly && botStyles.meta,
                 isUser && styles.msgMetaRowRight,
               )}
             >
@@ -1194,12 +1208,16 @@ function MessageBubble({
                 </div>
               )}
               {usageLine.length > 0 && (
-                <div className={styles.msgUsage}>{usageLine.join(" / ")}</div>
+                <div
+                  className={cx(styles.msgUsage, botOnly && botStyles.usage)}
+                >
+                  {usageLine.join(" / ")}
+                </div>
               )}
             </div>
           )}
       </div>
-      {isUser && senderAvatar ? (
+      {isUser && !botOnly && senderAvatar ? (
         <div className={styles.avatarCol}>{senderAvatar}</div>
       ) : null}
     </div>

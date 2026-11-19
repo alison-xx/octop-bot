@@ -1,0 +1,76 @@
+import { lazy, Suspense, useEffect } from "react";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import BrandLoading from "../../components/BrandLoading";
+import {
+  BOT_HOME,
+  BOT_CLOUD,
+  BOT_SETTINGS,
+  botClientDestination,
+} from "../../utils/botClientRoute";
+import { getDesktopBridge } from "../../utils/desktopBridge";
+import styles from "./index.module.less";
+
+const Workspace = lazy(() => import("./index"));
+const CloudWorkspace = lazy(() => import("./CloudWorkspace"));
+const Settings = lazy(() => import("./BotClientSettings"));
+const Setup = lazy(() => import("./BotClientSetup"));
+
+export function BotClientSetupRoute() {
+  return (
+    <Suspense fallback={<BrandLoading viewport />}>
+      <Setup />
+    </Suspense>
+  );
+}
+
+function LegacyChat() {
+  const location = useLocation();
+  return (
+    <Navigate
+      replace
+      to={botClientDestination(location.pathname)}
+      state={location.state}
+    />
+  );
+}
+
+export default function BotClientRoutes() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  useEffect(
+    () =>
+      getDesktopBridge()?.onOpenBotSettings?.(() => {
+        if (location.pathname !== BOT_SETTINGS)
+          navigate(BOT_SETTINGS, { state: { from: location.pathname } });
+      }),
+    [location.pathname, navigate],
+  );
+  return (
+    <div className={styles.client} data-bot-client>
+      <Suspense fallback={<BrandLoading viewport />}>
+        <Routes>
+          <Route path={BOT_HOME} element={<Workspace />} />
+          <Route path={BOT_CLOUD} element={<CloudWorkspace />} />
+          <Route
+            path="/octop-bot/bots/:agentId/:threadId?"
+            element={<Workspace />}
+          />
+          <Route path="/octop-bot/groups/:groupId" element={<Workspace />} />
+          <Route path={BOT_SETTINGS} element={<Settings />} />
+          <Route
+            path="/admin/models"
+            element={<Navigate replace to={BOT_SETTINGS} />}
+          />
+          <Route path="/chat/:agentId?/:threadId?" element={<LegacyChat />} />
+          <Route path="*" element={<Navigate replace to={BOT_HOME} />} />
+        </Routes>
+      </Suspense>
+    </div>
+  );
+}

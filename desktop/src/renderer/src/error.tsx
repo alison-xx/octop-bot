@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import markUrl from "./assets/octop-mark.svg";
+import mascotUrl from "../../../../dashboard/src/assets/avatars/octop-mascot.webp";
+import { BOT_PRODUCT_NAME } from "../../shared/product";
 import { decodeShellError } from "../../shared/shell-error";
 import { LinuxWindowControls } from "./linux-window-controls";
 import { mount } from "./mount";
@@ -21,10 +23,10 @@ type CopyState = "idle" | "copied" | "failed";
  * hit a website error, the app they just launched could not come up, and the
  * first thing worth offering is another attempt.
  */
-function FailureMark() {
+function FailureMark({ botOnly }: { botOnly: boolean }) {
   return (
     <div className={styles.mark} aria-hidden="true">
-      <img className={styles.markImg} src={markUrl} alt="" width={352} height={255} />
+      <img className={styles.markImg} src={botOnly ? mascotUrl : markUrl} alt="" width={352} height={255} />
       <span className={styles.badge}>
         <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
           <rect x="5.15" y="1" width="1.7" height="6.2" rx="0.85" fill="currentColor" />
@@ -84,14 +86,16 @@ function ErrorPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const title = payload.title ?? "Octop 无法启动";
+  const botOnly = window.octopDesktop?.botOnly === true;
+  const product = botOnly ? BOT_PRODUCT_NAME : "Octop";
+  const title = payload.title ?? `${product} 无法启动`;
   const { message, detail, version } = payload;
 
   const copyLabel =
     copyState === "copied" ? "已复制" : copyState === "failed" ? "复制失败" : "复制错误信息";
 
   const handleCopy = () => {
-    const text = [title, message, detail, version ? `Octop Desktop v${version}` : ""]
+    const text = [title, message, detail, version ? `${product} Desktop v${version}` : ""]
       .filter(Boolean)
       .join("\n\n");
     void writeClipboard(text).then((ok) => setCopyState(ok ? "copied" : "failed"));
@@ -103,7 +107,7 @@ function ErrorPage() {
     <main className={styles.result}>
       <LinuxWindowControls />
       <div className={styles.body} role="alert">
-        <FailureMark />
+        <FailureMark botOnly={botOnly} />
         <h1 className={styles.title}>{title}</h1>
         <p className={styles.message}>{message}</p>
 
@@ -164,7 +168,7 @@ function ErrorPage() {
         </div>
       </div>
 
-      {version ? <p className={styles.meta}>Octop 桌面端 v{version}</p> : null}
+      {version ? <p className={styles.meta}>{product} 桌面端 v{version}</p> : null}
     </main>
   );
 }

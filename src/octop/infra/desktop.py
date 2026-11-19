@@ -22,6 +22,7 @@ _DESKTOP_SHELL_ENV = "OCTOP_DESKTOP_SHELL"
 SHELL_OWNED_ENV_KEYS = frozenset(
     {
         "OCTOP_DESKTOP_SHELL",
+        "OCTOP_DESKTOP_PRODUCT",
         "OCTOP_DESKTOP",
         "OCTOP_GREEN_PACKAGES",
         "OCTOP_BIND_HOST",
@@ -47,6 +48,11 @@ def desktop_shell_enabled() -> bool:
     """Return true when this process is the desktop-hosted sidecar."""
     raw = (os.environ.get(_DESKTOP_SHELL_ENV) or "").strip().lower()
     return raw in {"1", "true", "yes", "on"}
+
+
+def bot_desktop_enabled() -> bool:
+    """The standalone Bot client provisions Chief as its first assistant."""
+    return desktop_shell_enabled() and os.environ.get("OCTOP_DESKTOP_PRODUCT") == "bot"
 
 
 def shell_owned_env_key(key: str) -> bool:

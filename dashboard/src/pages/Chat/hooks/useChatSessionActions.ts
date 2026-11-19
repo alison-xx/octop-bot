@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useChatNavigate } from "../ChatRouteContext";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
 import { EMPTY_CHAT_SESSION_KEY } from "../constants";
@@ -34,7 +34,7 @@ export function useChatSessionActions({
   resetNavForAgentSwitch,
   markInitialNavDone,
 }: UseChatSessionActionsParams) {
-  const navigate = useNavigate();
+  const navigate = useChatNavigate();
 
   const handleNewChat = useCallback(() => {
     setSelectedModel(null);

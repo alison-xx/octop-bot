@@ -20,6 +20,7 @@ export interface TrayIconCandidates {
   isPackaged: boolean;
   resourcesDir: string;
   execPath: string;
+  botOnly?: boolean;
 }
 
 /**
@@ -29,10 +30,14 @@ export interface TrayIconCandidates {
  * the panel tray does not read an ico.
  */
 export function trayIconCandidates(input: TrayIconCandidates): string[] {
-  if (input.platform === "linux") return [join(input.resourcesDir, "icon.png")];
+  if (input.platform === "linux") {
+    const standard = join(input.resourcesDir, "icon.png");
+    return input.botOnly ? [join(input.resourcesDir, "bot-icon.png"), standard] : [standard];
+  }
   if (input.platform !== "win32") return [];
   const bundled = join(input.resourcesDir, "icon.ico");
-  return input.isPackaged ? [bundled, input.execPath] : [bundled];
+  const candidates = input.botOnly ? [join(input.resourcesDir, "bot-icon.ico"), bundled] : [bundled];
+  return input.isPackaged ? [...candidates, input.execPath] : candidates;
 }
 
 /** First real image file among the candidates. Skips the executable fallback. */
@@ -57,9 +62,10 @@ export interface TrayMenuLabels {
   quit: string;
 }
 
-export function trayMenuLabels(locale: string): TrayMenuLabels {
+export function trayMenuLabels(locale: string, botOnly = false): TrayMenuLabels {
   if (locale.toLowerCase().startsWith("zh")) {
+    if (botOnly) return { show: "打开 Octop Bot", quit: "退出 Octop Bot" };
     return { show: "显示窗口", quit: "退出" };
   }
-  return { show: "Show window", quit: "Quit" };
+  return botOnly ? { show: "Open Octop Bot", quit: "Quit Octop Bot" } : { show: "Show window", quit: "Quit" };
 }

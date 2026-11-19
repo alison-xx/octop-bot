@@ -20,6 +20,14 @@ async def test_openapi_has_bearer_security_and_descriptions(tmp_octop_home: Path
         app = build_app(srv)
         with TestClient(app) as c:
             spec = c.get("/api/openapi.json").json()
+            assert c.get("/api/docs").status_code == 200
+        workspace = spec["paths"]["/api/octop-bot/workspace"]["get"]
+        assert (
+            workspace["summary"]
+            and workspace["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+        )
+        room_messages = spec["paths"]["/api/octop-bot/groups/{group_id}/messages"]["post"]
+        assert room_messages["summary"] and "requestBody" in room_messages
         assert spec["info"]["description"]
         assert "BearerAuth" in spec["components"]["securitySchemes"]
         login = spec["paths"]["/api/auth/login"]["post"]

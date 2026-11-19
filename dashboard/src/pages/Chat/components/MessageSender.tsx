@@ -3,6 +3,7 @@ import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 import ExpertAgentAvatar from "./ExpertAgentAvatar";
 import { useChatAgentProfile } from "../ChatAgentProfileContext";
+import { useEmbeddedChat } from "../ChatRouteContext";
 import styles from "../index.module.less";
 
 /** Shared message-row avatar size. */
@@ -26,6 +27,7 @@ export default function MessageSender({ name, avatar }: MessageSenderProps) {
 }
 
 interface ExpertMessageAvatarProps {
+  working?: boolean;
   name?: string | null;
   color?: string | null;
   iconName?: string | null;
@@ -42,6 +44,7 @@ interface ExpertMessageAvatarProps {
 }
 
 export function ExpertMessageAvatar({
+  working = false,
   name,
   color,
   iconName,
@@ -55,9 +58,14 @@ export function ExpertMessageAvatar({
 }: ExpertMessageAvatarProps) {
   const { t } = useTranslation();
   const profile = useChatAgentProfile();
+  const embedded = useEmbeddedChat();
   const label = (tooltip ?? name)?.trim() || "";
   const canOpen = Boolean(profile?.canOpen);
-  const avatar = (
+  const avatar = embedded?.renderAvatar?.(
+    profileAgentId,
+    MESSAGE_AVATAR_SIZE,
+    working,
+  ) ?? (
     <ExpertAgentAvatar
       iconName={iconName}
       iconUrl={iconUrl}

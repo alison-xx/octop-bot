@@ -8,6 +8,7 @@ import WindowsAppMenu from "./WindowsAppMenu";
 
 const state = vi.hoisted(() => ({
   fullscreen: false,
+  botOnly: false,
   invoke: vi.fn(),
   model: vi.fn(async () => ({
     titles: ["文件", "编辑", "视图", "帮助"],
@@ -57,13 +58,17 @@ vi.mock("../utils/desktopBridge", () => ({
   isLinuxDesktopShell: () => false,
   getDesktopBridge: () =>
     state.hasMenu
-      ? { windowsMenu: { model: state.model, invoke: state.invoke } }
+      ? {
+          botOnly: state.botOnly,
+          windowsMenu: { model: state.model, invoke: state.invoke },
+        }
       : {},
 }));
 
 afterEach(() => {
   state.fullscreen = false;
   state.hasMenu = true;
+  state.botOnly = false;
   state.invoke.mockClear();
   cleanup();
 });
@@ -77,6 +82,14 @@ function renderMenu(chrome: DesktopChromeStyle | null) {
 }
 
 describe("Windows 标题栏菜单", () => {
+  it("独立客户端为聊天保留顶栏，不绘制菜单占位", () => {
+    state.botOnly = true;
+    renderMenu("windows");
+    expect(screen.queryByRole("menubar")).toBeNull();
+    expect(document.documentElement).not.toHaveAttribute(
+      "data-octop-caption-row",
+    );
+  });
   it("在标题栏左侧画出四个菜单", async () => {
     renderMenu("windows");
     expect(

@@ -10,7 +10,7 @@ import { join } from "node:path";
  * Priority:
  *   1. non-empty ``OCTOP_HOME`` inherited by the process (trimmed)
  *   2. non-empty ``OCTOP_HOME`` from the login shell (macOS / Linux only)
- *   3. ``~/.octop`` (``%USERPROFILE%\.octop`` on Windows)
+ *   3. the product's data root: ``~/.octop`` or ``~/.octop-bot``
  *
  * A leading ``~`` expands against the current user's home directory.
  */
@@ -28,12 +28,13 @@ export function resolveOctopHome(
   processEnv: NodeJS.ProcessEnv,
   loginShellEnv: Record<string, string | undefined>,
   home = homedir(),
+  botOnly = false,
 ): string {
   const inherited = (processEnv.OCTOP_HOME ?? "").trim();
   if (inherited) return expandHome(inherited, home);
   const shellValue = (loginShellEnv.OCTOP_HOME ?? "").trim();
   if (shellValue) return expandHome(shellValue, home);
-  return join(home, ".octop");
+  return join(home, botOnly ? ".octop-bot" : ".octop");
 }
 
 /** Run ``$SHELL -ilc 'env -0'`` and parse NUL-delimited ``KEY=VALUE`` pairs. */

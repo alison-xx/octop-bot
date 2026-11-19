@@ -287,6 +287,7 @@ class ThreadRepo:
             rows = conn.execute(
                 "SELECT * FROM threads WHERE agent_id = ? "
                 "AND (user_id = ? OR contributed = 1) "
+                "AND channel_type <> 'octop_bot_group' "
                 "ORDER BY pinned DESC, "
                 "CASE WHEN last_active > 0 THEN last_active ELSE created_at END DESC, "
                 "thread_id DESC LIMIT ?",

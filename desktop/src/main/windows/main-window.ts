@@ -1,6 +1,7 @@
 import { BrowserWindow } from "electron";
 
 import { IPC_CHANNELS } from "../../shared/ipc-contract";
+import { BOT_CLIENT_FLAG, BOT_HOME_PATH, BOT_PRODUCT_NAME, botDocumentPath } from "../../shared/product";
 import {
   concealWindowsMenuBar,
   isAppNavigation,
@@ -8,7 +9,7 @@ import {
   windowChrome,
   type WindowChromeTheme,
 } from "./chrome";
-import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "./size";
+import { DEFAULT_WINDOW_SIZE, minimumWindowSize } from "./size";
 
 /**
  * The real Dashboard window. Packaged builds load ``octop://app/`` (static
@@ -19,7 +20,7 @@ import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "./size";
 /** In-app navigation and fullscreen signals. Safe to call on the splash window before it loads the Dashboard. */
 export function installDashboardGuards(
   win: BrowserWindow,
-  options: { appOrigin: string; onNavigate: (url: string) => void },
+  options: { appOrigin: string; onNavigate: (url: string) => void; botOnly: boolean },
 ): void {
   // External navigation is intercepted and opened by the OS, never in-app (§5.2).
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -30,6 +31,9 @@ export function installDashboardGuards(
     if (!isAppNavigation(url, options.appOrigin)) {
       event.preventDefault();
       options.onNavigate(url);
+    } else if (options.botOnly && !botDocumentPath(new URL(url).pathname)) {
+      event.preventDefault();
+      void win.loadURL(options.appOrigin + BOT_HOME_PATH);
     }
   });
 
@@ -59,15 +63,17 @@ export function createMainWindow(options: {
   /** Origin that may navigate in-app. Anything else opens in the OS browser. */
   appOrigin: string;
   onNavigate: (url: string) => void;
+  botOnly: boolean;
+  icon?: string;
 }): BrowserWindow {
+  const minimum = minimumWindowSize(options.botOnly);
   const win = new BrowserWindow({
-    title: "Octop",
+    title: options.botOnly ? BOT_PRODUCT_NAME : "Octop",
+    icon: options.icon,
     width: DEFAULT_WINDOW_SIZE.width,
     height: DEFAULT_WINDOW_SIZE.height,
-    // The Dashboard stops being usable below its desktop breakpoint, so the
-    // window refuses to shrink past it instead of letting the user do it.
-    minWidth: MIN_WINDOW_SIZE.width,
-    minHeight: MIN_WINDOW_SIZE.height,
+    minWidth: minimum.width,
+    minHeight: minimum.height,
     show: false,
     // macOS pins traffic lights over the page. Windows overlays transparent
     // caption buttons on the menu row. Linux keeps that hidden title bar, and
@@ -76,6 +82,7 @@ export function createMainWindow(options: {
     backgroundColor: options.backgroundColor,
     webPreferences: {
       preload: options.preload,
+      additionalArguments: options.botOnly ? [BOT_CLIENT_FLAG] : [],
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
@@ -83,6 +90,7 @@ export function createMainWindow(options: {
     },
   });
 
+  if (options.botOnly) win.on("page-title-updated", (event) => event.preventDefault());
   installDashboardGuards(win, options);
 
   // The boot splash (#octop-boot) is still the loading page. The page menu

@@ -8,6 +8,9 @@ import {
   useImperativeHandle,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { isBotOnlyDesktop } from "../../../utils/desktopBridge";
+import botStyles from "../../OctopBot/botConversation.module.less";
+import { useEmbeddedChat } from "../ChatRouteContext";
 import { App } from "antd";
 import cx from "classnames";
 
@@ -29,7 +32,9 @@ import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import type { AgentSubagentSummary } from "../../../api/modules/subagents";
 import MentionPickerMenu from "./MentionPickerMenu";
 import ChatInputPreviewBar from "./ChatInputPreviewBar";
-import ChatInputActionsRow from "./ChatInputActionsRow";
+import ChatInputActionsRow, {
+  type WorkspaceModelAction,
+} from "./ChatInputActionsRow";
 import ChatQueuedMessages from "./ChatQueuedMessages";
 import { useVoiceInput } from "../../../hooks/useVoiceInput";
 import { useChatAttachments } from "../hooks/useChatAttachments";
@@ -72,6 +77,9 @@ export interface ChatInputHandle {
 }
 
 interface ChatInputProps {
+  botName?: string;
+  workspaceModel?: WorkspaceModelAction;
+  onSideChat?: (question: string) => void;
   onSend: (text: string, attachments?: ChatAttachment[]) => void;
   /** Queue a message while the current turn is still streaming. */
   onQueue?: (item: EnqueueChatItemInput) => "ok" | "empty" | "full";
@@ -153,6 +161,8 @@ interface ChatInputProps {
 const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
   function ChatInput(
     {
+      botName,
+      workspaceModel,
       onSend,
       onQueue,
       queuedItems = [],
@@ -174,6 +184,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       disabled,
       initialText = "",
       onComposerCleared,
+      onSideChat,
       availableModels,
       selectedModel,
       onModelChange,
@@ -213,6 +224,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     ref,
   ) {
     const { t, i18n } = useTranslation();
+    const chatHost = useEmbeddedChat();
+    const botOnly = isBotOnlyDesktop();
     const { modal, message: antMessage } = App.useApp();
     const { commands: slashCommands, labelFor } = useSlashCommands("ui");
     const skillDisplayName = useSkillDisplayName();
@@ -477,7 +490,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }, [text, agentId, threadId]);
     const submitRef = useRef<() => void>(() => {});
 
-    const MIN_TEXTAREA_HEIGHT = isMobile ? 42 : 78;
+    const MIN_TEXTAREA_HEIGHT = botOnly ? 32 : isMobile ? 42 : 78;
 
     const {
       slashMenuOpen,
@@ -521,7 +534,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       onCancel,
       isStreaming,
       onSubmitRef: submitRef,
-      enterToSend: !isMobile,
+      enterToSend: botOnly || !isMobile,
       slashMenuEnabled: !managed,
     });
 
@@ -626,6 +639,15 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       const trimmed = text.trim();
       if ((!trimmed && attachments.length === 0) || disabled) return;
       const wireText = materializeSkillSlashes(trimmed, skillTokenRefs).trim();
+      if (
+        onSideChat &&
+        /^\/side(?:\s|$)/i.test(wireText) &&
+        !attachments.length
+      ) {
+        onSideChat(wireText.slice(5).trim());
+        resetComposerAfterSubmit(0, trimmed);
+        return;
+      }
       const slashItem = matchSlashCommand(wireText);
       if (slashItem && slashItem.spec.client_action !== "none") {
         // Slash actions are never queued — run immediately or leave input alone.
@@ -666,6 +688,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       text,
       attachments,
       onSend,
+      onSideChat,
       onQueue,
       disabled,
       isStreaming,
@@ -873,13 +896,22 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         id="octop-chat-file-drop"
         data-file-drop-target=""
         data-octop-chat-drop="1"
-        className={cx(styles.chatInput, showDrop && styles.dropActive)}
+        className={cx(
+          styles.chatInput,
+          botOnly && botStyles.composer,
+          showDrop && styles.dropActive,
+        )}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        <div className={styles.inputWrapper}>
+        <div
+          className={cx(
+            styles.inputWrapper,
+            botOnly && botStyles.composerShell,
+          )}
+        >
           {showDrop && (
             <div className={styles.dropOverlay} data-testid="chat-drop-overlay">
               {t("upload.dropHint", "Drop files or a folder to upload")}
@@ -897,7 +929,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             attachments={attachments}
             uploading={uploading}
             selectedConnectors={selectedConnectors}
-            selectedModel={selectedModel}
+            selectedModel={botOnly ? null : selectedModel}
             availableModels={availableModels}
             availableConnectors={availableConnectors}
             availableKnowledgeBases={availableKnowledgeBases}
@@ -908,10 +940,13 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onModelChange={onModelChange}
           />
 
-          <div className={styles.inputRow} style={{ position: "relative" }}>
+          <div
+            className={cx(styles.inputRow, botOnly && botStyles.inputRow)}
+            style={{ position: "relative" }}
+          >
             <textarea
               ref={textareaRef}
-              className={styles.textarea}
+              className={cx(styles.textarea, botOnly && botStyles.inputText)}
               value={text}
               onChange={(e) => {
                 userHasEditedRef.current = true;
@@ -925,6 +960,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                       "chat.steer.placeholder",
                       "Keep typing to queue a mid-turn steer…",
                     )
+                  : botName
+                  ? t("botClient.messageTo", { name: botName })
                   : t("chatWelcome.inputPlaceholder", "Message Octop...")
               }
               rows={1}
@@ -1010,6 +1047,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           )}
 
           <ChatInputActionsRow
+            workspaceModel={workspaceModel}
             isMobile={isMobile}
             isStreaming={isStreaming || holdSend}
             isTeam={isTeam}
@@ -1070,6 +1108,17 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onFileSelect={handleFileSelect}
             onFolderSelect={handleFolderSelect}
             onNewChat={onNewChat}
+            onReference={
+              chatHost
+                ? () =>
+                    chatHost.openReference((reference) => {
+                      setText((draft) =>
+                        draft ? draft + "\n\n" + reference : reference,
+                      );
+                      textareaRef.current?.focus();
+                    })
+                : undefined
+            }
             onPolish={() => void handlePolish()}
             onToggleVoice={() => toggleVoice()}
             onCancel={onCancel}
@@ -1091,7 +1140,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onChange={handleFileChange}
           />
         </div>
-        {!isMobile && (
+        {!isMobile && !isBotOnlyDesktop() && (
           <p className={styles.aiDisclaimer}>{t("chatWelcome.aiDisclaimer")}</p>
         )}
       </div>

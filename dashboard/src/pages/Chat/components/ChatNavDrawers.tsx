@@ -69,11 +69,13 @@ function ChatNavDrawers({
   );
 }
 
-function ExpertCreateDrawer({
+export function ExpertCreateDrawer({
   open,
   onClose,
   onCreated,
+  avatarEditor,
 }: {
+  avatarEditor?: React.ReactNode;
   open: boolean;
   onClose: () => void;
   onCreated: (agentId: string) => void;
@@ -106,6 +108,7 @@ function ExpertCreateDrawer({
     <CreateFromExpertDrawer
       open={open && source != null}
       source={source}
+      avatarEditor={avatarEditor}
       lang={lang}
       onClose={onClose}
       onCreated={onCreated}

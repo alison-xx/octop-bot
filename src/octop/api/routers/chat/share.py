@@ -16,11 +16,12 @@ from pydantic import BaseModel, Field
 from octop.api.deps import current_user, get_server
 from octop.api.routers.chat.history import _agent_is_busy, _attach_message_authors, _require_thread
 from octop.api.routers.chat.serialize import (
-    _OFFLOAD_PLACEHOLDER_RE,
     _backfill_thread_projection,
     _load_projected_thread_messages,
 )
+from octop.infra.agents.bot_workspace import is_private_bot
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.history.attachment_text import OFFLOAD_PLACEHOLDER_RE
 from octop.infra.utils.llm_text import strip_thinking
 
 router = APIRouter()
@@ -69,7 +70,7 @@ def _redact_private_markdown(text: str) -> str:
 
 
 def _visible_text(raw: str, *, strip_model_thinking: bool) -> str:
-    if _OFFLOAD_PLACEHOLDER_RE.match(raw):
+    if OFFLOAD_PLACEHOLDER_RE.match(raw):
         return ""
     text = strip_thinking(raw) if strip_model_thinking else raw
     return _redact_private_markdown(text.strip())
@@ -259,6 +260,10 @@ async def create_thread_share(
     """
     row = _require_thread(server, agent_id, thread_id, user, as_user, write=True)
     effective_uid = as_user if as_user is not None else user.id
+    if getattr(row, "channel_type", None) == "octop_bot_group" or is_private_bot(
+        server.services.agent_repo.get(agent_id)
+    ):
+        raise OctopError(ErrorCode.FORBIDDEN, "private conversation")
     repo = server.services.thread_share_repo
     if body is not None and body.rotate:
         share = repo.rotate(
@@ -310,6 +315,8 @@ async def get_public_share(
         raise OctopError(ErrorCode.NOT_FOUND, "share not found")
     share = server.services.thread_share_repo.get_active_by_token(share_id)
     if share is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "share not found")
+    if is_private_bot(server.services.agent_repo.get(share.agent_id)):
         raise OctopError(ErrorCode.NOT_FOUND, "share not found")
     thread = server.services.thread_repo.get(share.thread_id)
     if thread is None or thread.agent_id != share.agent_id:

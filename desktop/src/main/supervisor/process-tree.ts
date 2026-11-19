@@ -21,6 +21,7 @@ export function buildSidecarEnv(
     portableDir: string;
     port: number;
     bindHost: string;
+    botOnly: boolean;
   },
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...base };
@@ -29,6 +30,11 @@ export function buildSidecarEnv(
   env.OCTOP_BIND_HOST = options.bindHost;
   env.OCTOP_PORT = String(options.port);
   env.OCTOP_DESKTOP_SHELL = "1";
+  for (const key of Object.keys(env)) {
+    // Windows can inherit mixed-case environment names. The shell owns this identity.
+    if (key.toUpperCase() === "OCTOP_DESKTOP_PRODUCT") delete env[key];
+  }
+  if (options.botOnly) env.OCTOP_DESKTOP_PRODUCT = "bot";
   env.PYTHONNOUSERSITE = "1";
   // Bytecode must not be written next to the sources. On macOS those sources
   // live inside the app bundle; on Windows they live in the install dir.

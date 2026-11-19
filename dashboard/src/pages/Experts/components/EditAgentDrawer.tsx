@@ -176,6 +176,7 @@ interface EditFormValues extends AgentRuntimeFormValues {
 }
 
 interface EditAgentDrawerProps {
+  avatarEditor?: React.ReactNode;
   open: boolean;
   agent: OctopAgent | null;
   onClose: () => void;
@@ -194,6 +195,7 @@ interface EditAgentDrawerProps {
 }
 
 interface EditAgentDrawerBodyProps {
+  avatarEditor?: React.ReactNode;
   agent: OctopAgent;
   onClose: () => void;
   onSaved: EditAgentDrawerProps["onSaved"];
@@ -244,6 +246,7 @@ async function persistWelcomeManifest(
 }
 
 function EditAgentDrawerBody({
+  avatarEditor,
   agent,
   onClose,
   onSaved,
@@ -891,87 +894,91 @@ function EditAgentDrawerBody({
                 label={t("experts.avatar")}
                 className={avatarPickerStyles.formItem}
               >
-                <ExpertAvatarPicker
-                  iconUrl={iconUrl}
-                  iconName={agent.icon_name}
-                  color={
-                    isCuratedPalette(colorPalette)
-                      ? expertPaletteColor(colorPalette)
-                      : colorPalette
-                  }
-                  disabled={avatarBusy}
-                  onPick={(file) => {
-                    void (async () => {
-                      setAvatarBusy(true);
-                      try {
-                        const result = await octopAgentsApi.uploadAvatar(
-                          agent.agent_id,
-                          file,
-                        );
-                        setIconUrl(result.icon_url);
-                        await refresh({ silent: true });
-                      } catch (err) {
-                        message.error(
-                          apiErrorMessage(
-                            err,
-                            t("experts.avatarUploadFailed"),
-                            t,
-                          ),
-                        );
-                        throw err;
-                      } finally {
-                        setAvatarBusy(false);
-                      }
-                    })();
-                  }}
-                  onSelectPreset={(presetId) => {
-                    void (async () => {
-                      setAvatarBusy(true);
-                      try {
-                        if (isUploadedAvatarUrl(iconUrl)) {
-                          await octopAgentsApi.deleteAvatar(agent.agent_id);
+                {avatarEditor ?? (
+                  <ExpertAvatarPicker
+                    iconUrl={iconUrl}
+                    iconName={agent.icon_name}
+                    color={
+                      isCuratedPalette(colorPalette)
+                        ? expertPaletteColor(colorPalette)
+                        : colorPalette
+                    }
+                    disabled={avatarBusy}
+                    onPick={(file) => {
+                      void (async () => {
+                        setAvatarBusy(true);
+                        try {
+                          const result = await octopAgentsApi.uploadAvatar(
+                            agent.agent_id,
+                            file,
+                          );
+                          setIconUrl(result.icon_url);
+                          await refresh({ silent: true });
+                        } catch (err) {
+                          message.error(
+                            apiErrorMessage(
+                              err,
+                              t("experts.avatarUploadFailed"),
+                              t,
+                            ),
+                          );
+                          throw err;
+                        } finally {
+                          setAvatarBusy(false);
                         }
-                        const nextUrl = expertPresetSrc(presetId ?? "default");
-                        await request(`/agents/${agent.agent_id}`, {
-                          method: "PATCH",
-                          body: JSON.stringify({ icon_url: nextUrl }),
-                        });
-                        setIconUrl(nextUrl);
-                        await refresh({ silent: true });
-                      } catch (err) {
-                        message.error(
-                          apiErrorMessage(
-                            err,
-                            t("experts.avatarUploadFailed"),
-                            t,
-                          ),
-                        );
-                      } finally {
-                        setAvatarBusy(false);
-                      }
-                    })();
-                  }}
-                  onRemove={() => {
-                    void (async () => {
-                      setAvatarBusy(true);
-                      try {
-                        await octopAgentsApi.deleteAvatar(agent.agent_id);
-                        setIconUrl(null);
-                        await refresh({ silent: true });
-                      } catch (err) {
-                        message.error(
-                          apiErrorMessage(
-                            err,
-                            t("experts.avatarRemoveFailed"),
-                            t,
-                          ),
-                        );
-                      } finally {
-                        setAvatarBusy(false);
-                      }
-                    })();
-                  }}
-                />
+                      })();
+                    }}
+                    onSelectPreset={(presetId) => {
+                      void (async () => {
+                        setAvatarBusy(true);
+                        try {
+                          if (isUploadedAvatarUrl(iconUrl)) {
+                            await octopAgentsApi.deleteAvatar(agent.agent_id);
+                          }
+                          const nextUrl = expertPresetSrc(
+                            presetId ?? "default",
+                          );
+                          await request(`/agents/${agent.agent_id}`, {
+                            method: "PATCH",
+                            body: JSON.stringify({ icon_url: nextUrl }),
+                          });
+                          setIconUrl(nextUrl);
+                          await refresh({ silent: true });
+                        } catch (err) {
+                          message.error(
+                            apiErrorMessage(
+                              err,
+                              t("experts.avatarUploadFailed"),
+                              t,
+                            ),
+                          );
+                        } finally {
+                          setAvatarBusy(false);
+                        }
+                      })();
+                    }}
+                    onRemove={() => {
+                      void (async () => {
+                        setAvatarBusy(true);
+                        try {
+                          await octopAgentsApi.deleteAvatar(agent.agent_id);
+                          setIconUrl(null);
+                          await refresh({ silent: true });
+                        } catch (err) {
+                          message.error(
+                            apiErrorMessage(
+                              err,
+                              t("experts.avatarRemoveFailed"),
+                              t,
+                            ),
+                          );
+                        } finally {
+                          setAvatarBusy(false);
+                        }
+                      })();
+                    }}
+                  />
+                )}
               </Form.Item>
               <Form.Item
                 label={t("experts.color")}
@@ -1678,6 +1685,7 @@ function EditAgentDrawerBody({
 }
 
 export default function EditAgentDrawer({
+  avatarEditor,
   open,
   agent,
   onClose,
@@ -1717,6 +1725,7 @@ export default function EditAgentDrawer({
     >
       {open && agent ? (
         <EditAgentDrawerBody
+          avatarEditor={avatarEditor}
           agent={agent}
           onClose={onClose}
           onSaved={onSaved}

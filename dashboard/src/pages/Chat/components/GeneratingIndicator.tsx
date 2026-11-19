@@ -56,6 +56,7 @@ function GeneratingAvatar({ agentId }: { agentId?: string | null }) {
   return (
     <div className={styles.avatarCol}>
       <ExpertMessageAvatar
+        working
         name={expert?.name || avatarProfileId}
         color={expert?.color}
         iconName={expert?.icon_name}

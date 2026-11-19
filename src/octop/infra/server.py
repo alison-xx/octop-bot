@@ -326,6 +326,7 @@ class OctopServer:
         self.plugin_manager: PluginManager | None = None
         self.wizard_tokens = WizardTokenStore(ttl_seconds=300)
         self._started = False
+        self._room_recovery: asyncio.Task[None] | None = None
         self._started_at: int | None = None
         self.instance_id = uuid.uuid4().hex
         self._serve_background = True
@@ -555,11 +556,14 @@ class OctopServer:
             TrajectoryLiveBus(),
         )
 
+        from octop.infra.bot_groups.im import GroupImRouter
+
         gateway = Gateway(
             agent_manager=registry,
             repos=self.services.repos,
             trajectory_service=trajectory_service,
             instance_id=self.instance_id,
+            group_im=GroupImRouter(lambda: self.services, lambda: self.app_runtime),
         )
         await gateway.boot(serve_background=self._serve_background)
 
@@ -679,6 +683,12 @@ class OctopServer:
             trajectory_service=trajectory_service,
             bridge_manager=bridge_mgr,
         )
+        if self._serve_background:
+            from octop.infra.bot_groups.turns import recover_room_turns
+
+            self._room_recovery = asyncio.create_task(
+                recover_room_turns(self.services, self.app_runtime)
+            )
         from octop.infra.knowledge.gate import (  # noqa: PLC0415
             warn_if_local_embedding_deps_missing,
         )
@@ -798,6 +808,11 @@ class OctopServer:
             from octop.infra.connectors.gateway import agently_auth
 
             await agently_auth.close()
+            if self._room_recovery is not None:
+                self._room_recovery.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self._room_recovery
+                self._room_recovery = None
             if self.app_runtime is not None:
                 rt = self.app_runtime
                 await rt.proactive_scheduler.shutdown()

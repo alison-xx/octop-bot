@@ -26,6 +26,16 @@ from octop.infra.gateway.process.message_keys import (
     STREAM_ERROR_FLAG,
     parse_checkpoint_ts_ms,
 )
+from octop.infra.history.attachment_text import (
+    OFFLOAD_PLACEHOLDER_RE as _OFFLOAD_PLACEHOLDER_RE,
+)
+from octop.infra.history.attachment_text import (
+    extract_dumped_image_refs_from_text as _extract_dumped_image_refs_from_text,
+)
+from octop.infra.history.attachment_text import (
+    is_history_noise_image_block as _is_history_noise_image_block,
+)
+from octop.infra.history.projection import compaction_boundary
 from octop.infra.utils.llm_text import strip_thinking as _strip_thinking
 from octop.infra.utils.locale import normalize_locale
 
@@ -33,21 +43,6 @@ logger = logging.getLogger(__name__)
 
 _THINKING_CAPTURE_RE = re.compile(
     r"<think>([\s\S]*?)</think>\s*",
-    re.IGNORECASE,
-)
-
-# Matches the lightweight placeholder that ``MediaOffloadMiddleware`` writes
-# into LangGraph state for already-offloaded inline images / audio. Format
-# (see octop_harness.middleware.media_offload._placeholder_text_block):
-#   [<btype> offloaded: sha=<short_sha> path=<path> size=<n>B mime=<m>;
-#   use read_file to retrieve bytes]
-# We strip these on history serialization because the original bytes are
-# still available via ``inbound_attachments`` and the dashboard renders the
-# thumbnail from there — leaving the placeholder visible made the chat show
-# a "[image offloaded: sha=… path=…]" line under every user image after the
-# second turn (when the middleware first re-encountered the block).
-_OFFLOAD_PLACEHOLDER_RE = re.compile(
-    r"^\s*\[\s*(?:image|audio)\s+offloaded\s*:",
     re.IGNORECASE,
 )
 
@@ -116,23 +111,6 @@ def _workspace_url_path(url: str) -> str:
     return ""
 
 
-def _is_history_noise_image_block(block: Any) -> bool:
-    """True for vision blocks that must not appear as user-authored history text."""
-    if not isinstance(block, dict):
-        return False
-    if str(block.get("type") or "").lower() != "image_url":
-        return False
-    if str(block.get("workspace_path") or "").strip():
-        return True
-    url_field = block.get("image_url")
-    url = ""
-    if isinstance(url_field, dict):
-        url = str(url_field.get("url") or "")
-    elif isinstance(url_field, str):
-        url = url_field
-    return url.startswith("data:") or url.startswith("workspace://")
-
-
 def _attachment_meta_from_image_block(block: dict[str, Any]) -> dict[str, str] | None:
     """Build ``inbound_attachments`` row from a path-only / data vision block."""
     path = str(block.get("workspace_path") or "").strip()
@@ -166,48 +144,6 @@ def _attachment_meta_from_image_block(block: dict[str, Any]) -> dict[str, str] |
     if path:
         entry["workspace_path"] = path if path.startswith("inbound/") else f"inbound/{path}"
     return entry
-
-
-def _parse_image_ref_json_text(text: str) -> dict[str, Any] | None:
-    """Return an ``image_url`` dict when *text* is a dumped vision ref (UI noise)."""
-    stripped = text.strip()
-    if not stripped.startswith("{") or "image_url" not in stripped:
-        return None
-    try:
-        parsed = json.loads(stripped)
-    except json.JSONDecodeError:
-        return None
-    if isinstance(parsed, dict) and _is_history_noise_image_block(parsed):
-        return parsed
-    return None
-
-
-def _extract_dumped_image_refs_from_text(text: str) -> tuple[str, list[dict[str, Any]]]:
-    """Pull harness JSONL-style vision dumps out of user text.
-
-    ``MemoryMiddleware._stringify_content`` joins text blocks and
-    ``json.dumps(image_url_block)`` with newlines. Session-log history
-    therefore arrives as one string like::
-
-        这图是啥
-        {"type": "image_url", "workspace_path": "inbound/…", …}
-
-    Returns ``(cleaned_caption, image_ref_dicts)``.
-    """
-    if not text or "image_url" not in text:
-        return text, []
-    refs: list[dict[str, Any]] = []
-    kept: list[str] = []
-    for part in text.split("\n"):
-        parsed = _parse_image_ref_json_text(part)
-        if parsed is not None:
-            refs.append(parsed)
-            continue
-        kept.append(part)
-    if not refs:
-        return text, []
-    cleaned = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
-    return cleaned, refs
 
 
 def _collect_inbound_from_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -393,6 +329,7 @@ async def _load_thread_messages(
 def _isolated_sqlite_checkpoint_messages(
     harness: Any,
     thread_id: str,
+    boundaries: set[str] | None = None,
 ) -> list[Any] | None:
     """Read the newest SQLite checkpoint through a separate read-only connection.
 
@@ -435,7 +372,10 @@ def _isolated_sqlite_checkpoint_messages(
         conn.execute("BEGIN")
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
         for checkpoint_tuple in isolated.list(config, limit=1):
-            messages = checkpoint_tuple.checkpoint.get("channel_values", {}).get("messages", [])
+            values = checkpoint_tuple.checkpoint.get("channel_values", {})
+            if boundaries is not None and (cutoff := compaction_boundary(values)):
+                boundaries.add(cutoff)
+            messages = values.get("messages", [])
             return list(messages) if isinstance(messages, list) else []
         return []
     finally:
@@ -502,10 +442,12 @@ async def _backfill_thread_projection(
     try:
         await asyncio.to_thread(repo.mark_projection, thread_id, "running")
         harness = registry.get_agent(agent_id)
+        boundaries: set[str] = set()
         raw = await asyncio.to_thread(
             _isolated_sqlite_checkpoint_messages,
             harness,
             thread_id,
+            boundaries,
         )
         if raw is None:
             raw, _has_more = await _load_checkpoint_messages(
@@ -527,6 +469,8 @@ async def _backfill_thread_projection(
         from octop.infra.history.projection import message_inputs  # noqa: PLC0415
 
         projected = await asyncio.to_thread(message_inputs, list(raw))
+        if boundaries:
+            await asyncio.to_thread(repo.record_compaction_boundaries, thread_id, boundaries)
         await asyncio.to_thread(repo.replace_all, thread_id, projected)
     except Exception as exc:
         logger.exception("history projection backfill failed for thread=%s", thread_id)

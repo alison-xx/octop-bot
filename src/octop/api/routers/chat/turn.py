@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +17,7 @@ from octop_gateway.models import (
     TextContent,
 )
 
-from octop.api.common.agent import require_agent_row
+from octop.api.common.agent import require_agent_row, user_owns_agent
 from octop.api.common.validators import validate_chat_mcp_servers, validate_chat_skills
 from octop.api.routers.chat.models import ChatTurnBody
 from octop.infra.errors import ErrorCode, OctopError
@@ -73,6 +74,8 @@ async def resolve_thread_id(
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"thread {thread_id!r} not found")
         if not thread_visible_to(row, user_id):
             raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
+        if getattr(row, "channel_type", None) == ThreadRegistry.CHANNEL_BOT_GROUP:
+            return thread_id, row.session_key
         await thread_registry.rebind(
             session_key=sk,
             thread_id=thread_id,
@@ -260,6 +263,8 @@ async def prepare_dashboard_turn(
 ) -> PreparedDashboardTurn:
     """Validate MCP/skills, resolve thread, return data for gateway enqueue."""
     row = require_agent_row(agent_id, user=user, as_user=None, server=server)
+    if turn.bot_browser and not user_owns_agent(row, user):
+        raise OctopError(ErrorCode.FORBIDDEN, "Bot not owned by user")
     default_model = (row.default_model or "").strip() or None
 
     mcp_servers = await validate_chat_mcp_servers(server, user_id=user.id, names=turn.mcp_servers)
@@ -305,6 +310,13 @@ async def prepare_dashboard_turn(
         session_key=turn.session_key,
     )
     model_ref = (turn.default_model or "").strip() or None
+    if model_ref:
+        from octop.infra.agents.providers.lynxce import account_selection
+
+        if await asyncio.to_thread(account_selection, server.services, user.id):
+            # Old composer state can contain a saved shared provider. The workspace
+            # billing source owns routing while personal mode is selected.
+            model_ref = None
     if (
         model_ref is not None
         and not server.app_runtime.agent_registry.providers.is_model_ref_usable(model_ref)
@@ -381,6 +393,8 @@ def build_dashboard_inbound(
         metadata["reasoning_mode"] = turn.reasoning_mode
     if turn.reasoning_effort:
         metadata["reasoning_effort"] = turn.reasoning_effort
+    if turn.bot_browser:
+        metadata["octop_bot_browser"] = True
     if turn.conversation_mode:
         metadata["conversation_mode"] = turn.conversation_mode
     if turn.session_mode:

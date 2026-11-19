@@ -45,6 +45,22 @@ async def env(tmp_octop_home: Path) -> AsyncIterator[Any]:
         yield c, srv, fake, users["alice"], users["bob"], aid
 
 
+@pytest.mark.parametrize("bot_turn", [False, True])
+async def test_ws_preserves_bot_workspace_scope(env: Any, bot_turn: bool) -> None:
+    client, server, fake, alice, _bob, agent_id = env
+    server.app_runtime.agent_registry.get_agent(agent_id).stream = fake.stream
+    payload: dict[str, Any] = {"type": "user_turn", "text": "hello"}
+    if bot_turn:
+        payload["bot_browser"] = True
+    async with _chat_ws(client, agent_id, alice) as ws:
+        await ws.send_json(payload)
+        frames = await ws.drain_turn()
+
+    assert frames[-1]["type"] == "done"
+    assert fake.last_request is not None
+    assert fake.last_request.get("configurable", {}).get("octop_bot_browser", False) is bot_turn
+
+
 async def _turn_then_rebind(
     c: httpx.AsyncClient,
     aid: str,

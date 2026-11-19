@@ -53,6 +53,27 @@
   object-fit: contain;
 }
 
+.botBrand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 34px;
+  letter-spacing: -1px;
+  color: var(--text);
+  img { object-fit: contain; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .botBrand img {
+    transform-origin: center bottom;
+    animation: wake 2.8s ease-in-out infinite;
+  }
+  @keyframes wake {
+    0%, 100% { transform: translateY(0) rotate(-2deg); }
+    50% { transform: translateY(-3px) rotate(2deg); }
+  }
+}
+
 .logoDark {
   display: none;
 }

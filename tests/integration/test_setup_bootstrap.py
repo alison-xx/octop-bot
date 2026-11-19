@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from octop.infra.server import OctopServer
 from octop.infra.setup.password_file import read_password
 from tests.support.app import write_octop_config
@@ -37,6 +39,21 @@ async def test_bootstrap_creates_default_main_agent(patched_app_client: Any) -> 
     assert agents[0]["agent_id"] == "main"
     assert agents[0]["name"] == "小通 · 通用助手"
     assert agents[0]["state"] in {"created", "idle", "stopped", "failed", "running", "unknown"}
+
+
+async def test_bot_desktop_starts_with_only_chief(
+    patched_app_client: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_DESKTOP_SHELL", "1")
+    monkeypatch.setenv("OCTOP_DESKTOP_PRODUCT", "bot")
+    c, _srv, home = patched_app_client
+    await bootstrap_admin(c, home)
+    auth = await auth_header(c)
+    agents = (await c.get("/api/agents", headers=auth)).json()
+    assert [agent["name"] for agent in agents] == ["Chief"]
+    workspace = (await c.get("/api/octop-bot/workspace", headers=auth)).json()
+    assert workspace["chief_id"] == agents[0]["agent_id"]
+    assert workspace["groups"] == []
 
 
 async def test_main_not_created_until_finish(patched_app_client: Any) -> None:

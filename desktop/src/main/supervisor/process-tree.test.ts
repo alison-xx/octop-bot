@@ -10,10 +10,10 @@ import { buildSidecarEnv } from "./process-tree";
  * the shell renews sessions with a device credential instead of a long token.
  */
 
-function env(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+function env(overrides: NodeJS.ProcessEnv = {}, botOnly = false): NodeJS.ProcessEnv {
   return buildSidecarEnv(
     { PATH: "/usr/bin", OCTOP_PORT: "1", OCTOP_REQUIRE_SETUP_PASSWORD: "1", ...overrides },
-    { octopHome: "/tmp/home", portableDir: "/tmp/portable", port: 51234, bindHost: "127.0.0.1" },
+    { octopHome: "/tmp/home", portableDir: "/tmp/portable", port: 51234, bindHost: "127.0.0.1", botOnly },
   );
 }
 
@@ -23,6 +23,13 @@ test("buildSidecarEnv disables the wizard password gate", () => {
 
 test("buildSidecarEnv leaves the access token TTL to the server", () => {
   assert.equal(env().OCTOP_ACCESS_TOKEN_TTL, undefined);
+});
+
+test("only the Bot product asks its sidecar to provision Chief", () => {
+  const inherited = { OCTOP_DESKTOP_PRODUCT: "bot", Octop_Desktop_Product: "other" };
+  assert.equal(env(inherited).OCTOP_DESKTOP_PRODUCT, undefined);
+  assert.equal(env(inherited).Octop_Desktop_Product, undefined);
+  assert.equal(env(inherited, true).OCTOP_DESKTOP_PRODUCT, "bot");
 });
 
 test("buildSidecarEnv keeps the identity and loopback pins", () => {

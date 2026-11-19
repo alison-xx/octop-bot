@@ -13,6 +13,7 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
 from octop.infra.control.browser.bundled import browser_enabled
+from octop.infra.control.browser.handoff import control_owner_for
 from octop.infra.utils.browser_media import parse_octop_user_id, user_browser_profile
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,9 @@ _NOT_ENABLED = (
 )
 
 
-def _bind_browser_profile(request: ToolCallRequest) -> ToolCallRequest | ToolMessage:
+def _bind_browser_profile(
+    request: ToolCallRequest, agent_id: str | None
+) -> ToolCallRequest | ToolMessage:
     tool_call = request.tool_call
     if str(tool_call.get("name") or "") != _BROWSER_TOOL:
         return request
@@ -52,19 +55,30 @@ def _bind_browser_profile(request: ToolCallRequest) -> ToolCallRequest | ToolMes
 
     raw_args = tool_call.get("args")
     args = dict(raw_args) if isinstance(raw_args, dict) else {}
-    args["profile"] = user_browser_profile(user_id)
+    bot_id = agent_id if configurable.get("octop_bot_browser") is True else None
+    profile = user_browser_profile(user_id, bot_id)
+    if bot_id and control_owner_for(profile) == "user":
+        return ToolMessage(
+            content="browser_use paused while the user has control of this Bot browser.",
+            tool_call_id=str(tool_call.get("id") or ""),
+            status="error",
+        )
+    args["profile"] = profile
     return request.override(tool_call={**tool_call, "args": args})
 
 
 class BrowserProfileMiddleware(AgentMiddleware[Any, Any]):
     """Prevent model-selected profiles from crossing Octop user boundaries."""
 
+    def __init__(self, agent_id: str | None = None) -> None:
+        self.agent_id = agent_id
+
     def wrap_tool_call(
         self,
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], ToolMessage | Command[Any]],
     ) -> ToolMessage | Command[Any]:
-        bound = _bind_browser_profile(request)
+        bound = _bind_browser_profile(request, self.agent_id)
         if isinstance(bound, ToolMessage):
             return bound
         return handler(bound)
@@ -74,7 +88,7 @@ class BrowserProfileMiddleware(AgentMiddleware[Any, Any]):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
     ) -> ToolMessage | Command[Any]:
-        bound = _bind_browser_profile(request)
+        bound = _bind_browser_profile(request, self.agent_id)
         if isinstance(bound, ToolMessage):
             return bound
         return await handler(bound)

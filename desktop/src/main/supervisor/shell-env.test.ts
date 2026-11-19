@@ -39,6 +39,13 @@ test("expandHome expands leading tilde", () => {
   assert.equal(expandHome("/abs/path", "/home/u"), "/abs/path");
 });
 
+test("Bot starts with a separate data root; explicitly selected roots still win", () => {
+  const home = resolve(sep, "home", "example");
+  assert.equal(resolveOctopHome({}, {}, home, true), join(home, ".octop-bot"));
+  assert.equal(resolveOctopHome({}, { OCTOP_HOME: "shell-root" }, home, true), "shell-root");
+  assert.equal(resolveOctopHome({ OCTOP_HOME: "explicit" }, { OCTOP_HOME: "shell-root" }, home, true), "explicit");
+});
+
 test("resolveStaticPath confines to root", () => {
   assert.equal(
     resolveStaticPath(DASHBOARD_ROOT, "/assets/app.js"),

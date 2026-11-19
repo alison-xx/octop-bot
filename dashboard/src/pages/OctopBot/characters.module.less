@@ -1,0 +1,261 @@
+.mark,
+.cluster {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  vertical-align: middle;
+  color: var(--bot-color);
+  align-items: center;
+  justify-content: center;
+}
+:global(html[data-theme="dark"]) .mark,
+:global(html[data-theme="dark"]) .swatch {
+  color: var(--bot-dark);
+}
+.model,
+.mascotPortrait,
+.mascot,
+.photo {
+  display: block;
+  height: 100%;
+  width: 100%;
+  overflow: visible;
+}
+.mascot {
+  object-fit: contain;
+}
+.model,
+.mascot,
+.mascotPortrait {
+  transform-origin: 50% 84%;
+}
+.photo {
+  border-radius: 28%;
+  object-fit: cover;
+}
+.badge {
+  position: absolute;
+  inset: auto -1px -1px auto;
+  display: grid;
+  place-items: center;
+  min-width: 9px;
+  height: 9px;
+  color: white;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 800;
+  border-radius: 50%;
+  background: var(--fn-color-brand);
+  box-shadow: 0 0 0 1px var(--fn-bg-elevated);
+}
+.badge[data-badge="chief"] {
+  color: #d38c04;
+  background: var(--fn-bg-elevated);
+}
+.badge[data-badge="working"] {
+  background: #269967;
+}
+.badge[data-badge="waiting"] {
+  background: #c77711;
+}
+.seat {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  color: var(--fn-text-secondary);
+}
+.seat small {
+  font-weight: 600;
+  font-size: 10px;
+}
+.eye {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.preview,
+.colors,
+.library,
+.shapeGrid,
+.libraryItem,
+.withAvatar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.preview {
+  margin: 8px 0 15px;
+  flex-wrap: wrap;
+}
+.preview > div {
+  flex: 1;
+}
+.shapeGrid,
+.colors,
+.library {
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.choice,
+.photoChoice {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  cursor: pointer;
+  color: inherit;
+}
+.choice {
+  height: 40px;
+  width: 40px;
+  display: grid;
+  place-items: center;
+}
+.choice:hover,
+.photoChoice:hover {
+  background: var(--fn-bg-hover);
+}
+.choice[aria-pressed="true"],
+.photoChoice[aria-pressed="true"] {
+  background: var(--fn-bg-active);
+  border-color: var(--fn-color-brand);
+}
+.swatch {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--fn-bg-elevated);
+  border-radius: 50%;
+  color: var(--bot-color);
+  background: currentColor;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px var(--fn-border-primary);
+}
+.swatch[aria-pressed="true"] {
+  outline: 2px solid var(--fn-color-brand);
+}
+.customColor {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+}
+.libraryItem {
+  flex-direction: column;
+  gap: 0;
+  max-width: 84px;
+}
+.photoChoice {
+  padding: 4px;
+  max-width: 80px;
+}
+.photoChoice img {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 9px;
+  margin: auto;
+}
+.photoChoice span {
+  display: block;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mark > :is(.model, .mascot) {
+    animation: breathe var(--bot-breath) ease-in-out var(--bot-phase) infinite;
+  }
+  .mascotPortrait .mascot {
+    transform: scale(1.1);
+  }
+  .eye {
+    animation: blink 5.8s ease-in-out var(--bot-phase) infinite;
+  }
+  .mark[data-motion="working"] > :is(.model, .mascot) {
+    animation: bob 1.05s ease-in-out var(--bot-phase) infinite;
+  }
+  .mark[data-motion="thinking"] > :is(.model, .mascot, .mascotPortrait) {
+    animation: think 2.8s ease-in-out var(--bot-phase) infinite;
+  }
+  .mark[data-motion="thinking"] .face {
+    transform: translateY(-1.5px);
+  }
+  .mark[data-motion="searching"] > :is(.model, .mascot, .mascotPortrait) {
+    animation: scan 2.2s ease-in-out var(--bot-phase) infinite;
+  }
+  .mark[data-motion="searching"] .pupil {
+    animation: look 2.2s ease-in-out var(--bot-phase) infinite;
+  }
+  .mark[data-motion="waiting"] > :is(.model, .mascot, .mascotPortrait) {
+    animation: nod 3.8s ease-in-out var(--bot-phase) infinite;
+  }
+  .mark[data-motion="waiting"] .badge {
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  .mark[data-compact] .eye,
+  .cluster:not(:hover) :is(.model, .mascot, .eye),
+  .choice:not(:hover):not(:focus-visible):not([aria-pressed="true"])
+    :is(.model, .mascot, .eye) {
+    animation: none;
+  }
+}
+@keyframes breathe {
+  50% {
+    transform: translateY(-2%) scale(1.012, 1.027);
+  }
+}
+@keyframes blink {
+  0%,
+  65%,
+  69%,
+  100% {
+    transform: scaleY(1);
+  }
+  67% {
+    transform: scaleY(0.12);
+  }
+}
+@keyframes bob {
+  50% {
+    transform: translateY(-4%) scale(0.99, 1.025);
+  }
+}
+@keyframes think {
+  42%,
+  60% {
+    transform: rotate(-4deg) translateY(-1%);
+  }
+}
+@keyframes scan {
+  25% {
+    transform: rotate(-3deg);
+  }
+  70% {
+    transform: rotate(3deg);
+  }
+}
+@keyframes look {
+  25% {
+    transform: translateX(-1.2px);
+  }
+  70% {
+    transform: translateX(1.2px);
+  }
+}
+@keyframes nod {
+  14%,
+  32% {
+    transform: translateY(2%) scaleY(0.976);
+  }
+  0%,
+  24%,
+  44%,
+  100% {
+    transform: none;
+  }
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.6;
+  }
+}

@@ -1,0 +1,361 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--fn-bg-elevated);
+  color: var(--fn-text-primary);
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+  button,
+  input,
+  textarea,
+  a {
+    -webkit-app-region: no-drag;
+  }
+}
+.header,
+.bar,
+.actions,
+.account,
+.tabs,
+.persona {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header {
+  min-height: 54px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--fn-border);
+  padding: 7px 14px;
+  -webkit-app-region: drag;
+  h1 {
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+.account {
+  margin-inline-start: auto;
+  max-width: 42%;
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--fn-text-secondary);
+  }
+}
+.center {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+}
+.login {
+  width: min(100%, 350px);
+  margin: auto;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  h2 {
+    margin: 18px 0 8px;
+    font-size: 23px;
+  }
+  p {
+    color: var(--fn-text-secondary);
+    line-height: 1.55;
+    text-align: center;
+  }
+  form {
+    margin-top: 24px;
+    width: 100%;
+  }
+}
+.tabs {
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--fn-border);
+  flex-shrink: 0;
+  svg {
+    vertical-align: -2px;
+  }
+}
+.workspace {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+.rail {
+  width: clamp(175px, 23vw, 254px);
+  flex-shrink: 0;
+  padding: 14px 12px;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  background: var(--fn-bg-sidebar);
+  border-inline-end: 1px solid var(--fn-border);
+  nav {
+    display: grid;
+    gap: 4px;
+  }
+  nav button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    color: inherit;
+    text-align: start;
+    background: transparent;
+    border: none;
+    border-radius: 9px;
+    padding: 6px 9px;
+    cursor: pointer;
+    &:hover,
+    &[aria-current="page"] {
+      background: var(--fn-bg-container-hover, var(--fn-bg-layout));
+    }
+    span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    svg {
+      flex-shrink: 0;
+    }
+  }
+}
+.bar {
+  min-height: 36px;
+  h2 {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 15px;
+    line-height: 1.4;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+.chat {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  > .bar {
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--fn-border);
+  }
+}
+.persona {
+  padding: 9px 18px 2px;
+  color: var(--fn-text-secondary);
+  label {
+    font-size: 12px;
+  }
+}
+.mobileList {
+  display: none !important;
+}
+.timeline {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 18px clamp(14px, 4vw, 60px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.welcome {
+  margin: auto;
+  max-width: 420px;
+  text-align: center;
+  h3 {
+    font-size: 20px;
+    margin: 12px 0 6px;
+  }
+  p {
+    line-height: 1.65;
+    color: var(--fn-text-secondary);
+  }
+}
+.message {
+  align-self: flex-start;
+  max-width: min(100%, 750px);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  header {
+    display: flex;
+    gap: 9px;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: var(--fn-text-secondary);
+  }
+  &[data-role="user"] {
+    align-self: flex-end;
+    background: var(--fn-bg-layout);
+    border-radius: 15px 15px 3px 15px;
+    padding: 10px 14px;
+  }
+}
+.taskState {
+  border-inline-start: 2px solid var(--fn-text-brand);
+  padding: 5px 12px;
+  overflow-wrap: anywhere;
+  > div:first-child {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  p {
+    color: var(--fn-text-secondary);
+    margin-top: 5px;
+  }
+}
+.composer {
+  margin: 4px clamp(10px, 3vw, 42px) 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--fn-border);
+  border-radius: 15px;
+  background: var(--fn-bg-container);
+  textarea {
+    border: 0 !important;
+    box-shadow: none !important;
+    background: transparent;
+  }
+  > div:last-child {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  small {
+    flex: 1;
+    color: var(--fn-text-secondary);
+    line-height: 1.45;
+  }
+}
+.scheduleArea {
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 18px clamp(12px, 3vw, 28px);
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+.hint {
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 8px 0 16px !important;
+}
+.jobs {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0;
+  li {
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--fn-border);
+    padding: 14px 0;
+  }
+  li > div:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  h3 {
+    font-size: 15px;
+  }
+  small,
+  p {
+    color: var(--fn-text-secondary);
+  }
+}
+.actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.form {
+  display: grid;
+  gap: 12px;
+  max-height: calc(100dvh - 125px);
+  overflow: auto;
+  padding: 3px;
+  label {
+    display: grid;
+    gap: 5px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .hint {
+    margin: 0 !important;
+  }
+}
+.fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.preview {
+  padding: 6px;
+  max-height: 44vh;
+  overflow: auto;
+  article {
+    padding: 7px 0;
+    border-bottom: 1px solid var(--fn-border);
+  }
+  p {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+@media (max-width: 660px) {
+  .header {
+    gap: 4px;
+    padding-inline: 6px;
+  }
+  .header h1 {
+    font-size: 14px;
+  }
+  .mobileList {
+    display: inline-flex !important;
+  }
+  .workspace:not([data-show-list="true"]) .rail {
+    display: none;
+  }
+  .workspace[data-show-list="true"] {
+    .rail {
+      width: 100%;
+    }
+    .chat {
+      display: none;
+    }
+  }
+  .bar {
+    gap: 5px;
+  }
+  .chat > .bar {
+    padding: 6px;
+  }
+  .jobs li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

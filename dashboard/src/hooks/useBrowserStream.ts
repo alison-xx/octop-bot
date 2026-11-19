@@ -1,3 +1,4 @@
+import { scopedBrowserUrl } from "../utils/browserProfile";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { getAuthToken } from "../api/request";
 import { resolveWsUrl } from "../utils/desktopWsUrl";
@@ -53,7 +54,8 @@ function buildWsUrl(
     height: String(height),
   });
   if (token) params.set("token", token);
-  return `${base}?${params.toString()}`;
+  const url = `${base}?${params.toString()}`;
+  return bridgeConnectionId ? url : scopedBrowserUrl(url);
 }
 
 /**

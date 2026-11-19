@@ -2628,6 +2628,8 @@ def wire_shared_member_peers(
         team_peers: Sequence[str] | None = None,
         **kwargs: Any,
     ) -> list[Any]:
+        from octop.infra.agents.bot_workspace import is_private_bot
+
         peers = list(
             original_list(
                 user_id,
@@ -2636,6 +2638,7 @@ def wire_shared_member_peers(
                 **kwargs,
             )
         )
+        peers = [entry for entry in peers if not is_private_bot(load_agent(entry.agent_id))]
         allow = _shared_member_allowlist(
             harness_team,
             exclude_agent_id=exclude_agent_id,
@@ -2668,6 +2671,10 @@ def wire_shared_member_peers(
         return peers
 
     def resolve_peer_entry(from_agent_id: str, to_agent_id: str, user_id: str | int) -> Any:
+        from octop.infra.agents.bot_workspace import is_private_bot
+
+        if is_private_bot(load_agent(to_agent_id)):
+            raise ValueError("private bot is not available as a peer")
         try:
             return original_resolve(from_agent_id, to_agent_id, user_id)
         except ValueError as exc:

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
+import { BOT_CLIENT_FLAG } from "../shared/product";
 import {
   IPC_CHANNELS,
   type ClientSettings,
@@ -27,7 +28,28 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
  */
 let wsEndpointCache: WsRelayEndpoint | null | undefined;
 
+const botOnly = process.argv.includes(BOT_CLIENT_FLAG);
+let settingsRequestPending = false;
+let openBotSettings: (() => void) | null = null;
+if (botOnly) {
+  ipcRenderer.on(IPC_CHANNELS.openBotSettings, () => {
+    if (openBotSettings) openBotSettings();
+    else settingsRequestPending = true;
+  });
+}
+
 const bridge = {
+  botOnly,
+  onOpenBotSettings(callback: () => void): () => void {
+    openBotSettings = callback;
+    if (settingsRequestPending) {
+      settingsRequestPending = false;
+      callback();
+    }
+    return () => {
+      if (openBotSettings === callback) openBotSettings = null;
+    };
+  },
   getPlatformInfo(): Promise<PlatformInfo> {
     return ipcRenderer.invoke(IPC_CHANNELS.getPlatformInfo);
   },

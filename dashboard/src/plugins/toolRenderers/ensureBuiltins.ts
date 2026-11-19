@@ -1,6 +1,7 @@
 import * as React from "react";
 import * as ReactJSX from "react/jsx-runtime";
 import { DefaultToolRenderer } from "./builtin/DefaultToolRenderer";
+import BotViewRenderer from "./builtin/BotViewRenderer";
 import { builtinPluginHost } from "./host";
 import { registerToolRenderer } from "./registry";
 
@@ -29,6 +30,11 @@ export function ensureBuiltinToolRenderers(): void {
     id: "default",
     pluginId: "builtin",
     component: DefaultToolRenderer,
+  });
+  registerToolRenderer({
+    id: "octop-bot-view",
+    pluginId: "builtin",
+    component: BotViewRenderer,
   });
   void builtinPluginHost;
 }

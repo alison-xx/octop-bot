@@ -189,11 +189,30 @@ def _wire_text(item: ThreadMessageInput) -> str:
     return ""
 
 
+def compaction_boundary(state: Any) -> str | None:
+    """Identify the first original message retained by a native compaction."""
+    event = state.get("_summarization_event") if isinstance(state, dict) else None
+    if not isinstance(event, dict):
+        return None
+    boundary = event.get("cutoff_message_id")
+    if isinstance(boundary, str) and boundary:
+        return boundary
+    index = event.get("cutoff_index")
+    messages = state.get("messages")
+    if isinstance(index, int) and isinstance(messages, list) and 0 <= index < len(messages):
+        first = messages[index]
+        boundary = first.get("id") if isinstance(first, dict) else getattr(first, "id", None)
+        if isinstance(boundary, str) and boundary:
+            return boundary
+    return None
+
+
 @dataclass
 class TurnHistoryTracker:
     """Keep only the current user turn from replay-prone state chunks."""
 
     seed_messages: list[Any] = field(default_factory=list)
+    compaction_boundaries: set[str] = field(default_factory=set, init=False)
     _state_messages: list[Any] = field(default_factory=list, init=False)
     _stream_text: str = field(default="", init=False)
     _reasoning_text: str = field(default="", init=False)
@@ -215,6 +234,8 @@ class TurnHistoryTracker:
         kind = chunk.get("type")
         if kind in ("state_snapshot", "state_update"):
             messages = _chunk_messages(chunk)
+            if boundary := compaction_boundary(chunk.get("data")):
+                self.compaction_boundaries.add(boundary)
             if not messages:
                 return
             last_user = max(

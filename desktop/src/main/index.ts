@@ -14,7 +14,7 @@ import {
   type WebContents,
 } from "electron";
 import { execFileSync, spawn } from "node:child_process";
-import { constants as fsConstants, existsSync, promises as fs } from "node:fs";
+import { constants as fsConstants, existsSync, mkdirSync, promises as fs, readFileSync } from "node:fs";
 import { type as osType, release as osRelease } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -27,6 +27,7 @@ import {
   type UpdateCheckResult,
 } from "../shared/ipc-contract";
 import { resolveAppVersion } from "./app-version";
+import { BOT_HOME_PATH, BOT_PRODUCT_NAME, isBotProduct } from "../shared/product";
 import { desktopLog, installDesktopLog } from "./log/desktop-log";
 import { DeviceCredentialStore } from "./session/device-credential";
 import { DeviceSessionClient } from "./session/device-session";
@@ -109,6 +110,23 @@ const PRELOAD_PATH = join(__dirname, "../preload/index.js");
 const SPLASH_PATH = join(__dirname, "../renderer/splash.html");
 const ERROR_PATH = join(__dirname, "../renderer/error.html");
 
+// Resolve the product before Chromium opens storage or acquires its single-instance lock.
+const packageInfo: unknown = app.isPackaged
+  ? JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8"))
+  : undefined;
+const botOnly = isBotProduct(app.isPackaged ? [] : process.argv, app.getName(), packageInfo);
+const productName = botOnly ? BOT_PRODUCT_NAME : "Octop";
+const entryPath = botOnly ? BOT_HOME_PATH : "/";
+if (botOnly) {
+  app.setName(productName);
+  if (!app.commandLine.hasSwitch("user-data-dir")) {
+    const profile = join(app.getPath("appData"), BOT_PRODUCT_NAME);
+    mkdirSync(profile, { recursive: true });
+    app.setPath("userData", profile);
+    app.setPath("sessionData", profile);
+  }
+}
+
 interface PortableManifestFile {
   version: string;
   sha256: string;
@@ -167,6 +185,14 @@ protocol.registerSchemesAsPrivileged([
 
 function resourcesRoot(): string {
   return app.isPackaged ? process.resourcesPath : join(__dirname, "../../resources");
+}
+
+function botWindowIcon(): string | undefined {
+  if (!botOnly) return undefined;
+  const ext = process.platform === "win32" ? "ico" : "png";
+  return [`bot-icon.${ext}`, `icon.${ext}`]
+    .map((name) => join(resourcesRoot(), name))
+    .find((path) => existsSync(path));
 }
 
 function dashboardRoot(portableDir: string): string {
@@ -410,7 +436,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.windowsMenuModel, () => {
     if (!usesCaptionOverlay()) return null;
-    return windowsMenuModel(app.getLocale());
+    return windowsMenuModel(app.getLocale(), botOnly);
   });
   ipcMain.handle(IPC_CHANNELS.windowsMenuInvoke, (event, id: unknown) => {
     const command = windowsMenuCommandId(id);
@@ -451,6 +477,16 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.checkForUpdates, async (): Promise<UpdateCheckResult> => {
+    if (botOnly) {
+      return {
+        status: "error",
+        currentVersion: appVersion,
+        latestVersion: null,
+        error: app.getLocale().toLowerCase().startsWith("zh")
+          ? "请使用 Octop Bot 独立安装包更新。"
+          : "Use the Octop Bot installer to update this app.",
+      };
+    }
     try {
       const { manifest, stableOnly } = await fetchUpdateManifest();
       const platform = platformAssetKey(process.platform, process.arch);
@@ -480,7 +516,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.installUpdate, async (event) => {
     // The page already confirmed. Ignore every argument and re-select the
     // release here, so the renderer cannot name a package URL (§6.2).
-    if (updateInFlight) return;
+    if (botOnly || updateInFlight) return;
     const win = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getAllWindows()[0] ?? null;
 
     let selected: SelectedRelease | null;
@@ -545,6 +581,7 @@ async function startBackend(): Promise<boolean> {
   if (!backend) return false;
   const port = await reserveRandomPort();
   const env = buildSidecarEnv(process.env, {
+    botOnly,
     octopHome: backend.octopHome,
     portableDir: backend.portableDir,
     port,
@@ -643,8 +680,10 @@ function openDashboardWindow(appOrigin: string): BrowserWindow {
     preload: PRELOAD_PATH,
     theme: chromeTheme,
     backgroundColor: windowBackground(chromeTheme.mode),
-    entryUrl: dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin),
+    entryUrl: dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin, entryPath),
     appOrigin,
+    botOnly,
+    icon: botWindowIcon(),
     onNavigate: openExternal,
   });
   watchDashboardLifetime(win);
@@ -660,10 +699,10 @@ function continueInEarlyWindow(early: EarlyWindow, appOrigin: string): void {
     openDashboardWindow(appOrigin);
     return;
   }
-  installDashboardGuards(win, { appOrigin, onNavigate: openExternal });
+  installDashboardGuards(win, { appOrigin, onNavigate: openExternal, botOnly });
   watchDashboardLifetime(win);
   const chromeTheme = resolveWindowChromeTheme(settingsStore.load().themeBackground);
-  void win.loadURL(dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin));
+  void win.loadURL(dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin, entryPath));
 }
 
 /**
@@ -709,8 +748,9 @@ function showAboutDialog(version: string): void {
   });
   void dialog.showMessageBox({
     type: "info",
-    title: locale.toLowerCase().startsWith("zh") ? "关于 Octop" : "About Octop",
-    message: "Octop",
+    title: locale.toLowerCase().startsWith("zh") ? `关于 ${productName}` : `About ${productName}`,
+    message: productName,
+    icon: botWindowIcon(),
     detail: formatAboutDetail({
       version,
       setup: windowsInstallScope(process.execPath),
@@ -780,15 +820,59 @@ function runWindowsMenuCommand(win: BrowserWindow, command: WindowsMenuCommandId
     case "about":
       showAboutDialog(appVersion);
       return;
+    case "settings":
+      openBotSettings();
+      return;
   }
 }
 
-/** Caption menu on Windows and Linux. macOS keeps the system menu bar. */
-function installWindowsAppMenu(version: string): void {
-  if (!usesCaptionOverlay()) return;
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate(windowsApplicationMenu(app.getLocale(), () => showAboutDialog(version))),
+function installAppMenu(version: string): void {
+  if (!usesCaptionOverlay()) {
+    if (botOnly && process.platform === "darwin") {
+      Menu.setApplicationMenu(Menu.buildFromTemplate([
+        {
+          label: BOT_PRODUCT_NAME,
+          submenu: [
+            { role: "about" },
+            {
+              label: app.getLocale().startsWith("zh") ? "设置…" : "Settings…",
+              accelerator: "Cmd+,",
+              click: openBotSettings,
+            },
+            { type: "separator" },
+            { role: "services" },
+            { type: "separator" },
+            { role: "hide" },
+            { role: "hideOthers" },
+            { role: "unhide" },
+            { type: "separator" },
+            { role: "quit" },
+          ],
+        },
+        { role: "editMenu" },
+        { role: "viewMenu" },
+        { role: "windowMenu" },
+      ]));
+    }
+    return;
+  }
+  const menu = windowsApplicationMenu(
+    app.getLocale(),
+    () => showAboutDialog(version),
+    botOnly ? openBotSettings : undefined,
   );
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
+}
+
+function openBotSettings(): void {
+  if (!botOnly || !dashboardOrigin) return;
+  revealAppWindow();
+  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  if (!win) return;
+  const contents = win.webContents;
+  const requestSettings = () => contents.send(IPC_CHANNELS.openBotSettings);
+  if (contents.isLoadingMainFrame()) contents.once("did-finish-load", requestSettings);
+  else requestSettings();
 }
 
 function readGitStamp(args: readonly string[]): string | null {
@@ -822,6 +906,7 @@ function repoRootWithGit(start: string): string | null {
 async function installSystemTray(): Promise<void> {
   if (tray || !shouldInstallSystemTray(process.platform)) return;
   const candidates = trayIconCandidates({
+    botOnly,
     platform: process.platform,
     isPackaged: app.isPackaged,
     resourcesDir: resourcesRoot(),
@@ -837,8 +922,8 @@ async function installSystemTray(): Promise<void> {
   // The Linux panel wants a small PNG; a full app icon is dropped or drawn huge.
   trayIcon = process.platform === "linux" ? icon.resize({ width: 24, height: 24 }) : icon;
   const created = new Tray(trayIcon);
-  created.setToolTip("Octop");
-  const labels = trayMenuLabels(app.getLocale());
+  created.setToolTip(productName);
+  const labels = trayMenuLabels(app.getLocale(), botOnly);
   const menu = Menu.buildFromTemplate([
     { label: labels.show, click: () => revealAppWindow() },
     { type: "separator" },
@@ -893,11 +978,16 @@ async function boot(): Promise<void> {
   }
 
   if (process.platform === "win32") {
-    app.setAppUserModelId(WINDOWS_APP_USER_MODEL_ID);
+    app.setAppUserModelId(botOnly ? "com.tencent.octop.bot" : WINDOWS_APP_USER_MODEL_ID);
   }
 
   appVersion = await resolveProductVersion();
-  installWindowsAppMenu(appVersion);
+  if (botOnly && process.platform === "darwin") {
+    const iconPath = botWindowIcon();
+    app.setAboutPanelOptions({ applicationName: productName, applicationVersion: appVersion, iconPath });
+    if (iconPath && !app.isPackaged) app.dock?.setIcon(iconPath);
+  }
+  installAppMenu(appVersion);
 
   settingsStore = new ClientSettingsStore(defaultClientSettingsPath(app.getPath("userData")));
   const settings = settingsStore.load();
@@ -918,6 +1008,8 @@ async function boot(): Promise<void> {
     // BrowserWindow cannot swap its preload.
     preload: PRELOAD_PATH,
     theme: chromeTheme,
+    botOnly,
+    icon: botWindowIcon(),
   });
   watchLinuxCaptionState(early.browserWindow);
 
@@ -925,7 +1017,7 @@ async function boot(): Promise<void> {
   // inherit it). The extraction dir and the child env must agree on one root.
   const loginShellEnv =
     process.platform === "win32" ? {} : await readLoginShellEnv(process.env.SHELL);
-  const octopHome = resolveOctopHome(process.env, loginShellEnv);
+  const octopHome = resolveOctopHome(process.env, loginShellEnv, undefined, botOnly);
   installDesktopLog(octopHome);
   desktopLog().info(`desktop ${appVersion} home=${octopHome}`);
   await installSystemTray();

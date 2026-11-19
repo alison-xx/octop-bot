@@ -763,6 +763,11 @@ class GlobalProcessor:
           falls through to a usable expert default or harness AUTO.
         - When a model is passed and the turn needs vision, upgrade to a vision ref.
         """
+        personal_route = getattr(self._agent_manager, "bot_account_model_ref", None)
+        if callable(personal_route):
+            personal_ref = personal_route(agent_id, thread_id, user_id)
+            if isinstance(personal_ref, str) and personal_ref:
+                return _ResolvedModelRoute(personal_ref, automatic=False)
         providers = self._agent_manager.providers
         thread_model = self._agent_manager.get_thread_model(agent_id, thread_id)
         thread_row = self._thread_registry.get_thread(thread_id)
@@ -1818,6 +1823,9 @@ class GlobalProcessor:
     ) -> dict[str, Any]:
         from octop.infra.agents.conversation_mode import execute_user_message
 
+        if meta and meta.get("octop_bot_browser") is True:
+            request.setdefault("configurable", {})["octop_bot_browser"] = True
+
         if self._is_managed_agent(agent_id):
             return self._stamp_managed_session_mode(
                 request, agent_id=agent_id, thread_id=thread_id, meta=meta
@@ -2170,6 +2178,10 @@ class GlobalProcessor:
             return
         try:
             self._thread_message_repo.append_if_ready(thread_id, tracker.inputs)
+            if tracker.compaction_boundaries:
+                self._thread_message_repo.record_compaction_boundaries(
+                    thread_id, tracker.compaction_boundaries
+                )
         except Exception:
             # History projection is a read optimization and must never turn a
             # successful model response into a failed chat turn.

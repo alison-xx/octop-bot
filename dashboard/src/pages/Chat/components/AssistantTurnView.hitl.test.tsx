@@ -1,11 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import type { ChatMessage } from "../hooks/useChat";
 import { COLLAPSE_THINKING_TEAM_KEY } from "../hooks/useCollapseThinking";
 import AssistantTurnView from "./AssistantTurnView";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
+    i18n: { exists: () => false },
     t: (key: string, opts?: string | { defaultValue?: string }) => {
       if (typeof opts === "string") return opts;
       return opts?.defaultValue ?? key;
@@ -13,7 +15,8 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("react-router-dom", () => ({
+vi.mock("react-router-dom", async (original) => ({
+  ...(await original<typeof import("react-router-dom")>()),
   useNavigate: () => vi.fn(),
 }));
 
@@ -62,6 +65,49 @@ function message(
 }
 
 describe("AssistantTurnView approval", () => {
+  it("links successful Chief creation results before the answer in the dedicated client", () => {
+    vi.stubGlobal("octopDesktop", { botOnly: true });
+    try {
+      render(
+        <MemoryRouter>
+          <AssistantTurnView
+            messages={[
+              message({
+                id: "made-bot",
+                toolData: {
+                  name: "octop_bot_create",
+                  arguments: '{"name":"Writer"}',
+                  output: "A1B2C3",
+                },
+              }),
+              message({
+                id: "made-group",
+                toolData: {
+                  name: "octop_bot_create_group",
+                  output:
+                    '{"name":"Newsroom","group_id":"01THEGROUP","member_ids":["A1B2C3"]}',
+                },
+              }),
+              message({ id: "answer", content: "Your team is ready." }),
+            ]}
+          />
+        </MemoryRouter>,
+      );
+      const created = screen.getByRole("link", { name: "Newsroom" });
+      expect(created).toHaveAttribute("href", "/octop-bot/groups/01THEGROUP");
+      expect(screen.getByRole("link", { name: "Writer" })).toHaveAttribute(
+        "href",
+        "/octop-bot/bots/A1B2C3",
+      );
+      expect(
+        created.compareDocumentPosition(
+          screen.getByText("Your team is ready."),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it("keeps the answer that arrived before the approval card", () => {
     render(
       <AssistantTurnView

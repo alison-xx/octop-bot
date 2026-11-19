@@ -1,4 +1,5 @@
 import type { MenuItemConstructorOptions } from "electron";
+import { BOT_PRODUCT_NAME } from "../../shared/product";
 
 /**
  * Windows application menu. The transparent caption overlay hides the native
@@ -28,6 +29,7 @@ const WINDOWS_MENU_COMMANDS = [
   "zoomOut",
   "togglefullscreen",
   "about",
+  "settings",
 ] as const;
 
 export type WindowsMenuCommandId = (typeof WINDOWS_MENU_COMMANDS)[number];
@@ -66,14 +68,15 @@ export interface WindowsAppMenuLabels {
   about: string;
 }
 
-export function windowsAppMenuLabels(locale: string): WindowsAppMenuLabels {
+export function windowsAppMenuLabels(locale: string, botOnly = false): WindowsAppMenuLabels {
+  const name = botOnly ? BOT_PRODUCT_NAME : "Octop";
   if (locale.toLowerCase().startsWith("zh")) {
     return {
       file: "文件",
       edit: "编辑",
       view: "视图",
       help: "帮助",
-      about: "关于 Octop",
+      about: `关于 ${name}`,
     };
   }
   return {
@@ -81,7 +84,7 @@ export function windowsAppMenuLabels(locale: string): WindowsAppMenuLabels {
     edit: "Edit",
     view: "View",
     help: "Help",
-    about: "About Octop",
+    about: `About ${name}`,
   };
 }
 
@@ -94,14 +97,15 @@ function command(
 }
 
 /** What the page draws. One list per top-level menu, in title order. */
-export function windowsMenuModel(locale: string): WindowsMenuModel {
-  const labels = windowsAppMenuLabels(locale);
+export function windowsMenuModel(locale: string, botOnly = false): WindowsMenuModel {
+  const labels = windowsAppMenuLabels(locale, botOnly);
   const zh = locale.toLowerCase().startsWith("zh");
   const text = (zhLabel: string, enLabel: string) => (zh ? zhLabel : enLabel);
   return {
     titles: [labels.file, labels.edit, labels.view, labels.help],
     menus: [
       [
+        ...(botOnly ? [command("settings", text("Octop Bot 设置", "Octop Bot Settings"), "Ctrl+,")] : []),
         command("close", text("关闭", "Close"), "Ctrl+W"),
         { kind: "separator" },
         command("quit", text("退出", "Exit"), null),
@@ -136,13 +140,15 @@ export function windowsMenuModel(locale: string): WindowsMenuModel {
 export function windowsApplicationMenu(
   locale: string,
   onAbout: () => void,
+  onBotSettings?: () => void,
 ): MenuItemConstructorOptions[] {
-  const model = windowsMenuModel(locale);
+  const model = windowsMenuModel(locale, Boolean(onBotSettings));
   return model.titles.map((label, index) => ({
     label,
     submenu: (model.menus[index] ?? []).map((entry): MenuItemConstructorOptions => {
       if (entry.kind === "separator") return { type: "separator" };
       if (entry.id === "about") return { id: entry.id, label: entry.label, click: onAbout };
+      if (entry.id === "settings") return { id: entry.id, label: entry.label, accelerator: "Ctrl+,", click: onBotSettings };
       return { id: entry.id, role: entry.id };
     }),
   }));

@@ -60,6 +60,7 @@ import {
 import styles from "../index.module.less";
 
 interface ManagedDrawerProps {
+  avatarEditor?: React.ReactNode;
   open: boolean;
   onClose: () => void;
   onCreated: (agentId: string) => void;
@@ -116,6 +117,7 @@ export default function ManagedDrawer({
   open,
   onClose,
   onCreated,
+  avatarEditor,
 }: ManagedDrawerProps) {
   const { t, i18n } = useTranslation();
   const [form] = Form.useForm<FormValues>();
@@ -346,48 +348,56 @@ export default function ManagedDrawer({
           label={t("experts.avatar")}
           className={avatarPickerStyles.formItem}
         >
-          <ExpertAvatarPicker
-            iconUrl={
-              avatarPreview ?? expertPresetSrc(avatarPresetId ?? "default")
-            }
-            color={storedColor(colorPalette)}
-            disabled={saving}
-            onPick={(file) => {
-              setAvatarFile(file);
-              setAvatarPresetId(null);
-              setAvatarPresetTouched(false);
-              setAvatarPreview((prev) => {
-                if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-                return URL.createObjectURL(file);
-              });
-            }}
-            onSelectPreset={(presetId) => {
-              setAvatarFile(null);
-              setAvatarPresetId(presetId);
-              setAvatarPresetTouched(true);
-              setAvatarPreview((prev) => {
-                if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-                return null;
-              });
-            }}
-            onRemove={
-              avatarFile || avatarPreview || avatarPresetTouched
-                ? () => {
-                    setAvatarFile(null);
-                    setAvatarPresetId(null);
-                    setAvatarPresetTouched(false);
-                    setAvatarPreview((prev) => {
-                      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-                      return null;
-                    });
-                  }
-                : undefined
-            }
-          />
+          {avatarEditor ?? (
+            <ExpertAvatarPicker
+              iconUrl={
+                avatarPreview ?? expertPresetSrc(avatarPresetId ?? "default")
+              }
+              color={storedColor(colorPalette)}
+              disabled={saving}
+              onPick={(file) => {
+                setAvatarFile(file);
+                setAvatarPresetId(null);
+                setAvatarPresetTouched(false);
+                setAvatarPreview((prev) => {
+                  if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+                  return URL.createObjectURL(file);
+                });
+              }}
+              onSelectPreset={(presetId) => {
+                setAvatarFile(null);
+                setAvatarPresetId(presetId);
+                setAvatarPresetTouched(true);
+                setAvatarPreview((prev) => {
+                  if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+                  return null;
+                });
+              }}
+              onRemove={
+                avatarFile || avatarPreview || avatarPresetTouched
+                  ? () => {
+                      setAvatarFile(null);
+                      setAvatarPresetId(null);
+                      setAvatarPresetTouched(false);
+                      setAvatarPreview((prev) => {
+                        if (prev?.startsWith("blob:"))
+                          URL.revokeObjectURL(prev);
+                        return null;
+                      });
+                    }
+                  : undefined
+              }
+            />
+          )}
         </Form.Item>
-        <Form.Item label={t("experts.color")} extra={t("experts.colorHint")}>
-          <ExpertColorPicker value={colorPalette} onChange={setColorPalette} />
-        </Form.Item>
+        {!avatarEditor && (
+          <Form.Item label={t("experts.color")} extra={t("experts.colorHint")}>
+            <ExpertColorPicker
+              value={colorPalette}
+              onChange={setColorPalette}
+            />
+          </Form.Item>
+        )}
         <Form.Item
           name="name"
           label={t("experts.agentName")}

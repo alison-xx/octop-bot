@@ -88,7 +88,10 @@ function resolveModelCategory(
 
 const { Title } = Typography;
 
-export default function ModelsPage() {
+export default function ModelsPage({
+  chatOnly = false,
+  onConnectionSaved,
+}: { chatOnly?: boolean; onConnectionSaved?: () => void } = {}) {
   const { t } = useTranslation();
   const user = useCurrentUser();
   const canProviders = userCan(user, "providers");
@@ -110,19 +113,25 @@ export default function ModelsPage() {
     error,
     fetchAll,
   } = useProviders();
+  const afterConnectionSaved = () => {
+    onConnectionSaved?.();
+    return fetchAll();
+  };
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [showMoreProviders, setShowMoreProviders] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const modelCategory = resolveModelCategory(
-    searchParams.get("tab"),
-    canChat,
-    canEmbedding,
-    canGeneration,
-    canVoice,
-    canSearch,
-    canDecision,
-  );
+  const modelCategory = chatOnly
+    ? "chat"
+    : resolveModelCategory(
+        searchParams.get("tab"),
+        canChat,
+        canEmbedding,
+        canGeneration,
+        canVoice,
+        canSearch,
+        canDecision,
+      );
   const setModelCategory = (next: string) => {
     const updated = new URLSearchParams(searchParams);
     if (
@@ -183,7 +192,7 @@ export default function ModelsPage() {
           key={group.groupKey}
           group={group}
           providers={providers}
-          onSaved={fetchAll}
+          onSaved={afterConnectionSaved}
           isHover={hoveredCard === `group-${group.groupKey}`}
           onMouseEnter={() => setHoveredCard(`group-${group.groupKey}`)}
           onMouseLeave={() => setHoveredCard(null)}
@@ -194,7 +203,7 @@ export default function ModelsPage() {
           key={preset.id}
           preset={preset}
           providers={providers}
-          onSaved={fetchAll}
+          onSaved={afterConnectionSaved}
           isHover={hoveredCard === `preset-${preset.id}`}
           onMouseEnter={() => setHoveredCard(`preset-${preset.id}`)}
           onMouseLeave={() => setHoveredCard(null)}
@@ -273,8 +282,8 @@ export default function ModelsPage() {
 
   return (
     <PageShell
-      title={t("pageShell.models.title")}
-      subtitle={t("pageShell.models.subtitle")}
+      title={t(chatOnly ? "models.chatModelsTab" : "pageShell.models.title")}
+      subtitle={chatOnly ? undefined : t("pageShell.models.subtitle")}
       actions={
         modelCategory === "chat" || modelCategory === "embedding" ? (
           <Space>
@@ -288,90 +297,92 @@ export default function ModelsPage() {
         ) : null
       }
     >
-      <Tabs
-        activeKey={modelCategory}
-        onChange={setModelCategory}
-        items={[
-          ...(canChat
-            ? [
-                {
-                  key: "chat",
-                  label: (
-                    <Space className={styles.modelTabLabel} size={6}>
-                      <MessageSquareText size={15} />
-                      {t("models.chatModelsTab")}
-                    </Space>
-                  ),
-                },
-              ]
-            : []),
-          ...(canEmbedding
-            ? [
-                {
-                  key: "embedding",
-                  label: (
-                    <Space className={styles.modelTabLabel} size={6}>
-                      <Boxes size={15} />
-                      {t("models.embeddingModelsTab")}
-                    </Space>
-                  ),
-                },
-              ]
-            : []),
-          ...(canGeneration
-            ? [
-                {
-                  key: "generation",
-                  label: (
-                    <Space className={styles.modelTabLabel} size={6}>
-                      <Images size={15} />
-                      {t("models.generationModelsTab")}
-                    </Space>
-                  ),
-                },
-              ]
-            : []),
-          ...(canVoice
-            ? [
-                {
-                  key: "voice",
-                  label: (
-                    <Space className={styles.modelTabLabel} size={6}>
-                      <Mic2 size={15} />
-                      {t("models.voiceModelsTab")}
-                    </Space>
-                  ),
-                },
-              ]
-            : []),
-          ...(canDecision
-            ? [
-                {
-                  key: "decision",
-                  label: (
-                    <Space className={styles.modelTabLabel} size={6}>
-                      <Scale size={15} />
-                      {t("models.decisionModelsTab")}
-                    </Space>
-                  ),
-                },
-              ]
-            : []),
-          ...(canSearch
-            ? [
-                {
-                  key: "search",
-                  label: (
-                    <Space className={styles.modelTabLabel} size={6}>
-                      <Search size={15} />
-                      {t("models.searchModelsTab")}
-                    </Space>
-                  ),
-                },
-              ]
-            : []),
-        ]}
-      />
+      {!chatOnly && (
+        <Tabs
+          activeKey={modelCategory}
+          onChange={setModelCategory}
+          items={[
+            ...(canChat
+              ? [
+                  {
+                    key: "chat",
+                    label: (
+                      <Space className={styles.modelTabLabel} size={6}>
+                        <MessageSquareText size={15} />
+                        {t("models.chatModelsTab")}
+                      </Space>
+                    ),
+                  },
+                ]
+              : []),
+            ...(canEmbedding
+              ? [
+                  {
+                    key: "embedding",
+                    label: (
+                      <Space className={styles.modelTabLabel} size={6}>
+                        <Boxes size={15} />
+                        {t("models.embeddingModelsTab")}
+                      </Space>
+                    ),
+                  },
+                ]
+              : []),
+            ...(canGeneration
+              ? [
+                  {
+                    key: "generation",
+                    label: (
+                      <Space className={styles.modelTabLabel} size={6}>
+                        <Images size={15} />
+                        {t("models.generationModelsTab")}
+                      </Space>
+                    ),
+                  },
+                ]
+              : []),
+            ...(canVoice
+              ? [
+                  {
+                    key: "voice",
+                    label: (
+                      <Space className={styles.modelTabLabel} size={6}>
+                        <Mic2 size={15} />
+                        {t("models.voiceModelsTab")}
+                      </Space>
+                    ),
+                  },
+                ]
+              : []),
+            ...(canDecision
+              ? [
+                  {
+                    key: "decision",
+                    label: (
+                      <Space className={styles.modelTabLabel} size={6}>
+                        <Scale size={15} />
+                        {t("models.decisionModelsTab")}
+                      </Space>
+                    ),
+                  },
+                ]
+              : []),
+            ...(canSearch
+              ? [
+                  {
+                    key: "search",
+                    label: (
+                      <Space className={styles.modelTabLabel} size={6}>
+                        <Search size={15} />
+                        {t("models.searchModelsTab")}
+                      </Space>
+                    ),
+                  },
+                ]
+              : []),
+          ]}
+        />
+      )}
       {modelCategory === "generation" ? (
         <MediaGenerationSettingsPanel />
       ) : modelCategory === "voice" ? (
@@ -400,7 +411,7 @@ export default function ModelsPage() {
             presets={presets}
             canProviders={canProviders}
             canOnnx={canOnnx}
-            onSaved={fetchAll}
+            onSaved={afterConnectionSaved}
           />
         )
       ) : loading ? (
@@ -416,7 +427,7 @@ export default function ModelsPage() {
             activeModel={activeModel}
             modelReasoning={modelReasoning}
             providers={providers}
-            onSaved={fetchAll}
+            onSaved={afterConnectionSaved}
           />
 
           <Divider style={{ margin: "24px 0" }} />
@@ -481,7 +492,7 @@ export default function ModelsPage() {
                     <ProviderCard
                       key={p.id}
                       provider={p}
-                      onSaved={fetchAll}
+                      onSaved={afterConnectionSaved}
                       isHover={hoveredCard === String(p.id)}
                       onMouseEnter={() => setHoveredCard(String(p.id))}
                       onMouseLeave={() => setHoveredCard(null)}
@@ -504,7 +515,7 @@ export default function ModelsPage() {
         <CustomProviderModal
           open={addOpen && canProviders}
           onClose={() => setAddOpen(false)}
-          onSaved={fetchAll}
+          onSaved={afterConnectionSaved}
           apiPrefix="/admin/providers"
         />
       )}

@@ -1,0 +1,433 @@
+.shell,
+.nav,
+.main,
+.room {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.shell {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: var(--fn-text-primary);
+  background: var(--fn-bg-elevated);
+}
+.main,
+.room,
+.nav {
+  flex-direction: column;
+}
+.main,
+.room,
+.chat {
+  flex: 1;
+}
+.nav {
+  flex: 0 0 228px;
+  height: 100%;
+  min-height: 0;
+  background: var(--fn-bg-sidebar);
+  border-inline-end: 1px solid var(--fn-border-primary);
+}
+.navHeader,
+.header,
+.title,
+.item,
+.itemMain,
+.roomTools,
+.message header {
+  display: flex;
+  align-items: center;
+}
+.navHeader,
+.header {
+  min-height: 58px;
+  padding: 8px 16px;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.navHeader {
+  color: var(--fn-text-primary);
+}
+.navHeader > svg {
+  color: var(--fn-text-brand);
+}
+.navHeader strong {
+  flex: 1;
+  font-size: 16px;
+}
+.railList {
+  overflow: auto;
+  flex: 1;
+  padding: 6px 9px;
+}
+.section {
+  margin: 0 0 20px;
+}
+.sectionHeader,
+.sectionTitle,
+.colorChoice {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.sectionHeader {
+  margin-bottom: 4px;
+}
+.sectionTitle {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 3px;
+  border: 0;
+  background: none;
+  color: var(--fn-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sectionTitle > span:not(.colorDot) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sectionTitle small {
+  margin-inline-start: auto;
+}
+.colorDot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.item[data-chief="true"] {
+  margin-bottom: 15px;
+  min-height: 48px;
+  font-weight: 600;
+}
+.unread {
+  font-size: 10px;
+  border-radius: 9px;
+  background: var(--fn-color-brand);
+  color: white;
+  padding: 0 5px;
+}
+.section h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 7px 6px;
+  color: var(--fn-text-secondary);
+}
+.item {
+  border-radius: 8px;
+  min-height: 39px;
+  padding: 0 5px;
+}
+.item:hover {
+  background: var(--fn-bg-hover);
+}
+.item[data-selected="true"] {
+  background: var(--fn-bg-active);
+}
+.itemMain {
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  flex: 1;
+  min-width: 0;
+  text-align: start;
+  gap: 9px;
+  padding: 5px;
+  cursor: pointer;
+}
+.itemMain span:not(:first-child),
+.title small,
+.title h2 {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.itemMain > svg {
+  flex-shrink: 0;
+  color: var(--fn-text-secondary);
+}
+.item > button:last-child:not(.itemMain) {
+  opacity: 0;
+}
+.item:hover > button,
+.item:focus-within > button,
+.item[data-selected="true"] > button {
+  opacity: 1 !important;
+}
+.newGroup {
+  margin: 8px;
+  justify-content: flex-start;
+}
+.header {
+  border-bottom: 1px solid var(--fn-border-primary);
+  justify-content: space-between;
+}
+.title {
+  gap: 10px;
+  min-width: 0;
+}
+.title > div {
+  min-width: 0;
+}
+.title h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+.title small,
+.muted,
+.message small {
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+}
+.title small {
+  display: block;
+  max-width: 48ch;
+}
+.chat {
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+.center {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  height: 100%;
+  width: 100%;
+}
+.roomTools {
+  padding: 7px 18px;
+  gap: 7px;
+  min-height: 42px;
+  flex-shrink: 0;
+}
+.timeline {
+  padding: 12px max(18px, calc((100% - 820px) / 2));
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+.timeline > :global(.octop-empty) {
+  margin-top: 12vh;
+}
+.message {
+  display: flex;
+  gap: 10px;
+  margin: 0 0 20px;
+}
+.messageBody {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.message header {
+  gap: 10px;
+  margin: 4px 0 6px;
+}
+.compose {
+  width: min(820px, calc(100% - 36px));
+  margin: 0 auto 20px;
+  padding: 10px;
+  background: var(--fn-bg-container);
+  border: 1px solid var(--fn-border-input);
+  border-radius: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+.compose > :global(.octop-mentions) {
+  width: 100%;
+  border: none;
+  box-shadow: none;
+}
+.attachments {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.compose > :global(.octop-alert) {
+  width: 100%;
+}
+.stage {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 10px;
+}
+.stage :global(.octop-form-item) {
+  margin-bottom: 10px;
+}
+.sideTurn {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.sideSend {
+  margin-top: 10px;
+}
+.historyItem {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  text-align: start;
+}
+.referenceRow {
+  display: grid;
+  justify-items: start;
+  max-width: 100%;
+  height: auto;
+  text-align: start;
+}
+.referenceRow small {
+  white-space: normal;
+  color: var(--fn-text-secondary);
+}
+@media (max-width: 767px) {
+  .nav {
+    width: 100%;
+    border: 0;
+  }
+  .header {
+    min-height: 48px;
+    padding: 5px 7px;
+  }
+  .title {
+    gap: 4px;
+  }
+  .title small {
+    max-width: 30ch;
+  }
+  .compose {
+    width: calc(100% - 16px);
+    margin-bottom: 8px;
+  }
+  .item > button:last-child:not(.itemMain) {
+    opacity: 1;
+  }
+}
+
+.client {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+  color: var(--fn-text-primary);
+  background: var(--fn-bg-elevated);
+}
+:global(html[data-octop-desktop-chrome="mac"]) .client {
+  padding-top: var(--window-chrome-top-band, 28px);
+}
+.client .nav {
+  flex-basis: clamp(205px, 20vw, 260px);
+}
+.client .header {
+  border-bottom-color: transparent;
+}
+.client .railList {
+  padding: 8px 12px;
+}
+.clientNewChat {
+  margin: 4px 15px 17px;
+  justify-content: flex-start;
+  border-radius: 12px;
+  height: 41px;
+}
+.clientSettings {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  background: var(--fn-bg-elevated);
+}
+.clientSettings > header {
+  flex-shrink: 0;
+  border-bottom-color: var(--fn-border-primary);
+}
+.clientSettings > :last-child:not(header) {
+  min-height: 0;
+}
+.account {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.accountHint {
+  margin: 28px;
+}
+.introActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.introActions button {
+  border-radius: 20px;
+}
+
+.connectScroll {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  padding: clamp(18px, 5vh, 52px) 18px;
+}
+.connectPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  width: min(100%, 420px);
+  margin: auto;
+  color: var(--fn-text-primary);
+}
+.connectPanel > :first-child {
+  align-self: center;
+}
+.connectPanel h1 {
+  font-size: clamp(24px, 4vw, 31px);
+  font-weight: 600;
+  text-align: center;
+  margin: 0;
+  letter-spacing: -0.035em;
+}
+.connectPanel p {
+  color: var(--fn-text-secondary);
+  line-height: 1.6;
+  margin: 0;
+  text-align: center;
+}
+.connectPanel label:not(:global(.octop-radio-button-wrapper)) {
+  font-size: 13px;
+  margin: 0 0 -6px;
+}
+.connectModes {
+  display: flex;
+  margin: 6px 0;
+}
+.connectModes > label {
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
+  padding-inline: 5px;
+}
+.connectModes svg {
+  vertical-align: -2px;
+  margin-inline-end: 4px;
+}
+.connectPanel > button {
+  border-radius: 18px;
+  min-height: 36px;
+}
+.catalogBack {
+  padding: 5px 16px;
+}

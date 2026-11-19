@@ -16,6 +16,8 @@ from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.audit import AuditRepo
 from octop.infra.db.repos.auth_challenges import AuthChallengeRepo
 from octop.infra.db.repos.backends import BackendRepo
+from octop.infra.db.repos.bot_avatar_photos import BotAvatarPhotoRepo
+from octop.infra.db.repos.bot_groups import BotGroupRepo
 from octop.infra.db.repos.bridge_connections import BridgeConnectionRepo
 from octop.infra.db.repos.care_push import CarePushRepo
 from octop.infra.db.repos.channels import ChannelRepo
@@ -72,6 +74,8 @@ class RepoBundle:
     settings_repo: SettingsRepo
     storage_backend_repo: SealedBackendRepo
     bridge_connection_repo: BridgeConnectionRepo
+    bot_avatar_photo_repo: BotAvatarPhotoRepo
+    bot_group_repo: BotGroupRepo
     connector_repo: ConnectorRepo
     skill_package_repo: SkillPackageRepo
     published_expert_repo: PublishedExpertRepo
@@ -113,6 +117,8 @@ class RepoBundle:
             settings_repo=SettingsRepo(db),
             storage_backend_repo=SealedBackendRepo(BackendRepo(db), secret_repo),
             bridge_connection_repo=BridgeConnectionRepo(db),
+            bot_avatar_photo_repo=BotAvatarPhotoRepo(db),
+            bot_group_repo=BotGroupRepo(db),
             connector_repo=ConnectorRepo(db),
             skill_package_repo=SkillPackageRepo(db),
             published_expert_repo=PublishedExpertRepo(db),

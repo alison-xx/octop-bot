@@ -31,13 +31,16 @@ def parse_octop_user_id(raw: object) -> int | None:
     return user_id
 
 
-def user_browser_profile(user_id: int) -> str:
+def user_browser_profile(user_id: int, bot_id: str | None = None) -> str:
     """Stable octop-browser profile name for one Octop user.
 
     Dashboard and CLI turns use the logged-in user. IM turns use the agent
     owner (the same id already stored on the thread). A leftover on-disk
     ``default`` directory is not migrated and must not be reused.
     """
+    if bot_id is not None:
+        # Hex preserves case on Windows and keeps arbitrary legacy IDs out of paths.
+        return f"user-{user_id}-bot-{bot_id.encode('utf-8').hex()}"
     return f"user-{user_id}"
 
 

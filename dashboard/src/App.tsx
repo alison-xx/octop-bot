@@ -13,6 +13,10 @@ import { useNativeWindowChrome } from "./hooks/useNativeWindowChrome";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { routerBasename } from "./utils/publicUrl";
 import { useTranslation } from "react-i18next";
+import { isBotOnlyDesktop } from "./utils/desktopBridge";
+import BotClientRoutes, {
+  BotClientSetupRoute,
+} from "./pages/OctopBot/BotClientRoutes";
 import MainLayout from "./layouts/MainLayout";
 import LoginPage from "./pages/Login";
 import OidcComplete from "./pages/Login/OidcComplete";
@@ -49,6 +53,7 @@ const GlobalStyle = createGlobalStyle`
 function ThemedApp() {
   const { isDark, palette, customColor } = useTheme();
   const { t, i18n } = useTranslation();
+  const botOnly = isBotOnlyDesktop();
   const isMobile = useIsMobile();
   const desktopChrome = useDesktopChrome();
   // Native window buttons follow the app theme. Linux draws square ones.
@@ -65,8 +70,8 @@ function ThemedApp() {
 
   // Set document title based on current language
   useEffect(() => {
-    document.title = t("app.pageTitle");
-  }, [t]);
+    document.title = t(botOnly ? "nav.octopBot" : "app.pageTitle");
+  }, [t, botOnly]);
 
   const themeConfig = {
     algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
@@ -134,7 +139,7 @@ function ThemedApp() {
     >
       <AntdAppProvider>
         <DesktopChromeProvider value={desktopChrome}>
-          <PwaUpdatePrompt />
+          {!botOnly && <PwaUpdatePrompt />}
           {/* Login, setup and invite sit outside MainLayout, so the drag
               strip has to live above the router, not only inside the shell. */}
           <DesktopWindowDragBand />
@@ -142,9 +147,14 @@ function ThemedApp() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/login/oidc/complete" element={<OidcComplete />} />
-            <Route path="/setup" element={<SetupPage />} />
-            <Route path="/invite" element={<InvitePage />} />
-            <Route path="/share/:shareId" element={<SharePage />} />
+            <Route
+              path="/setup"
+              element={botOnly ? <BotClientSetupRoute /> : <SetupPage />}
+            />
+            {!botOnly && <Route path="/invite" element={<InvitePage />} />}
+            {!botOnly && (
+              <Route path="/share/:shareId" element={<SharePage />} />
+            )}
             <Route
               path="/*"
               element={
@@ -152,7 +162,7 @@ function ThemedApp() {
                   <AgentProvider>
                     <LayoutModeProvider>
                       <VoiceOutputProvider>
-                        <MainLayout />
+                        {botOnly ? <BotClientRoutes /> : <MainLayout />}
                       </VoiceOutputProvider>
                     </LayoutModeProvider>
                   </AgentProvider>

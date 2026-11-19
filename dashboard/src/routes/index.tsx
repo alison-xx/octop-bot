@@ -2,6 +2,7 @@ import { lazy } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 
 // Lazy-loaded pages — Common
+const OctopBotPage = lazy(() => import("../pages/OctopBot"));
 const ExpertsPage = lazy(() => import("../pages/Experts"));
 const CronJobsPage = lazy(() => import("../pages/Control/CronJobs"));
 const ConnectorsPage = lazy(() => import("../pages/Agent/Connectors"));
@@ -48,6 +49,7 @@ export interface RouteConfig {
 
 export const pathToKey: Record<string, string> = {
   "/chat": "chat",
+  "/octop-bot": "octop-bot",
   // Common
   "/experts": "experts",
   "/tasks": "tasks",
@@ -104,6 +106,7 @@ export const FULLSCREEN_PATHS = new Set([
   "/workbench/browser",
   "/workbench/cloud",
   "/chat",
+  "/octop-bot",
   "/remote-desktop",
   "/remote-desktop/desktop",
   "/remote-desktop/phone",
@@ -138,6 +141,7 @@ export function isPersonalizationPath(pathname: string): boolean {
 
 export function resolveSelectedKey(pathname: string): string {
   if (pathToKey[pathname]) return pathToKey[pathname];
+  if (pathname.startsWith("/octop-bot/")) return "octop-bot";
   if (pathname.startsWith("/chat/")) return "chat";
   if (pathname.startsWith("/workbench/")) return "workbench";
   if (pathname.startsWith("/remote-desktop/")) return "remote-desktop";
@@ -150,6 +154,10 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/chat", element: null, useWrapper: true },
   { path: "/chat/:agentId", element: null, useWrapper: true },
   { path: "/chat/:agentId/:threadId", element: null, useWrapper: true },
+
+  { path: "/octop-bot", element: <OctopBotPage /> },
+  { path: "/octop-bot/bots/:agentId/:threadId?", element: <OctopBotPage /> },
+  { path: "/octop-bot/groups/:groupId", element: <OctopBotPage /> },
 
   // Common
   { path: "/experts", element: <ExpertsPage /> },

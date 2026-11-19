@@ -1,0 +1,359 @@
+import { useEffect, useRef, useState } from "react";
+import { Alert, Button, Select, Spin } from "antd";
+import { ExternalLink, RefreshCw } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import {
+  lynxceBotApi,
+  type LynxceAttempt,
+  type LynxceModel,
+  type LynxceStatus,
+} from "../../api/modules/lynxceBot";
+import { apiErrorMessage, isNotFoundApiError } from "../../utils/apiError";
+import styles from "./BotClientSettings.module.less";
+
+function externalUrl(value: string) {
+  try {
+    const url = new URL(value);
+    if (
+      url.origin === "https://api.lynxce.cn" &&
+      url.pathname === "/api/oauth/mcp/authorize" &&
+      !url.username &&
+      !url.password
+    )
+      return url.href;
+  } catch {
+    /* Invalid server response. */
+  }
+  return null;
+}
+
+function savedAttempt(key: string): LynxceAttempt | null {
+  try {
+    const item = JSON.parse(sessionStorage.getItem(key) || "null");
+    return typeof item?.attempt_id === "string" &&
+      externalUrl(item.authorization_url)
+      ? item
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export default function LynxceAccount({
+  owner,
+  status,
+  statusError,
+  onReload,
+  onSaved,
+  onSwitch,
+}: {
+  owner: string;
+  status: LynxceStatus | null;
+  statusError: string;
+  onReload: () => void;
+  onSaved: () => void;
+  onSwitch?: () => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const key = "octop-bot:lynxce-login:" + owner;
+  const [attempt, setAttempt] = useState<LynxceAttempt | null>(() =>
+    savedAttempt(key),
+  );
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [pollError, setPollError] = useState("");
+  const [pollRevision, setPollRevision] = useState(0);
+  const [models, setModels] = useState<LynxceModel[] | null>(null);
+  const [modelError, setModelError] = useState("");
+  const [choice, setChoice] = useState<string>();
+  const [revision, setRevision] = useState(0);
+  const mounted = useRef(false);
+  const pendingId = useRef(attempt?.attempt_id);
+  const refreshed = useRef(onSaved);
+  useEffect(() => {
+    refreshed.current = onSaved;
+  }, [onSaved]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!attempt) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll(id: string) {
+      try {
+        const reply = await lynxceBotApi.poll(id, controller.signal);
+        if (controller.signal.aborted || pendingId.current !== id) return;
+        if (reply.state === "pending") {
+          timer = setTimeout(() => void poll(id), 1500);
+          return;
+        }
+        sessionStorage.removeItem(key);
+        pendingId.current = undefined;
+        setAttempt(null);
+        if (reply.state === "failed")
+          setError(reply.detail || t("botClient.lynxce.authFailed"));
+        else refreshed.current();
+      } catch (e) {
+        if (controller.signal.aborted || pendingId.current !== id) return;
+        if (isNotFoundApiError(e)) {
+          sessionStorage.removeItem(key);
+          pendingId.current = undefined;
+          setAttempt(null);
+          setError(t("botClient.lynxce.expired"));
+          refreshed.current();
+        } else setPollError(apiErrorMessage(e, t("octopBot.failed"), t));
+      }
+    }
+    setPollError("");
+    void poll(attempt.attempt_id);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [attempt, key, pollRevision, t]);
+
+  useEffect(() => {
+    if (!status?.connected || attempt) return;
+    let current = true;
+    setModelError("");
+    setModels(null);
+    setChoice(undefined);
+    lynxceBotApi.models().then(
+      ({ models: rows }) => {
+        if (!current) return;
+        setModels(rows);
+        setChoice(
+          rows.find((m) => m.id === status.selected_model)?.id ??
+            (rows.length === 1 ? rows[0].id : undefined),
+        );
+      },
+      (e) => {
+        if (current) setModelError(apiErrorMessage(e, t("octopBot.failed"), t));
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [status, attempt, revision, t]);
+
+  const run = async (action: string, work: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(action);
+    setError("");
+    try {
+      await work();
+    } catch (e) {
+      if (mounted.current)
+        setError(apiErrorMessage(e, t("octopBot.failed"), t));
+    } finally {
+      if (mounted.current) setBusy("");
+    }
+  };
+  const login = () =>
+    run("login", async () => {
+      const result = await lynxceBotApi.login();
+      const url = externalUrl(result.authorization_url);
+      if (!url) {
+        await lynxceBotApi.cancel(result.attempt_id);
+        throw new Error(t("botClient.lynxce.invalidLink"));
+      }
+      sessionStorage.setItem(key, JSON.stringify(result));
+      if (!mounted.current) return;
+      pendingId.current = result.attempt_id;
+      setPollError("");
+      setAttempt(result);
+      window.open(url, "_blank", "noopener,noreferrer");
+    });
+  const cancel = () =>
+    run("cancel", async () => {
+      if (!attempt) return;
+      pendingId.current = undefined;
+      try {
+        await lynxceBotApi.cancel(attempt.attempt_id);
+      } catch (e) {
+        if (!isNotFoundApiError(e)) {
+          pendingId.current = attempt.attempt_id;
+          if (mounted.current) setPollRevision((n) => n + 1);
+          throw e;
+        }
+      }
+      sessionStorage.removeItem(key);
+      if (mounted.current) {
+        setPollError("");
+        setAttempt(null);
+        onReload();
+      }
+    });
+  const loginButton = (
+    <Button
+      type={status?.connected ? "link" : "primary"}
+      loading={busy === "login"}
+      disabled={!!busy}
+      onClick={() => void login()}
+    >
+      {t(
+        status?.connected
+          ? "botClient.lynxce.relogin"
+          : "botClient.lynxce.login",
+      )}
+    </Button>
+  );
+  return (
+    <div className={styles.form} data-lynxce-account>
+      {(error || statusError) && (
+        <Alert
+          type="error"
+          showIcon
+          message={error || statusError}
+          action={
+            statusError && (
+              <Button onClick={onReload}>{t("octopBot.retry")}</Button>
+            )
+          }
+        />
+      )}
+      {attempt ? (
+        <>
+          <Alert
+            type="info"
+            showIcon
+            message={t("botClient.lynxce.pending")}
+            description={t("botClient.lynxce.waitHint")}
+          />
+          {pollError && (
+            <Alert
+              type="error"
+              showIcon
+              message={pollError}
+              action={
+                <Button onClick={() => setPollRevision((n) => n + 1)}>
+                  {t("octopBot.retry")}
+                </Button>
+              }
+            />
+          )}
+          <div className={styles.accountActions}>
+            <Button
+              href={attempt.authorization_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              icon={<ExternalLink size={15} />}
+            >
+              {t("botClient.lynxce.reopen")}
+            </Button>
+            <Button
+              type="text"
+              loading={busy === "cancel"}
+              onClick={() => void cancel()}
+            >
+              {t("botClient.lynxce.cancel")}
+            </Button>
+          </div>
+        </>
+      ) : !status ? (
+        !statusError && <Spin />
+      ) : !status.connected ? (
+        <>
+          <p>{t("botClient.lynxce.hint")}</p>
+          {loginButton}
+        </>
+      ) : (
+        <>
+          <div className={styles.accountHeading}>
+            <strong>{t("botClient.lynxce.connected")}</strong>
+            <Button
+              type="text"
+              title={t("botClient.lynxce.refresh")}
+              aria-label={t("botClient.lynxce.refresh")}
+              icon={<RefreshCw size={14} />}
+              onClick={() => setRevision((n) => n + 1)}
+            />
+          </div>
+          {modelError ? (
+            <Alert
+              type="error"
+              showIcon
+              message={modelError}
+              action={
+                <Button onClick={() => setRevision((n) => n + 1)}>
+                  {t("octopBot.retry")}
+                </Button>
+              }
+            />
+          ) : models === null ? (
+            <Spin />
+          ) : models.length === 0 ? (
+            <Alert type="info" showIcon message={t("botClient.lynxce.empty")} />
+          ) : (
+            <>
+              <label htmlFor="lynxce-personal-model">
+                {t("botClient.lynxce.choose")}
+              </label>
+              <Select
+                id="lynxce-personal-model"
+                showSearch
+                optionFilterProp="label"
+                value={choice}
+                placeholder={t("botClient.lynxce.choose")}
+                disabled={!!busy}
+                onChange={setChoice}
+                options={models.map((m) => ({
+                  value: m.id,
+                  label: m.name || m.id,
+                }))}
+              />
+              <Button
+                type="primary"
+                disabled={!!busy || !choice || choice === status.selected_model}
+                loading={busy === "apply"}
+                onClick={() =>
+                  void run("apply", async () => {
+                    if (choice) {
+                      await lynxceBotApi.select(choice);
+                      onSaved();
+                    }
+                  })
+                }
+              >
+                {t(
+                  choice && choice === status.selected_model
+                    ? "botClient.lynxce.inUse"
+                    : "botClient.lynxce.apply",
+                )}
+              </Button>
+            </>
+          )}
+          <div className={styles.accountActions}>
+            {loginButton}
+            <Button
+              type="link"
+              disabled={!!busy}
+              loading={busy === "logout"}
+              onClick={() =>
+                void run("logout", async () => {
+                  await lynxceBotApi.logout();
+                  onSaved();
+                })
+              }
+            >
+              {t("botClient.lynxce.logout")}
+            </Button>
+          </div>
+        </>
+      )}
+      {onSwitch && !attempt && (
+        <Button
+          disabled={!!busy}
+          loading={busy === "switch"}
+          onClick={() => void run("switch", onSwitch)}
+        >
+          {t("botClient.lynxce.useOther")}
+        </Button>
+      )}
+    </div>
+  );
+}

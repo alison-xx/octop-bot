@@ -4,7 +4,10 @@ import { bridgeApi } from "../api/modules/bridge";
 import { getWsUrl } from "../api/config";
 import { getAuthToken } from "../api/request";
 import type { BrowserSession, DisplayEnvironment } from "../api/types/browser";
-import { resolveBrowserProfile } from "../utils/browserProfile";
+import {
+  resolveBrowserProfile,
+  scopedBrowserUrl,
+} from "../utils/browserProfile";
 import { useCurrentUser } from "./useCurrentUser";
 
 /**
@@ -147,7 +150,7 @@ export function useBrowserSessionState(
 
     let ws: WebSocket;
     try {
-      ws = new WebSocket(wsUrl);
+      ws = new WebSocket(bridgeId ? wsUrl : scopedBrowserUrl(wsUrl));
     } catch {
       // Schedule reconnect
       scheduleReconnect();

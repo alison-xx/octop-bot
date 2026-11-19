@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { rememberBotLoginPath } from "../utils/botClientRoute";
+import { useLocation, useNavigate } from "react-router-dom";
 import { clearAuthToken, getAuthToken } from "../api/request";
 import { authApi, type OctopUser } from "../api/modules/auth";
 import { applyUserLocale } from "../utils/locale";
@@ -37,6 +38,7 @@ interface AuthGuardProps {
  */
 export default function AuthGuard({ children }: AuthGuardProps) {
   const navigate = useNavigate();
+  const currentPath = useRef(useLocation().pathname);
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
 
@@ -62,6 +64,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         // No admin yet → push to setup wizard; drop any leftover JWT from a
         // previous install so background prefetch cannot stampede lockdown.
         if (status.setup_required) {
+          rememberBotLoginPath(currentPath.current);
           clearAuthToken();
           if (!cancelled) navigateRef.current("/setup", { replace: true });
           return;
@@ -70,6 +73,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         // Setup done. Need a token.
         const token = getAuthToken();
         if (!token) {
+          rememberBotLoginPath(currentPath.current);
           if (!cancelled) {
             setAuthed(false);
             // Stay on the spinner until navigation away completes — do not
@@ -92,6 +96,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
           }
         } catch (err) {
           if (cancelled) return;
+          rememberBotLoginPath(currentPath.current);
           if (isNetworkFetchError(err)) {
             setOffline(true);
             setChecking(false);

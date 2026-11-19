@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
+import { useChatNavigate } from "../ChatRouteContext";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import { octopAgentsApi } from "../../../api/modules/octopAgents";
 import * as chatStore from "./chatStore";
@@ -41,7 +42,7 @@ export function useChatNavigation({
   fetchSessions,
   refreshAgents,
 }: UseChatNavigationParams) {
-  const navigate = useNavigate();
+  const navigate = useChatNavigate();
   const location = useLocation();
   // One-shot blank-chat intent from minimal nav "+" on non-chat routes.
   const preferEmptyChatRef = useRef(false);

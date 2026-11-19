@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, Literal
@@ -556,6 +557,9 @@ async def upload_agent_avatar(
     icon_url = agent_avatar_api_path(agent_id)
     assert server.app_runtime is not None
     row = server.app_runtime.agent_registry.set_icon_url(agent_id, icon_url)
+    from octop.infra.agents.bot_appearance import mark_bot_photo
+
+    await asyncio.to_thread(mark_bot_photo, server.services.settings_repo, row)
     return {
         "icon_url": display_agent_icon_url(
             agent_id=agent_id,

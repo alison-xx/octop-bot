@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -61,8 +62,9 @@ def _make_manager(*, existing_agent_ids: set[str]):
     mgr._repos = SimpleNamespace(
         agent_repo=SimpleNamespace(get=repo_get),
         user_policy_repo=SimpleNamespace(get=lambda *args, **kwargs: None),
+        settings_repo=SimpleNamespace(with_prefix=lambda prefix: {}),
     )
-    mgr._paths = SimpleNamespace(ensure_agent_workspace=ensure_workspace)
+    mgr._paths = SimpleNamespace(agent_workspace=Path, ensure_agent_workspace=ensure_workspace)
     mgr._lock = asyncio.Lock()
     mgr._assert_agent_name_available = lambda user_id, name: None  # type: ignore[method-assign]
     return mgr, WorkspaceReached

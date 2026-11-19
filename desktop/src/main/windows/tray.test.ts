@@ -73,3 +73,12 @@ test("tray menu follows the OS locale", () => {
   assert.deepEqual(trayMenuLabels("zh-CN"), { show: "显示窗口", quit: "退出" });
   assert.deepEqual(trayMenuLabels("en-US"), { show: "Show window", quit: "Quit" });
 });
+
+test("Bot prefers its own tray asset and names its window in the menu", () => {
+  const dir = join("desktop", "resources");
+  for (const [platform, extension] of [["win32", "ico"], ["linux", "png"]] as const) {
+    const icons = trayIconCandidates({ botOnly: true, platform, resourcesDir: dir, execPath: "client", isPackaged: false });
+    assert.deepEqual(icons, [join(dir, `bot-icon.${extension}`), join(dir, `icon.${extension}`)]);
+  }
+  assert.deepEqual(trayMenuLabels("zh-CN", true), { show: "打开 Octop Bot", quit: "退出 Octop Bot" });
+});

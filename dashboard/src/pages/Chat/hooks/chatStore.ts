@@ -1,3 +1,4 @@
+import { currentBrowserBotId } from "../../../utils/browserProfile";
 /**
  * Module-level chat store that survives React component unmount/remount cycles.
  *
@@ -3188,6 +3189,7 @@ async function sendTurnWebSocket(
   clientMessageId?: string | null,
   sessionMode?: string | null,
 ): Promise<boolean> {
+  const botBrowser = currentBrowserBotId() === agentId;
   const state = getOrCreate(sessionId);
   const resolvedThreadId = (threadId || sessionId).trim();
 
@@ -3269,6 +3271,7 @@ async function sendTurnWebSocket(
       }
       if (reasoningMode) payload.reasoning_mode = reasoningMode;
       if (reasoningEffort) payload.reasoning_effort = reasoningEffort;
+      if (botBrowser) payload.bot_browser = true;
       if (conversationMode) payload.conversation_mode = conversationMode;
       if (sessionMode) payload.session_mode = sessionMode;
       if (hitlPolicy) payload.hitl_policy = hitlPolicy;

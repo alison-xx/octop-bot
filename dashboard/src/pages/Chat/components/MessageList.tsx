@@ -70,6 +70,7 @@ const VirtuosoList = forwardRef<HTMLDivElement, VirtuosoListProps>(
         {...props}
         style={style}
         className={cx(styles.messageListInner, className)}
+        data-message-list-inner=""
       >
         {children}
       </div>
@@ -87,6 +88,7 @@ const virtuosoComponents: Components<MessageGroup, VirtuosoListContext> = {
 };
 
 interface MessageListProps {
+  introduction?: ReactNode;
   messages: ChatMessage[];
   agentId?: string | null;
   composerLookups?: ComposerTagLookups;
@@ -260,6 +262,7 @@ function renderMessageGroup(
 export default function MessageList(props: MessageListProps) {
   const {
     messages,
+    introduction,
     agentId,
     composerLookups,
     loading,
@@ -574,7 +577,7 @@ export default function MessageList(props: MessageListProps) {
   ]);
 
   const historyHeader = useMemo(() => {
-    if (!historyHasMore && !historyLoadingMore) return null;
+    if (!historyHasMore && !historyLoadingMore) return introduction ?? null;
     return (
       <div className={styles.turnInset}>
         <div className={styles.historyLoadMore}>
@@ -601,7 +604,13 @@ export default function MessageList(props: MessageListProps) {
         </div>
       </div>
     );
-  }, [historyHasMore, historyLoadingMore, requestOlderMessages, t]);
+  }, [
+    historyHasMore,
+    historyLoadingMore,
+    introduction,
+    requestOlderMessages,
+    t,
+  ]);
 
   const refreshFooter = useMemo(() => {
     if (!historyRefreshing) return null;
@@ -912,7 +921,7 @@ export default function MessageList(props: MessageListProps) {
         />
       ) : (
         <div className={styles.messageList} ref={bindNonVirtualScroller}>
-          <div className={styles.messageListInner}>
+          <div className={styles.messageListInner} data-message-list-inner="">
             {historyHeader}
             {messageGroups.map((group, groupIndex) => (
               // Stable key: first message id only. Joining all ids remounts the

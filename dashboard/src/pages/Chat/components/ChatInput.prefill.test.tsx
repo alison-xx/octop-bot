@@ -55,6 +55,7 @@ vi.mock("../hooks/useChatAttachments", () => ({
 }));
 
 vi.mock("../hooks/chatStore", () => ({
+  onSteerRestore: () => () => undefined,
   consumePendingPrefillAttachments: () => [],
   readInputDraft: (agentId: string) =>
     agentId === "agent-2" ? "target expert draft" : "",
@@ -287,6 +288,32 @@ describe("ChatInput prefill clear-on-send", () => {
     fireEvent.change(textarea, { target: { value: "second question" } });
     fireEvent.click(screen.getByRole("button", { name: "send" }));
     expect(onSend).toHaveBeenCalledWith("second question", undefined);
+    expect(onQueue).not.toHaveBeenCalled();
+  });
+
+  it("routes /side to the separate panel while the main bot is working", () => {
+    const onSend = vi.fn(),
+      onQueue = vi.fn(),
+      onSideChat = vi.fn();
+    render(
+      <ChatInput
+        onSend={onSend}
+        onQueue={onQueue}
+        onSideChat={onSideChat}
+        onCancel={vi.fn()}
+        onNewChat={vi.fn()}
+        isStreaming
+        agentId="writer"
+        threadId="thread-1"
+      />,
+    );
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, {
+      target: { value: "/side are there sources?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    expect(onSideChat).toHaveBeenCalledWith("are there sources?");
+    expect(onSend).not.toHaveBeenCalled();
     expect(onQueue).not.toHaveBeenCalled();
   });
 });

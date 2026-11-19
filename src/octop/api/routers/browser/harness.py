@@ -12,24 +12,13 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from octop.api.deps import current_user
+from octop.api.routers.browser.profile import selected_profile
+from octop.infra.control.browser.handoff import control_owner_for, set_control_owner
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.utils.browser_media import user_browser_profile
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# In-memory control ownership per session (keyed by harness profile / session_id).
-# This is a UI/coordination hint: the agent pauses interactive input while the
-# user is in control. It is stored separately from the live session so a
-# takeover survives dashboard reloads and WS reconnects.
-_CONTROL_OWNERS: dict[str, str] = {}
-
-
-def control_owner_for(session_id: str) -> str:
-    """Return the current control owner for a session, defaulting to 'agent'."""
-    return _CONTROL_OWNERS.get(session_id, "agent")
 
 
 class HandoffBody(BaseModel):
@@ -295,16 +284,16 @@ async def harness_sessions_payload(profile_name: str) -> dict[str, Any]:
 
 
 @router.get("/browser/harness-sessions")
-async def list_harness_sessions(user: Any = Depends(current_user)) -> dict[str, Any]:
+async def list_harness_sessions(profile: str = Depends(selected_profile)) -> dict[str, Any]:
     """List the current user's live octop-browser profile."""
-    return await harness_sessions_payload(user_browser_profile(user.id))
+    return await harness_sessions_payload(profile)
 
 
 @router.post("/browser/sessions/{session_id}/handoff")
 async def handoff(
     session_id: str,
     body: HandoffBody,
-    user: Any = Depends(current_user),
+    profile: str = Depends(selected_profile),
 ) -> dict[str, Any]:
     """Switch control of a browser session between the agent and the user.
 
@@ -313,13 +302,12 @@ async def handoff(
     session and reflected in ``harness-sessions`` and the WS screencast so a
     takeover survives dashboard reloads and reconnects.
     """
-    profile = user_browser_profile(user.id)
     if session_id not in {"", "auto"} and session_id != profile:
         logger.debug("handoff path %r ignored; using %r", session_id, profile)
     target = body.target
     if target not in ("agent", "user"):
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "target must be 'agent' or 'user'")
-    _CONTROL_OWNERS[profile] = target
+    set_control_owner(profile, target)
 
     payload = await harness_sessions_payload(profile)
     session = next(
@@ -348,7 +336,7 @@ async def handoff(
     "/browser/shutdown",
     summary="Stop the local Chrome process for an octop-browser profile",
 )
-async def shutdown_browser(user: Any = Depends(current_user)) -> dict[str, Any]:
+async def shutdown_browser(profile: str = Depends(selected_profile)) -> dict[str, Any]:
     """Terminate the current user's Octop-managed Chrome. Cookies stay on disk."""
     try:
         from octop_browser.tool_interface import browser_tool
@@ -359,14 +347,12 @@ async def shutdown_browser(user: Any = Depends(current_user)) -> dict[str, Any]:
             status=503,
         ) from exc
 
-    hint = user_browser_profile(user.id)
-
-    result = await browser_tool(action="close_session", profile=hint, kill=True)
-    _CONTROL_OWNERS.pop(hint, None)
+    result = await browser_tool(action="close_session", profile=profile, kill=True)
+    set_control_owner(profile, "agent")
     if not result.success:
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
-            result.error or f"failed to stop browser profile {hint!r}",
+            result.error or f"failed to stop browser profile {profile!r}",
             status=503,
         )
-    return {"ok": True, "profile": hint}
+    return {"ok": True, "profile": profile}

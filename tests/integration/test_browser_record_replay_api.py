@@ -5,6 +5,27 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 
+async def test_bot_browser_handoff_and_recording_require_ownership(
+    env_alice_bob_agent: Any,
+) -> None:
+    client, _, alice, bob, agent_id = env_alice_bob_agent
+    query = {"bot_id": agent_id}
+    handoff = "/api/browser/sessions/auto/handoff"
+    denied = await client.post(handoff, params=query, headers=bob, json={"target": "user"})
+    assert denied.status_code == 404
+    allowed = await client.post(handoff, params=query, headers=alice, json={"target": "user"})
+    allowed.raise_for_status()
+    profile = allowed.json()["session"]["profile_name"]
+    assert profile.endswith("-bot-" + agent_id.encode().hex())
+    assert allowed.json()["session"]["control_owner"] == "user"
+    legacy = await client.post(handoff, headers=alice, json={"target": "agent"})
+    assert legacy.json()["session"]["profile_name"] != profile
+    denied_record = await client.get("/api/browser/record-replay/status", headers=bob, params=query)
+    assert denied_record.status_code == 404
+    released = await client.post(handoff, params=query, headers=alice, json={"target": "agent"})
+    assert released.json()["session"]["control_owner"] == "agent"
+
+
 async def test_record_replay_status_returns_daemon_status(env: Any) -> None:
     client, _srv, auth = env
 

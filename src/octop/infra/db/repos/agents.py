@@ -238,6 +238,38 @@ class AgentRepo:
                 (bool_int(shared), now_ts(), agent_id),
             )
 
+    def set_bot_privacy(
+        self,
+        agent_id: str,
+        expected_config: str | None,
+        config: str,
+        directory_key: str,
+        directory_record: str | None,
+    ) -> bool:
+        """Persist the privacy setting, directory reservation and revoked shares together."""
+        with self._db.transaction() as conn:
+            updated = conn.execute(
+                "UPDATE agents SET config_json=?, updated_at=? WHERE agent_id=? "
+                "AND COALESCE(config_json,'')=COALESCE(?,'')",
+                (config, now_ts(), agent_id, expected_config),
+            )
+            if updated.rowcount != 1:
+                return False
+            if directory_record is None:
+                conn.execute("DELETE FROM settings WHERE key=?", (directory_key,))
+            else:
+                conn.execute(
+                    "INSERT INTO settings(key,value) VALUES(?,?) "
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    (directory_key, directory_record),
+                )
+                conn.execute(
+                    "UPDATE thread_shares SET revoked_at=? WHERE revoked_at IS NULL "
+                    "AND thread_id IN (SELECT thread_id FROM threads WHERE agent_id=?)",
+                    (now_ts(), agent_id),
+                )
+        return True
+
     def list_shared(
         self,
         *,
@@ -317,6 +349,11 @@ class AgentRepo:
 
     def delete(self, agent_id: str) -> None:
         with self._db.transaction() as conn:
+            conn.execute(
+                "DELETE FROM settings WHERE key IN (SELECT 'octop_bot:appearance:' || "
+                "CAST(user_id AS TEXT) || ':' || agent_id FROM agents WHERE agent_id=?)",
+                (agent_id,),
+            )
             # No foreign key. Thread and usage rows cascade from ``agents``.
             conn.execute("DELETE FROM care_push_records WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM agents WHERE agent_id = ?", (agent_id,))

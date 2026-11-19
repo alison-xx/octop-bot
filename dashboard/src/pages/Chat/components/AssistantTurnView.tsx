@@ -31,6 +31,9 @@ import { messageSpeakerId } from "../utils/messageGrouping";
 import { isAssistantProcessLive } from "./liveAssistantTurn";
 import TurnFileChangeCard from "./TurnFileChangeCard";
 import styles from "../index.module.less";
+import { isBotOnlyDesktop } from "../../../utils/desktopBridge";
+import BotCreationEvents from "../../OctopBot/BotCreationEvents";
+import { separateCreations } from "../../OctopBot/creationEvents";
 
 interface AssistantTurnViewProps {
   messages: ChatMessage[];
@@ -187,18 +190,32 @@ export default function AssistantTurnView({
     [turnStreaming],
   );
 
+  const botOnly = isBotOnlyDesktop();
   const segmentProcess = useMemo(
     () =>
-      hitlLayout.segments.map((seg) => ({
-        split: splitAssistantTurn(seg.processMessages, splitOpts),
-        hitl: seg.hitlMessage,
-      })),
-    [hitlLayout, splitOpts],
+      hitlLayout.segments.map((seg) => {
+        const { remaining, created } = separateCreations(
+          seg.processMessages,
+          botOnly,
+        );
+        return {
+          split: splitAssistantTurn(remaining, splitOpts),
+          hitl: seg.hitlMessage,
+          created,
+        };
+      }),
+    [hitlLayout, splitOpts, botOnly],
   );
-  const trailingSplit = useMemo(
-    () => splitAssistantTurn(hitlLayout.trailingMessages, splitOpts),
-    [hitlLayout, splitOpts],
-  );
+  const { trailingSplit, trailingCreations } = useMemo(() => {
+    const { remaining, created } = separateCreations(
+      hitlLayout.trailingMessages,
+      botOnly,
+    );
+    return {
+      trailingSplit: splitAssistantTurn(remaining, splitOpts),
+      trailingCreations: created,
+    };
+  }, [hitlLayout, splitOpts, botOnly]);
 
   const fullSplit = useMemo(
     () => splitAssistantTurn(messages, splitOpts),
@@ -267,6 +284,7 @@ export default function AssistantTurnView({
   const isWrapupTurn = messages.some((item) => item.teamWrapup);
   const hasVisibleTurn =
     Boolean(todoAtTop) ||
+    trailingCreations.length > 0 ||
     anyProcessShown ||
     segmentProcess.some(
       ({ split }) =>
@@ -309,6 +327,9 @@ export default function AssistantTurnView({
             agentId={speakerAgentId}
           />
         </div>
+      )}
+      {trailingCreations.length > 0 && (
+        <BotCreationEvents items={trailingCreations} />
       )}
       {trailingSplit.answerMessage ? (
         <div className={styles.assistantTurnAnswer}>
@@ -396,7 +417,7 @@ export default function AssistantTurnView({
   return (
     <div className={styles.assistantTurn}>
       {todoAtTop ? <div className={styles.turnInset}>{todoAtTop}</div> : null}
-      {segmentProcess.map(({ split, hitl }, idx) => {
+      {segmentProcess.map(({ split, hitl, created }, idx) => {
         const showProcess =
           !compactProcess && hasProcessContent(split, deferLoneDecision);
         // Freeze process spinner while a pending approval card is open.
@@ -422,6 +443,7 @@ export default function AssistantTurnView({
                 ) : null}
               </>
             ) : null}
+            {created.length > 0 && <BotCreationEvents items={created} />}
             {split.answerMessage ? (
               <div className={styles.assistantTurnAnswer}>
                 <MessageBubble

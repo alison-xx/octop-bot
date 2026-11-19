@@ -46,6 +46,7 @@ from octop.infra.utils.locale import DEFAULT_LOCALE, Locale
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
+    from octop.infra.bot_groups.im import GroupImRouter
     from octop.infra.db.services import RepoBundle
 
 logger = logging.getLogger(__name__)
@@ -119,8 +120,10 @@ class Gateway:
         repos: RepoBundle,
         trajectory_service: Any | None = None,
         instance_id: str | None = None,
+        group_im: GroupImRouter | None = None,
     ) -> None:
         self._agent_manager = agent_manager
+        self._group_im = group_im
         self._repos = repos
         self._instance_id = instance_id or uuid.uuid4().hex
         self._trajectory_service = trajectory_service
@@ -906,6 +909,8 @@ class Gateway:
             # would push every menu twice.
             if not isinstance(processor, TelegramBridge):
                 processor = TelegramBridge(self, processor, row.channel_id)
+        if self._group_im is not None:
+            processor = self._group_im.wrap(row, processor)
         manager = self._require_channel_manager()
         await manager.add_channel(
             row.kind,

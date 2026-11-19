@@ -28,6 +28,35 @@ class SettingsRepo:
         with self._db.transaction() as conn:
             conn.execute("DELETE FROM settings WHERE key = ?", (key,))
 
+    def replace_if_current(self, key: str, expected: str, value: str) -> bool:
+        with self._db.transaction() as conn:
+            return bool(
+                conn.execute(
+                    "UPDATE settings SET value = ? WHERE key = ? AND value = ?",
+                    (value, key, expected),
+                ).rowcount
+                == 1
+            )
+
+    def with_prefix(self, prefix: str) -> dict[str, str]:
+        escaped = prefix.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT key,value FROM settings WHERE key LIKE ? ESCAPE '!'", (escaped + "%",)
+            ).fetchall()
+        return {row["key"]: row["value"] for row in rows}
+
+    def get_or_insert(self, key: str, value: str) -> str:
+        """Claim a stable value across concurrent initializations."""
+        with self._db.transaction() as conn:
+            conn.execute(
+                "INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING",
+                (key, value),
+            )
+            row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+            assert row is not None
+            return str(row["value"])
+
     def get_active_model(self) -> tuple[str, str]:
         """Return (provider_name, model_id); empty strings if not set."""
         raw = self.get(self._KEY_ACTIVE_MODEL) or ""

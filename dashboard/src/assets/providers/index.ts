@@ -26,6 +26,7 @@ import googleLogo from "./google.svg";
 import yuanbaoLogo from "../channels/yuanbao.svg";
 import iflytekLogo from "./iflytek.svg";
 import magpieLogo from "./magpie.svg";
+import { isBotOnlyDesktop } from "../../utils/desktopBridge";
 
 export const PROVIDER_LOGOS: Record<string, string> = {
   openai: openaiLogo,
@@ -63,9 +64,16 @@ export const PROVIDER_LOGOS: Record<string, string> = {
 export { customProviderLogo };
 
 export function getProviderLogo(providerId: string): string | undefined {
-  if (PROVIDER_LOGOS[providerId]) return PROVIDER_LOGOS[providerId];
   const base = providerId.split("-")[0];
-  if (base !== providerId && PROVIDER_LOGOS[base]) return PROVIDER_LOGOS[base];
+  const logo = PROVIDER_LOGOS[providerId] ?? PROVIDER_LOGOS[base];
+  if (
+    logo === deepseekLogo &&
+    (isBotOnlyDesktop() ||
+      (typeof window !== "undefined" &&
+        /(?:^|\/)octop-bot(?:\/|$)/.test(window.location.pathname)))
+  )
+    return customProviderLogo;
+  if (logo) return logo;
   const groupLogo: Record<string, string> = {
     kimi: moonshotLogo,
     minimax: minimaxLogo,

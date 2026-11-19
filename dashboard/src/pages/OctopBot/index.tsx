@@ -1,0 +1,1162 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Button,
+  Drawer,
+  Dropdown,
+  Empty,
+  Spin,
+  type MenuProps,
+} from "antd";
+import {
+  Search,
+  Bot,
+  Cloud,
+  Ellipsis,
+  Menu,
+  Pin,
+  Plus,
+  Settings2,
+  Users,
+} from "lucide-react";
+import { useTranslation } from "react-i18next";
+import {
+  Navigate,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
+import {
+  octopBotApi,
+  type BotGroup,
+  type BotLayout,
+  type BotSection,
+  type BotWorkspace,
+  type WorkspaceBot,
+} from "../../api/modules/octopBot";
+import { octopThreadsApi } from "../../api/modules/octopThreads";
+import { pickPreferredSession, toSession } from "../Chat/hooks/useSessions";
+import { useAgent } from "../../context/AgentContext";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useIsMobile } from "../../hooks/useIsMobile";
+import { apiErrorMessage } from "../../utils/apiError";
+import { navAllowed } from "../../utils/permissions";
+import { isBotOnlyDesktop } from "../../utils/desktopBridge";
+import { BOT_SETTINGS } from "../../utils/botClientRoute";
+import { BotCharacter, octopCharacter, GroupCharacter } from "./BotCharacter";
+import { useBotMotion } from "./useBotMotion";
+import AppearanceModal, {
+  AppearancePicker,
+  saveAppearance,
+  type AppearanceChoice,
+} from "./AppearancePicker";
+import { ExpertCreateDrawer } from "../Chat/components/ChatNavDrawers";
+import BotQuickCreate from "./BotQuickCreate";
+import { getSnapshot, onStreamEvent, subscribe } from "../Chat/hooks/chatStore";
+import ManagedDrawer from "../Experts/components/ManagedDrawer";
+import BotChat from "./BotChat";
+import { GroupForm, canInviteBot } from "./GroupForms";
+import GroupRoom from "./GroupRoom";
+import RetainedFolders from "./RetainedFolders";
+import SectionEditor, {
+  moveEntries,
+  type SectionAction,
+} from "./SectionEditor";
+import sectionStyles from "./sections.module.less";
+import { useDirectoryContextMenu } from "./useDirectoryContextMenu";
+import SectionHeader from "./SectionHeader";
+import DirectorySearch from "./DirectorySearch";
+import directory from "./directory.module.less";
+import styles from "./index.module.less";
+
+type Item = { key: string; name: string; bot?: WorkspaceBot; group?: BotGroup };
+const BASE = "/octop-bot";
+const urlFor = (item: Item) =>
+  item.bot
+    ? BASE + "/bots/" + encodeURIComponent(item.bot.agent_id)
+    : BASE + "/groups/" + encodeURIComponent(item.group!.group_id);
+
+export default function OctopBotPage() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { agentId, threadId, groupId } = useParams();
+  const standalone = isBotOnlyDesktop();
+  const motion = useBotMotion(threadId);
+  const [newLook, setNewLook] = useState<AppearanceChoice | null>(null);
+  const [retryLook, setRetryLook] = useState<{
+    id: string;
+    choice: AppearanceChoice;
+  } | null>(null);
+  const { agents, refresh: refreshAgents } = useAgent();
+  const user = useCurrentUser();
+  const mobile = useIsMobile();
+  const [workspace, setWorkspace] = useState<BotWorkspace | null>(null);
+  const [error, setError] = useState("");
+  const [showList, setShowList] = useState(false);
+  const directoryMenu = useDirectoryContextMenu(
+    workspace?.revision,
+    location.pathname,
+    showList,
+  );
+  const [dragging, setDragging] = useState(false);
+  const revealSection = useRef<string>();
+  const sectionNodes = useRef(new Map<string, HTMLElement>());
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const rememberPreview = useCallback((key: string, value: string) => {
+    const preview = value.replace(/\s+/g, " ").trim().slice(0, 160);
+    if (preview)
+      setPreviews((prev) =>
+        prev[key] === preview ? prev : { ...prev, [key]: preview },
+      );
+  }, []);
+  useEffect(() => {
+    if (!standalone || !agentId || !threadId) return;
+    const update = () => {
+      const { messages, isStreaming } = getSnapshot(threadId);
+      if (isStreaming) return;
+      const last = messages
+        .slice()
+        .reverse()
+        .find(
+          (m) =>
+            (m.role === "user" || m.role === "assistant") && m.content.trim(),
+        );
+      if (last) rememberPreview("bot:" + agentId, last.content);
+    };
+    update();
+    return subscribe(threadId, update);
+  }, [standalone, agentId, threadId, rememberPreview]);
+  useEffect(() => {
+    if (!standalone) return;
+    const keydown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        if (
+          event.isComposing ||
+          document.querySelector("[data-section-editor]") ||
+          event.repeat ||
+          (event.target instanceof Element &&
+            event.target.closest('[aria-modal="true"]') &&
+            !searchOpen &&
+            !showList)
+        )
+          return;
+        event.preventDefault();
+        setSearchOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, [standalone, searchOpen, showList]);
+  const [dialog, setDialog] = useState<
+    "bot" | "managed" | "group" | "editGroup" | "section" | "retained" | null
+  >(null);
+  useEffect(() => {
+    if (dialog || !revealSection.current) return;
+    const name = revealSection.current;
+    revealSection.current = undefined;
+    sectionNodes.current.get(name)?.scrollIntoView?.({ block: "nearest" });
+  }, [dialog, workspace?.revision]);
+  const [sectionAction, setSectionAction] = useState<SectionAction>({
+    kind: "create",
+  });
+  const [createIn, setCreateIn] = useState<string>();
+  const [groupSeed, setGroupSeed] = useState<{
+    name: string;
+    memberIds: string[];
+  }>();
+  const [layoutError, setLayoutError] = useState("");
+  const failedLayout = useRef<BotLayout>();
+  const layoutBusy = useRef(false);
+  const [layoutSaving, setLayoutSaving] = useState(false);
+  const contactRequest = useRef(0);
+  const version = useRef(0);
+  const mounted = useRef(true);
+  const refresh = useCallback(async () => {
+    const current = ++version.current;
+    try {
+      const next = await octopBotApi.workspace();
+      if (mounted.current && current === version.current) {
+        setWorkspace((prev) =>
+          prev && prev.revision > (next.revision ?? 0)
+            ? {
+                ...next,
+                pinned: prev.pinned,
+                sections: prev.sections,
+                revision: prev.revision,
+              }
+            : next,
+        );
+        setError("");
+      }
+    } catch (e) {
+      if (mounted.current && current === version.current)
+        setError(apiErrorMessage(e, t("octopBot.failed"), t));
+    }
+  }, [t]);
+  useEffect(() => {
+    mounted.current = true;
+    void refresh();
+    const unsub = onStreamEvent((event) => {
+      if (event.kind === "streamEnd") void refresh();
+    });
+    const focus = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", focus);
+    return () => {
+      mounted.current = false;
+      unsub();
+      document.removeEventListener("visibilitychange", focus);
+    };
+  }, [refresh]);
+  const close = useCallback(() => {
+    setDialog(null);
+    setGroupSeed(undefined);
+    setCreateIn(undefined);
+  }, []);
+  const openCreation = (
+    kind: "bot" | "managed" | "group",
+    section?: string,
+    seed?: { name: string; memberIds: string[] },
+  ) => {
+    setShowList(false);
+    setCreateIn(section);
+    setGroupSeed(seed);
+    setNewLook(null);
+    setDialog(kind);
+  };
+  const jump = (path: string) => {
+    contactRequest.current++;
+    setShowList(false);
+    navigate(path);
+  };
+  const onBotCreated = async (id: string) => {
+    close();
+    const choice = newLook ?? { kind: "reset" as const };
+    let failure = "";
+    try {
+      await saveAppearance(id, choice);
+    } catch (e) {
+      failure = apiErrorMessage(e, t("octopBot.failed"), t);
+    }
+    setNewLook(null);
+    await placeCreated("bot:" + id);
+    void refreshAgents({ silent: true, force: true });
+    await refresh();
+    jump(BASE + "/bots/" + encodeURIComponent(id));
+    if (failure) {
+      setError(failure);
+      setRetryLook({ id, choice });
+    }
+  };
+  const onGroupSaved = async (group: BotGroup) => {
+    close();
+    if (dialog === "group") await placeCreated("group:" + group.group_id);
+    setWorkspace((prev) =>
+      prev
+        ? {
+            ...prev,
+            groups: [
+              ...prev.groups.filter((g) => g.group_id !== group.group_id),
+              group,
+            ],
+          }
+        : prev,
+    );
+    jump(BASE + "/groups/" + encodeURIComponent(group.group_id));
+  };
+  const setLayout = async (
+    layout: Pick<BotLayout, "sections" | "pinned">,
+    revision = workspace?.revision ?? 0,
+  ) => {
+    if (layoutBusy.current) return false;
+    layoutBusy.current = true;
+    setLayoutSaving(true);
+    setLayoutError("");
+    failedLayout.current = undefined;
+    try {
+      const saved = await octopBotApi.saveLayout({ ...layout, revision });
+      if (mounted.current)
+        setWorkspace((prev) =>
+          prev && saved.revision >= (prev.revision ?? 0)
+            ? { ...prev, ...saved }
+            : prev,
+        );
+      return true;
+    } catch (e) {
+      if (mounted.current) {
+        const conflict =
+          e instanceof Error && /Request failed: 409\b/.test(e.message);
+        if (conflict) {
+          await refresh();
+          setLayoutError(t("octopBot.sectionUI.conflict"));
+        } else {
+          failedLayout.current = { ...layout, revision };
+          setLayoutError(apiErrorMessage(e, t("octopBot.failed"), t));
+        }
+      }
+      return false;
+    } finally {
+      layoutBusy.current = false;
+      if (mounted.current) setLayoutSaving(false);
+    }
+  };
+  const editSection = (action: SectionAction) => {
+    setLayoutError("");
+    failedLayout.current = undefined;
+    setSectionAction(action);
+    setDialog("section");
+  };
+  const placeCreated = async (key: string) => {
+    if (!createIn || !workspace) return;
+    if (!workspace.sections.some((s) => s.name === createIn)) {
+      setLayoutError(t("octopBot.sectionUI.missing"));
+      return;
+    }
+    await setLayout({
+      pinned: workspace.pinned,
+      sections: moveEntries(workspace.sections, [key], createIn),
+    });
+  };
+  if (!workspace)
+    return (
+      <div className={styles.center}>
+        {error ? (
+          <Alert
+            type="error"
+            message={error}
+            action={
+              <Button onClick={() => void refresh()}>
+                {t("octopBot.retry")}
+              </Button>
+            }
+          />
+        ) : (
+          <Spin />
+        )}
+      </div>
+    );
+  if (!agentId && !groupId && workspace.chief_id)
+    return (
+      <Navigate
+        replace
+        to={BASE + "/bots/" + encodeURIComponent(workspace.chief_id)}
+      />
+    );
+  const { bots, groups, sections, pinned } = workspace;
+  const selectedBot = bots.find((bot) => bot.agent_id === agentId);
+  const selectedGroup = groups.find((group) => group.group_id === groupId);
+  const all: Item[] = [
+    ...bots.map((bot) => ({ key: "bot:" + bot.agent_id, name: bot.name, bot })),
+    ...groups.map((group) => ({
+      key: "group:" + group.group_id,
+      name: group.name,
+      group,
+    })),
+  ];
+  const byKey = new Map(all.map((it) => [it.key, it]));
+  const assigned = new Map(
+    sections.flatMap((s) => s.items.map((id) => [id, s.name] as const)),
+  );
+  const collapsedPortraits = (items: Item[]) => {
+    const ids = new Set(
+      items.flatMap((it) =>
+        it.bot ? [it.bot.agent_id] : it.group?.member_ids ?? [],
+      ),
+    );
+    return [...ids].slice(0, 3).flatMap((id) => {
+      const it = byKey.get("bot:" + id);
+      return it ? [<span key={id}>{portrait(it, 17)}</span>] : [];
+    });
+  };
+  const picked = groupId ? "group:" + groupId : "bot:" + agentId;
+  const moveItem = (key: string, destination?: number, reveal = false) => {
+    if (layoutSaving || !byKey.has(key) || key === "bot:" + workspace.chief_id)
+      return;
+    const target =
+      destination === undefined ? undefined : sections[destination]?.name;
+    if (
+      assigned.get(key) === target &&
+      !(reveal && destination !== undefined && sections[destination].collapsed)
+    )
+      return;
+    const next = moveEntries(sections, [key], target);
+    if (reveal && destination !== undefined)
+      next[destination] = { ...next[destination], collapsed: false };
+    void setLayout({ pinned, sections: next });
+  };
+  const dragType = "application/x-octop-bot-sidebar-item";
+  const onDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes(dragType)) e.preventDefault();
+  };
+  const onDrop = (e: React.DragEvent, index?: number) => {
+    const key = e.dataTransfer.getData(dragType);
+    if (key) {
+      e.preventDefault();
+      setDragging(false);
+      moveItem(key, index, true);
+    }
+  };
+  const activity = new Map(agents.map((a) => [a.agent_id, a]));
+  const countUnread = (it: Item) =>
+    it.bot ? activity.get(it.bot.agent_id)?.unread_count ?? 0 : 0;
+  const recent = (it: Item) =>
+    it.bot ? activity.get(it.bot.agent_id)?.last_active ?? 0 : 0;
+  const ordered = (items: Item[]) =>
+    items.sort(
+      (a, b) =>
+        Number(pinned.includes(b.key)) - Number(pinned.includes(a.key)) ||
+        recent(b) - recent(a),
+    );
+  const previewFor = (item: Item) => {
+    if (previews[item.key]) return previews[item.key];
+    if (item.bot?.is_main) return t("botDirectory.coordinator");
+    if (item.bot)
+      return (
+        item.bot.description?.trim() ||
+        activity.get(item.bot.agent_id)?.welcome_message?.trim() ||
+        t("botDirectory.teammate")
+      );
+    return (
+      item.group?.member_ids
+        .flatMap((id) => bots.find((b) => b.agent_id === id)?.name ?? [])
+        .join(" · ") ?? ""
+    );
+  };
+  const portrait = (item: Item, size: number) =>
+    item.bot ? (
+      <BotCharacter
+        bot={item.bot}
+        state={item.bot.agent_id === agentId ? motion : "idle"}
+        size={size}
+      />
+    ) : (
+      <GroupCharacter
+        members={item.group!.member_ids.flatMap((id) =>
+          bots.filter((b) => b.agent_id === id),
+        )}
+        size={size}
+      />
+    );
+  const pickContact = (item: Item) => {
+    const request = ++contactRequest.current;
+    setSearchOpen(false);
+    setShowList(false);
+    if (
+      (item.bot && item.bot.agent_id === agentId && threadId) ||
+      (item.group && item.group.group_id === groupId)
+    )
+      return;
+    if (item.bot && agentId === item.bot.agent_id && !threadId) {
+      void octopThreadsApi
+        .list(agentId)
+        .then((rows) => {
+          const recent = pickPreferredSession(rows.map(toSession));
+          if (recent && mounted.current && request === contactRequest.current)
+            jump(urlFor(item) + "/" + encodeURIComponent(recent.threadId));
+        })
+        .catch((e) => {
+          if (mounted.current && request === contactRequest.current)
+            setError(apiErrorMessage(e, t("octopBot.failed"), t));
+        });
+      return;
+    }
+    jump(urlFor(item));
+  };
+  const chiefKey = "bot:" + workspace.chief_id;
+  const backgroundMenu: MenuProps = {
+    items: [
+      { key: "create", label: t("octopBot.newSection") },
+      {
+        key: "bulk",
+        label: t("octopBot.sectionUI.moveMany"),
+        disabled: !sections.length || !all.some((it) => it.key !== chiefKey),
+      },
+    ],
+    onClick: ({ key }) =>
+      editSection({ kind: key === "bulk" ? "move" : "create" }),
+  };
+  const renderItem = (item: Item) => {
+    const chief = item.key === chiefKey;
+    const isPinned = pinned.includes(item.key);
+    const menu: MenuProps = {
+      items: [
+        { key: "create", label: t("octopBot.newSection") },
+        { key: "pin", label: t(isPinned ? "octopBot.unpin" : "octopBot.pin") },
+        {
+          key: "move",
+          label: t("octopBot.move"),
+          children: [
+            {
+              key: "none",
+              label: t("octopBot.ungrouped"),
+              disabled: !assigned.has(item.key),
+            },
+            ...sections.map((section, i) => ({
+              key: "s" + i,
+              label: section.name,
+              disabled: assigned.get(item.key) === section.name,
+            })),
+          ],
+        },
+        {
+          key: "bulk",
+          label: t("octopBot.sectionUI.moveMany"),
+          disabled: !sections.length,
+        },
+      ],
+      onClick: ({ key }) => {
+        if (key === "create") {
+          editSection({ kind: "create", entry: item.key });
+          return;
+        }
+        if (key === "bulk") {
+          editSection({ kind: "move" });
+          return;
+        }
+        if (key === "pin") {
+          void setLayout({
+            sections,
+            pinned: isPinned
+              ? pinned.filter((id) => id !== item.key)
+              : [...pinned, item.key],
+          });
+          return;
+        }
+        moveItem(item.key, key === "none" ? undefined : Number(key.slice(1)));
+      },
+    };
+    return (
+      <div
+        key={item.key}
+        data-directory-item
+        {...(layoutSaving
+          ? {}
+          : directoryMenu.events(chief ? backgroundMenu : menu))}
+        className={
+          standalone
+            ? directory.contact + " " + sectionStyles.contactActions
+            : styles.item
+        }
+        data-selected={picked === item.key}
+        data-chief={chief}
+        draggable={!chief && !layoutSaving}
+        onDragEnd={() => setDragging(false)}
+        onDragStart={(e) => {
+          setDragging(true);
+          e.dataTransfer.setData(dragType, item.key);
+          e.dataTransfer.effectAllowed = "move";
+        }}
+      >
+        <button
+          className={standalone ? directory.contactButton : styles.itemMain}
+          type="button"
+          onClick={() => (standalone ? pickContact(item) : jump(urlFor(item)))}
+          aria-label={standalone ? item.name : undefined}
+          aria-current={picked === item.key ? "page" : undefined}
+        >
+          {portrait(
+            item,
+            chief ? (standalone ? 58 : 37) : standalone ? 35 : 29,
+          )}
+          {standalone ? (
+            <span className={directory.contactText}>
+              <strong>{item.name}</strong>
+              <small>
+                {chief ? t("botDirectory.chiefRole") : previewFor(item)}
+              </small>
+            </span>
+          ) : (
+            <span>{item.name}</span>
+          )}
+          {countUnread(item) > 0 && (
+            <b className={styles.unread}>{countUnread(item)}</b>
+          )}
+          {isPinned && !chief && <Pin size={12} />}
+        </button>
+        {!chief && (
+          <Dropdown
+            trigger={["click"]}
+            menu={menu}
+            {...directoryMenu.overflowProps(item.key)}
+          >
+            <Button
+              type="text"
+              size="small"
+              disabled={layoutSaving}
+              icon={<Ellipsis size={15} />}
+              aria-label={t("octopBot.itemActions", { name: item.name })}
+            />
+          </Dropdown>
+        )}
+      </div>
+    );
+  };
+  const renderSection = (
+    name: string,
+    items: Item[],
+    options?: { section: BotSection; index: number },
+  ) =>
+    (options || items.length > 0) && (
+      <section
+        className={styles.section}
+        data-section-name={options?.section.name}
+        ref={(node) => {
+          if (!options) return;
+          if (node) sectionNodes.current.set(name, node);
+          else sectionNodes.current.delete(name);
+        }}
+        key={options ? "section:" + name : "default:" + name}
+        onDragOver={onDragOver}
+        onDrop={(e) => onDrop(e, options?.index)}
+      >
+        {options ? (
+          <SectionHeader
+            section={options.section}
+            count={items.length}
+            unread={items.reduce((n, it) => n + countUnread(it), 0)}
+            first={options.index === 0}
+            last={options.index === sections.length - 1}
+            disabled={layoutSaving}
+            menuEvents={directoryMenu.events}
+            overflow={directoryMenu.overflowProps("section:" + name)}
+            portraits={
+              standalone && options.section.collapsed
+                ? collapsedPortraits(items)
+                : undefined
+            }
+            onManage={() => editSection({ kind: "edit", name })}
+            onNewBot={
+              navAllowed(user, "experts")
+                ? () => openCreation("bot", name)
+                : undefined
+            }
+            onNewGroup={() => openCreation("group", name)}
+            onStartGroup={
+              items.some((it) => it.bot && canInviteBot(it.bot))
+                ? () =>
+                    openCreation("group", name, {
+                      name,
+                      memberIds: items.flatMap((it) =>
+                        it.bot && canInviteBot(it.bot) ? [it.bot.agent_id] : [],
+                      ),
+                    })
+                : undefined
+            }
+            onEdit={(patch) =>
+              void setLayout({
+                pinned,
+                sections: sections.map((s, i) =>
+                  i === options.index ? { ...s, ...patch } : s,
+                ),
+              })
+            }
+            onRename={() =>
+              editSection({ kind: "edit", name, focusName: true })
+            }
+            onMove={(direction) => {
+              const next = [...sections];
+              const dest = options.index + direction;
+              [next[options.index], next[dest]] = [
+                next[dest],
+                next[options.index],
+              ];
+              void setLayout({ pinned, sections: next });
+            }}
+            onRemove={() =>
+              void setLayout({
+                pinned,
+                sections: sections.filter((_, i) => i !== options.index),
+              })
+            }
+          />
+        ) : standalone ? (
+          <h3 className={directory.contactHeading}>
+            <span>{name}</span>
+            <span>{items.length}</span>
+          </h3>
+        ) : (
+          <h3>{name}</h3>
+        )}
+        {!options?.section.collapsed && ordered(items).map(renderItem)}
+        {options && !options.section.collapsed && items.length === 0 && (
+          <Button
+            type="text"
+            size="small"
+            className={sectionStyles.empty}
+            disabled={layoutSaving}
+            onClick={() => editSection({ kind: "edit", name })}
+          >
+            {t("octopBot.sectionUI.addEntries")}
+          </Button>
+        )}
+      </section>
+    );
+  const layoutAlert = layoutError && dialog !== "section" && (
+    <Alert
+      type="error"
+      message={layoutError}
+      showIcon
+      closable
+      onClose={() => setLayoutError("")}
+      action={
+        failedLayout.current && (
+          <Button
+            size="small"
+            disabled={layoutSaving}
+            onClick={() => {
+              const failed = failedLayout.current;
+              if (failed && failed.revision === (workspace.revision ?? 0))
+                void setLayout(failed, failed.revision);
+              else {
+                failedLayout.current = undefined;
+                setLayoutError(t("octopBot.sectionUI.conflict"));
+              }
+            }}
+          >
+            {t("octopBot.retry")}
+          </Button>
+        )
+      }
+    />
+  );
+  const sidebar = (
+    <nav
+      className={standalone ? directory.directory : styles.nav}
+      aria-label={t("nav.octopBot")}
+    >
+      <div className={standalone ? directory.navHeader : styles.navHeader}>
+        {standalone ? (
+          <BotCharacter
+            look={{ ...octopCharacter, source: "character" }}
+            size={23}
+            badges={false}
+          />
+        ) : (
+          <Bot size={19} />
+        )}
+        <strong>{t("nav.octopBot")}</strong>
+        {standalone && (
+          <Button
+            type="text"
+            className={directory.iconButton}
+            title={t("botDirectory.find") + " (Ctrl / ⌘ K)"}
+            aria-label={t("botDirectory.find")}
+            icon={<Search size={16} />}
+            onClick={() => setSearchOpen(true)}
+          />
+        )}
+        <Dropdown
+          trigger={["click"]}
+          {...directoryMenu.overflowProps("add")}
+          menu={{
+            items: [
+              ...(standalone
+                ? [
+                    {
+                      key: "newChat",
+                      label: t("chatWelcome.newChat"),
+                      disabled: !selectedBot && !workspace.chief_id,
+                    },
+                  ]
+                : []),
+              ...(navAllowed(user, "experts")
+                ? [
+                    { key: "bot", label: t("octopBot.newBot") },
+                    ...(!standalone
+                      ? [{ key: "managed", label: t("octopBot.newManaged") }]
+                      : []),
+                  ]
+                : []),
+              { key: "group", label: t("octopBot.newGroup") },
+            ],
+            onClick: ({ key }) => {
+              if (key === "newChat") {
+                setShowList(false);
+                navigate(
+                  BASE +
+                    "/bots/" +
+                    encodeURIComponent(
+                      selectedBot?.agent_id ?? workspace.chief_id!,
+                    ),
+                  { state: { newChat: true } },
+                );
+              } else {
+                openCreation(key as "bot" | "managed" | "group");
+              }
+            },
+          }}
+        >
+          <Button
+            type="text"
+            size="small"
+            className={standalone ? directory.iconButton : undefined}
+            aria-label={t("octopBot.add")}
+            icon={<Plus size={17} />}
+          />
+        </Dropdown>
+      </div>
+      <div
+        className={standalone ? directory.contacts : styles.railList}
+        role="group"
+        aria-label={t("botDirectory.teamTab")}
+        tabIndex={0}
+        {...(layoutSaving ? {} : directoryMenu.events(backgroundMenu, true))}
+        {...(layoutSaving ? {} : directoryMenu.touchBackground(backgroundMenu))}
+      >
+        {all.filter((it) => it.key === chiefKey).map(renderItem)}
+        {dragging && sections.length > 0 && (
+          <div
+            className={sectionStyles.drop}
+            onDragOver={onDragOver}
+            onDrop={(e) => onDrop(e)}
+          >
+            {t("octopBot.sectionUI.dropUngrouped")}
+          </div>
+        )}
+        {(!mobile || showList) && layoutAlert}
+
+        {standalone ? (
+          <>
+            {renderSection(
+              t("octopBot.pinned"),
+              all.filter(
+                (it) =>
+                  it.key !== chiefKey &&
+                  pinned.includes(it.key) &&
+                  !assigned.has(it.key),
+              ),
+            )}
+            {renderSection(
+              t("octopBot.groups"),
+              all.filter(
+                (it) =>
+                  it.group && !pinned.includes(it.key) && !assigned.has(it.key),
+              ),
+            )}
+            {renderSection(
+              t("botDirectory.people"),
+              all.filter(
+                (it) =>
+                  it.bot &&
+                  it.key !== chiefKey &&
+                  !pinned.includes(it.key) &&
+                  !assigned.has(it.key),
+              ),
+            )}
+            {all.length === 1 && navAllowed(user, "experts") && (
+              <Button
+                className={directory.firstMember}
+                type="dashed"
+                block
+                icon={<Plus size={15} />}
+                onClick={() => {
+                  openCreation("bot");
+                }}
+              >
+                {t("botDirectory.addFirst")}
+              </Button>
+            )}
+          </>
+        ) : (
+          <>
+            {renderSection(
+              t("octopBot.bots"),
+              all.filter(
+                (it) => it.bot && it.key !== chiefKey && !assigned.has(it.key),
+              ),
+            )}
+            {renderSection(
+              t("octopBot.groups"),
+              all.filter((it) => it.group && !assigned.has(it.key)),
+            )}
+          </>
+        )}
+        {sections.map((s, index) =>
+          renderSection(
+            s.name,
+            s.items.flatMap((key) => {
+              const item = byKey.get(key);
+              return item && key !== chiefKey ? [item] : [];
+            }),
+            { section: s, index },
+          ),
+        )}
+      </div>
+      {standalone ? (
+        <div className={sectionStyles.footer}>
+          <Button
+            type="text"
+            className={directory.settings}
+            icon={<Settings2 size={16} />}
+            onClick={() =>
+              navigate(BOT_SETTINGS, { state: { from: location.pathname } })
+            }
+          >
+            {t("botClient.settings")}
+          </Button>
+          <Button
+            type="text"
+            icon={<Cloud size={16} />}
+            aria-label={t("botCloud.title")}
+            title={t("botCloud.title")}
+            className={sectionStyles.cloud}
+            onClick={() =>
+              navigate("/octop-bot/cloud", {
+                state: { from: location.pathname },
+              })
+            }
+          />
+        </div>
+      ) : (
+        <>
+          <Button
+            type="text"
+            className={styles.newGroup}
+            onClick={() => setDialog("retained")}
+          >
+            {t("octopBot.retainedFolders")}
+          </Button>
+          <Button
+            type="text"
+            className={styles.newGroup}
+            icon={<Users size={15} />}
+            onClick={() => setDialog("group")}
+          >
+            {t("octopBot.newGroup")}
+          </Button>
+        </>
+      )}
+    </nav>
+  );
+  const listButton = mobile ? () => setShowList(true) : undefined;
+  const selectedItem = all.find((it) => it.key === picked);
+  const title =
+    standalone && selectedItem ? (
+      <>
+        {portrait(selectedItem, 22)}
+        <strong>{selectedItem.name}</strong>
+      </>
+    ) : (
+      <div className={styles.title}>
+        {mobile && (
+          <Button
+            type="text"
+            aria-label={t("octopBot.switchChat")}
+            icon={<Menu size={18} />}
+            onClick={() => setShowList(true)}
+          />
+        )}
+        {selectedGroup ? (
+          <GroupCharacter
+            members={selectedGroup.member_ids.flatMap((id) =>
+              bots.filter((b) => b.agent_id === id),
+            )}
+            size={33}
+          />
+        ) : (
+          <BotCharacter bot={selectedBot} state={motion} size={34} />
+        )}
+        <div>
+          <h2>{selectedGroup?.name ?? selectedBot?.name}</h2>
+          {selectedGroup ? (
+            <small>
+              {t("octopBot.memberCount", {
+                count: selectedGroup.member_ids.length,
+              })}
+            </small>
+          ) : !standalone && selectedBot?.description ? (
+            <small>{selectedBot.description}</small>
+          ) : null}
+        </div>
+      </div>
+    );
+  return (
+    <div className={standalone ? directory.shell : styles.shell}>
+      {mobile ? (
+        <Drawer
+          open={showList}
+          title={null}
+          closable={false}
+          placement="left"
+          width={standalone ? 244 : 270}
+          onClose={() => setShowList(false)}
+          styles={{ body: { padding: 0 } }}
+        >
+          {sidebar}
+        </Drawer>
+      ) : (
+        sidebar
+      )}
+      {directoryMenu.popup}
+      {standalone && searchOpen && (
+        <DirectorySearch
+          items={all.map((it) => ({
+            key: it.key,
+            name: it.name,
+            preview: previewFor(it),
+            keywords: [
+              assigned.get(it.key),
+              it.bot
+                ? [it.bot.agent_id, it.bot.description].join(" ")
+                : it.group?.member_ids
+                    .map((id) => activity.get(id)?.name ?? id)
+                    .join(" "),
+            ].join(" "),
+            portrait: portrait(it, 30),
+          }))}
+          onClose={() => setSearchOpen(false)}
+          onThread={(hit) => {
+            setSearchOpen(false);
+            jump(
+              BASE +
+                "/bots/" +
+                encodeURIComponent(hit.agent_id) +
+                "/" +
+                encodeURIComponent(hit.thread_id),
+            );
+          }}
+          onPick={(key) => {
+            const item = all.find((it) => it.key === key);
+            if (item) pickContact(item);
+          }}
+        />
+      )}
+      <main className={standalone ? directory.main : styles.main}>
+        {mobile && !showList && layoutAlert}
+        {error && (
+          <Alert
+            type="error"
+            message={error}
+            closable
+            onClose={() => setError("")}
+          />
+        )}
+        {selectedBot ? (
+          <BotChat
+            bot={selectedBot}
+            motion={motion}
+            roster={bots}
+            threadId={threadId}
+            title={title}
+            onOpenList={listButton}
+            inGroup={groups.some((g) =>
+              g.member_ids.includes(selectedBot.agent_id),
+            )}
+            onChanged={() => void refresh()}
+          />
+        ) : selectedGroup ? (
+          <>
+            {!standalone && (
+              <header className={styles.header}>
+                {title}
+                <Button
+                  type="text"
+                  icon={<Settings2 size={17} />}
+                  aria-label={t("octopBot.groupSettings")}
+                  onClick={() => setDialog("editGroup")}
+                />
+              </header>
+            )}
+            <GroupRoom
+              key={selectedGroup.group_id}
+              group={selectedGroup}
+              bots={bots}
+              title={standalone ? title : undefined}
+              onOpenList={listButton}
+              onOpenSettings={() => setDialog("editGroup")}
+              onMember={(id) => jump(BASE + "/bots/" + encodeURIComponent(id))}
+              onPreview={rememberPreview}
+            />
+          </>
+        ) : (
+          <div className={styles.center}>
+            <Empty description={t("octopBot.unavailable")}>
+              <Button onClick={() => jump(BASE)}>{t("nav.octopBot")}</Button>
+            </Empty>
+          </div>
+        )}
+      </main>
+      {(dialog === "group" || (dialog === "editGroup" && selectedGroup)) && (
+        <GroupForm
+          bots={bots}
+          chiefId={workspace.chief_id}
+          seed={dialog === "group" ? groupSeed : undefined}
+          group={dialog === "editGroup" ? selectedGroup : undefined}
+          onClose={close}
+          onSaved={onGroupSaved}
+        />
+      )}
+      {dialog === "bot" && standalone && (
+        <BotQuickCreate
+          choice={newLook}
+          onChoose={setNewLook}
+          onClose={close}
+          onCreated={onBotCreated}
+        />
+      )}
+      {dialog === "bot" && !standalone && (
+        <ExpertCreateDrawer
+          open
+          onClose={close}
+          onCreated={onBotCreated}
+          avatarEditor={
+            <AppearancePicker value={newLook} onChange={setNewLook} />
+          }
+        />
+      )}
+      {dialog === "managed" && (
+        <ManagedDrawer
+          open
+          onClose={close}
+          onCreated={onBotCreated}
+          avatarEditor={
+            <AppearancePicker value={newLook} onChange={setNewLook} />
+          }
+        />
+      )}
+      {retryLook && selectedBot?.agent_id === retryLook.id && (
+        <AppearanceModal
+          bot={selectedBot}
+          initial={retryLook.choice}
+          onClose={() => setRetryLook(null)}
+          onSaved={() => {
+            setRetryLook(null);
+            void refresh();
+          }}
+        />
+      )}
+      {dialog === "retained" && <RetainedFolders onClose={close} />}
+      {dialog === "section" && (
+        <SectionEditor
+          action={sectionAction}
+          sections={sections}
+          contacts={all
+            .filter((it) => it.key !== chiefKey)
+            .map((it) => ({
+              key: it.key,
+              name: it.name,
+              detail: it.bot
+                ? it.bot.description?.trim() || it.bot.agent_id
+                : t("octopBot.sectionUI.groupChat"),
+              avatar: portrait(it, 26),
+            }))}
+          saving={layoutSaving}
+          error={layoutError}
+          onSave={async (next, reveal) => {
+            const saved = await setLayout({ sections: next, pinned });
+            if (saved) revealSection.current = reveal;
+            return saved;
+          }}
+          onClose={() => {
+            setLayoutError("");
+            failedLayout.current = undefined;
+            close();
+          }}
+        />
+      )}
+    </div>
+  );
+}

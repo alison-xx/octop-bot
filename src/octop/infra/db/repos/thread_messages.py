@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
@@ -67,6 +68,75 @@ class ThreadMessageRepo:
             ).fetchone()
         return int(row[0])
 
+    def search_owned(
+        self, user_id: int, query: str, *, thread_id: str | None = None
+    ) -> Iterator[tuple[str, str, str, ThreadMessageRow, int]]:
+        """Yield candidate messages from the user's own personal conversations."""
+
+        def pattern(value: str) -> str:
+            escaped = value.lower().replace("!", "!!").replace("%", "!%").replace("_", "!_")
+            return f"%{escaped}%"
+
+        # Older/imported transcripts can serialize non-ASCII text as JSON escapes.
+        plain_wire = json.dumps(query, ensure_ascii=False)[1:-1]
+        escaped_wire = json.dumps(query, ensure_ascii=True)[1:-1]
+        with self._db.connect() as conn:
+            cursor = conn.execute(
+                "SELECT t.agent_id,t.thread_id,t.title,m.seq,m.message_id,m.role,m.message_json,m.created_at,"
+                "1+(SELECT COUNT(*) FROM thread_compaction_boundaries b "
+                "JOIN thread_messages cut ON cut.thread_id=b.thread_id AND cut.message_id=b.message_id "
+                "WHERE b.thread_id=m.thread_id AND cut.seq<=m.seq) AS part FROM threads t "
+                "JOIN agents a ON a.agent_id=t.agent_id "
+                "JOIN thread_messages m ON m.thread_id=t.thread_id "
+                "WHERE t.user_id=? AND a.user_id=? AND a.kind<>'team' "
+                "AND t.channel_type='dashboard' AND m.role IN ('human','ai','user','assistant') "
+                "AND (?='' OR t.thread_id=?) "
+                "AND (LOWER(COALESCE(t.title,'')) LIKE ? ESCAPE '!' "
+                "OR LOWER(m.message_json) LIKE ? ESCAPE '!' "
+                "OR LOWER(m.message_json) LIKE ? ESCAPE '!') "
+                "ORDER BY t.last_active DESC,t.thread_id,m.seq DESC",
+                (
+                    user_id,
+                    user_id,
+                    thread_id or "",
+                    thread_id or "",
+                    pattern(query),
+                    pattern(plain_wire),
+                    pattern(escaped_wire),
+                ),
+            )
+            while rows := cursor.fetchmany(64):
+                for r in rows:
+                    yield (
+                        r["agent_id"],
+                        r["thread_id"],
+                        r["title"] or "",
+                        ThreadMessageRow.from_row(r),
+                        int(r["part"]),
+                    )
+
+    def anchored_message(
+        self, thread_id: str, seq: int | None, message_id: str | None
+    ) -> ThreadMessageRow | None:
+        """Message IDs survive a legacy projection rebuild. Imported messages may only have a sequence."""
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT seq,message_id,role,message_json,created_at FROM thread_messages WHERE thread_id=? "
+                "AND ((?<>'' AND message_id=?) OR (?='' AND seq=?))",
+                (thread_id, message_id or "", message_id, message_id or "", seq),
+            ).fetchone()
+        return ThreadMessageRow.from_row(row) if row else None
+
+    def record_compaction_boundaries(self, thread_id: str, message_ids: set[str]) -> None:
+        with self._db.transaction() as conn:
+            for message_id in message_ids:
+                conn.execute(
+                    "INSERT INTO thread_compaction_boundaries(thread_id,message_id) "
+                    "SELECT t.thread_id,? FROM threads t WHERE t.thread_id=? AND t.channel_type='dashboard' "
+                    "ON CONFLICT(thread_id,message_id) DO NOTHING",
+                    (message_id, thread_id),
+                )
+
     def threads_with_messages(self, thread_ids: Sequence[str]) -> set[str]:
         """Which of *thread_ids* actually have projected messages.
 
@@ -95,6 +165,17 @@ class ThreadMessageRepo:
                 (thread_id, start, end),
             ).fetchall()
         return [ThreadMessageRow.from_row(row) for row in rows]
+
+    def timestamp_base(self, thread_id: str, through: int, fallback: int) -> int:
+        """Anchor ordered millisecond timestamps across overlapping pages of second-resolution history."""
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT MAX(CAST(CASE WHEN created_at>0 THEN created_at ELSE ? END AS BIGINT)*1000-seq) "
+                "FROM thread_messages "
+                "WHERE thread_id=? AND seq<=?",
+                (fallback, thread_id, through),
+            ).fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
 
     def projection_status(self, thread_id: str) -> str:
         with self._db.connect() as conn:
@@ -147,6 +228,7 @@ class ThreadMessageRepo:
         agent_id: str,
         user_id: int,
         limit: int,
+        pending_dashboard_only: bool = False,
     ) -> list[ThreadProjectionCandidate]:
         """Return recent legacy threads first without reading checkpoint blobs."""
         if limit <= 0:
@@ -158,8 +240,9 @@ class ThreadMessageRepo:
                 "ON p.thread_id = t.thread_id "
                 "WHERE t.agent_id = ? AND t.user_id = ? "
                 "AND COALESCE(p.status, 'pending') != 'ready' "
+                "AND (?=0 OR (t.channel_type='dashboard' AND COALESCE(p.status,'pending')<>'failed')) "
                 "ORDER BY t.last_active DESC, t.thread_id DESC LIMIT ?",
-                (agent_id, user_id, limit),
+                (agent_id, user_id, int(pending_dashboard_only), limit),
             ).fetchall()
         return [
             ThreadProjectionCandidate(thread_id=str(row["thread_id"]), status=str(row["status"]))

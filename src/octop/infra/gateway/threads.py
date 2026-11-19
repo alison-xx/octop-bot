@@ -16,6 +16,7 @@ class ThreadRegistry:
     CHANNEL_DASHBOARD = "dashboard"
     CHANNEL_CLI = "cli"
     CHANNEL_MCP = "mcp"
+    CHANNEL_BOT_GROUP = "octop_bot_group"
     CHAT_TYPE_DM = "dm"
     CHAT_TYPE_GROUP = "group"
 
@@ -26,6 +27,7 @@ class ThreadRegistry:
             cls.CHANNEL_DASHBOARD,
             cls.CHANNEL_CLI,
             cls.CHANNEL_MCP,
+            cls.CHANNEL_BOT_GROUP,
         }
 
     @classmethod
@@ -542,7 +544,10 @@ def thread_visible_to(row: ThreadRow, user_id: int) -> bool:
     Rows that predate the column, and test fakes, have no ``contributed`` flag.
     Those stay private to the owner.
     """
-    return row.user_id == user_id or bool(getattr(row, "contributed", False))
+    return row.user_id == user_id or (
+        getattr(row, "channel_type", None) != ThreadRegistry.CHANNEL_BOT_GROUP
+        and bool(getattr(row, "contributed", False))
+    )
 
 
 def thread_row_has_messages(row: ThreadRow) -> bool:
