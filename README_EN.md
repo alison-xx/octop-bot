@@ -22,6 +22,12 @@ Version **1.0.3-beta.7** is available for both platforms. The packages include P
 
 *These screenshots show the Windows app. The City Desk team, conversations, and cloud schedules use sample data.*
 
+## Join the WeChat group
+
+To join other Octop Bot users on WeChat, scan the QR code below and add me as a contact. Include “Octop Bot” in your friend request so I can invite you to the group.
+
+<img src="docs/assets/octop-bot/wechat-community.png" alt="Scan to add the Octop Bot maintainer on WeChat" width="260" />
+
 ## Get started
 
 1. **Open your workspace.** After first launch, choose **Get started**. Your own Chief appears in the team directory.

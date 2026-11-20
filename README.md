@@ -22,6 +22,12 @@ Octop Bot 是一款运行在 Windows 和 Apple Silicon Mac 上的桌面应用。
 
 *截图来自 Windows 客户端。文中的城市编辑部、聊天和云端任务均为演示数据。*
 
+## 加入微信交流群
+
+想和其他用户聊聊 Octop Bot 的用法？用微信扫描下方二维码加我为好友，申请时备注「Octop Bot」。通过后，我会邀请你加入交流群。
+
+<img src="docs/assets/octop-bot/wechat-community.png" alt="扫码添加 Octop Bot 项目维护者为微信好友" width="260" />
+
 ## 第一次使用
 
 1. **打开工作区。** 首次启动后点击「开始使用」。进入本机工作区，你会在团队通讯录里看到自己的 Chief。
