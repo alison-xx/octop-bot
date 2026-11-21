@@ -18,13 +18,19 @@ import {
   type WorkspaceBot,
 } from "../../api/modules/octopBot";
 import { apiErrorMessage } from "../../utils/apiError";
-import { isBotOnlyDesktop } from "../../utils/desktopBridge";
+import { isBotClient } from "../../utils/desktopBridge";
 import { GroupChannels } from "./GroupChannels";
 import { BotCharacter } from "./BotCharacter";
 import createStyles from "./createForms.module.less";
 import styles from "./index.module.less";
 
 type GroupFields = Omit<BotGroup, "group_id">;
+
+export interface GroupSeed {
+  name?: string;
+  memberIds: string[];
+  replyMode?: BotGroup["reply_mode"];
+}
 
 export function canInviteBot(bot: WorkspaceBot) {
   return bot.can_join_group ?? !bot.is_private;
@@ -155,7 +161,7 @@ export function GroupForm({
   bots: WorkspaceBot[];
   group?: BotGroup;
   chiefId: string;
-  seed?: { name: string; memberIds: string[] };
+  seed?: GroupSeed;
   onClose: () => void;
   onSaved: (group: BotGroup) => void;
 }) {
@@ -234,10 +240,10 @@ export function GroupForm({
                 member_ids: [...new Set([group.admin_id, ...group.member_ids])],
               }
             : {
-                name: seed?.name.slice(0, 120),
+                name: seed?.name?.slice(0, 120),
                 admin_id: firstAdmin,
                 member_ids: seed ? invited : chiefId ? [chiefId] : [],
-                reply_mode: "admin_first",
+                reply_mode: seed?.replyMode ?? "admin_first",
               }
         }
       >
@@ -290,7 +296,7 @@ export function GroupForm({
         </Form.Item>
         {error && <Alert type="error" showIcon message={error} />}
       </Form>
-      {group && !isBotOnlyDesktop() && (
+      {group && !isBotClient() && (
         <GroupChannels key={group.group_id} groupId={group.group_id} />
       )}
     </Modal>

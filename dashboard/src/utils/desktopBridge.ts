@@ -138,6 +138,14 @@ export function isBotOnlyDesktop(): boolean {
   return getDesktopBridge()?.botOnly === true;
 }
 
+export function isBotWebClient(): boolean {
+  return import.meta.env.VITE_OCTOP_BOT_WEB === "1";
+}
+
+export function isBotClient(): boolean {
+  return isBotOnlyDesktop() || isBotWebClient();
+}
+
 export function isDesktopShell(): boolean {
   return (
     typeof window !== "undefined" && typeof window.octopDesktop !== "undefined"

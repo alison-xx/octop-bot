@@ -16,6 +16,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { lynxceBotApi } from "../../api/modules/lynxceBot";
 import { refreshBotModels, useLynxceStatus } from "../../hooks/useLynxceStatus";
 import LynxceAccount from "./LynxceAccount";
+import RetainedFolders from "./RetainedFolders";
 import { authApi } from "../../api/modules/auth";
 import { providerApi } from "../../api/modules/provider";
 import type { ResolvedModel } from "../../api/types";
@@ -24,7 +25,7 @@ import { holdDesktopLocalAutoLogin } from "../../api/desktopSession";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import ThemeSwitcher from "../../components/ThemeSwitcher";
 import { applyGuestLocale } from "../../utils/locale";
-import { getDesktopBridge } from "../../utils/desktopBridge";
+import { getDesktopBridge, isBotWebClient } from "../../utils/desktopBridge";
 import { userCan } from "../../utils/permissions";
 import {
   BOT_HOME,
@@ -208,7 +209,9 @@ export default function BotClientSettings() {
   const [models, setModels] = useState<ResolvedModel[] | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
-  const account = useLynxceStatus(true);
+  const [foldersOpen, setFoldersOpen] = useState(false);
+  const web = isBotWebClient();
+  const account = useLynxceStatus(!web);
   const [source, setSource] = useState<ModelSource>(
     location.state?.source === "other"
       ? cloud
@@ -295,7 +298,7 @@ export default function BotClientSettings() {
           {t(back === BOT_GUIDE ? "botGuide.resume" : "common.backToChat")}
         </Button>
         <div className={styles.account}>
-          {back !== BOT_GUIDE && !prefillInput && (
+          {!web && back !== BOT_GUIDE && !prefillInput && (
             <Button
               type="text"
               icon={<BookOpen size={16} />}
@@ -313,6 +316,9 @@ export default function BotClientSettings() {
               {t("botClient.showOrb")}
             </Button>
           )}
+          <Button type="text" size="small" onClick={() => setFoldersOpen(true)}>
+            {t("octopBot.retainedFolders")}
+          </Button>
           <ThemeSwitcher compact />
           <span>{user?.display_name || user?.username}</span>
           <Button
@@ -330,7 +336,9 @@ export default function BotClientSettings() {
           />
         </div>
       </header>
-      {full ? (
+      {web && (cloud || local) ? (
+        <ModelsPage chatOnly onConnectionSaved={refreshBotModels} />
+      ) : full ? (
         <>
           <div className={styles.catalogBack}>
             <Button
@@ -418,25 +426,35 @@ export default function BotClientSettings() {
                       : "botClient.startChat",
                   )}
                 </Button>
-                <Button
-                  block
-                  icon={<Plus size={15} />}
-                  aria-expanded={adding}
-                  aria-controls="bot-connection-form"
-                  onClick={() => setAdding(!adding)}
-                >
-                  {t(
-                    adding
-                      ? "common.cancel"
-                      : account.status?.connected
-                      ? "botClient.lynxce.manage"
-                      : "botClient.addConnection",
-                  )}
-                </Button>
+                {!web && (
+                  <Button
+                    block
+                    icon={<Plus size={15} />}
+                    aria-expanded={adding}
+                    aria-controls="bot-connection-form"
+                    onClick={() => setAdding(!adding)}
+                  >
+                    {t(
+                      adding
+                        ? "common.cancel"
+                        : account.status?.connected
+                        ? "botClient.lynxce.manage"
+                        : "botClient.addConnection",
+                    )}
+                  </Button>
+                )}
               </>
             )}
-            {models && !ready && !error && <p>{t("botClient.connectHint")}</p>}
-            {showConnections && (
+            {models && !ready && !error && (
+              <p>
+                {t(
+                  web
+                    ? "modelConfig.promptMessageNoPermission"
+                    : "botClient.connectHint",
+                )}
+              </p>
+            )}
+            {!web && showConnections && (
               <div className={settings.form} id="bot-connection-form">
                 {sources.length > 1 && (
                   <Radio.Group
@@ -484,20 +502,21 @@ export default function BotClientSettings() {
                 )}
               </div>
             )}
-            {(showConnections
-              ? source === "lynxce"
-              : account.status?.connected) && (
-              <LynxceAccount
-                key={user?.username}
-                owner={user?.username ?? ""}
-                compact={!showConnections}
-                status={account.status}
-                statusError={account.error}
-                onReload={account.reload}
-                onSaved={refreshSource}
-                onSwitch={models?.length ? activateOtherSource : undefined}
-              />
-            )}
+            {!web &&
+              (showConnections
+                ? source === "lynxce"
+                : account.status?.connected) && (
+                <LynxceAccount
+                  key={user?.username}
+                  owner={user?.username ?? ""}
+                  compact={!showConnections}
+                  status={account.status}
+                  statusError={account.error}
+                  onReload={account.reload}
+                  onSaved={refreshSource}
+                  onSwitch={models?.length ? activateOtherSource : undefined}
+                />
+              )}
             {(cloud || local) && (
               <Button type="link" size="small" onClick={() => setFull(true)}>
                 {t("botClient.manage")}
@@ -506,6 +525,7 @@ export default function BotClientSettings() {
           </section>
         </div>
       )}
+      {foldersOpen && <RetainedFolders onClose={() => setFoldersOpen(false)} />}
     </section>
   );
 }

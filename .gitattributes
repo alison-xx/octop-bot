@@ -1,0 +1,4 @@
+deploy/docker/*.sh text eol=lf
+scripts/build-fpk.sh text eol=lf
+scripts/fnos/*.sh text eol=lf
+fnos/bot/cmd/* text eol=lf

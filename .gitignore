@@ -106,6 +106,7 @@ scripts/dev-local-link.sh
 # Local fnpack CLI (build-fpk.sh) and FPK scratch dirs
 .verify/fnpack
 .verify/fnpack.exe
+.verify/fnpack-linux-amd64*
 .verify/fnpack.partial
 .verify/fnpack.exe.partial
 .buildtmp.*/

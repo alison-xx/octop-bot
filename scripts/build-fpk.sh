@@ -6,6 +6,7 @@
 # config / wizard / app 等结构，确保产物与飞牛 fnOS 安装校验完全一致）。
 #
 # 用法（在仓库根目录执行):
+#   bash scripts/build-fpk.sh bot         # Octop Bot Docker 版 -> dist/Octop-Bot-fnos-<ver>.fpk
 #   bash scripts/build-fpk.sh docker      # 完整 Docker 版 -> dist/Octop-fnos-docker-<ver>.fpk
 #   bash scripts/build-fpk.sh docker-lite # 精简 Docker 版 -> dist/Octop-fnos-docker-lite-<ver>.fpk
 #   bash scripts/build-fpk.sh native      # 构建本地版(非Docker) -> dist/Octop-fnos-native-amd64-<ver>.fpk
@@ -68,28 +69,14 @@ echo "[build-fpk] 包名前缀: $PREFIX, 迭代后缀: ${ITER_SUFFIX:-<none>}"
 FNPACK_VER="${FNPACK_VERSION:-1.2.3}"
 VERIFY_DIR="$ROOT/.verify"
 mkdir -p "$VERIFY_DIR"
-if [ -f "$VERIFY_DIR/fnpack.exe" ]; then
-  chmod +x "$VERIFY_DIR/fnpack.exe" 2>/dev/null || true
-fi
-if [ -f "$VERIFY_DIR/fnpack" ]; then
-  chmod +x "$VERIFY_DIR/fnpack" 2>/dev/null || true
-fi
-FNPACK=""
-if [ -x "$VERIFY_DIR/fnpack.exe" ]; then
-  FNPACK="$VERIFY_DIR/fnpack.exe"
-elif [ -x "$VERIFY_DIR/fnpack" ]; then
-  FNPACK="$VERIFY_DIR/fnpack"
-else
-  OS="$(uname -s)"
-  case "$OS" in
-    Linux)  FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-${FNPACK_VER}-linux-amd64" ;;
-    Darwin) FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-${FNPACK_VER}-darwin-amd64" ;;
-    *)      FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-${FNPACK_VER}-windows-amd64" ;;
-  esac
-  case "$OS" in
-    Linux|Darwin) FNPACK="$VERIFY_DIR/fnpack" ;;
-    *)            FNPACK="$VERIFY_DIR/fnpack.exe" ;;
-  esac
+case "$(uname -s)" in
+  Linux)  platform=linux; FNPACK="$VERIFY_DIR/fnpack" ;;
+  Darwin) platform=darwin; FNPACK="$VERIFY_DIR/fnpack" ;;
+  *)      platform=windows; FNPACK="$VERIFY_DIR/fnpack.exe" ;;
+esac
+if [ -f "$FNPACK" ]; then chmod +x "$FNPACK"; fi
+if [ ! -x "$FNPACK" ]; then
+  FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-${FNPACK_VER}-${platform}-amd64"
   echo "[build-fpk] 下载 fnpack: $FNPACK_URL"
   curl -fsSL --connect-timeout 20 --max-time 120 \
     --retry 5 --retry-delay 2 --retry-all-errors \
@@ -109,6 +96,10 @@ mkdir -p "$OUT"
 build_one() {
   local KIND="$1" PKG OUTNAME
   case "$KIND" in
+    bot)
+      PKG="$ROOT/fnos/bot"
+      OUTNAME="Octop-Bot-fnos-${VER}${ITER_SUFFIX}.fpk"
+      ;;
     docker|docker-lite)
       PKG="$ROOT/fnos/docker"
       if [ "$KIND" = "docker-lite" ]; then
@@ -136,7 +127,24 @@ build_one() {
 
   # 注入共享函数库（find_python312 / fix_ownership_and_perms / free_octop_ports），
   # 仓库单一来源 scripts/fnos/common.sh，cmd/bin 脚本统一 source cmd/common.sh。
-  if [ -f "$ROOT/scripts/fnos/common.sh" ]; then
+  if [ "$KIND" = "bot" ]; then
+    cp "$ROOT/LICENSE" "$BUILD/"
+    cp "$ROOT/fnos/docker/"ICON*.PNG "$BUILD/"
+    cp -r "$ROOT/fnos/docker/app/ui/images" "$BUILD/app/ui/"
+    # fnpack requires a callback for each lifecycle phase. The application
+    # center owns Compose and the persistent data-share throughout.
+    for phase in install uninstall upgrade config; do
+      for hook in init callback; do
+        printf '#!/bin/sh\nexit 0\n' > "$BUILD/cmd/${phase}_${hook}"
+      done
+    done
+    cp "$BUILD/cmd/prepare-data" "$BUILD/cmd/install_callback"
+    cp "$BUILD/cmd/prepare-data" "$BUILD/cmd/upgrade_callback"
+    chmod +x "$BUILD/cmd/"*
+    local bot_compose="$BUILD/app/docker/docker-compose.yaml"
+    sed -i.bak "s/nas-0.0.0/nas-${VER}/" "$bot_compose"
+    rm -f "$bot_compose.bak"
+  elif [ -f "$ROOT/scripts/fnos/common.sh" ]; then
     cp "$ROOT/scripts/fnos/common.sh" "$BUILD/cmd/common.sh"
   fi
 
@@ -196,7 +204,29 @@ build_one() {
   case "$FNPACK" in
     *.exe) DIR="$(cygpath -w -m "$BUILD")" ;;
   esac
-  ( cd "$BUILD" && "$FNPACK" build --directory "$DIR" )
+  if [[ "$KIND" == bot && "$FNPACK" == *.exe ]]; then
+    # Windows fnpack omits the executable bits required by fnOS lifecycle hooks.
+    # Pack the Linux copy on a native container filesystem, including on NTFS hosts.
+    local linux_fnpack="$VERIFY_DIR/fnpack-linux-amd64"
+    if [ ! -s "$linux_fnpack" ]; then
+      curl -fsSL --retry 3 --connect-timeout 20 --max-time 120 \
+        "https://static2.fnnas.com/fnpack/fnpack-${FNPACK_VER}-linux-amd64" -o "$linux_fnpack.partial"
+      mv "$linux_fnpack.partial" "$linux_fnpack"
+    fi
+    MSYS_NO_PATHCONV=1 docker run --rm --platform linux/amd64 \
+      --mount "type=bind,source=$DIR,target=/input" \
+      --mount "type=bind,source=$(cygpath -am "$linux_fnpack"),target=/fnpack,readonly" \
+      debian:stable-slim sh -ec '
+        cp -r /input /tmp/pkg
+        cp /fnpack /tmp/fnpack
+        chmod +x /tmp/fnpack /tmp/pkg/cmd/*
+        cd /tmp/pkg
+        /tmp/fnpack build --directory /tmp/pkg
+        cp ./*.fpk /input/
+      '
+  else
+    ( cd "$BUILD" && "$FNPACK" build --directory "$DIR" )
+  fi
 
   local SRC
   SRC="$(ls "$BUILD"/*.fpk 2>/dev/null | head -1)"

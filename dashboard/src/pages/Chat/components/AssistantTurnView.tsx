@@ -31,7 +31,7 @@ import { messageSpeakerId } from "../utils/messageGrouping";
 import { isAssistantProcessLive } from "./liveAssistantTurn";
 import TurnFileChangeCard from "./TurnFileChangeCard";
 import styles from "../index.module.less";
-import { isBotOnlyDesktop } from "../../../utils/desktopBridge";
+import { isBotClient } from "../../../utils/desktopBridge";
 import BotCreationEvents from "../../OctopBot/BotCreationEvents";
 import { separateCreations } from "../../OctopBot/creationEvents";
 
@@ -190,7 +190,7 @@ export default function AssistantTurnView({
     [turnStreaming],
   );
 
-  const botOnly = isBotOnlyDesktop();
+  const botOnly = isBotClient();
   const segmentProcess = useMemo(
     () =>
       hitlLayout.segments.map((seg) => {

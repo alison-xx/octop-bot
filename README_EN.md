@@ -6,6 +6,8 @@ Octop Bot is a desktop app for Windows and Apple Silicon Macs for working with a
 
 Watch Chief put a book club’s invitation together with a planner and writer in the **30-second product film**. Choose the [English film](https://octop-bot.lynxce.cn/media/intro-en.mp4), [Chinese film](https://octop-bot.lynxce.cn/media/intro-zh.mp4), or [interactive walkthrough](https://octop-bot.lynxce.cn/#demo).
 
+[Docker and fnOS installation guide (FPK)](docs/octop-bot-nas.md).
+
 ## Desktop downloads
 
 [Get Octop Bot and its SHA-256 checksums from the official download page](https://octop-bot.lynxce.cn/#download). Choose the package for your computer. The page lists the current version and serves the release files from Lynxce OSS.

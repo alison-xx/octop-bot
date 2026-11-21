@@ -52,6 +52,7 @@ ARG NPM_REGISTRY=
 # 4096 与 `make build-frontend`、fnos-build-fpk 一致。这是上限，不会预占。
 # 内存不足 4GB 的机器用 --build-arg NODE_MAX_OLD_SPACE_SIZE=1024 调低。
 ARG NODE_MAX_OLD_SPACE_SIZE=4096
+ARG VITE_OCTOP_BOT_WEB=0
 WORKDIR /build/dashboard
 
 COPY dashboard/package.json dashboard/package-lock.json ./

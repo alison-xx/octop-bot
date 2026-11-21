@@ -45,13 +45,17 @@ export function useChatNavigation({
   const navigate = useChatNavigate();
   const location = useLocation();
   // One-shot blank-chat intent from minimal nav "+" on non-chat routes.
-  const preferEmptyChatRef = useRef(false);
+  const initialNavDone = useRef<string | null>(null);
 
   useLayoutEffect(() => {
-    if (!(location.state as { newChat?: boolean } | null)?.newChat) return;
-    preferEmptyChatRef.current = true;
+    if (
+      !resolvedAgentId ||
+      !(location.state as { newChat?: boolean } | null)?.newChat
+    )
+      return;
+    initialNavDone.current = resolvedAgentId;
     navigate(location.pathname, { replace: true, state: null });
-  }, [location.state, navigate, location.pathname]);
+  }, [location.state, navigate, location.pathname, resolvedAgentId]);
 
   useEffect(() => {
     if (!resolvedAgentId) return;
@@ -116,7 +120,6 @@ export function useChatNavigation({
     });
   }, [activeThreadId, resolvedAgentId, fetchSessions, loadHistory]);
 
-  const initialNavDone = useRef<string | null>(null);
   const chatUrlStateRef = useRef<{ agentId?: string; threadId?: string }>({});
 
   useEffect(() => {
@@ -145,10 +148,6 @@ export function useChatNavigation({
     }
     if (initialNavDone.current === agent) return;
     initialNavDone.current = agent;
-    if (preferEmptyChatRef.current) {
-      preferEmptyChatRef.current = false;
-      return;
-    }
     if (sessions.length > 0) {
       const preferred = pickPreferredSession(sessions);
       if (preferred) {
@@ -219,7 +218,6 @@ export function useChatNavigation({
   const resetNavForAgentSwitch = () => {
     initialNavDone.current = null;
     ensureThreadAttemptRef.current = null;
-    preferEmptyChatRef.current = false;
   };
 
   const markInitialNavDone = (agentId: string) => {

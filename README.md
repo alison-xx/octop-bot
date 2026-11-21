@@ -6,6 +6,8 @@ Octop Bot 是一款运行在 Windows 和 Apple Silicon Mac 上的桌面应用。
 
 在 **30 秒产品短片**里看 Chief 如何拉上策划与写手，为读书会定下一句招募文案。可以看[中文短片](https://octop-bot.lynxce.cn/media/intro-zh.mp4)、[英文短片](https://octop-bot.lynxce.cn/media/intro-en.mp4)，也可以亲自切换[交互演示](https://octop-bot.lynxce.cn/#demo)中的协作阶段。
 
+[在 Docker 或飞牛 fnOS 上安装 Octop Bot（含 FPK）](docs/octop-bot-nas.md)。
+
 ## 客户端下载
 
 [从官网下载 Octop Bot 和 SHA-256 校验文件](https://octop-bot.lynxce.cn/#download)。下载页按系统列出当前版本，安装包由灵策 OSS 分发。

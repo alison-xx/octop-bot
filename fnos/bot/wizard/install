@@ -1,0 +1,11 @@
+[
+  {
+    "stepTitle": "安装 Octop Bot",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "请先安装飞牛 Docker。应用使用 8090 端口，可与 Octop 共存。首次启动需拉取对应版本镜像，也可提前将镜像导入 Docker。打开应用后，使用共享目录 octop-bot/data/.octop/octop-login.txt 中的向导口令创建管理员。"
+      }
+    ]
+  }
+]

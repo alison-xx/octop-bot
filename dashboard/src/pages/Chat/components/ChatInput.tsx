@@ -8,7 +8,7 @@ import {
   useImperativeHandle,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { isBotOnlyDesktop } from "../../../utils/desktopBridge";
+import { isBotClient } from "../../../utils/desktopBridge";
 import botStyles from "../../OctopBot/botConversation.module.less";
 import { useEmbeddedChat } from "../ChatRouteContext";
 import { App } from "antd";
@@ -226,7 +226,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
   ) {
     const { t, i18n } = useTranslation();
     const chatHost = useEmbeddedChat();
-    const botOnly = isBotOnlyDesktop();
+    const botOnly = isBotClient();
     const { modal, message: antMessage } = App.useApp();
     const { commands: slashCommands, labelFor } = useSlashCommands("ui");
     const skillDisplayName = useSkillDisplayName();
@@ -1155,7 +1155,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onChange={handleFileChange}
           />
         </div>
-        {!isMobile && !isBotOnlyDesktop() && (
+        {!isMobile && !isBotClient() && (
           <p className={styles.aiDisclaimer}>{t("chatWelcome.aiDisclaimer")}</p>
         )}
       </div>

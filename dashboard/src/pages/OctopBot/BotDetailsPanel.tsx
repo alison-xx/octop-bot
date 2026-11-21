@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Drawer, Grid, Select } from "antd";
+import { Button, Drawer, Grid, Select } from "antd";
 import {
   BarChart3,
   CalendarClock,
@@ -48,6 +48,7 @@ interface Props {
   onEdit: () => void;
   onMemory: () => void;
   onPrivacy: () => void;
+  onDelete: () => void;
 }
 
 export default function BotDetailsPanel({
@@ -60,6 +61,7 @@ export default function BotDetailsPanel({
   onEdit,
   onMemory,
   onPrivacy,
+  onDelete,
 }: Props) {
   const { t } = useTranslation();
   const { agents, refresh } = useAgent();
@@ -329,6 +331,11 @@ export default function BotDetailsPanel({
           <Pencil size={14} />
           {t("botClient.profile.edit")}
         </button>
+        {!bot.is_main && (
+          <Button danger block type="text" onClick={onDelete}>
+            {t("octopBot.deleteBot")}
+          </Button>
+        )}
       </div>
     </section>
   );

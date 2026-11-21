@@ -14,15 +14,17 @@ import {
   type BotWorkspace,
 } from "../../api/modules/octopBot";
 import OctopBotPage from "./index";
+import { octopAgentsApi } from "../../api/modules/octopAgents";
 
 const fixture = vi.hoisted(() => ({ mobile: false }));
 vi.mock("react-i18next", () => {
-  const t = (key: string, data?: { name?: string }) =>
-    key + (data?.name ? ":" + data.name : "");
+  const t = (key: string, data?: { name?: string; groups?: string }) =>
+    key + (data?.name || data?.groups ? ":" + (data.name || data.groups) : "");
   return { useTranslation: () => ({ t, i18n: { language: "zh" } }) };
 });
 vi.mock("../../utils/desktopBridge", async (original) => ({
   ...(await original<typeof import("../../utils/desktopBridge")>()),
+  isBotClient: () => true,
   isBotOnlyDesktop: () => true,
 }));
 vi.mock("../../hooks/useCurrentUser", () => ({
@@ -46,8 +48,15 @@ vi.mock("./BotCharacter", () => ({
   octopCharacter: {},
 }));
 vi.mock("./BotChat", () => ({
-  default: ({ onOpenList }: { onOpenList?: () => void }) =>
-    onOpenList ? <button onClick={onOpenList}>Directory</button> : null,
+  default: function BotChat({ onOpenList }: { onOpenList?: () => void }) {
+    const location = useLocation();
+    return (
+      <>
+        {location.state?.newChat && <output>{location.pathname}</output>}
+        {onOpenList && <button onClick={onOpenList}>Directory</button>}
+      </>
+    );
+  },
 }));
 vi.mock("./GroupRoom", () => ({ default: () => null }));
 vi.mock("./GroupForms", async (original) => ({
@@ -87,7 +96,9 @@ vi.mock("../Chat/components/ChatNavDrawers", () => ({
   ExpertCreateDrawer: () => null,
 }));
 vi.mock("../Experts/components/ManagedDrawer", () => ({ default: () => null }));
-vi.mock("./RetainedFolders", () => ({ default: () => null }));
+vi.mock("./RetainedFolders", () => ({
+  default: () => <h2>Protected folders</h2>,
+}));
 vi.mock("./AppearancePicker", () => ({
   default: () => null,
   AppearancePicker: () => null,
@@ -187,6 +198,89 @@ async function blankMenu(key: string, keyboard = false) {
 }
 
 describe("directory sections", () => {
+  it("confirms deletion of a private Bot, handles errors and opens its protected folder", async () => {
+    const remove = vi
+      .spyOn(octopAgentsApi, "remove")
+      .mockRejectedValueOnce(new Error("Busy"))
+      .mockImplementation(async (id) => {
+        server.bots = server.bots.filter((bot) => bot.agent_id !== id);
+      });
+    openDirectory();
+    const openDelete = async () => {
+      fireEvent.contextMenu(
+        await screen.findByRole("button", { name: "Private" }),
+      );
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: "octopBot.deleteBot" }),
+      );
+      return within(
+        await screen.findByRole("dialog", {
+          name: "experts.confirmDelete:Private",
+        }),
+      );
+    };
+    const first = await openDelete();
+    expect(first.getByText("octopBot.deletePrivateHint")).toBeInTheDocument();
+    fireEvent.click(first.getByRole("button", { name: "common.cancel" }));
+    expect(remove).not.toHaveBeenCalled();
+    const confirm = await openDelete();
+    fireEvent.click(
+      confirm.getByRole("button", { name: "octopBot.deleteBot" }),
+    );
+    await confirm.findByText("Busy");
+    fireEvent.click(
+      confirm.getByRole("button", { name: "octopBot.deleteBot" }),
+    );
+    await screen.findByRole("heading", { name: "Protected folders" });
+    expect(remove).toHaveBeenCalledWith("private");
+    expect(screen.queryByRole("button", { name: "Private" })).toBeNull();
+  });
+
+  it("keeps Chief fixed and requires removing a group member before deletion", async () => {
+    openDirectory();
+    fireEvent.contextMenu(await screen.findByRole("button", { name: "Chief" }));
+    const menu = within(await screen.findByRole("menu"));
+    expect(menu.queryByText("octopBot.deleteBot")).toBeNull();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Editor" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "octopBot.deleteBot" }),
+    );
+    const confirm = within(await screen.findByRole("dialog"));
+    expect(confirm.getByText("octopBot.deleteBotHint")).toBeInTheDocument();
+    expect(
+      confirm.getByText("octopBot.deleteGroupMemberHint:Editorial"),
+    ).toBeInTheDocument();
+    expect(
+      confirm.getByRole("button", { name: "octopBot.deleteBot" }),
+    ).toBeDisabled();
+  });
+
+  it("opens a fresh chat for the contact chosen from the directory", async () => {
+    openDirectory();
+    await actions("Writer");
+    fireEvent.click(
+      await screen.findByRole("menuitem", {
+        name: "botDirectory.newPrivateChat",
+      }),
+    );
+    expect(await screen.findByText("/octop-bot/bots/writer")).toBeVisible();
+  });
+
+  it("prepares another group using the source administrator, members and reply mode", async () => {
+    server.groups[0].admin_id = "editor";
+    server.groups[0].reply_mode = "all_members";
+    openDirectory();
+    await actions("Editorial");
+    fireEvent.click(
+      await screen.findByRole("menuitem", {
+        name: "botDirectory.newGroupWithMembers",
+      }),
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      '{"memberIds":["editor","chief"],"replyMode":"all_members"}',
+    );
+  });
+
   it("creates a named section containing several selected entries, preserves pins inside it and keeps Chief fixed", async () => {
     openDirectory();
     await screen.findByRole("button", { name: "Writer" });

@@ -51,7 +51,7 @@ import { useIsMobile } from "../../hooks/useIsMobile";
 import { useListPanelCollapsed } from "../../hooks/useListPanelCollapsed";
 import { apiErrorMessage } from "../../utils/apiError";
 import { navAllowed } from "../../utils/permissions";
-import { isBotOnlyDesktop } from "../../utils/desktopBridge";
+import { isBotClient, isBotOnlyDesktop } from "../../utils/desktopBridge";
 import { BOT_SETTINGS } from "../../utils/botClientRoute";
 import { BotCharacter, octopCharacter, GroupCharacter } from "./BotCharacter";
 import { useBotMotion } from "./useBotMotion";
@@ -65,9 +65,10 @@ import BotQuickCreate from "./BotQuickCreate";
 import { getSnapshot, onStreamEvent, subscribe } from "../Chat/hooks/chatStore";
 import ManagedDrawer from "../Experts/components/ManagedDrawer";
 import BotChat from "./BotChat";
-import { GroupForm, canInviteBot } from "./GroupForms";
+import { GroupForm, canInviteBot, type GroupSeed } from "./GroupForms";
 import GroupRoom from "./GroupRoom";
 import RetainedFolders from "./RetainedFolders";
+import DeleteBotDialog from "./DeleteBotDialog";
 import SectionEditor, {
   moveEntries,
   type SectionAction,
@@ -91,7 +92,7 @@ export default function OctopBotPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { agentId, threadId, groupId } = useParams();
-  const standalone = isBotOnlyDesktop();
+  const standalone = isBotClient();
   const motion = useBotMotion(threadId);
   const [newLook, setNewLook] = useState<AppearanceChoice | null>(null);
   const [retryLook, setRetryLook] = useState<{
@@ -102,6 +103,7 @@ export default function OctopBotPage() {
   const user = useCurrentUser();
   const mobile = useIsMobile();
   const [workspace, setWorkspace] = useState<BotWorkspace | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<WorkspaceBot | null>(null);
   const [error, setError] = useState("");
   const [showList, setShowList] = useState(false);
   const { collapsed, toggle } = useListPanelCollapsed(
@@ -176,10 +178,7 @@ export default function OctopBotPage() {
     kind: "create",
   });
   const [createIn, setCreateIn] = useState<string>();
-  const [groupSeed, setGroupSeed] = useState<{
-    name: string;
-    memberIds: string[];
-  }>();
+  const [groupSeed, setGroupSeed] = useState<GroupSeed>();
   const [layoutError, setLayoutError] = useState("");
   const failedLayout = useRef<BotLayout>();
   const layoutBusy = useRef(false);
@@ -230,17 +229,44 @@ export default function OctopBotPage() {
     setGroupSeed(undefined);
     setCreateIn(undefined);
   }, []);
-  const openCreation = (
-    kind: "bot" | "managed" | "group",
-    section?: string,
-    seed?: { name: string; memberIds: string[] },
-  ) => {
-    setShowList(false);
-    setCreateIn(section);
-    setGroupSeed(seed);
-    setNewLook(null);
-    setDialog(kind);
-  };
+  const openCreation = useCallback(
+    (kind: "bot" | "managed" | "group", section?: string, seed?: GroupSeed) => {
+      setShowList(false);
+      setCreateIn(section);
+      setGroupSeed(seed);
+      setNewLook(null);
+      setDialog(kind);
+    },
+    [],
+  );
+  const startGroupWithMembers = useCallback(
+    (group: BotGroup) => {
+      const section = workspace?.sections.find((s) =>
+        s.items.includes("group:" + group.group_id),
+      );
+      setSearchOpen(false);
+      openCreation("group", section?.name, {
+        memberIds: [
+          group.admin_id,
+          ...group.member_ids.filter((id) => id !== group.admin_id),
+        ],
+        replyMode: group.reply_mode,
+      });
+    },
+    [openCreation, workspace],
+  );
+  const startPrivateChat = useCallback(
+    (id: string, replace = false) => {
+      contactRequest.current++;
+      setShowList(false);
+      setSearchOpen(false);
+      navigate(BASE + "/bots/" + encodeURIComponent(id), {
+        replace,
+        state: { newChat: true },
+      });
+    },
+    [navigate],
+  );
   const jump = (path: string) => {
     contactRequest.current++;
     setShowList(false);
@@ -339,18 +365,26 @@ export default function OctopBotPage() {
     if (!workspace || !shortcut || (!agentId && !groupId && workspace.chief_id))
       return;
     const target = agentId ?? workspace.chief_id ?? workspace.bots[0]?.agent_id;
-    if (shortcut === "newChat" && target) {
-      setSearchOpen(false);
-      setShowList(false);
-      navigate(BASE + "/bots/" + encodeURIComponent(target), {
-        replace: true,
-        state: { newChat: true },
-      });
+    const group = workspace.groups.find((g) => g.group_id === groupId);
+    if (shortcut === "newChat" && group) {
+      navigate(location.pathname, { replace: true, state: null });
+      startGroupWithMembers(group);
+    } else if (shortcut === "newChat" && target) {
+      startPrivateChat(target, true);
     } else {
       navigate(location.pathname, { replace: true, state: null });
       setSearchOpen(shortcut === "search");
     }
-  }, [shortcut, workspace, agentId, groupId, navigate, location.pathname]);
+  }, [
+    shortcut,
+    workspace,
+    agentId,
+    groupId,
+    navigate,
+    location.pathname,
+    startGroupWithMembers,
+    startPrivateChat,
+  ]);
   if (!workspace)
     return (
       <div className={styles.center}>
@@ -371,7 +405,7 @@ export default function OctopBotPage() {
     );
   if (!agentId && !groupId && workspace.chief_id) {
     if (
-      standalone &&
+      isBotOnlyDesktop() &&
       user &&
       !location.state?.prefillInput &&
       !shortcut &&
@@ -525,33 +559,68 @@ export default function OctopBotPage() {
   const renderItem = (item: Item) => {
     const chief = item.key === chiefKey;
     const isPinned = pinned.includes(item.key);
+    const conversationAction = {
+      key: "newChat",
+      label: t(
+        item.bot
+          ? "botDirectory.newPrivateChat"
+          : "botDirectory.newGroupWithMembers",
+      ),
+    };
     const menu: MenuProps = {
-      items: [
-        { key: "create", label: t("octopBot.newSection") },
-        { key: "pin", label: t(isPinned ? "octopBot.unpin" : "octopBot.pin") },
-        {
-          key: "move",
-          label: t("octopBot.move"),
-          children: [
+      items: chief
+        ? [conversationAction, ...(backgroundMenu.items ?? [])]
+        : [
+            conversationAction,
+            { key: "create", label: t("octopBot.newSection") },
             {
-              key: "none",
-              label: t("octopBot.ungrouped"),
-              disabled: !assigned.has(item.key),
+              key: "pin",
+              label: t(isPinned ? "octopBot.unpin" : "octopBot.pin"),
             },
-            ...sections.map((section, i) => ({
-              key: "s" + i,
-              label: section.name,
-              disabled: assigned.get(item.key) === section.name,
-            })),
+            {
+              key: "move",
+              label: t("octopBot.move"),
+              children: [
+                {
+                  key: "none",
+                  label: t("octopBot.ungrouped"),
+                  disabled: !assigned.has(item.key),
+                },
+                ...sections.map((section, i) => ({
+                  key: "s" + i,
+                  label: section.name,
+                  disabled: assigned.get(item.key) === section.name,
+                })),
+              ],
+            },
+            {
+              key: "bulk",
+              label: t("octopBot.sectionUI.moveMany"),
+              disabled: !sections.length,
+            },
+            ...(item.bot && !item.bot.is_main
+              ? [
+                  {
+                    key: "deleteBot",
+                    label: t("octopBot.deleteBot"),
+                    danger: true,
+                  },
+                ]
+              : []),
           ],
-        },
-        {
-          key: "bulk",
-          label: t("octopBot.sectionUI.moveMany"),
-          disabled: !sections.length,
-        },
-      ],
-      onClick: ({ key }) => {
+      onClick: (event) => {
+        const { key } = event;
+        if (key === "newChat") {
+          if (item.bot) startPrivateChat(item.bot.agent_id);
+          else if (item.group) startGroupWithMembers(item.group);
+          return;
+        }
+        if (chief) return backgroundMenu.onClick?.(event);
+        if (key === "deleteBot" && item.bot) {
+          setShowList(false);
+          setDeleteTarget(item.bot);
+          return;
+        }
         if (key === "create") {
           editSection({ kind: "create", entry: item.key });
           return;
@@ -576,9 +645,7 @@ export default function OctopBotPage() {
       <div
         key={item.key}
         data-directory-item
-        {...(layoutSaving
-          ? {}
-          : directoryMenu.events(chief ? backgroundMenu : menu))}
+        {...(layoutSaving ? {} : directoryMenu.events(menu))}
         className={
           standalone
             ? directory.contact + " " + sectionStyles.contactActions
@@ -631,7 +698,7 @@ export default function OctopBotPage() {
           )}
           {isPinned && !chief && !compactDirectory && <Pin size={12} />}
         </button>
-        {!chief && !compactDirectory && (
+        {!compactDirectory && (
           <Dropdown
             trigger={["click"]}
             menu={menu}
@@ -849,8 +916,13 @@ export default function OctopBotPage() {
                 ? [
                     {
                       key: "newChat",
-                      label: t("chatWelcome.newChat"),
-                      disabled: !selectedBot && !workspace.chief_id,
+                      label: t(
+                        selectedGroup
+                          ? "botDirectory.newGroupWithMembers"
+                          : "botDirectory.newPrivateChat",
+                      ),
+                      disabled:
+                        !selectedGroup && !selectedBot && !workspace.chief_id,
                     },
                   ]
                 : []),
@@ -866,15 +938,11 @@ export default function OctopBotPage() {
             ],
             onClick: ({ key }) => {
               if (key === "newChat") {
-                setShowList(false);
-                navigate(
-                  BASE +
-                    "/bots/" +
-                    encodeURIComponent(
-                      selectedBot?.agent_id ?? workspace.chief_id!,
-                    ),
-                  { state: { newChat: true } },
-                );
+                if (selectedGroup) startGroupWithMembers(selectedGroup);
+                else
+                  startPrivateChat(
+                    selectedBot?.agent_id ?? workspace.chief_id!,
+                  );
               } else {
                 openCreation(key as "bot" | "managed" | "group");
               }
@@ -1015,18 +1083,20 @@ export default function OctopBotPage() {
           >
             {!compactDirectory && t("botClient.settings")}
           </Button>
-          <Button
-            type="text"
-            icon={<Cloud size={16} />}
-            aria-label={t("botCloud.title")}
-            title={t("botCloud.title")}
-            className={sectionStyles.cloud}
-            onClick={() =>
-              navigate("/octop-bot/cloud", {
-                state: { from: location.pathname },
-              })
-            }
-          />
+          {isBotOnlyDesktop() && (
+            <Button
+              type="text"
+              icon={<Cloud size={16} />}
+              aria-label={t("botCloud.title")}
+              title={t("botCloud.title")}
+              className={sectionStyles.cloud}
+              onClick={() =>
+                navigate("/octop-bot/cloud", {
+                  state: { from: location.pathname },
+                })
+              }
+            />
+          )}
         </div>
       ) : (
         <>
@@ -1167,6 +1237,7 @@ export default function OctopBotPage() {
               g.member_ids.includes(selectedBot.agent_id),
             )}
             onChanged={() => void refresh()}
+            onDelete={() => setDeleteTarget(selectedBot)}
           />
         ) : selectedGroup ? (
           <>
@@ -1188,6 +1259,7 @@ export default function OctopBotPage() {
               title={standalone ? title : undefined}
               onOpenList={listButton}
               onOpenSettings={() => setDialog("editGroup")}
+              onNewGroup={() => startGroupWithMembers(selectedGroup)}
               onMember={(id) => jump(BASE + "/bots/" + encodeURIComponent(id))}
               onPreview={rememberPreview}
             />
@@ -1250,6 +1322,31 @@ export default function OctopBotPage() {
         />
       )}
       {dialog === "retained" && <RetainedFolders onClose={close} />}
+      {deleteTarget && (
+        <DeleteBotDialog
+          bot={deleteTarget}
+          groups={groups}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => {
+            setDeleteTarget(null);
+            if (deleteTarget.agent_id === agentId) {
+              jump(BASE + "/bots/" + encodeURIComponent(workspace.chief_id));
+            }
+            setWorkspace(
+              (current) =>
+                current && {
+                  ...current,
+                  bots: current.bots.filter(
+                    (bot) => bot.agent_id !== deleteTarget.agent_id,
+                  ),
+                },
+            );
+            if (deleteTarget.is_private) setDialog("retained");
+            void refreshAgents({ silent: true, force: true });
+            void refresh();
+          }}
+        />
+      )}
       {dialog === "section" && (
         <SectionEditor
           action={sectionAction}

@@ -97,6 +97,7 @@ function openDetails(path = "/octop-bot/bots/writer/thread-2") {
                 is_private: false,
               }}
               onClose={noop}
+              onDelete={noop}
               onEdit={noop}
               onAppearance={noop}
               onHistory={noop}

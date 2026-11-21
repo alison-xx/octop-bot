@@ -1,0 +1,13 @@
+appname=octop-bot
+version=0.0.0
+display_name=Octop Bot
+desc=与 Chief 和专家私聊、发起群聊，共享文件并协作完成任务。数据持久保存在本机。
+platform=all
+source=thirdparty
+maintainer=Octop Bot
+maintainer_url=https://github.com/alison-xx/octop-bot
+install_dep_apps=docker
+desktop_uidir=ui
+desktop_applaunchname=octop-bot.Application
+service_port=8090
+checkport=true

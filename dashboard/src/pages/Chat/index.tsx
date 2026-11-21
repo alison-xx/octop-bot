@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useParams, useLocation } from "react-router-dom";
 import { useLynxceStatus } from "../../hooks/useLynxceStatus";
-import { isBotOnlyDesktop } from "../../utils/desktopBridge";
+import { isBotClient, isBotOnlyDesktop } from "../../utils/desktopBridge";
 import { BOT_SETTINGS } from "../../utils/botClientRoute";
 import BotClientWelcome, {
   BotConversationIntro,
@@ -159,9 +159,13 @@ function ChatPageInner() {
   const canTerminal = userCan(user, "terminal");
   const chatHistoryRail = useChatHistoryRail();
   const embedded = useEmbeddedChat();
-  const focused = Boolean(embedded) && isBotOnlyDesktop();
-  const account = useLynxceStatus(focused);
-  const canConfigureModels = focused || navAllowed(user, "models");
+  const focused = Boolean(embedded) && isBotClient();
+  const account = useLynxceStatus(focused && isBotOnlyDesktop());
+  const canConfigureModels = focused
+    ? isBotOnlyDesktop() ||
+      userCan(user, "providers") ||
+      userCan(user, "ollama_models")
+    : navAllowed(user, "models");
   const [shareTarget, setShareTarget] = useState<{
     agentId: string;
     threadId: string;

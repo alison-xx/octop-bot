@@ -1,0 +1,17 @@
+name: octop-bot
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        VITE_OCTOP_BOT_WEB: "1"
+        OCTOP_IMAGE_VARIANT: lite
+    image: ghcr.io/alison-xx/octop-bot:${OCTOP_BOT_TAG:-nas-local}
+    restart: unless-stopped
+    ports:
+      - "${OCTOP_BOT_PORT:-8090}:8088"
+    volumes:
+      - bot-data:/data
+volumes:
+  bot-data:

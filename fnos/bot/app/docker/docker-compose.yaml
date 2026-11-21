@@ -1,0 +1,10 @@
+services:
+  bot:
+    image: ghcr.io/alison-xx/octop-bot:nas-0.0.0
+    container_name: octop-bot-fnos
+    pull_policy: missing
+    restart: unless-stopped
+    ports:
+      - "8090:8088"
+    volumes:
+      - "${OCTOP_BOT_DATA:?missing fnOS data share}:/data"

@@ -1,4 +1,4 @@
-import { isBotOnlyDesktop } from "../../../utils/desktopBridge";
+import { isBotClient } from "../../../utils/desktopBridge";
 import { BOT_SETTINGS } from "../../../utils/botClientRoute";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -329,7 +329,7 @@ export default function ChatInputActionsRow({
     null,
   );
 
-  const botOnly = isBotOnlyDesktop();
+  const botOnly = isBotClient();
   const useCompactControls = botOnly || isMobile || isCompact;
 
   useLayoutEffect(() => {
@@ -748,7 +748,7 @@ export default function ChatInputActionsRow({
                 return;
               }
               closePlusMenu();
-              if (isBotOnlyDesktop())
+              if (isBotClient())
                 navigate(BOT_SETTINGS, { state: { from: location.pathname } });
               else navigate("/admin/models");
             }}

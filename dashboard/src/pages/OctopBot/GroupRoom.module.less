@@ -1,3 +1,19 @@
+.dropActive {
+  position: relative;
+}
+.dropHint {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  border: 2px dashed var(--bot-accent, var(--fn-text-brand));
+  border-radius: inherit;
+  color: var(--bot-accent, var(--fn-text-brand));
+  background: var(--bot-card, var(--fn-bg-container));
+  font-weight: 600;
+}
 .timelineArea {
   position: relative;
   display: flex;

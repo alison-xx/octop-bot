@@ -7,6 +7,7 @@ import { octopAgentsApi } from "../../api/modules/octopAgents";
 import type { OctopAgent } from "../../context/AgentContext";
 import { useServerTimezone } from "../../hooks/useServerTimezone";
 import { apiErrorMessage } from "../../utils/apiError";
+import { isBotWebClient } from "../../utils/desktopBridge";
 import { BOT_SETTINGS } from "../../utils/botClientRoute";
 import {
   formatServerHourMinute,
@@ -143,7 +144,9 @@ export default function BotClientWelcome({
                 )}
               </div>
             )}
-            {isChief && needsModel && canConfigure && <LynxceRegistration />}
+            {!isBotWebClient() && isChief && needsModel && canConfigure && (
+              <LynxceRegistration />
+            )}
             {!ready && !needsModel && (
               <button
                 className={styles.start}

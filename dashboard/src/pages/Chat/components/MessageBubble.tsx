@@ -42,7 +42,7 @@ import {
 import { isImeComposing } from "../../../utils/ime";
 import { formatMessageTime } from "../../../utils/formatMessageTime";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
-import { isBotOnlyDesktop } from "../../../utils/desktopBridge";
+import { isBotClient } from "../../../utils/desktopBridge";
 import { useVoiceOutputContext } from "../../../context/VoiceOutputContext";
 import { prepareSpeechText } from "../../../utils/plainTextForSpeech";
 import {
@@ -579,7 +579,7 @@ function MessageBubble({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const serverTimezone = useServerTimezone();
-  const botOnly = isBotOnlyDesktop();
+  const botOnly = isBotClient();
   const quoteMessage = useContext(QuoteMessageContext);
   const user = useCurrentUser();
   const isOwnMessage =

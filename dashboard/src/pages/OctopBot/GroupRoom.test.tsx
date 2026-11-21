@@ -180,18 +180,49 @@ describe("Octop Bot group timeline", () => {
         path: "inbound/three.txt",
         is_dir: false,
       });
-    const view = room("partial");
-    fireEvent.change(view.container.querySelector("input[type=file]")!, {
-      target: {
+    room("partial");
+    const input = screen.getByRole("textbox");
+    const transfer = {
+      dataTransfer: {
+        types: ["Files"],
         files: ["one.txt", "two.txt", "three.txt"].map(
           (name) => new File(["text"], name),
         ),
       },
-    });
+    };
+    expect(fireEvent.dragOver(input, transfer)).toBe(false);
+    expect(screen.getByText("botGroupChat.dropFiles")).toBeVisible();
+    expect(fireEvent.drop(input, transfer)).toBe(false);
+    expect(screen.queryByText("botGroupChat.dropFiles")).toBeNull();
     await screen.findByText("three.txt");
     expect(screen.getByText("one.txt")).toBeVisible();
     expect(screen.getByText("botGroupChat.uploadFailed")).toBeVisible();
     expect(screen.getByRole("button", { name: "octopBot.send" })).toBeEnabled();
+  });
+  it("reports folder and over-limit drops without intercepting text drags", async () => {
+    room("drop-limits");
+    await screen.findByText("Working draft");
+    const input = screen.getByRole("textbox");
+    const file = new File(["text"], "note.txt");
+    expect(
+      fireEvent.dragOver(input, {
+        dataTransfer: { types: ["text/plain"], files: [] },
+      }),
+    ).toBe(true);
+    expect(screen.queryByText("botGroupChat.dropFiles")).toBeNull();
+    fireEvent.drop(input, {
+      dataTransfer: {
+        types: ["Files"],
+        files: [],
+        items: [{ webkitGetAsEntry: () => ({ isDirectory: true }) }],
+      },
+    });
+    expect(screen.getByText("botGroupChat.folderDrop")).toBeVisible();
+    fireEvent.drop(input, {
+      dataTransfer: { types: ["Files"], files: Array(17).fill(file) },
+    });
+    expect(screen.getByText("octopBot.attachmentLimit")).toBeVisible();
+    expect(octopBotApi.upload).not.toHaveBeenCalled();
   });
   it("retries the original payload after switching, while preserving the next draft", async () => {
     const first = deferred<GroupMessage[]>();

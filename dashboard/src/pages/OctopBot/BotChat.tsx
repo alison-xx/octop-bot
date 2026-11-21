@@ -25,7 +25,7 @@ import {
 } from "../../api/modules/octopThreads";
 import { useAgent } from "../../context/AgentContext";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { isBotOnlyDesktop } from "../../utils/desktopBridge";
+import { isBotClient } from "../../utils/desktopBridge";
 import { canAccessPath } from "../../utils/permissions";
 import LazyMarkdown from "../../components/Markdown/LazyMarkdown";
 import { apiErrorMessage } from "../../utils/apiError";
@@ -75,6 +75,7 @@ function ThreadHistory({
   }, [agentId, limit, t]);
   return (
     <Drawer open onClose={onClose} title={t("octopBot.history")}>
+      <p>{t("botDirectory.privateHistoryHelp")}</p>
       {error && <Alert type="error" message={error} />}
       <List
         loading={loading}
@@ -125,6 +126,7 @@ export default function BotChat({
   onOpenList,
   inGroup,
   onChanged,
+  onDelete,
 }: {
   bot: WorkspaceBot;
   roster: WorkspaceBot[];
@@ -134,6 +136,7 @@ export default function BotChat({
   onOpenList?: () => void;
   inGroup: boolean;
   onChanged: () => void;
+  onDelete: () => void;
 }) {
   const { t } = useTranslation();
   const { agents, refresh } = useAgent();
@@ -257,7 +260,7 @@ export default function BotChat({
     }),
     [openSide, openReference, bot, roster, motion],
   );
-  const standalone = isBotOnlyDesktop();
+  const standalone = isBotClient();
   const agent = agents.find((a) => a.agent_id === bot.agent_id);
   const capabilityLinks = [
     ["/personalization/memory", "nav.memory"],
@@ -382,6 +385,7 @@ export default function BotChat({
             onSide={() => openSide("")}
             onAppearance={() => setPanel("appearance")}
             onEdit={() => setPanel("settings")}
+            onDelete={onDelete}
             onMemory={() => setPanel("teamMemory")}
             onPrivacy={() => {
               setPrivacyError("");

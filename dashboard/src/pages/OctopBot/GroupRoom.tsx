@@ -31,6 +31,7 @@ import {
 import { Link } from "react-router-dom";
 import type { MentionsRef } from "antd/es/mentions";
 import { CopyButton, QuoteButton } from "../Chat/components/MessageTextActions";
+import { dragHasFiles } from "../Chat/utils/droppedFiles";
 import { useTranslation } from "react-i18next";
 import {
   octopBotApi,
@@ -83,6 +84,7 @@ function GroupRoomView({
   title,
   onOpenList,
   onOpenSettings,
+  onNewGroup,
   onMember,
   onPreview,
 }: {
@@ -91,6 +93,7 @@ function GroupRoomView({
   title?: React.ReactNode;
   onOpenList?: () => void;
   onOpenSettings?: () => void;
+  onNewGroup?: () => void;
   onMember?: (id: string) => void;
   onPreview?: (key: string, text: string) => void;
 }) {
@@ -106,6 +109,7 @@ function GroupRoomView({
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
   const user = useCurrentUser();
@@ -303,6 +307,35 @@ function GroupRoomView({
     }
     composer.patch({ uploading: null, uploadError: failures.join("\n") });
   };
+  const handleFileDrag = (event: React.DragEvent) => {
+    if (!dragHasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const available = !sending && !uploading;
+    event.dataTransfer.dropEffect = available ? "copy" : "none";
+    setDragOver(available);
+  };
+  const handleFileDrop = (event: React.DragEvent) => {
+    const transfer = event.dataTransfer;
+    if (!dragHasFiles(transfer) && !transfer.files.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDragOver(false);
+    if (sending || uploading) return;
+    if (
+      Array.from(transfer.items ?? []).some(
+        (item) => item.webkitGetAsEntry?.()?.isDirectory,
+      )
+    ) {
+      composer.patch({ uploadError: t("botGroupChat.folderDrop") });
+      return;
+    }
+    if (!transfer.files.length) {
+      composer.patch({ uploadError: t("upload.emptyDrop") });
+      return;
+    }
+    void upload(Array.from(transfer.files));
+  };
   const inputs = new Map(
     rows
       .filter((row) => row.role === "user")
@@ -352,6 +385,12 @@ function GroupRoomView({
       <GroupCharacter members={members} size={62} />
       <h2>{group.name}</h2>
       <small>{t("octopBot.memberCount", { count: members.length })}</small>
+      <p>{t("botDirectory.groupHistoryHelp")}</p>
+      {onNewGroup && (
+        <Button icon={<Plus size={15} />} onClick={onNewGroup}>
+          {t("botDirectory.newGroupWithMembers")}
+        </Button>
+      )}
       <div className={directory.infoSection}>
         <h3>{t("octopBot.members")}</h3>
         {members.map((bot) => (
@@ -708,12 +747,26 @@ function GroupRoomView({
           )}
         </div>
         <div
-          className={
+          className={[
             standalone
               ? [directory.compose, conversation.composerShell].join(" ")
-              : styles.compose
-          }
+              : styles.compose,
+            dragOver ? groupStyles.dropActive : "",
+          ].join(" ")}
+          onDragEnter={handleFileDrag}
+          onDragOver={handleFileDrag}
+          onDragLeave={(event) => {
+            const next = event.relatedTarget;
+            if (!(next instanceof Node && event.currentTarget.contains(next)))
+              setDragOver(false);
+          }}
+          onDrop={handleFileDrop}
         >
+          {dragOver && (
+            <span className={groupStyles.dropHint} role="status">
+              {t("botGroupChat.dropFiles")}
+            </span>
+          )}
           {standalone && (
             <Dropdown
               trigger={["click"]}

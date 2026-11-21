@@ -1,4 +1,4 @@
-import { isBotOnlyDesktop } from "./desktopBridge";
+import { isBotClient } from "./desktopBridge";
 
 export const BOT_HOME = "/octop-bot";
 export const BOT_SETTINGS = BOT_HOME + "/settings";
@@ -24,11 +24,11 @@ export function botClientDestination(path: string): string {
 
 const RETURN_KEY = "octop.bot.login-return";
 export function rememberBotLoginPath(path: string) {
-  if (isBotOnlyDesktop())
+  if (isBotClient())
     sessionStorage.setItem(RETURN_KEY, botClientDestination(path));
 }
 export function loginDestination(fallback = "/chat", consume = true): string {
-  if (!isBotOnlyDesktop()) return fallback;
+  if (!isBotClient()) return fallback;
   const saved = sessionStorage.getItem(RETURN_KEY);
   if (consume) sessionStorage.removeItem(RETURN_KEY);
   return botClientDestination(saved ?? fallback);

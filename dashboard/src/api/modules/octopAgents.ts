@@ -1,6 +1,10 @@
 import { request, requestUpload } from "../request";
 
 export const octopAgentsApi = {
+  remove: (agentId: string) =>
+    request<void>(`/agents/${encodeURIComponent(agentId)}`, {
+      method: "DELETE",
+    }),
   createTeammate: (name: string, role: string) =>
     request<{ agent_id: string }>("/agents", {
       method: "POST",

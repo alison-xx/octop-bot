@@ -14,7 +14,7 @@ import {
   BOT_SETTINGS,
   botClientDestination,
 } from "../../utils/botClientRoute";
-import { getDesktopBridge } from "../../utils/desktopBridge";
+import { getDesktopBridge, isBotWebClient } from "../../utils/desktopBridge";
 import styles from "./index.module.less";
 
 const Workspace = lazy(() => import("./index"));
@@ -76,8 +76,12 @@ export default function BotClientRoutes() {
       <Suspense fallback={<BrandLoading viewport />}>
         <Routes>
           <Route path={BOT_HOME} element={<Workspace />} />
-          <Route path={BOT_CLOUD} element={<CloudWorkspace />} />
-          <Route path={BOT_GUIDE} element={<Guide />} />
+          {!isBotWebClient() && (
+            <>
+              <Route path={BOT_CLOUD} element={<CloudWorkspace />} />
+              <Route path={BOT_GUIDE} element={<Guide />} />
+            </>
+          )}
           <Route
             path="/octop-bot/bots/:agentId/:threadId?"
             element={<Workspace />}

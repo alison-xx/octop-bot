@@ -13,7 +13,7 @@ import { useNativeWindowChrome } from "./hooks/useNativeWindowChrome";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { routerBasename } from "./utils/publicUrl";
 import { useTranslation } from "react-i18next";
-import { isBotOnlyDesktop } from "./utils/desktopBridge";
+import { isBotClient, isBotOnlyDesktop } from "./utils/desktopBridge";
 import BotClientRoutes, {
   BotClientSetupRoute,
 } from "./pages/OctopBot/BotClientRoutes";
@@ -53,7 +53,7 @@ const GlobalStyle = createGlobalStyle`
 function ThemedApp() {
   const { isDark, palette, customColor } = useTheme();
   const { t, i18n } = useTranslation();
-  const botOnly = isBotOnlyDesktop();
+  const botOnly = isBotClient();
   const isMobile = useIsMobile();
   const desktopChrome = useDesktopChrome();
   // Native window buttons follow the app theme. Linux draws square ones.
@@ -149,7 +149,9 @@ function ThemedApp() {
             <Route path="/login/oidc/complete" element={<OidcComplete />} />
             <Route
               path="/setup"
-              element={botOnly ? <BotClientSetupRoute /> : <SetupPage />}
+              element={
+                isBotOnlyDesktop() ? <BotClientSetupRoute /> : <SetupPage />
+              }
             />
             {!botOnly && <Route path="/invite" element={<InvitePage />} />}
             {!botOnly && (

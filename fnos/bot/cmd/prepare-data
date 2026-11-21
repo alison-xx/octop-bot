@@ -1,0 +1,28 @@
+#!/bin/bash
+set -eu
+
+app_dest="${TRIM_APPDEST:?fnOS app target required}"
+app_var="${TRIM_PKGVAR:-/var/apps/octop-bot/var}"
+path_file="$app_var/docker-data-share"
+
+if [[ -n "${TRIM_DATA_SHARE_PATHS:-}" ]]; then
+    data_dir="${TRIM_DATA_SHARE_PATHS%%:*}"
+elif [[ -s "$path_file" ]]; then
+    IFS= read -r data_dir < "$path_file"
+else
+    data_dir="$(dirname "$app_dest")/shares/octop-bot/data"
+fi
+if [[ "$data_dir" != /* || ! -d "$data_dir" || "$data_dir" == *$'\n'* ]]; then
+    echo "Octop Bot data share is unavailable: $data_dir" >&2
+    exit 1
+fi
+
+umask 077
+mkdir -p "$app_var"
+printf '%s\n' "$data_dir" > "$path_file.tmp"
+mv -f "$path_file.tmp" "$path_file"
+# A single-quoted Compose dotenv value preserves spaces, # and literal $ signs.
+quoted="${data_dir//\\/\\\\}"
+quoted="${quoted//\'/\\\'}"
+printf "OCTOP_BOT_DATA='%s'\n" "$quoted" > "$app_dest/docker/.env.tmp"
+mv -f "$app_dest/docker/.env.tmp" "$app_dest/docker/.env"

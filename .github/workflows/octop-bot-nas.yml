@@ -1,0 +1,50 @@
+name: Octop Bot NAS
+on:
+  push:
+    tags: ["v*", "octop-bot-v*", "!octop-bot-v*-macos"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve image and verify release version
+        id: meta
+        run: |
+          version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            tag_version="${GITHUB_REF_NAME#octop-bot-}"
+            tag_version="${tag_version#v}"
+            test "${tag_version/-beta./b}" = "$version"
+          fi
+          echo "image=ghcr.io/alison-xx/octop-bot:nas-$version" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish Bot web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+          build-args: |
+            VITE_OCTOP_BOT_WEB=1
+            OCTOP_IMAGE_VARIANT=lite
+      - name: Build fnOS package
+        run: bash scripts/build-fpk.sh bot
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Octop-Bot-fnOS
+          path: dist/Octop-Bot-fnos-*.fpk
+          if-no-files-found: error

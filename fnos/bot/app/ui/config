@@ -1,0 +1,13 @@
+{
+  ".url": {
+    "octop-bot.Application": {
+      "title": "Octop Bot",
+      "icon": "images/icon_{0}.png",
+      "type": "url",
+      "protocol": "http",
+      "port": "8090",
+      "url": "/octop-bot",
+      "allUsers": true
+    }
+  }
+}

@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { lynxceBotApi, type LynxceStatus } from "../../api/modules/lynxceBot";
 import { lynxceWalletApi } from "../../api/modules/lynxceWallet";
 import { providerApi } from "../../api/modules/provider";
+import { octopBotApi } from "../../api/modules/octopBot";
 import BotClientSettings from "./BotClientSettings";
 
 const mocks = vi.hoisted(() => ({ role: "admin", config: vi.fn() }));
@@ -129,6 +130,37 @@ beforeEach(() => {
 });
 
 describe("standalone chat model settings", () => {
+  it("opens protected folders from settings after the private expert is gone", async () => {
+    vi.spyOn(octopBotApi, "retainedFolders").mockResolvedValue([
+      { agent_id: "former", name: "Former expert", path: "/former/files" },
+    ]);
+    openSettings();
+    fireEvent.click(
+      screen.getByRole("button", { name: "octopBot.retainedFolders" }),
+    );
+    await screen.findByText("/former/files");
+    expect(
+      screen.getByRole("button", { name: "octopBot.releaseFolder" }),
+    ).toBeEnabled();
+  });
+  it("opens the model catalog and retained folders on NAS without calling desktop OAuth", async () => {
+    vi.stubEnv("VITE_OCTOP_BOT_WEB", "1");
+    try {
+      openSettings();
+      expect(
+        await screen.findByRole("heading", { name: "Catalog" }),
+      ).toBeVisible();
+      expect(
+        screen.getByRole("button", { name: "octopBot.retainedFolders" }),
+      ).toBeVisible();
+      expect(lynxceBotApi.status).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("button", { name: "account.checkUpdates" }),
+      ).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it("shows the wallet on the overview and reauthorizes only when a legacy grant requires it", async () => {
     vi.mocked(lynxceBotApi.status).mockResolvedValue({
       connected: true,

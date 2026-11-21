@@ -7,6 +7,7 @@ import {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   sessionStorage.clear();
 });
 describe("standalone Bot navigation", () => {
@@ -30,6 +31,12 @@ describe("standalone Bot navigation", () => {
       "/octop-bot/bots/chief/previous",
     );
     expect(loginDestination()).toBe("/octop-bot/bots/chief/previous");
+    expect(loginDestination()).toBe("/octop-bot");
+  });
+  it("restores the NAS chat after password login without an Electron bridge", () => {
+    vi.stubEnv("VITE_OCTOP_BOT_WEB", "1");
+    rememberBotLoginPath("/octop-bot/groups/project");
+    expect(loginDestination()).toBe("/octop-bot/groups/project");
     expect(loginDestination()).toBe("/octop-bot");
   });
   it("preserves normal dashboard login destinations", () => {

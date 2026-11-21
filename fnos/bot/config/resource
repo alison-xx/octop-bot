@@ -1,0 +1,8 @@
+{
+  "docker-project": {
+    "projects": [{ "name": "octop-bot", "path": "docker" }]
+  },
+  "data-share": {
+    "shares": [{ "name": "octop-bot/data" }]
+  }
+}

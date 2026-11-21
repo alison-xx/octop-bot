@@ -142,6 +142,40 @@ describe("Octop Bot creation dialogs", () => {
     expect(create).toHaveBeenCalledWith(body);
   });
 
+  it("creates a separate group with the source configuration after naming it", async () => {
+    const bots = ["ADMIN", "EXPERT"].map((id) => ({
+      agent_id: id,
+      name: id,
+      is_main: false,
+      is_private: false,
+    }));
+    const body = {
+      name: "Second topic",
+      admin_id: "ADMIN",
+      member_ids: ["ADMIN", "EXPERT"],
+      reply_mode: "all_members" as const,
+    };
+    const create = vi
+      .spyOn(octopBotApi, "createGroup")
+      .mockClear()
+      .mockResolvedValue({ ...body, group_id: "G2" });
+    render(
+      <GroupForm
+        bots={bots}
+        chiefId="EXPERT"
+        seed={{ memberIds: ["ADMIN", "EXPERT"], replyMode: "all_members" }}
+        onSaved={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(create).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole("textbox", { name: "octopBot.name" }), {
+      target: { value: body.name },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "common.create" }));
+    await waitFor(() => expect(create).toHaveBeenCalledExactlyOnceWith(body));
+  });
+
   it("finds same-named members by role or ID, and keeps the current administrator selected", async () => {
     const bots: WorkspaceBot[] = [
       { agent_id: "MAIN", name: "Chief", is_main: true, is_private: false },
