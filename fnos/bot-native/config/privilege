@@ -1,0 +1,5 @@
+{
+  "defaults": { "run-as": "package" },
+  "username": "octop-bot-native",
+  "groupname": "octop-bot-native"
+}

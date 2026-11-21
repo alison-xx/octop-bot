@@ -1,0 +1,9 @@
+[
+  {
+    "stepTitle": "安装 Octop Bot 原生版",
+    "items": [{
+      "type": "tips",
+      "helpText": "应用使用飞牛 Python 3.12 和 8091 端口。启动后打开 Octop Bot 原生版，使用应用共享目录 octop-bot-native/data/.octop/octop-login.txt 中的向导口令创建管理员。"
+    }]
+  }
+]

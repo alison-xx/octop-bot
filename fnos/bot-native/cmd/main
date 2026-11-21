@@ -1,0 +1,81 @@
+#!/bin/bash
+set -eu
+umask 077
+source "$(dirname "$0")/common.sh"
+
+app=${TRIM_APPDEST:?Missing fnOS application directory}
+var=${TRIM_PKGVAR:?Missing fnOS application data directory}
+pidfile="$var/bot.pid"
+port=${TRIM_SERVICE_PORT:-8091}
+
+fail() {
+    echo "$1" >&2
+    if [[ -n "${TRIM_TEMP_LOGFILE:-}" ]]; then printf '%s\n' "$1" > "$TRIM_TEMP_LOGFILE"; fi
+    exit 1
+}
+
+# Serialize lifecycle operations. The service must not inherit the lock.
+exec 9>"$var/bot.lock"
+flock -x 9
+
+running() {
+    [[ -s "$pidfile" ]] && read -r pid started < "$pidfile" &&
+        [[ "$pid" =~ ^[1-9][0-9]*$ && -r "/proc/$pid/stat" ]] &&
+        awk -v started="$started" '$3 != "Z" && $22 == started { found=1 } END { exit !found }' "/proc/$pid/stat"
+}
+
+stop() {
+    if running; then
+        kill -TERM -- "-$pid" || true
+        for ((i=0; i<50; i++)); do
+            running || break
+            sleep 0.2
+        done
+        if running; then kill -KILL -- "-$pid"; fi
+    fi
+    rm -f "$pidfile"
+}
+
+prepare_share() {
+    if [[ -n "${TRIM_DATA_SHARE_PATHS:-}" ]]; then
+        share=${TRIM_DATA_SHARE_PATHS%%:*}
+    elif [[ -s "$var/share-path" ]]; then
+        IFS= read -r share < "$var/share-path"
+    else
+        share=/var/apps/octop-bot-native/share/data
+    fi
+    [[ "$share" = /* && -d "$share" && -w "$share" ]] || fail "应用数据共享目录不可写：$share"
+    printf '%s\n' "$share" > "$var/share-path.tmp"
+    mv "$var/share-path.tmp" "$var/share-path"
+}
+
+case "${1:-}" in
+    prepare) prepare_share ;;
+    status) running || exit 3 ;;
+    stop) stop ;;
+    start)
+        running && exit 0
+        prepare_share
+        python=$(find_python312) || fail '请安装飞牛 Python 3.12。'
+        octop_prepend_fnos_node_path
+        export HOME="$share" OCTOP_HOME="$share/.octop" OCTOP_REQUIRE_SETUP_PASSWORD=true
+        export PATH="$app/bin:$(dirname "$python"):$PATH" PYTHONPATH="$app/site-packages"
+        export PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1
+        if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+            fail "端口 $port 已被占用。"
+        fi
+        cd "$share"
+        setsid "$python" -m octop.cli.main run --host 0.0.0.0 --port "$port" \
+            </dev/null >>"$var/info.log" 2>&1 9>&- &
+        pid=$!
+        printf '%s %s\n' "$pid" "$(awk '{print $22}' "/proc/$pid/stat")" > "$pidfile"
+        trap 'stop; exit 1' HUP INT TERM
+        for ((i=0; i<90; i++)); do
+            running || break
+            if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then exit 0; fi
+            sleep 1
+        done
+        stop
+        fail "启动失败，请查看 $var/info.log。" ;;
+    *) exit 1 ;;
+esac
