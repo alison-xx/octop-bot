@@ -48,6 +48,8 @@ docker save "ghcr.io/alison-xx/octop-bot:nas-$version" | gzip > "dist/Octop-Bot-
 
 仓库的 **Octop Bot NAS** GitHub Actions 工作流会构建并推送 `linux/amd64`、`linux/arm64` 镜像，镜像发布成功后可从同一次运行的 **Octop-Bot-fnOS** 制品下载 FPK。
 
+发布 `octop-bot-v<版本>` 的 GitHub Release（正式版或预发布版）后，该工作流会使用对应提交的 NAS 镜像，自动打包 AMD64 和 ARM64 原生 FPK，上传到该标签的 Release。两份包都构建成功后才开始上传。重跑工作流会补齐缺失的附件，已上传的包会保留。若需手动补发，在 Actions 的 **Octop Bot NAS** 中选择对应版本标签运行。单独的 `-macos` Release 只用于 macOS。
+
 在构建机上可复用已发布镜像内同版本的 Bot 网页、后端和架构专用依赖，分别导出两份原生 FPK。将下面的版本替换为目标 Release 对应的 Python 版本。
 
 ```sh

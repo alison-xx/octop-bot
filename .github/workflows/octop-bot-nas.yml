@@ -2,6 +2,8 @@ name: Octop Bot NAS
 on:
   push:
     tags: ["v*", "octop-bot-v*", "!octop-bot-v*-macos"]
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +12,14 @@ permissions:
 
 jobs:
   package:
+    if: github.event_name != 'release' || (startsWith(github.ref, 'refs/tags/octop-bot-v') && !endsWith(github.ref, '-macos'))
+    concurrency:
+      group: octop-bot-nas-image-${{ github.ref }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      digest: ${{ steps.cached.outputs.digest || steps.image.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
       - name: Resolve image and verify release version
@@ -23,6 +32,8 @@ jobs:
             test "${tag_version/-beta./b}" = "$version"
           fi
           echo "image=ghcr.io/alison-xx/octop-bot:nas-$version" >> "$GITHUB_OUTPUT"
+          echo "commit_image=ghcr.io/alison-xx/octop-bot:nas-$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -30,14 +41,30 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Find the image already built for this release commit
+        id: cached
+        if: github.ref_type == 'tag'
+        env:
+          VERSION_IMAGE: ${{ steps.meta.outputs.image }}
+          COMMIT_IMAGE: ${{ steps.meta.outputs.commit_image }}
+        run: |
+          if digest=$(docker buildx imagetools inspect "$COMMIT_IMAGE" --format '{{.Manifest.Digest}}') &&
+             [[ "$digest" == "$(docker buildx imagetools inspect "$VERSION_IMAGE" --format '{{.Manifest.Digest}}')" ]]; then
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish Bot web image
+        id: image
+        if: steps.cached.outputs.digest == ''
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.image }}
+          tags: |
+            ${{ steps.meta.outputs.image }}
+            ${{ steps.meta.outputs.commit_image }}
           build-args: |
             VITE_OCTOP_BOT_WEB=1
             OCTOP_IMAGE_VARIANT=lite
@@ -48,3 +75,57 @@ jobs:
           name: Octop-Bot-fnOS
           path: dist/Octop-Bot-fnos-*.fpk
           if-no-files-found: error
+
+  native-release:
+    needs: package
+    if: (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && startsWith(github.ref, 'refs/tags/octop-bot-v') && !endsWith(github.ref, '-macos')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: octop-bot-native-assets-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      packages: read
+    env:
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.package.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Identify missing native FPKs on the tagged Release
+        id: assets
+        run: |
+          existing=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[] | select(.state == "uploaded" and .size > 0) | .name')
+          missing=()
+          for arch in amd64 arm64; do
+            if ! grep -Fxq "Octop-Bot-fnos-native-$arch-$VERSION.fpk" <<< "$existing"; then
+              missing+=("$arch")
+            fi
+          done
+          echo "missing=${missing[*]}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+        if: steps.assets.outputs.missing != ''
+      - uses: docker/login-action@v3
+        if: steps.assets.outputs.missing != ''
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and attach native FPKs
+        if: steps.assets.outputs.missing != ''
+        env:
+          MISSING: ${{ steps.assets.outputs.missing }}
+          DIGEST: ${{ needs.package.outputs.digest }}
+        run: |
+          files=()
+          for arch in $MISSING; do
+            docker buildx build --platform "linux/$arch" -f scripts/fnos/bot-native.Dockerfile \
+              --build-arg "BOT_IMAGE=ghcr.io/alison-xx/octop-bot@$DIGEST" \
+              --output "type=local,dest=dist" .
+            file="dist/Octop-Bot-fnos-native-$arch-$VERSION.fpk"
+            test -s "$file"
+            files+=("$file")
+          done
+          gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
