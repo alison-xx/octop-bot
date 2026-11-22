@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  botCapabilityLink,
   botClientDestination,
   loginDestination,
   rememberBotLoginPath,
@@ -21,8 +22,31 @@ describe("standalone Bot navigation", () => {
     ["/invite", "/octop-bot"],
     ["//external.test", "/octop-bot"],
     ["/octop-bot/settings/admin", "/octop-bot"],
+    ["/octop-bot/capabilities", "/octop-bot/capabilities"],
+    ["/octop-bot/capabilities/acp", "/octop-bot/capabilities/acp"],
+    ["/octop-bot/capabilities/unknown", "/octop-bot"],
+    ["/connectors", "/octop-bot/capabilities/connectors"],
+    ["/skills", "/octop-bot/capabilities/skills"],
+    ["/personalization/memory", "/octop-bot/capabilities/memory"],
+    ["/channels/", "/octop-bot/capabilities/channels"],
+    ["/plugins", "/octop-bot/capabilities/plugins"],
+    ["/cron-jobs", "/octop-bot/capabilities/tasks"],
+    ["/admin/models", "/octop-bot/settings"],
+    ["/personalization/tools", "/octop-bot"],
   ])("maps %s into the chat client", (url, expected) => {
     expect(botClientDestination(url)).toBe(expected);
+  });
+  it("opens embedded chat links on the scoped Bot", () => {
+    expect(botCapabilityLink("/chat", "team lead")).toBe(
+      "/octop-bot/bots/team%20lead",
+    );
+    expect(botCapabilityLink("/chat/", null)).toBe("/octop-bot");
+    expect(botCapabilityLink("/chat/expert/t1", "writer")).toBe(
+      "/octop-bot/bots/expert/t1",
+    );
+    expect(botCapabilityLink("/knowledge-bases", "writer")).toBe(
+      "/octop-bot/capabilities/knowledge",
+    );
   });
   it("returns to the designated thread once after authentication", () => {
     vi.stubGlobal("octopDesktop", { botOnly: true });

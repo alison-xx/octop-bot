@@ -6,7 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { octopBotApi, type GroupMessage } from "../../api/modules/octopBot";
 import GroupRoom from "./GroupRoom";
 
@@ -329,5 +329,160 @@ describe("Octop Bot group timeline", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+  it("shows a retry instead of the empty-room welcome when history fails to load", async () => {
+    vi.mocked(octopBotApi.messages)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue([sample]);
+    room("broken");
+    await screen.findByText("offline");
+    expect(screen.queryByText("octopBot.groupWelcome")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "octopBot.retry" }));
+    await screen.findByText("Working draft");
+    expect(screen.queryByText("offline")).toBeNull();
+  });
+  it("returns focus to the composer after sending with the button", async () => {
+    vi.mocked(octopBotApi.send).mockResolvedValue([]);
+    room("focus");
+    await screen.findByText("Working draft");
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "hello" } });
+    fireEvent.click(screen.getByRole("button", { name: "octopBot.send" }));
+    expect(box).toHaveFocus();
+    await waitFor(() => expect(octopBotApi.send).toHaveBeenCalled());
+  });
+  it("addresses members whose names contain spaces", async () => {
+    vi.mocked(octopBotApi.send).mockResolvedValue([]);
+    render(
+      <MemoryRouter>
+        <GroupRoom
+          group={{
+            group_id: "spaces",
+            name: "Editorial",
+            admin_id: "chief",
+            member_ids: ["chief", "writer"],
+            reply_mode: "admin_first",
+          }}
+          bots={[
+            {
+              agent_id: "chief",
+              name: "Editor",
+              is_main: true,
+              is_private: false,
+            },
+            {
+              agent_id: "writer",
+              name: "Content Writer",
+              is_main: false,
+              is_private: false,
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Working draft");
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "@Editor @Content Writer draft it" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "octopBot.send" }));
+    await waitFor(() =>
+      expect(vi.mocked(octopBotApi.send).mock.calls[0][2]).toEqual([
+        "chief",
+        "writer",
+      ]),
+    );
+  });
+  describe("polling", () => {
+    let visibility: DocumentVisibilityState;
+    beforeEach(() => {
+      visibility = "visible";
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => visibility,
+      });
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      // Fall back to jsdom's own getter on the prototype.
+      delete (document as { visibilityState?: unknown }).visibilityState;
+    });
+    const advance = (ms: number) =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    const setVisibility = async (next: DocumentVisibilityState) => {
+      visibility = next;
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+    };
+
+    it("pauses while the tab is hidden and refreshes as soon as it is visible", async () => {
+      room("hidden");
+      await act(async () => {});
+      expect(octopBotApi.messages).toHaveBeenCalledTimes(1);
+      await setVisibility("hidden");
+      await advance(60_000);
+      expect(octopBotApi.messages).toHaveBeenCalledTimes(1);
+      await setVisibility("visible");
+      expect(octopBotApi.messages).toHaveBeenCalledTimes(2);
+      await advance(2500);
+      expect(octopBotApi.messages).toHaveBeenCalledTimes(3);
+    });
+
+    it("does not start a timer when mounted in a hidden tab", async () => {
+      visibility = "hidden";
+      room("background");
+      await act(async () => {});
+      await advance(60_000);
+      expect(octopBotApi.messages).toHaveBeenCalledTimes(1);
+      await setVisibility("visible");
+      expect(octopBotApi.messages).toHaveBeenCalledTimes(2);
+    });
+
+    it("backs off once the room is quiet and speeds up while a member is replying", async () => {
+      vi.mocked(octopBotApi.messages)
+        .mockResolvedValueOnce([sample])
+        .mockResolvedValue([]);
+      room("quiet");
+      await act(async () => {});
+      // Four quiet polls keep the fast cadence, then the idle interval applies.
+      await advance(4 * 2500);
+      expect(octopBotApi.messages).toHaveBeenCalledTimes(5);
+      await advance(2500);
+      expect(octopBotApi.messages).toHaveBeenCalledTimes(5);
+      vi.mocked(octopBotApi.drafts).mockResolvedValue([
+        { agent_id: "writer", request_id: "r1", text: "Typing" },
+      ]);
+      await advance(7500);
+      expect(octopBotApi.messages).toHaveBeenCalledTimes(6);
+      await advance(2500);
+      expect(octopBotApi.messages).toHaveBeenCalledTimes(7);
+      await advance(2500);
+      expect(octopBotApi.messages).toHaveBeenCalledTimes(8);
+    });
+
+    it("polls immediately when a send starts in an idle room", async () => {
+      vi.mocked(octopBotApi.messages)
+        .mockResolvedValueOnce([sample])
+        .mockResolvedValue([]);
+      const pending = deferred<never[]>();
+      vi.mocked(octopBotApi.send).mockReturnValue(pending.promise);
+      room("idle-send");
+      await act(async () => {});
+      await advance(5 * 2500);
+      const before = vi.mocked(octopBotApi.messages).mock.calls.length;
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "hello" },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "octopBot.send" }));
+      });
+      expect(octopBotApi.messages).toHaveBeenCalledTimes(before + 1);
+      await advance(2500);
+      expect(octopBotApi.messages).toHaveBeenCalledTimes(before + 2);
+      await act(async () => pending.resolve([]));
+    });
   });
 });

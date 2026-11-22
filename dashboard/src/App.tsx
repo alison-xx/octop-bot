@@ -13,10 +13,11 @@ import { useNativeWindowChrome } from "./hooks/useNativeWindowChrome";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { routerBasename } from "./utils/publicUrl";
 import { useTranslation } from "react-i18next";
-import { isBotClient, isBotOnlyDesktop } from "./utils/desktopBridge";
+import { isBotClient, isBotWebClient } from "./utils/desktopBridge";
 import BotClientRoutes, {
   BotClientSetupRoute,
 } from "./pages/OctopBot/BotClientRoutes";
+import BotLoginRoute from "./pages/OctopBot/BotLoginRoute";
 import MainLayout from "./layouts/MainLayout";
 import LoginPage from "./pages/Login";
 import OidcComplete from "./pages/Login/OidcComplete";
@@ -145,13 +146,14 @@ function ThemedApp() {
           <DesktopWindowDragBand />
           <WindowsAppMenu />
           <Routes>
-            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/login"
+              element={isBotWebClient() ? <BotLoginRoute /> : <LoginPage />}
+            />
             <Route path="/login/oidc/complete" element={<OidcComplete />} />
             <Route
               path="/setup"
-              element={
-                isBotOnlyDesktop() ? <BotClientSetupRoute /> : <SetupPage />
-              }
+              element={botOnly ? <BotClientSetupRoute /> : <SetupPage />}
             />
             {!botOnly && <Route path="/invite" element={<InvitePage />} />}
             {!botOnly && (

@@ -1,4 +1,26 @@
 {
+  "botCapabilities": {
+    "title": "能力",
+    "empty": "当前账号没有可在这里管理的能力。",
+    "profileEntry": "技能与连接器",
+    "groups": {
+      "extend": "技能与连接器",
+      "know": "知识与记忆",
+      "reach": "通道与插件",
+      "automate": "智能体与自动化"
+    },
+    "sections": {
+      "connectors": "连接器（MCP）",
+      "skills": "技能",
+      "skill-packages": "技能包",
+      "knowledge": "知识库",
+      "memory": "记忆",
+      "channels": "IM 通道",
+      "plugins": "插件",
+      "acp": "外部智能体",
+      "tasks": "定时任务"
+    }
+  },
   "botWallet": {
     "balance": "积分余额",
     "loading": "正在查询余额",
@@ -163,6 +185,24 @@
       "title": "你想先做哪件事？",
       "description": "选一个起点，把草稿带到 Chief 的输入框。可以按自己的需求改写，准备好后再发送。"
     }
+  },
+  "botOnboarding": {
+    "chiefName": "Chief",
+    "desktopBody": "Chief 是你的八爪鱼助手，可以帮你组建 Bot 团队、分工协作。连接一个聊天模型就能开始，不需要注册本机账号。",
+    "webBody": "用灵策智算账号登录即可开始，首次登录的账号会成为这台 Octop Bot 的主人。也可以设置一个登录密码，自己配置模型。",
+    "lynxceTab": "灵策智算账号",
+    "localTab": "自己配置模型",
+    "account": "手机号或邮箱",
+    "accountPlaceholder": "灵策智算账号",
+    "password": "密码",
+    "lynxceHint": "密码只用于向灵策验证身份，不会保存在这台设备上。",
+    "lynxceSubmit": "登录并开始",
+    "localPassword": "设置登录密码",
+    "localHint": "以后在其他设备打开 Octop Bot 时，用这个密码登录。登录后再连接你的模型服务。",
+    "localSubmit": "创建并配置模型",
+    "loginTitle": "登录 Octop Bot",
+    "loginLynxceBody": "使用首次绑定这台 Octop Bot 的灵策智算账号登录。",
+    "loginLocalBody": "输入首次使用时设置的登录密码。"
   },
   "botClient": {
     "showOrb": "显示悬浮球",
@@ -577,6 +617,7 @@
   },
   "apiErrors": {
     "BOT_CLOUD_ACCOUNT_REQUIRED": "请登录灵策云账号。切换账号后，请重新打开此操作。",
+    "LYNXCE_OWNER_MISMATCH": "这台 Octop Bot 已绑定其他灵策账号。请使用首次登录时的灵策账号。",
     "BOT_CLOUD_REQUEST_REJECTED": "灵策云未能执行此操作。",
     "BOT_CLOUD_CREDITS_REQUIRED": "当前灵策云账号的可用积分不足。",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "请补充授权灵策充值。当前聊天连接可继续使用。",

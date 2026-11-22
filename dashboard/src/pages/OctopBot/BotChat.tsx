@@ -11,6 +11,7 @@ import {
   Spin,
   Switch,
 } from "antd";
+import type { TextAreaRef } from "antd/es/input/TextArea";
 import { History, MessagesSquare, Settings2, Shield } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -26,6 +27,7 @@ import {
 import { useAgent } from "../../context/AgentContext";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { isBotClient } from "../../utils/desktopBridge";
+import { BOT_HOME } from "../../utils/botClientRoute";
 import { canAccessPath } from "../../utils/permissions";
 import LazyMarkdown from "../../components/Markdown/LazyMarkdown";
 import { apiErrorMessage } from "../../utils/apiError";
@@ -55,9 +57,11 @@ function ThreadHistory({
   const [limit, setLimit] = useState(30);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let current = true;
     setLoading(true);
+    setError("");
     void octopThreadsApi
       .list(agentId, limit + 1)
       .then((result) => {
@@ -72,11 +76,25 @@ function ThreadHistory({
     return () => {
       current = false;
     };
-  }, [agentId, limit, t]);
+  }, [agentId, limit, t, attempt]);
   return (
     <Drawer open onClose={onClose} title={t("octopBot.history")}>
       <p>{t("botDirectory.privateHistoryHelp")}</p>
-      {error && <Alert type="error" message={error} />}
+      {error && (
+        <Alert
+          type="error"
+          message={error}
+          action={
+            <Button
+              size="small"
+              loading={loading}
+              onClick={() => setAttempt((n) => n + 1)}
+            >
+              {t("octopBot.retry")}
+            </Button>
+          }
+        />
+      )}
       <List
         loading={loading}
         dataSource={rows.slice(0, limit)}
@@ -87,7 +105,8 @@ function ThreadHistory({
               type="text"
               onClick={() => {
                 navigate(
-                  "/octop-bot/bots/" +
+                  BOT_HOME +
+                    "/bots/" +
                     encodeURIComponent(agentId) +
                     "/" +
                     encodeURIComponent(row.thread_id),
@@ -161,6 +180,7 @@ export default function BotChat({
   const [turns, setTurns] = useState<SideTurn[]>([]);
   const [busy, setBusy] = useState(false);
   const stamp = useRef(0);
+  const sideInput = useRef<TextAreaRef>(null);
   const snapshot = useRef<number>();
   const insertReference = useRef<(text: string) => void>();
   // Side answers remain scoped to the thread whose snapshot was used.
@@ -230,7 +250,7 @@ export default function BotChat({
   }, []);
   const host = useMemo(
     () => ({
-      basePath: "/octop-bot/bots",
+      basePath: BOT_HOME + "/bots",
       recipient: { id: bot.agent_id, name: bot.name },
       isChief: bot.is_main,
       openSide,
@@ -435,6 +455,7 @@ export default function BotChat({
                   inGroup)
               }
               onChange={async (value) => {
+                setPrivacyError("");
                 setPrivacySaving(true);
                 try {
                   await octopBotApi.privacy(bot.agent_id, value);
@@ -501,7 +522,24 @@ export default function BotChat({
             <div key={index} className={styles.sideTurn}>
               <strong>{turn.question}</strong>
               {turn.error ? (
-                <Alert type="error" message={turn.error} />
+                <Alert
+                  type="error"
+                  message={turn.error}
+                  action={
+                    threadId && (
+                      <Button
+                        size="small"
+                        disabled={busy}
+                        onClick={() => {
+                          setTurns((prev) => prev.filter((it) => it !== turn));
+                          void ask(turn.question);
+                        }}
+                      >
+                        {t("octopBot.retry")}
+                      </Button>
+                    )
+                  }
+                />
               ) : turn.answer ? (
                 <LazyMarkdown content={turn.answer} />
               ) : (
@@ -512,17 +550,34 @@ export default function BotChat({
           {threadId && (
             <>
               <Input.TextArea
+                ref={sideInput}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder={t("octopBot.sidePrompt")}
+                aria-label={t("octopBot.sidePrompt")}
                 autoSize={{ minRows: 3, maxRows: 8 }}
+                onKeyDown={(e) => {
+                  // Ctrl/⌘ + Enter sends; plain Enter keeps adding lines.
+                  if (
+                    e.key === "Enter" &&
+                    (e.metaKey || e.ctrlKey) &&
+                    !e.nativeEvent.isComposing &&
+                    e.nativeEvent.keyCode !== 229
+                  ) {
+                    e.preventDefault();
+                    void ask(draft);
+                  }
+                }}
               />
               <Button
                 className={styles.sideSend}
                 type="primary"
                 loading={busy}
                 disabled={!draft.trim()}
-                onClick={() => void ask(draft)}
+                onClick={() => {
+                  sideInput.current?.focus();
+                  void ask(draft);
+                }}
               >
                 {t("octopBot.send")}
               </Button>

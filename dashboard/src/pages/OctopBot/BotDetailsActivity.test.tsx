@@ -5,7 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import {
   afterAll,
   beforeAll,
@@ -81,9 +81,15 @@ const job: OctopCronRow = {
   last_status: null,
   last_error: null,
 };
+function CapabilityProbe() {
+  const loc = useLocation();
+  return (
+    <output>{loc.pathname + loc.search + " from " + loc.state?.from}</output>
+  );
+}
 function openDetails(path = "/octop-bot/bots/writer/thread-2") {
   const noop = () => {};
-  render(
+  return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route
@@ -107,6 +113,7 @@ function openDetails(path = "/octop-bot/bots/writer/thread-2") {
             />
           }
         />
+        <Route path="*" element={<CapabilityProbe />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -301,6 +308,39 @@ describe("activity from the standalone Bot profile", () => {
     expect(request).toHaveBeenCalledWith(
       "/usage/summary?agent_id=writer&window=today&granularity=by_model",
     );
+  });
+
+  it("opens skills and connectors scoped to this Bot", async () => {
+    mock.permissions = ["skills"];
+    openDetails();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "botCapabilities.profileEntry",
+      }),
+    );
+    expect(
+      await screen.findByText(
+        "/octop-bot/capabilities/skills?bot=writer from /octop-bot/bots/writer/thread-2",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("does not offer capabilities for a remote Bot or without the permission", async () => {
+    mock.permissions = ["skills"];
+    mock.bridge = true;
+    const view = openDetails();
+    await screen.findByRole("button", { name: "octopBot.history" });
+    expect(
+      screen.queryByRole("button", { name: "botCapabilities.profileEntry" }),
+    ).toBeNull();
+    view.unmount();
+    mock.bridge = false;
+    mock.permissions = ["tasks"];
+    openDetails();
+    await screen.findByRole("button", { name: "octopBot.history" });
+    expect(
+      screen.queryByRole("button", { name: "botCapabilities.profileEntry" }),
+    ).toBeNull();
   });
 
   it("does not expose the scheduler for another user's agent or usage without the role permission", async () => {

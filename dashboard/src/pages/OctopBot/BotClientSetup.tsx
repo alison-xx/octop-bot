@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Input, Spin } from "antd";
+import { Alert, Button, Input, Segmented, Spin } from "antd";
 import { ArrowRight } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -23,6 +23,9 @@ import LynxceRegistration from "./LynxceRegistration";
 import styles from "./index.module.less";
 import intro from "./BotClientSetup.module.less";
 
+type Choice = "lynxce" | "other" | "later";
+type WebMode = "lynxce" | "local";
+
 export default function BotClientSetup() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -33,10 +36,13 @@ export default function BotClientSetup() {
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [verified, setVerified] = useState(false);
   const [password, setPassword] = useState("");
-  const [ready, setReady] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [account, setAccount] = useState("");
+  const [lynxcePassword, setLynxcePassword] = useState("");
+  const [webMode, setWebMode] = useState<WebMode>("lynxce");
+  const [busy, setBusy] = useState<Choice | WebMode | null>(null);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  const locale = i18n.language.startsWith("zh") ? "zh" : "en";
   useEffect(() => {
     let mounted = true;
     authApi
@@ -69,69 +75,264 @@ export default function BotClientSetup() {
     };
   }, [addLocalAccount, navigate, retry, t]);
   useEffect(() => {
-    if (ready) headingRef.current?.focus();
-  }, [ready]);
-  const start = async () => {
+    if (status) headingRef.current?.focus();
+  }, [status]);
+
+  const wizardToken = async (current: AuthStatus): Promise<string> => {
+    let token = wizardSession.loadToken();
+    if (token && !(await wizardApi.validateToken(token)).valid) {
+      wizardSession.clearToken();
+      token = null;
+    }
+    if (!token && !current.wizard_password_required) {
+      token = (await wizardApi.begin()).wizard_token;
+      wizardSession.saveToken(token);
+    }
+    if (!token) {
+      setVerified(false);
+      throw new Error(t("wizard.sessionExpired"));
+    }
+    return token;
+  };
+
+  /** A fresh install binds local SQLite; the route is open until setup ends. */
+  const bindDatabase = async (current: AuthStatus) => {
+    if (current.database_bound) return;
+    await wizardApi.applyDatabase({
+      driver: "sqlite",
+      sqlite_path: "octop.db",
+    });
+    setStatus({ ...current, database_bound: true });
+  };
+
+  /** Create the local owner (no password on desktop) and close setup. */
+  const createLocalOwner = async (current: AuthStatus) => {
+    let jwt = wizardSession.loadSetupJwt();
+    if (!jwt) {
+      const token = await wizardToken(current);
+      await bindDatabase(current);
+      const created = await wizardApi.createAdmin(
+        {
+          username: "local",
+          display_name: null,
+          locale,
+          ...(current.wizard_password_required || current.lynxce_login
+            ? { password }
+            : {}),
+        },
+        token,
+      );
+      jwt = created.access_token;
+      wizardSession.saveSetupJwt(jwt);
+      setAuthToken(jwt);
+      invalidateAuthStatusCache();
+    }
+    let finishToken = await resolveSetupProbeToken();
+    // After adding 'local' beside an existing account, finish requires the
+    // desktop wizard token. A regular admin JWT only works for the first user.
+    if (
+      addLocalAccount &&
+      !current.wizard_password_required &&
+      finishToken === jwt
+    ) {
+      finishToken = (await wizardApi.begin()).wizard_token;
+      wizardSession.saveToken(finishToken);
+    }
+    await wizardApi.finish({ provider_draft: null }, finishToken ?? jwt);
+    wizardSession.clearAll();
+  };
+
+  const proceed = (choice: Choice) => {
+    if (choice === "later") {
+      navigate(BOT_GUIDE, { replace: true, state: { step: "team" } });
+      return;
+    }
+    navigate(BOT_SETTINGS, {
+      replace: true,
+      state: { source: choice, from: BOT_GUIDE },
+    });
+  };
+
+  const choose = async (choice: Choice) => {
     if (!status || busy) return;
-    setBusy(true);
+    setBusy(choice);
     setError("");
     try {
-      let jwt = wizardSession.loadSetupJwt();
-      if (!jwt) {
-        let token = wizardSession.loadToken();
-        if (token && !(await wizardApi.validateToken(token)).valid) {
-          wizardSession.clearToken();
-          token = null;
-        }
-        if (!token && !status.wizard_password_required) {
-          token = (await wizardApi.begin()).wizard_token;
-          wizardSession.saveToken(token);
-        }
-        if (!token) {
-          setVerified(false);
-          throw new Error(t("wizard.sessionExpired"));
-        }
-        if (!status.database_bound) {
-          await wizardApi.applyDatabase({
-            driver: "sqlite",
-            sqlite_path: "octop.db",
-          });
-          setStatus({ ...status, database_bound: true });
-        }
-        const created = await wizardApi.createAdmin(
-          {
-            username: "local",
-            display_name: null,
-            locale: i18n.language.startsWith("zh") ? "zh" : "en",
-            ...(status.wizard_password_required ? { password } : {}),
-          },
-          token,
-        );
-        jwt = created.access_token;
-        wizardSession.saveSetupJwt(jwt);
-        setAuthToken(jwt);
-        invalidateAuthStatusCache();
-      }
-      let finishToken = await resolveSetupProbeToken();
-      // After adding 'local' beside an existing account, finish requires the
-      // desktop wizard token. A regular admin JWT only works for the first user.
-      if (
-        addLocalAccount &&
-        !status.wizard_password_required &&
-        finishToken === jwt
-      ) {
-        finishToken = (await wizardApi.begin()).wizard_token;
-        wizardSession.saveToken(finishToken);
-      }
-      await wizardApi.finish({ provider_draft: null }, finishToken ?? jwt);
-      wizardSession.clearAll();
-      setReady(true);
+      await createLocalOwner(status);
+      proceed(choice);
     } catch (e) {
       setError(apiErrorMessage(e, t("octopBot.failed"), t));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
+
+  const signInWithLynxce = async () => {
+    if (!status || busy) return;
+    setBusy("lynxce");
+    setError("");
+    try {
+      await bindDatabase(status);
+      const session = await authApi.lynxceLogin(
+        account.trim(),
+        lynxcePassword,
+        locale,
+      );
+      setAuthToken(session.access_token);
+      wizardSession.clearAll();
+      // Lynxce's model authorization needs the desktop client; on the web
+      // build the owner connects a model provider next.
+      proceed("other");
+    } catch (e) {
+      setError(apiErrorMessage(e, t("octopBot.failed"), t));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const createWebOwner = async () => {
+    if (!status || busy) return;
+    setBusy("local");
+    setError("");
+    try {
+      await createLocalOwner(status);
+      proceed("other");
+    } catch (e) {
+      setError(apiErrorMessage(e, t("octopBot.failed"), t));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const needsWizardPassword =
+    !!status?.wizard_password_required &&
+    !verified &&
+    !wizardSession.loadSetupJwt();
+
+  const desktopChoices = (
+    <div className={intro.choices}>
+      <Button
+        type="primary"
+        size="large"
+        loading={busy === "lynxce"}
+        disabled={!!busy && busy !== "lynxce"}
+        onClick={() => void choose("lynxce")}
+      >
+        {t("botClient.lynxce.source")}
+        <ArrowRight size={16} aria-hidden="true" />
+      </Button>
+      <Button
+        size="large"
+        loading={busy === "other"}
+        disabled={!!busy && busy !== "other"}
+        onClick={() => void choose("other")}
+      >
+        {t("botClient.lynxce.other")}
+      </Button>
+      <Button
+        type="text"
+        size="large"
+        loading={busy === "later"}
+        disabled={!!busy && busy !== "later"}
+        onClick={() => void choose("later")}
+      >
+        {t("botClient.later")}
+      </Button>
+    </div>
+  );
+
+  const webForms = (
+    <div className={intro.webForms}>
+      <Segmented<WebMode>
+        block
+        value={webMode}
+        onChange={(value) => {
+          setWebMode(value);
+          setError("");
+        }}
+        options={[
+          { value: "lynxce", label: t("botOnboarding.lynxceTab") },
+          { value: "local", label: t("botOnboarding.localTab") },
+        ]}
+      />
+      {webMode === "lynxce" ? (
+        <form
+          className={intro.form}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void signInWithLynxce();
+          }}
+        >
+          <label htmlFor="bot-lynxce-account">
+            {t("botOnboarding.account")}
+          </label>
+          <Input
+            id="bot-lynxce-account"
+            autoComplete="username"
+            autoFocus
+            required
+            value={account}
+            onChange={(e) => setAccount(e.target.value)}
+            placeholder={t("botOnboarding.accountPlaceholder")}
+          />
+          <label htmlFor="bot-lynxce-password">
+            {t("botOnboarding.password")}
+          </label>
+          <Input.Password
+            id="bot-lynxce-password"
+            autoComplete="current-password"
+            required
+            value={lynxcePassword}
+            onChange={(e) => setLynxcePassword(e.target.value)}
+          />
+          <small>{t("botOnboarding.lynxceHint")}</small>
+          <Button
+            type="primary"
+            size="large"
+            htmlType="submit"
+            loading={busy === "lynxce"}
+            disabled={!account.trim() || !lynxcePassword}
+          >
+            {t("botOnboarding.lynxceSubmit")}
+            <ArrowRight size={16} aria-hidden="true" />
+          </Button>
+          <LynxceRegistration />
+        </form>
+      ) : (
+        <form
+          className={intro.form}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void createWebOwner();
+          }}
+        >
+          <label htmlFor="bot-local-password">
+            {t("botOnboarding.localPassword")}
+          </label>
+          <Input.Password
+            id="bot-local-password"
+            autoComplete="new-password"
+            autoFocus
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <small>{t("botOnboarding.localHint")}</small>
+          <Button
+            type="primary"
+            size="large"
+            htmlType="submit"
+            loading={busy === "local"}
+            disabled={!password}
+          >
+            {t("botOnboarding.localSubmit")}
+            <ArrowRight size={16} aria-hidden="true" />
+          </Button>
+        </form>
+      )}
+    </div>
+  );
+
   return (
     <main className={intro.window} data-bot-onboarding>
       <header className={intro.brand}>
@@ -149,114 +350,69 @@ export default function BotClientSetup() {
             size={108}
             badges={false}
           />
-          <strong>Chief</strong>
+          <strong>{t("botOnboarding.chiefName")}</strong>
           <span>{t("botClient.profile.chief")}</span>
         </aside>
         <section className={intro.copy} aria-live="polite">
-          <ol className={intro.steps} aria-label={t("wizard.title")}>
-            <li aria-current={ready ? undefined : "step"}>
-              {t("botClient.meet")}
-            </li>
-            <li aria-current={ready ? "step" : undefined}>
-              {t("botClient.connectStep")}
-            </li>
-          </ol>
           <h1 ref={headingRef} tabIndex={-1}>
-            {t(ready ? "botClient.nextTitle" : "botClient.welcome")}
+            {t("botClient.welcome")}
           </h1>
-          <p>{t(ready ? "botClient.nextBody" : "botClient.welcomeBody")}</p>
+          <p>
+            {t(
+              status?.lynxce_login
+                ? "botOnboarding.webBody"
+                : "botOnboarding.desktopBody",
+            )}
+          </p>
           {error && <Alert type="error" message={error} showIcon />}
-          {ready ? (
-            <div className={styles.introActions}>
-              <Button
-                type="primary"
-                size="large"
-                onClick={() =>
-                  navigate(BOT_SETTINGS, {
-                    replace: true,
-                    state: { source: "lynxce", from: BOT_GUIDE },
-                  })
-                }
-              >
-                {t("botClient.lynxce.source")}
-              </Button>
-              <Button
-                size="large"
-                onClick={() =>
-                  navigate(BOT_SETTINGS, {
-                    replace: true,
-                    state: { source: "other", from: BOT_GUIDE },
-                  })
-                }
-              >
-                {t("botClient.lynxce.other")}
-              </Button>
-              <Button
-                type="text"
-                size="large"
-                onClick={() =>
-                  navigate(BOT_GUIDE, {
-                    replace: true,
-                    state: { step: "team" },
-                  })
-                }
-              >
-                {t("botClient.later")}
-              </Button>
-            </div>
-          ) : status ? (
-            status.wizard_password_required &&
-            !verified &&
-            !wizardSession.loadSetupJwt() ? (
+          {status ? (
+            needsWizardPassword ? (
               <PasswordStep
                 onVerified={() => {
                   setVerified(true);
                   setError("");
                 }}
               />
-            ) : (
+            ) : status.wizard_password_required ? (
               <form
                 className={styles.introActions}
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void start();
+                  void choose("other");
                 }}
               >
-                {status.wizard_password_required &&
-                  !wizardSession.loadSetupJwt() && (
-                    <div className={intro.password}>
-                      <label htmlFor="bot-admin-password">
-                        {t("wizard.admin.password")}
-                      </label>
-                      <Input.Password
-                        id="bot-admin-password"
-                        aria-describedby="bot-password-hint"
-                        autoComplete="new-password"
-                        autoFocus
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                      />
-                      <small id="bot-password-hint">
-                        {t("wizard.admin.passwordHint")}
-                      </small>
-                    </div>
-                  )}
+                <div className={intro.password}>
+                  <label htmlFor="bot-admin-password">
+                    {t("wizard.admin.password")}
+                  </label>
+                  <Input.Password
+                    id="bot-admin-password"
+                    autoComplete="new-password"
+                    autoFocus
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <small>{t("wizard.admin.passwordHint")}</small>
+                </div>
                 <Button
                   type="primary"
                   size="large"
-                  loading={busy}
-                  disabled={
-                    status.wizard_password_required &&
-                    !wizardSession.loadSetupJwt() &&
-                    !password
-                  }
+                  loading={!!busy}
+                  disabled={!password}
                   htmlType="submit"
                 >
                   {t("botClient.begin")}
                   <ArrowRight size={16} />
                 </Button>
               </form>
+            ) : status.lynxce_login ? (
+              webForms
+            ) : (
+              <>
+                {desktopChoices}
+                <LynxceRegistration />
+              </>
             )
           ) : error ? (
             <Button
@@ -270,7 +426,6 @@ export default function BotClientSetup() {
           ) : (
             <Spin />
           )}
-          {ready && <LynxceRegistration />}
         </section>
       </div>
     </main>

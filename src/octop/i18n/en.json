@@ -429,6 +429,7 @@
   },
   "errors": {
     "BOT_CLOUD_ACCOUNT_REQUIRED": "Sign in to Lynxce Cloud. If you switched accounts, reopen this action.",
+    "LYNXCE_OWNER_MISMATCH": "This Octop Bot is bound to a different Lynxce account. Sign in with the account used the first time.",
     "BOT_CLOUD_REQUEST_REJECTED": "Lynxce Cloud could not complete this action.",
     "BOT_CLOUD_CREDITS_REQUIRED": "This Lynxce Cloud account has insufficient credits.",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "Authorize Lynxce checkout to recharge this account. Your existing chat connection stays active.",

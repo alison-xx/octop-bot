@@ -431,3 +431,17 @@
 .catalogBack {
   padding: 5px 16px;
 }
+
+.illustratedEmpty {
+  :global(.ant-empty-image) {
+    height: auto;
+    margin-bottom: 6px;
+  }
+  img {
+    width: 148px;
+    height: 148px;
+    object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+}

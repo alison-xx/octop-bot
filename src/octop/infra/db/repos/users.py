@@ -378,7 +378,33 @@ class UserRepo:
     def delete(self, user_id: int) -> None:
         with self._db.transaction() as conn:
             grant = f"lynxce.cloud.user.{user_id}"
-            conn.execute("DELETE FROM secrets WHERE k IN (?,?)", (grant, grant + ".fernet"))
+            conn.execute(
+                "DELETE FROM secrets WHERE k IN (?,?,?,?)",
+                (
+                    grant,
+                    grant + ".fernet",
+                    f"lynxce.oauth.user.{user_id}",
+                    f"lynxce.oauth.client.{user_id}",
+                ),
+            )
+            # Per-user Octop Bot state: Chief pointer, layout, team notes, model choice,
+            # appearance and computer-control grants. Retained private folders are keyed
+            # by agent and intentionally survive until released.
+            conn.execute(
+                "DELETE FROM settings WHERE key IN (?,?,?,?) OR key LIKE ? OR key LIKE ?",
+                (
+                    f"octop_bot:chief:{user_id}",
+                    f"octop_bot:layout:{user_id}",
+                    f"octop_bot:memory:{user_id}",
+                    f"octop_bot:lynxce:model:{user_id}",
+                    f"octop_bot:appearance:{user_id}:%",
+                    f"octop_bot:computer:{user_id}:%",
+                ),
+            )
+            conn.execute(
+                "DELETE FROM settings WHERE key = 'octop_bot:lynxce_owner' AND value LIKE ?",
+                (f'%"user_id": {user_id}}}',),
+            )
             conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
     def count(self) -> int:

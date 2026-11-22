@@ -1,4 +1,26 @@
 {
+  "botCapabilities": {
+    "title": "Capabilities",
+    "empty": "Your account has no capabilities to manage here.",
+    "profileEntry": "Skills & connectors",
+    "groups": {
+      "extend": "Skills & connectors",
+      "know": "Knowledge & memory",
+      "reach": "Channels & plugins",
+      "automate": "Agents & automation"
+    },
+    "sections": {
+      "connectors": "Connectors (MCP)",
+      "skills": "Skills",
+      "skill-packages": "Skill packages",
+      "knowledge": "Knowledge bases",
+      "memory": "Memory",
+      "channels": "IM channels",
+      "plugins": "Plugins",
+      "acp": "External agents",
+      "tasks": "Scheduled tasks"
+    }
+  },
   "botWallet": {
     "balance": "Credit balance",
     "loading": "Loading balance",
@@ -163,6 +185,24 @@
       "title": "What would you like to try?",
       "description": "Choose a starting point to bring a draft into Chief’s chat. Edit it to fit your task and send it when you’re ready."
     }
+  },
+  "botOnboarding": {
+    "chiefName": "Chief",
+    "desktopBody": "Chief is your octopus assistant. It builds a Bot team and splits up the work. Connect a chat model to start — no local account needed.",
+    "webBody": "Sign in with your Lynxce account to start. The first account to sign in becomes the owner of this Octop Bot. Or set a sign-in password and configure your own model.",
+    "lynxceTab": "Lynxce account",
+    "localTab": "Use my own model",
+    "account": "Phone or email",
+    "accountPlaceholder": "Lynxce account",
+    "password": "Password",
+    "lynxceHint": "Your password is only used to verify you with Lynxce. It is never stored on this device.",
+    "lynxceSubmit": "Sign in and start",
+    "localPassword": "Choose a sign-in password",
+    "localHint": "Use this password when you open Octop Bot from another device. You'll connect your model service next.",
+    "localSubmit": "Create and set up model",
+    "loginTitle": "Sign in to Octop Bot",
+    "loginLynxceBody": "Sign in with the Lynxce account this Octop Bot was first bound to.",
+    "loginLocalBody": "Enter the sign-in password you chose the first time."
   },
   "botClient": {
     "showOrb": "Show floating button",
@@ -577,6 +617,7 @@
   },
   "apiErrors": {
     "BOT_CLOUD_ACCOUNT_REQUIRED": "Sign in to Lynxce Cloud. If you switched accounts, reopen this action.",
+    "LYNXCE_OWNER_MISMATCH": "This Octop Bot is bound to a different Lynxce account. Sign in with the account used the first time.",
     "BOT_CLOUD_REQUEST_REJECTED": "Lynxce Cloud could not complete this action.",
     "BOT_CLOUD_CREDITS_REQUIRED": "This Lynxce Cloud account has insufficient credits.",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "Authorize Lynxce checkout to recharge this account. Your existing chat connection stays active.",

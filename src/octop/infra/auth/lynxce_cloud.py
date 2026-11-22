@@ -169,38 +169,54 @@ def _token(data: Any, name: str) -> str:
     return value
 
 
+async def _password_login(account: str, password: str) -> _Grant:
+    account = account.strip()
+    if not (1 <= len(account) <= 200 and 8 <= len(password) <= 4096):
+        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
+    try:
+        data = await _send(
+            "POST", "/api/auth/password-login", json={"account": account, "password": password}
+        )
+    except _UpstreamFailure as exc:
+        if exc.status in {401, 403}:
+            raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403) from None
+        raise _rejected(exc.status) from None
+    profile = data.get("user") if isinstance(data, dict) else None
+    if (
+        not isinstance(profile, dict)
+        or not isinstance(profile.get("id"), str)
+        or not profile["id"].strip()
+    ):
+        raise OctopError.localized(ErrorCode.NETWORK_ERROR)
+    name = profile.get("displayName")
+    return _Grant(
+        profile["id"],
+        name if isinstance(name, str) else None,
+        uuid4().hex,
+        _token(data, "accessToken"),
+        _token(data, "refreshToken"),
+    )
+
+
+async def verify_account(account: str, password: str) -> CloudAccountStatus:
+    """Prove ownership of a Lynxce account without keeping its session.
+
+    Used as the sign-in identity of the Bot web build. The upstream session opened
+    by the check is closed right away; only the stable account id is returned.
+    """
+    grant = await _password_login(account, password)
+    with suppress(_UpstreamFailure):
+        await _send("POST", "/api/auth/logout", bearer=grant.access_token, json={})
+    return grant.status()
+
+
 async def login_cloud(
     services: SharedServices, user_id: int, account: str, password: str
 ) -> CloudAccountStatus:
     if not bot_desktop_enabled():
         raise OctopError.localized(ErrorCode.FORBIDDEN)
-    account = account.strip()
-    if not (1 <= len(account) <= 200 and 8 <= len(password) <= 4096):
-        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
     async with _lock(services, user_id):
-        try:
-            data = await _send(
-                "POST", "/api/auth/password-login", json={"account": account, "password": password}
-            )
-        except _UpstreamFailure as exc:
-            if exc.status in {401, 403}:
-                raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403) from None
-            raise _rejected(exc.status) from None
-        profile = data.get("user") if isinstance(data, dict) else None
-        if (
-            not isinstance(profile, dict)
-            or not isinstance(profile.get("id"), str)
-            or not profile["id"].strip()
-        ):
-            raise OctopError.localized(ErrorCode.NETWORK_ERROR)
-        name = profile.get("displayName")
-        grant = _Grant(
-            profile["id"],
-            name if isinstance(name, str) else None,
-            uuid4().hex,
-            _token(data, "accessToken"),
-            _token(data, "refreshToken"),
-        )
+        grant = await _password_login(account, password)
         await _finish(asyncio.to_thread(_save, services, user_id, grant))
         return grant.status()
 

@@ -95,6 +95,41 @@
 .copy h1:focus {
   outline: none;
 }
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  :global(.ant-btn) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
+.webForms {
+  width: min(380px, 100%);
+  display: grid;
+  gap: 16px;
+}
+.form {
+  display: grid;
+  gap: 6px;
+  text-align: start;
+  label {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  small {
+    color: var(--fn-text-secondary);
+    line-height: 1.55;
+  }
+  :global(.ant-btn) {
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+}
 .password {
   flex: 1 0 100%;
   text-align: start;
@@ -126,5 +161,8 @@
     align-items: center;
     text-align: center;
     gap: 10px;
+  }
+  .choices {
+    justify-content: center;
   }
 }

@@ -16,6 +16,25 @@ def test_default_character_matches_ds_bot_public_id_vectors():
         assert (look.shape, look.color) == (shape, color)
 
 
+def test_more_roles_get_recolorable_svg_characters_without_changing_studio_roles():
+    cases = [
+        ("调研员", "acorn", "green"),
+        ("前端开发", "beacon", "cobalt"),
+        ("Customer Support", "bunny", "tangerine"),
+        ("英文翻译", "wave", "sky"),
+        ("QA Tester", "magnet", "red"),
+        ("法务顾问", "cushion", "graphite"),
+        ("财务助理", "pebbles", "orange"),
+        ("市场营销", "kitty", "red"),
+        # The four studio roles still win when a name matches both.
+        ("数据运营", "hex", "cyan"),
+        ("视觉设计", "gem", "magenta"),
+    ]
+    for name, shape, color in cases:
+        look = _default_character(SimpleNamespace(agent_id="any", name=name), "chief")
+        assert (name, look.shape, look.color) == (name, shape, color)
+
+
 async def test_legacy_chief_default_updates_and_respects_explicit_choices(env_admin_alice):
     client, server, auth, _ = env_admin_alice
     base = "/api/octop-bot"

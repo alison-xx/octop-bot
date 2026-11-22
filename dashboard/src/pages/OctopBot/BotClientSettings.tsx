@@ -3,6 +3,7 @@ import { Alert, Button, Radio, Select, Spin } from "antd";
 import {
   ArrowLeft,
   ArrowRight,
+  Blocks,
   BookOpen,
   Cloud,
   Cpu,
@@ -29,6 +30,7 @@ import { getDesktopBridge, isBotWebClient } from "../../utils/desktopBridge";
 import { userCan } from "../../utils/permissions";
 import {
   BOT_HOME,
+  BOT_CAPABILITIES,
   BOT_GUIDE,
   BOT_SETTINGS,
   botClientDestination,
@@ -298,6 +300,17 @@ export default function BotClientSettings() {
           {t(back === BOT_GUIDE ? "botGuide.resume" : "common.backToChat")}
         </Button>
         <div className={styles.account}>
+          {back !== BOT_GUIDE && !prefillInput && (
+            <Button
+              type="text"
+              icon={<Blocks size={16} />}
+              onClick={() =>
+                navigate(BOT_CAPABILITIES, { state: { from: back } })
+              }
+            >
+              {t("botCapabilities.title")}
+            </Button>
+          )}
           {!web && back !== BOT_GUIDE && !prefillInput && (
             <Button
               type="text"

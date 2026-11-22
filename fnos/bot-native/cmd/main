@@ -58,7 +58,7 @@ case "${1:-}" in
         prepare_share
         python=$(find_python312) || fail '请安装飞牛 Python 3.12。'
         octop_prepend_fnos_node_path
-        export HOME="$share" OCTOP_HOME="$share/.octop" OCTOP_REQUIRE_SETUP_PASSWORD=true
+        export HOME="$share" OCTOP_HOME="$share/.octop" OCTOP_BOT_WEB=1
         export PATH="$app/bin:$(dirname "$python"):$PATH" PYTHONPATH="$app/site-packages"
         export PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1
         if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then

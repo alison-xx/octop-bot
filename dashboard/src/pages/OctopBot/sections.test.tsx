@@ -197,6 +197,13 @@ async function blankMenu(key: string, keyboard = false) {
   fireEvent.click(await screen.findByRole("menuitem", { name: key }));
 }
 
+// Mirrors request(): the status line followed by the API error envelope.
+const layoutChanged = (code = "BOT_LAYOUT_CHANGED") =>
+  new Error(
+    "Request failed: 409 Conflict - " +
+      JSON.stringify({ error: { code, message: "changed" } }),
+  );
+
 describe("directory sections", () => {
   it("confirms deletion of a private Bot, handles errors and opens its protected folder", async () => {
     const remove = vi
@@ -324,7 +331,7 @@ describe("directory sections", () => {
           { ...server.sections[0], items: ["bot:writer", "group:team"] },
         ],
       };
-      throw new Error("Request failed: 409 Conflict");
+      throw layoutChanged();
     });
     fireEvent.click(dialog.getByRole("button", { name: save }));
     await dialog.findByText("octopBot.sectionUI.conflict");
@@ -339,6 +346,26 @@ describe("directory sections", () => {
       "group:team",
       "bot:editor",
     ]);
+  });
+
+  it("treats only the layout revision code as a conflict and keeps a retry for other 409s", async () => {
+    openDirectory();
+    fireEvent.click(
+      await screen.findByRole("button", { name: edit("Drafts") }),
+    );
+    const dialog = within(screen.getByRole("dialog"));
+    fireEvent.click(dialog.getByRole("checkbox", { name: /Editor editor/ }));
+    const workspace = vi.mocked(octopBotApi.workspace);
+    const loads = workspace.mock.calls.length;
+    vi.mocked(octopBotApi.saveLayout).mockRejectedValueOnce(
+      layoutChanged("TEAM_MEMBER_INVALID"),
+    );
+    fireEvent.click(dialog.getByRole("button", { name: save }));
+    await waitFor(() =>
+      expect(dialog.queryByText("octopBot.sectionUI.conflict")).toBeNull(),
+    );
+    await dialog.findByText(/apiErrors\.TEAM_MEMBER_INVALID|changed/);
+    expect(workspace.mock.calls.length).toBe(loads);
   });
 
   it("moves a filtered selection out of a section and leaves its group chat and unrelated Bots in place", async () => {

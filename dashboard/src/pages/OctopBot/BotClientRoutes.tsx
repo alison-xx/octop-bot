@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import {
   Navigate,
   Route,
@@ -9,6 +9,7 @@ import {
 import BrandLoading from "../../components/BrandLoading";
 import {
   BOT_HOME,
+  BOT_CAPABILITIES,
   BOT_CLOUD,
   BOT_GUIDE,
   BOT_SETTINGS,
@@ -22,6 +23,7 @@ const CloudWorkspace = lazy(() => import("./CloudWorkspace"));
 const Settings = lazy(() => import("./BotClientSettings"));
 const Setup = lazy(() => import("./BotClientSetup"));
 const Guide = lazy(() => import("./BotGettingStarted"));
+const Capabilities = lazy(() => import("./BotCapabilities"));
 
 export function BotClientSetupRoute() {
   return (
@@ -31,12 +33,16 @@ export function BotClientSetupRoute() {
   );
 }
 
-function LegacyChat() {
+/** Legacy chat links and upstream dashboard paths land on their Bot page. */
+function BotRedirect() {
   const location = useLocation();
+  const mapped = botClientDestination(location.pathname);
+  // A Bot path without a route here (e.g. cloud on the web build) goes home.
+  const to = mapped === location.pathname ? BOT_HOME : mapped;
   return (
     <Navigate
       replace
-      to={botClientDestination(location.pathname)}
+      to={to.startsWith(BOT_CAPABILITIES) ? to + location.search : to}
       state={location.state}
     />
   );
@@ -45,31 +51,36 @@ function LegacyChat() {
 export default function BotClientRoutes() {
   const navigate = useNavigate();
   const location = useLocation();
+  // IPC callbacks subscribe once and read the route through this ref.
+  const current = useRef({ navigate, path: location.pathname });
+  useEffect(() => {
+    current.current = { navigate, path: location.pathname };
+  }, [navigate, location.pathname]);
   useEffect(
     () =>
       getDesktopBridge()?.onBotShortcut?.((action) => {
+        const { navigate, path } = current.current;
         if (action === "cloud") {
-          if (location.pathname !== BOT_CLOUD)
-            navigate(BOT_CLOUD, { state: { from: location.pathname } });
+          if (path !== BOT_CLOUD)
+            navigate(BOT_CLOUD, { state: { from: path } });
           return;
         }
-        const inDirectory = /^\/octop-bot\/(bots|groups)\//.test(
-          location.pathname,
-        );
-        navigate(inDirectory ? location.pathname : BOT_HOME, {
+        const inDirectory = /^\/octop-bot\/(bots|groups)\//.test(path);
+        navigate(inDirectory ? path : BOT_HOME, {
           state: { botShortcut: action },
           replace: inDirectory,
         });
       }),
-    [location.pathname, navigate],
+    [],
   );
   useEffect(
     () =>
       getDesktopBridge()?.onOpenBotSettings?.(() => {
-        if (location.pathname !== BOT_SETTINGS)
-          navigate(BOT_SETTINGS, { state: { from: location.pathname } });
+        const { navigate, path } = current.current;
+        if (path !== BOT_SETTINGS)
+          navigate(BOT_SETTINGS, { state: { from: path } });
       }),
-    [location.pathname, navigate],
+    [],
   );
   return (
     <div className={styles.client} data-bot-client>
@@ -89,11 +100,15 @@ export default function BotClientRoutes() {
           <Route path="/octop-bot/groups/:groupId" element={<Workspace />} />
           <Route path={BOT_SETTINGS} element={<Settings />} />
           <Route
+            path={BOT_CAPABILITIES + "/:section?"}
+            element={<Capabilities />}
+          />
+          <Route
             path="/admin/models"
             element={<Navigate replace to={BOT_SETTINGS} />}
           />
-          <Route path="/chat/:agentId?/:threadId?" element={<LegacyChat />} />
-          <Route path="*" element={<Navigate replace to={BOT_HOME} />} />
+          <Route path="/chat/:agentId?/:threadId?" element={<BotRedirect />} />
+          <Route path="*" element={<BotRedirect />} />
         </Routes>
       </Suspense>
     </div>

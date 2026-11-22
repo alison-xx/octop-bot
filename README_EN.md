@@ -6,7 +6,9 @@ Octop Bot is a desktop app for Windows and Apple Silicon Macs for working with a
 
 Watch Chief put a book club’s invitation together with a planner and writer in the **30-second product film**. Choose the [English film](https://octop-bot.lynxce.cn/media/intro-en.mp4), [Chinese film](https://octop-bot.lynxce.cn/media/intro-zh.mp4), or [interactive walkthrough](https://octop-bot.lynxce.cn/#demo).
 
-[Docker and fnOS installation guide (FPK)](docs/octop-bot-nas.md).
+[Docker and fnOS installation guide (FPK)](docs/octop-bot-nas.md). The web build signs you in with your Lynxce account on first open — no setup passcode.
+
+![Chief collaborating with a planner, writer, designer and analyst around a table.](docs/assets/octop-bot/art-team.webp)
 
 ## Desktop downloads
 
@@ -32,7 +34,7 @@ To join other Octop Bot users on WeChat, scan the QR code below and add me as a 
 
 ## Get started
 
-1. **Open your workspace.** After first launch, choose **Get started**. Your own Chief appears in the team directory.
+1. **Choose how to connect.** On first launch, pick **Lynxce account**, **Other model sources**, or **Set up later** right away — no local account to create. Your own Chief appears in the team directory.
 2. **Connect a chat model.** Choose **Lynxce account**, authorize in your system browser, then return to the app to select and save an available model. Model calls use credits from that account. **Other model sources** lets you connect your own cloud provider, a compatible endpoint, or a local model. Choose **Set up later** to explore the team first, then connect a model before sending a message.
 3. **If you need a Lynxce account,** select **Create a Lynxce account**, open the **Register** tab on the official site, and complete registration. Return to the app and sign in or authorize from the same screen. [Lynxce account site](https://admin.lynxce.cn/profile/login)
 4. **Send Chief your first message.** The getting-started guide introduces private chats, directory sections, and the cloud workspace. Choose an example for building a team, planning a project, or assigning work, and select **Edit in Chief’s chat**. Edit the draft and send it when you’re ready. To reopen the guide, choose **Account and models → Getting started** at the bottom of the directory.
@@ -65,7 +67,22 @@ To try the City Desk from the screenshots, paste this prompt into Chief’s chat
 
 [Copy a complete prompt from the website](https://octop-bot.lynxce.cn/#scenarios).
 
+## Give your Bots capabilities
+
+![The octopus juggles connectors, knowledge, skills, IM channels, external agents and schedules.](docs/assets/octop-bot/art-capabilities.webp)
+
+Open **Capabilities** from the top of **Account and models**, or choose **Skills & connectors** in a Bot's profile. Every upstream Octop capability lives here, scoped to the current Bot:
+
+| Group | What you can do |
+| --- | --- |
+| Skills & connectors | Connect MCP servers and built-in connectors; install and enable skills and skill packages. |
+| Knowledge & memory | Build knowledge bases for Bots to search; review and clean up long-term memory. |
+| Channels & plugins | Put Bots on Feishu, WeCom, Telegram and other IM apps; manage plugins. |
+| Agents & automation | Bring in external agents such as Claude Code, OpenCode and Qwen Code; see every schedule in one place. |
+
 ## Keep working while your computer is off
+
+![While the computer sleeps, Chief and a teammate keep working on schedules in the cloud.](docs/assets/octop-bot/art-cloud.webp)
 
 Open **Cloud workspace** at the bottom of the directory and sign in separately with your Lynxce account. Start a cloud chat or create a schedule. Sign in with the same account on another PC to check accepted jobs, read their results, and continue the conversation. Your account determines the available cloud models, permissions, and credits. The workspace shows the signed-in cloud account’s balance at the top. Select **Top up** to add credits to that account.
 

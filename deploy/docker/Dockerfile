@@ -82,6 +82,11 @@ LABEL org.opencontainers.image.description="Smarter self-hosted AI assistant —
 LABEL org.opencontainers.image.source="https://github.com/TencentCloud/orca"
 LABEL org.opencontainers.image.licenses="MIT"
 
+# Bot web image (VITE_OCTOP_BOT_WEB=1): the owner signs in with a Lynxce account
+# instead of a CLI setup password. See src/octop/infra/desktop.py bot_web_enabled().
+ARG VITE_OCTOP_BOT_WEB=0
+ENV OCTOP_BOT_WEB=${VITE_OCTOP_BOT_WEB}
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     HOME=/data \

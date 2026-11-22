@@ -52,6 +52,8 @@ import {
 import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { roomDraft, type RoomRequest } from "./GroupRoomDraft";
+import { resolveMentions } from "./groupMentions";
+import { groupPollDelay } from "./groupRoomPolling";
 import groupStyles from "./GroupRoom.module.less";
 import RoomIdentity from "./RoomIdentity";
 import directory from "./directory.module.less";
@@ -68,6 +70,7 @@ import GroupMemory from "./GroupMemory";
 import GroupFiles from "./GroupFiles";
 import ReferenceDialog from "./ReferenceDialog";
 import styles from "./index.module.less";
+import emptyGroupArt from "../../assets/bot/empty-group.webp";
 
 export function mergeMessages(
   previous: GroupMessage[],
@@ -145,8 +148,22 @@ function GroupRoomView({
   useEffect(() => {
     let disposed = false;
     active.current = true;
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let loading = false;
+    let quietPolls = 0;
+    let busy = false;
+    const schedule = () => {
+      clearTimeout(timer);
+      timer = undefined;
+      // A hidden tab stops polling; becoming visible refreshes at once.
+      if (disposed || document.visibilityState === "hidden") return;
+      const live = busy || Boolean(composer.read().sending);
+      timer = setTimeout(load, groupPollDelay(live, quietPolls));
+    };
     const load = async () => {
+      if (loading || disposed) return;
+      loading = true;
+      clearTimeout(timer);
       try {
         const [newRows, newGoal, newDrafts] = await Promise.all([
           octopBotApi.messages(group.group_id, cursor.current),
@@ -156,6 +173,8 @@ function GroupRoomView({
         if (disposed) return;
         if (newRows.length)
           cursor.current = newRows[newRows.length - 1].message_id;
+        busy = newDrafts.length > 0;
+        quietPolls = busy || newRows.length ? 0 : quietPolls + 1;
         setHistoryError("");
         setRows((prev) => mergeMessages(prev, newRows));
         setGoal(newGoal);
@@ -166,16 +185,36 @@ function GroupRoomView({
           setHistoryError(describeError(e));
           setReady(true);
         }
+      } finally {
+        loading = false;
       }
-      if (!disposed) timer = setTimeout(load, 2500);
+      schedule();
     };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void load();
+      else clearTimeout(timer);
+    };
+    // A send starts a turn: switch to the fast cadence straight away.
+    let sending = composer.read().sending;
+    const onComposer = () => {
+      const next = composer.read().sending;
+      if (next && next !== sending) {
+        quietPolls = 0;
+        if (!loading) void load();
+      }
+      sending = next;
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    const unsubscribe = composer.subscribe(onComposer);
     void load();
     return () => {
       disposed = true;
       active.current = false;
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      unsubscribe();
     };
-  }, [group.group_id, describeError, reload]);
+  }, [group.group_id, describeError, reload, composer]);
   useEffect(() => {
     const added = rows.length - previousCount.current;
     previousCount.current = rows.length;
@@ -263,16 +302,13 @@ function GroupRoomView({
       .split("\n")
       .filter((line) => !line.trimStart().startsWith(">"))
       .join("\n");
-    const names = Mentions.getMentions(addressedText).map((m) => m.value);
     return deliver({
       id: Array.from(crypto.getRandomValues(new Uint32Array(4)), (word) =>
         word.toString(16).padStart(8, "0"),
       ).join(""),
       text: message,
       paths: state.attachments,
-      mentions: members
-        .filter((b) => names.includes(b.agent_id) || names.includes(b.name))
-        .map((b) => b.agent_id),
+      mentions: resolveMentions(addressedText, members),
       fromComposer: true,
     });
   };
@@ -490,9 +526,12 @@ function GroupRoomView({
             {!ready ? (
               <Spin />
             ) : (
-              !rows.length && (
+              // A failed first load is not an empty room: the retry alert explains it.
+              !rows.length &&
+              !historyError && (
                 <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  className={styles.illustratedEmpty}
+                  image={<img src={emptyGroupArt} alt="" />}
                   description={t("octopBot.groupWelcome")}
                 />
               )
@@ -984,7 +1023,11 @@ function GroupRoomView({
               (!text.trim() && !attachments.length)
             }
             icon={<ArrowUp size={16} />}
-            onClick={() => void send()}
+            onClick={() => {
+              // Keep typing flow: the button disables itself once the draft clears.
+              input.current?.focus();
+              void send();
+            }}
           >
             {!standalone && t("octopBot.send")}
           </Button>

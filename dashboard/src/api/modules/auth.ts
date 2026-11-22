@@ -51,6 +51,8 @@ export interface AuthStatus {
   database_bound: boolean;
   /** Active control-plane driver when bound (`sqlite` | `postgresql`). */
   database_driver?: string | null;
+  /** Bot web build: the owner signs in with a Lynxce account. */
+  lynxce_login: boolean;
 }
 
 export interface SsoIdentity {
@@ -283,6 +285,7 @@ interface RawSetupStatus {
   wizard_password_path?: string;
   database_bound?: boolean;
   database_driver?: string | null;
+  lynxce_login?: boolean;
 }
 
 interface RawLoginResponse {
@@ -355,6 +358,7 @@ export const authApi = {
           wizard_password_path: raw.wizard_password_path,
           database_bound: raw.database_bound ?? false,
           database_driver: raw.database_driver ?? null,
+          lynxce_login: raw.lynxce_login ?? false,
         };
         return applySetupFlags(value);
       } finally {
@@ -398,6 +402,29 @@ export const authApi = {
       ),
     });
     return toLoginResult(raw);
+  },
+
+  /** Bot web build: whether an owner Lynxce account is already bound. */
+  getLynxceIdentityStatus: () =>
+    request<{ enabled: boolean; claimed: boolean }>("/auth/lynxce/status"),
+
+  /**
+   * Bot web build: sign in with a Lynxce account. On a fresh instance the
+   * first verified account becomes the owner. The password goes to Lynxce
+   * once and is never stored.
+   */
+  lynxceLogin: async (
+    account: string,
+    password: string,
+    locale?: string,
+  ): Promise<LoginResponse> => {
+    const raw = await request<RawLoginResponse>("/auth/lynxce/login", {
+      method: "POST",
+      body: JSON.stringify({ account, password, locale }),
+    });
+    invalidateAuthStatusCache();
+    clearSetupRequired();
+    return toLoginResult(raw) as LoginResponse;
   },
 
   /** Return whether the configured OIDC provider can accept logins. */

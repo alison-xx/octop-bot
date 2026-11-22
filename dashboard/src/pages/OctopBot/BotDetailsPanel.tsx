@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Drawer, Grid, Select } from "antd";
 import {
   BarChart3,
+  Blocks,
   CalendarClock,
   Cloud,
   UploadCloud,
@@ -23,9 +24,14 @@ import { providerApi } from "../../api/modules/provider";
 import type { ResolvedModel } from "../../api/types";
 import { useAgent } from "../../context/AgentContext";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { userCan } from "../../utils/permissions";
+import { canAccessPath, userCan } from "../../utils/permissions";
 import { apiErrorMessage } from "../../utils/apiError";
-import { BOT_CLOUD, BOT_SETTINGS } from "../../utils/botClientRoute";
+import {
+  BOT_CAPABILITY_UPSTREAM,
+  BOT_CLOUD,
+  BOT_SETTINGS,
+  botCapabilityPath,
+} from "../../utils/botClientRoute";
 import {
   buildModelSelectOptions,
   defaultModelFromForm,
@@ -140,6 +146,12 @@ export default function BotDetailsPanel({
   const canManageSchedules =
     userCan(user, "tasks") && agent?.is_owner === true && !agent.bridge;
   const canViewUsage = userCan(user, "token_usage") && !!agent && !agent.bridge;
+  const canOpenCapabilities =
+    agent?.is_owner === true &&
+    !agent.bridge &&
+    (["skills", "connectors"] as const).some((s) =>
+      canAccessPath(user, BOT_CAPABILITY_UPSTREAM[s]),
+    );
   const canUseBotInCloud =
     botOnly &&
     !bot.is_private &&
@@ -176,6 +188,21 @@ export default function BotDetailsPanel({
         ]
       : []),
     { icon: History, label: t("octopBot.history"), open: onHistory },
+    ...(canOpenCapabilities
+      ? [
+          {
+            icon: Blocks,
+            label: t("botCapabilities.profileEntry"),
+            open: () =>
+              navigate(
+                botCapabilityPath("skills") +
+                  "?bot=" +
+                  encodeURIComponent(bot.agent_id),
+                { state: { from: location.pathname } },
+              ),
+          },
+        ]
+      : []),
     ...(canManageSchedules
       ? [
           {

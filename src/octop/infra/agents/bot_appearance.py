@@ -93,6 +93,18 @@ _ROLE_LOOKS = (
     ),
     (("视觉", "美术", "设计", "design", "illustrat"), Character(shape="gem", color="magenta")),
     (("数据", "分析", "运营", "analytics", "analyst"), Character(shape="hex", color="cyan")),
+    # Later roles only apply when none of the four studio roles above matched.
+    (("调研", "研究", "research"), Character(shape="acorn", color="green")),
+    (
+        ("工程", "开发", "程序", "代码", "engineer", "developer", "coder"),
+        Character(shape="beacon", color="cobalt"),
+    ),
+    (("客服", "支持", "support", "service"), Character(shape="bunny", color="tangerine")),
+    (("翻译", "译者", "translat"), Character(shape="wave", color="sky")),
+    (("测试", "质检", "tester", "qa"), Character(shape="magnet", color="red")),
+    (("法务", "律师", "合规", "legal", "lawyer"), Character(shape="cushion", color="graphite")),
+    (("财务", "会计", "finance", "account"), Character(shape="pebbles", color="orange")),
+    (("销售", "市场", "营销", "sales", "marketing"), Character(shape="kitty", color="red")),
 )
 
 

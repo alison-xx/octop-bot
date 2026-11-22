@@ -130,6 +130,37 @@ beforeEach(() => {
 });
 
 describe("standalone chat model settings", () => {
+  it("opens the capabilities area and remembers which chat to return to", async () => {
+    function Probe() {
+      const loc = useLocation();
+      return <output>{loc.pathname + " from " + loc.state?.from}</output>;
+    }
+    render(
+      <MemoryRouter
+        initialEntries={[
+          { pathname: "/octop-bot/settings", state: { from: thread } },
+        ]}
+      >
+        <Routes>
+          <Route path="/octop-bot/settings" element={<BotClientSettings />} />
+          <Route path="*" element={<Probe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "botCapabilities.title" }),
+    );
+    expect(
+      await screen.findByText("/octop-bot/capabilities from " + thread),
+    ).toBeInTheDocument();
+  });
+  it("keeps a pending draft focused on its model instead of capabilities", async () => {
+    openSettings(thread);
+    await screen.findByText("Draft v2");
+    expect(
+      screen.queryByRole("button", { name: "botCapabilities.title" }),
+    ).toBeNull();
+  });
   it("opens protected folders from settings after the private expert is gone", async () => {
     vi.spyOn(octopBotApi, "retainedFolders").mockResolvedValue([
       { agent_id: "former", name: "Former expert", path: "/former/files" },

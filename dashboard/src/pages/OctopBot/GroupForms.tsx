@@ -320,12 +320,16 @@ export function GoalForm({
   const [form] = Form.useForm<GroupGoal>();
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const submitting = useRef(false);
   const options = bots
     .filter((bot) => group.member_ids.includes(bot.agent_id))
     .map((bot) => ({ label: bot.name, value: bot.agent_id }));
   const statusOptions = (statuses: string[]) =>
     statuses.map((value) => ({ value, label: t("octopBot." + value) }));
   const save = async (values: GroupGoal) => {
+    // Enter in a field can resubmit while the first save is still in flight.
+    if (submitting.current) return;
+    submitting.current = true;
     setSaving(true);
     setError("");
     try {
@@ -342,6 +346,7 @@ export function GoalForm({
     } catch (e) {
       setError(apiErrorMessage(e, t("octopBot.failed"), t));
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   };
@@ -350,7 +355,10 @@ export function GoalForm({
       open
       width={560}
       title={t("octopBot.goal")}
-      onCancel={onClose}
+      onCancel={saving ? undefined : onClose}
+      closable={!saving}
+      maskClosable={!saving}
+      cancelButtonProps={{ disabled: saving }}
       onOk={() => form.submit()}
       okText={t("octopBot.save")}
       confirmLoading={saving}
@@ -358,7 +366,8 @@ export function GoalForm({
       <Form
         layout="vertical"
         form={form}
-        onFinish={save}
+        disabled={saving}
+        onFinish={(values) => void save(values)}
         initialValues={
           goal ?? { title: "", criteria: "", status: "draft", stages: [] }
         }

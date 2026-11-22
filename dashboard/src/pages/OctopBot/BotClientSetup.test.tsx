@@ -26,6 +26,7 @@ const fresh: AuthStatus = {
   wizard_password_exists: false,
   wizard_password_required: false,
   database_bound: false,
+  lynxce_login: false,
 };
 function Source() {
   return <h1>Settings {useLocation().state?.source}</h1>;
@@ -71,7 +72,7 @@ afterEach(() => {
 });
 
 describe("standalone onboarding", () => {
-  it("resumes after separate account and finish failures, without rebinding the database or duplicating the account", async () => {
+  it("creates the account in place of a separate start step and resumes after account and finish failures", async () => {
     vi.mocked(wizardApi.createAdmin).mockRejectedValueOnce(
       new Error("Account unavailable"),
     );
@@ -79,26 +80,29 @@ describe("standalone onboarding", () => {
       new Error("Finish unavailable"),
     );
     openSetup();
-    const begin = await screen.findByRole("button", {
-      name: "botClient.begin",
+    const later = await screen.findByRole("button", {
+      name: "botClient.later",
     });
-    fireEvent.click(begin);
-    await screen.findByText("Account unavailable");
-    fireEvent.click(begin);
-    await screen.findByText("Finish unavailable");
-    fireEvent.click(begin);
     expect(
-      await screen.findByRole("heading", { name: "botClient.nextTitle" }),
-    ).toHaveFocus();
-    expect(wizardApi.applyDatabase).toHaveBeenCalledTimes(1);
-    expect(wizardApi.createAdmin).toHaveBeenCalledTimes(2);
-    expect(wizardApi.finish).toHaveBeenCalledTimes(2);
-    expect(wizardApi.begin).toHaveBeenCalledTimes(1);
-    expect(getAuthToken()).toBe("issued-session");
-    fireEvent.click(screen.getByRole("button", { name: "botClient.later" }));
+      screen.queryByRole("button", { name: /botClient.begin/ }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(later);
+    await screen.findByText("Account unavailable");
+    fireEvent.click(later);
+    await screen.findByText("Finish unavailable");
+    fireEvent.click(later);
     expect(
       await screen.findByRole("heading", { name: "Team guide" }),
     ).toBeInTheDocument();
+    expect(wizardApi.applyDatabase).toHaveBeenCalledTimes(1);
+    expect(wizardApi.createAdmin).toHaveBeenCalledTimes(2);
+    expect(wizardApi.createAdmin).toHaveBeenLastCalledWith(
+      { username: "local", display_name: null, locale: "zh" },
+      "wizard-session",
+    );
+    expect(wizardApi.finish).toHaveBeenCalledTimes(2);
+    expect(wizardApi.begin).toHaveBeenCalledTimes(1);
+    expect(getAuthToken()).toBe("issued-session");
   });
 
   it("can finish adding the requested local desktop account alongside an existing account", async () => {
@@ -109,9 +113,6 @@ describe("standalone onboarding", () => {
       database_bound: true,
     });
     openSetup("/setup?localAccount=1");
-    fireEvent.click(
-      await screen.findByRole("button", { name: "botClient.begin" }),
-    );
     const registration = await screen.findByRole("link", {
       name: "botClient.lynxce.register",
     });
@@ -120,7 +121,7 @@ describe("standalone onboarding", () => {
       "botClient.lynxce.registerHint",
     );
     fireEvent.click(
-      await screen.findByRole("button", { name: "botClient.lynxce.source" }),
+      await screen.findByRole("button", { name: /botClient.lynxce.source/ }),
     );
     expect(
       await screen.findByRole("heading", { name: "Settings lynxce" }),
@@ -135,14 +136,70 @@ describe("standalone onboarding", () => {
   it("keeps other providers accessible at first launch", async () => {
     openSetup();
     fireEvent.click(
-      await screen.findByRole("button", { name: "botClient.begin" }),
-    );
-    fireEvent.click(
       await screen.findByRole("button", { name: "botClient.lynxce.other" }),
     );
     expect(
       await screen.findByRole("heading", { name: "Settings other" }),
     ).toBeInTheDocument();
+  });
+
+  it("signs the web owner in with a Lynxce account without any local account or setup password", async () => {
+    vi.mocked(authApi.getAuthStatus).mockResolvedValue({
+      ...fresh,
+      lynxce_login: true,
+    });
+    const login = vi.spyOn(authApi, "lynxceLogin").mockResolvedValue({
+      access_token: "lynxce-session",
+      token_type: "Bearer",
+      expires_in: 3600,
+      user: { id: 1, username: "owner", role: "admin" },
+      token: "lynxce-session",
+    } as never);
+    openSetup();
+    await userEvent.type(
+      await screen.findByLabelText("botOnboarding.account"),
+      " alice@example.invalid ",
+    );
+    await userEvent.type(
+      screen.getByLabelText("botOnboarding.password"),
+      "lynxce-pass{Enter}",
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Settings other" }),
+    ).toBeInTheDocument();
+    expect(login).toHaveBeenCalledWith(
+      "alice@example.invalid",
+      "lynxce-pass",
+      "zh",
+    );
+    expect(wizardApi.applyDatabase).toHaveBeenCalledTimes(1);
+    expect(wizardApi.createAdmin).not.toHaveBeenCalled();
+    expect(getAuthToken()).toBe("lynxce-session");
+  });
+
+  it("lets a web owner who brings their own model choose a sign-in password", async () => {
+    vi.mocked(authApi.getAuthStatus).mockResolvedValue({
+      ...fresh,
+      lynxce_login: true,
+    });
+    openSetup();
+    fireEvent.click(await screen.findByText("botOnboarding.localTab"));
+    await userEvent.type(
+      await screen.findByLabelText("botOnboarding.localPassword"),
+      "Own-model-pass1{Enter}",
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Settings other" }),
+    ).toBeInTheDocument();
+    expect(wizardApi.createAdmin).toHaveBeenCalledWith(
+      {
+        username: "local",
+        display_name: null,
+        locale: "zh",
+        password: "Own-model-pass1",
+      },
+      "wizard-session",
+    );
   });
 
   it("returns to password verification when the saved wizard token expires before form submission", async () => {

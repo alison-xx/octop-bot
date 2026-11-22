@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import type { ChatReference } from "../../api/modules/octopBot";
 import { useHistorySearch } from "./useHistorySearch";
 import styles from "./directory.module.less";
+import emptySearchArt from "../../assets/bot/empty-search.webp";
 
 export interface SearchContact {
   key: string;
@@ -206,14 +207,17 @@ export default function DirectorySearch({
             />
           ) : scope === "history" && history.pending ? (
             <Spin size="small" />
+          ) : scope === "history" && !needle ? (
+            t("botDirectory.historyHint")
           ) : (
-            t(
-              scope === "team"
-                ? "botDirectory.noMatch"
-                : needle
-                ? "octopBot.noMatches"
-                : "botDirectory.historyHint",
-            )
+            <div className={styles.searchEmpty}>
+              <img src={emptySearchArt} alt="" width={96} height={96} />
+              {t(
+                scope === "team"
+                  ? "botDirectory.noMatch"
+                  : "octopBot.noMatches",
+              )}
+            </div>
           )}
         </div>
       )}

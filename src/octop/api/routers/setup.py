@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from octop.api.deps import get_server, require_database, resolve_user_from_token, sign_token
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import make_probe_provider_row, probe_provider_row
-from octop.infra.desktop import desktop_shell_enabled
+from octop.infra.desktop import bot_web_enabled, desktop_shell_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.setup import password_file as _wizard
 from octop.infra.setup.wizard_tokens import RateLimited
@@ -117,6 +117,10 @@ class DatabaseSetupBody(BaseModel):
 
 
 def _setup_password_required(server: Any) -> bool:
+    if bot_web_enabled():
+        # The Bot web build has no CLI setup password: owners claim it with Lynxce,
+        # or set their own sign-in password while creating the local account.
+        return False
     cfg = server.services.config if server.services else getattr(server, "config", None)
     return bool(cfg and cfg.require_setup_password)
 
@@ -130,7 +134,7 @@ def _resolve_admin_password(server: Any, provided: str | None) -> str:
     """
     if provided:
         return provided
-    if _setup_password_required(server):
+    if _setup_password_required(server) or bot_web_enabled():
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "password is required")
     return secrets.token_urlsafe(32)
 
@@ -239,7 +243,7 @@ async def _bootstrap_default_agent(
 
     if server.app_runtime is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "app_runtime not ready")
-    if bot_desktop_enabled():
+    if bot_desktop_enabled() or bot_web_enabled():
         from octop.infra.agents.bot_workspace import ensure_chief  # noqa: PLC0415
 
         await ensure_chief(server.services, server.app_runtime.agent_registry, user_id)
@@ -328,6 +332,8 @@ async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
     return {
         "setup_required": setup_required,
         "local_account": local_account,
+        # Bot web build: sign in with a Lynxce account (see /api/auth/lynxce/*).
+        "lynxce_login": bot_web_enabled(),
         "wizard_password_required": password_required,
         "wizard_password_exists": (
             password_required

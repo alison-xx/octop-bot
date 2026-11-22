@@ -6,7 +6,9 @@ Octop Bot 是一款运行在 Windows 和 Apple Silicon Mac 上的桌面应用。
 
 在 **30 秒产品短片**里看 Chief 如何拉上策划与写手，为读书会定下一句招募文案。可以看[中文短片](https://octop-bot.lynxce.cn/media/intro-zh.mp4)、[英文短片](https://octop-bot.lynxce.cn/media/intro-en.mp4)，也可以亲自切换[交互演示](https://octop-bot.lynxce.cn/#demo)中的协作阶段。
 
-[在 Docker 或飞牛 fnOS 上安装 Octop Bot（含 FPK）](docs/octop-bot-nas.md)。
+[在 Docker 或飞牛 fnOS 上安装 Octop Bot（含 FPK）](docs/octop-bot-nas.md)。网页版首次打开时，直接用灵策智算账号登录即可，不需要向导口令。
+
+![Chief 和策划、写手、设计、数据四位成员围坐在一起协作。](docs/assets/octop-bot/art-team.webp)
 
 ## 客户端下载
 
@@ -32,7 +34,7 @@ Octop Bot 是一款运行在 Windows 和 Apple Silicon Mac 上的桌面应用。
 
 ## 第一次使用
 
-1. **打开工作区。** 首次启动后点击「开始使用」。进入本机工作区，你会在团队通讯录里看到自己的 Chief。
+1. **选择连接方式。** 首次启动后直接选择「登录灵策智算账号」「自己配置模型」或「稍后配置」，不需要注册本机账号。进入工作区后，你会在团队通讯录里看到自己的 Chief。
 2. **连接聊天模型。** 选择「灵策智算账号」，在系统浏览器完成授权，返回客户端选择并保存一个可用模型。使用模型时，灵策会从这个账号扣除积分。也可以选择「其他模型来源」，连接自己的云服务、自定义兼容地址或本机模型。「稍后配置」可以先浏览团队，发消息前再连接模型。
 3. **如果还没有灵策账号，** 点击「注册灵策智算账号」，在官网选择「注册」标签。完成后回到客户端，按原来的入口登录或授权。[灵策账号官网](https://admin.lynxce.cn/profile/login)
 4. **把第一条消息交给 Chief。** 新手引导会带你认识私聊、分组和云端工作区。选择建团队、做计划或分配工作的示例，点「在 Chief 对话中编辑」。修改草稿后点发送。以后可从通讯录底部的「账号与模型 → 新手引导」重新打开。
@@ -65,7 +67,22 @@ Octop Bot 是一款运行在 Windows 和 Apple Silicon Mac 上的桌面应用。
 
 [到官网复制完整场景提示词](https://octop-bot.lynxce.cn/#scenarios)。
 
+## 给 Bot 装上能力
+
+![八爪鱼同时接起连接器、知识库、技能、IM 频道、外部 Agent 和定时任务。](docs/assets/octop-bot/art-capabilities.webp)
+
+在「账号与模型」顶部打开「能力」，或在 Bot 资料面板点「技能与连接器」。这里集中管理上游 Octop 的全部能力，进入时默认选中当前 Bot：
+
+| 分组 | 可以做什么 |
+| --- | --- |
+| 技能与连接器 | 连接 MCP 服务和内置连接器，安装、启用技能和技能包。 |
+| 知识与记忆 | 建知识库给 Bot 检索，查看和清理 Bot 的长期记忆。 |
+| 通道与插件 | 把 Bot 接到飞书、企业微信、Telegram 等 IM，管理插件。 |
+| 智能体与自动化 | 接入 Claude Code、OpenCode、Qwen Code 等外部 Agent，统一查看定时任务。 |
+
 ## 关机后继续工作
+
+![电脑休眠时，Chief 和成员在云端继续处理定时任务。](docs/assets/octop-bot/art-cloud.webp)
 
 打开通讯录底部的**云端工作区**，单独登录灵策账号。这里可以新建云端会话，或设置定时任务。在另一台电脑上登录同一灵策账号，即可查看已接收任务的状态和结果，并继续对话。云端可用的模型、权限和积分取决于当前账号。工作区顶部显示当前云端账号的积分，点「充值」可为这个账号充值。
 

@@ -5,7 +5,7 @@ import { octopAgentsApi } from "../../api/modules/octopAgents";
 import { octopBotApi, type WorkspaceBot } from "../../api/modules/octopBot";
 import type { AppearanceChoice } from "./AppearancePicker";
 import BotQuickCreate from "./BotQuickCreate";
-import { GroupForm } from "./GroupForms";
+import { GoalForm, GroupForm } from "./GroupForms";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -248,5 +248,47 @@ describe("Octop Bot creation dialogs", () => {
       member_ids: ["TEXT02", "NOTES1"],
       reply_mode: "admin_first",
     });
+  });
+  it("saves a goal once and locks the dialog while the save is in flight", async () => {
+    let finish!: (value: never) => void;
+    const saveGoal = vi.spyOn(octopBotApi, "saveGoal").mockImplementation(
+      () =>
+        new Promise((done) => {
+          finish = done;
+        }),
+    );
+    const close = vi.fn();
+    const saved = vi.fn();
+    render(
+      <GoalForm
+        group={{
+          group_id: "room",
+          name: "Room",
+          admin_id: "chief",
+          member_ids: ["chief"],
+          reply_mode: "admin_first",
+        }}
+        bots={[]}
+        goal={null}
+        onClose={close}
+        onSaved={saved}
+      />,
+    );
+    const title = screen.getByRole("textbox", { name: "octopBot.goalTitle" });
+    fireEvent.change(title, { target: { value: "Launch" } });
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "octopBot.criteria" }),
+      { target: { value: "Shipped" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "octopBot.save" }));
+    await waitFor(() => expect(saveGoal).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(title).toBeDisabled());
+    fireEvent.submit(title.closest("form")!);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(close).not.toHaveBeenCalled();
+    await new Promise((done) => setTimeout(done, 0));
+    expect(saveGoal).toHaveBeenCalledTimes(1);
+    finish({ title: "Launch" } as never);
+    await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
   });
 });

@@ -15,6 +15,8 @@ from fastapi.responses import JSONResponse
 _OPEN_PREFIXES = (
     "/api/setup/",
     "/api/health/",
+    # Bot web build claims a fresh instance by signing in with Lynxce.
+    "/api/auth/lynxce/",
 )
 
 

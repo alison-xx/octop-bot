@@ -15,8 +15,10 @@ export default function GroupMemory({
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
+    setError("");
     void octopBotApi
       .memory(id)
       .then((v) => {
@@ -28,9 +30,10 @@ export default function GroupMemory({
     return () => {
       live = false;
     };
-  }, [id, t]);
+  }, [id, t, attempt]);
   const save = async () => {
     if (text === null) return;
+    setError("");
     setSaving(true);
     try {
       await octopBotApi.saveMemory(text, id);
@@ -58,7 +61,19 @@ export default function GroupMemory({
         </Button>
       }
     >
-      {error && <Alert type="error" message={error} />}
+      {error && (
+        <Alert
+          type="error"
+          message={error}
+          action={
+            text === null && (
+              <Button size="small" onClick={() => setAttempt((n) => n + 1)}>
+                {t("octopBot.retry")}
+              </Button>
+            )
+          }
+        />
+      )}
       {text === null ? (
         !error && <Spin />
       ) : (

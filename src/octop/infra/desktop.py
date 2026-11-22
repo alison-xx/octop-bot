@@ -55,6 +55,16 @@ def bot_desktop_enabled() -> bool:
     return desktop_shell_enabled() and os.environ.get("OCTOP_DESKTOP_PRODUCT") == "bot"
 
 
+def bot_web_enabled() -> bool:
+    """The Bot web/NAS build signs its owner in with a Lynxce account.
+
+    Set by the Bot Docker image and the fnOS packages (``OCTOP_BOT_WEB=1``). There is no
+    CLI setup password; the first Lynxce sign-in claims the instance.
+    """
+    raw = (os.environ.get("OCTOP_BOT_WEB") or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 def shell_owned_env_key(key: str) -> bool:
     """Return true when ``key`` is pinned by the desktop shell for this process."""
     if key in SHELL_OWNED_ENV_KEYS:

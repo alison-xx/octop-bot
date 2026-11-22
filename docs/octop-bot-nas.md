@@ -1,6 +1,11 @@
 # 在 Docker 或飞牛 fnOS 上运行 Octop Bot
 
-用浏览器打开 NAS 上的 Octop Bot，即可使用 Chief、专家通讯录、私聊、群聊和文件上传。网页使用服务端账号登录，管理员可以在「账号与模型」连接模型供应商。桌面悬浮球、设备自动登录和依赖本机回调的灵策授权由 Windows、macOS 客户端提供。
+用浏览器打开 NAS 上的 Octop Bot，即可使用 Chief、专家通讯录、私聊、群聊、文件上传，以及「能力」中的 MCP 连接器、技能、知识库、IM 频道、插件、外部 Agent 和定时任务。首次打开时不需要向导口令或管理员账号：
+
+- **用灵策智算账号登录**：输入灵策账号和密码。首次登录的灵策账号会成为这台 Octop Bot 的主人，以后只能用同一个灵策账号登录。密码只用于向灵策验证身份，不会保存在 NAS 上。
+- **自己配置模型**：设置一个登录密码，然后在「账号与模型」连接自己的模型供应商。以后在其他设备打开时输入这个密码。
+
+首次登录即认领实例，请在安装后尽快打开，并只在可信网络中暴露端口。桌面悬浮球、设备自动登录和依赖本机回调的灵策模型授权由 Windows、macOS 客户端提供。
 
 ## Docker Compose
 
@@ -10,10 +15,9 @@
 git clone https://github.com/alison-xx/octop-bot.git
 cd octop-bot
 docker compose up --build -d
-docker compose exec bot cat /data/.octop/octop-login.txt
 ```
 
-访问 `http://<主机IP>:8090`，用最后一条命令显示的口令解锁向导，创建管理员后进入 Bot。端口已占用时，可在仓库根目录的 `.env` 中设置 `OCTOP_BOT_PORT=9090`，再执行 `docker compose up -d`。
+访问 `http://<主机IP>:8090`，用灵策智算账号登录，或设置登录密码后自己配置模型。端口已占用时，可在仓库根目录的 `.env` 中设置 `OCTOP_BOT_PORT=9090`，再执行 `docker compose up -d`。
 
 Compose 将数据库、模型配置、Bot 工作区和附件都写入 `bot-data` 卷。停用可执行 `docker compose down`。更新时在同一目录检出新版，重新执行 `docker compose up --build -d`。备份时先停止服务，再备份整个卷。
 
@@ -23,13 +27,13 @@ Compose 将数据库、模型配置、Bot 工作区和附件都写入 `bot-data`
 
 在飞牛应用中心安装「Python 3.12」，并确认 8091 端口可用。在「手动安装」中选择与设备 CPU 对应的 `Octop-Bot-fnos-native-amd64-<版本>.fpk`（Intel、AMD）或 `Octop-Bot-fnos-native-arm64-<版本>.fpk`（ARM64）。程序、网页和 Python 依赖都在包内，首次启动无需下载镜像。
 
-启动后打开「Octop Bot 原生版」，或访问 `http://<飞牛IP>:8091/octop-bot`。从应用共享目录 `octop-bot-native/data/.octop/octop-login.txt` 取得向导口令，创建管理员。原生版使用独立的数据目录；升级前可停用应用并备份整个 `octop-bot-native/data`。
+启动后打开「Octop Bot 原生版」，或访问 `http://<飞牛IP>:8091/octop-bot`，用灵策智算账号登录或设置登录密码。原生版使用独立的数据目录；升级前可停用应用并备份整个 `octop-bot-native/data`。
 
 ### Docker 版
 
 1. 在 fnOS 应用中心安装 Docker，确认 8090 端口可用。使用与镜像配套的 `Octop-Bot-fnos-<版本>.fpk`。镜像由飞牛按本机架构拉取；也可以在安装前导入同架构、同标签的镜像。
 2. 在应用中心选择「手动安装」，上传 FPK 并启动。在飞牛桌面打开 **Octop Bot**，或访问 `http://<飞牛IP>:8090/octop-bot`。
-3. 从应用共享目录 `octop-bot/data/.octop/octop-login.txt` 取得向导口令。也可通过 SSH 运行 `sudo docker exec octop-bot-fnos cat /data/.octop/octop-login.txt`。用该口令在网页上创建管理员，后续使用管理员密码登录。
+3. 用灵策智算账号登录，或设置登录密码后自己配置模型。以后用同一个灵策账号或这个密码登录。
 4. 升级前停止应用并备份整个 `octop-bot/data`。新版本 FPK 沿用该目录。卸载时如需保留聊天与文件，请保留共享目录。
 
 ### 从源码制作 FPK 和离线镜像
