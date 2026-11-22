@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef, type ReactNode } from "react";
 import {
   Navigate,
   Route,
@@ -27,11 +27,35 @@ const Setup = lazy(() => import("./BotClientSetup"));
 const Guide = lazy(() => import("./BotGettingStarted"));
 const Capabilities = lazy(() => import("./BotCapabilities"));
 
+// Neutral black-and-white accents for the Bot client, also inside portals.
+const lightAccent = { colorPrimary: "#191919", colorLink: "#191919" };
+const darkAccent = {
+  colorPrimary: "#ededed",
+  colorLink: "#ededed",
+  colorTextLightSolid: "#161616",
+};
+/** Neutral accents and the html marker the Bot client styles key off. */
+function BotClientTheme({ children }: { children: ReactNode }) {
+  const { isDark } = useTheme();
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute("data-bot-client", "");
+    return () => root.removeAttribute("data-bot-client");
+  }, []);
+  return (
+    <ConfigProvider theme={{ token: isDark ? darkAccent : lightAccent }}>
+      {children}
+    </ConfigProvider>
+  );
+}
+
 export function BotClientSetupRoute() {
   return (
-    <Suspense fallback={<BrandLoading viewport />}>
-      <Setup />
-    </Suspense>
+    <BotClientTheme>
+      <Suspense fallback={<BrandLoading viewport />}>
+        <Setup />
+      </Suspense>
+    </BotClientTheme>
   );
 }
 
@@ -50,21 +74,7 @@ function BotRedirect() {
   );
 }
 
-// Neutral black-and-white accents for the Bot client, also inside portals.
-const lightAccent = { colorPrimary: "#191919", colorLink: "#191919" };
-const darkAccent = {
-  colorPrimary: "#ededed",
-  colorLink: "#ededed",
-  colorTextLightSolid: "#161616",
-};
-
 export default function BotClientRoutes() {
-  const { isDark } = useTheme();
-  useEffect(() => {
-    const root = document.documentElement;
-    root.setAttribute("data-bot-client", "");
-    return () => root.removeAttribute("data-bot-client");
-  }, []);
   const navigate = useNavigate();
   const location = useLocation();
   // IPC callbacks subscribe once and read the route through this ref.
@@ -99,7 +109,7 @@ export default function BotClientRoutes() {
     [],
   );
   return (
-    <ConfigProvider theme={{ token: isDark ? darkAccent : lightAccent }}>
+    <BotClientTheme>
       <div className={styles.client} data-bot-client>
         <Suspense fallback={<BrandLoading viewport />}>
           <Routes>
@@ -132,6 +142,6 @@ export default function BotClientRoutes() {
           </Routes>
         </Suspense>
       </div>
-    </ConfigProvider>
+    </BotClientTheme>
   );
 }
