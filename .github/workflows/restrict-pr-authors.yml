@@ -211,7 +211,15 @@ jobs:
               core.info(`Pull request #${pullRequest.number} is already closed.`);
               return;
             }
-            if (pullRequest.base && pullRequest.base.ref === "main" && !isRepoReleaseToMain(pullRequest)) {
+            // The develop/release branch model belongs to upstream Octop. Forks
+            // without a develop branch merge feature work into main directly.
+            const upstream = `${owner}/${repo}` === "TencentCloud/Octop";
+            if (
+              upstream &&
+              pullRequest.base &&
+              pullRequest.base.ref === "main" &&
+              !isRepoReleaseToMain(pullRequest)
+            ) {
               await closeForWrongBase(pullRequest);
               return;
             }
