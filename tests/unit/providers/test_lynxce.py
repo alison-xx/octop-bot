@@ -123,3 +123,21 @@ async def test_full_dashboard_and_cli_ignore_an_existing_bot_billing_choice(acco
     monkeypatch.setenv("OCTOP_DESKTOP_PRODUCT", "bot")
     monkeypatch.delenv("OCTOP_DESKTOP_SHELL")
     assert lynxce.account_selection(services, 1) is None
+
+
+def test_lynxce_api_key_preset_is_listed_first_and_openai_compatible():
+    from octop.infra.agents.providers.presets import load_provider_presets
+
+    presets = load_provider_presets()
+    lynxce = presets[0]
+    assert lynxce["id"] == "lynxce"
+    assert [p["id"] for p in presets].count("lynxce") == 1
+    assert lynxce["base_url"] == "https://api.lynxce.cn/api/v1"
+    assert lynxce["protocol"] == "openai"
+    assert lynxce["api_key_prefix"] == "sk-"
+    assert lynxce["logo_id"] == "lynxce"
+    ids = [m["id"] for m in lynxce["models"]]
+    assert "deepseek-flash" in ids and len(ids) == len(set(ids))
+    # Callers mutate presets (reasoning flags); the module constant stays untouched.
+    lynxce["models"].clear()
+    assert load_provider_presets()[0]["models"]

@@ -26,6 +26,7 @@ import googleLogo from "./google.svg";
 import yuanbaoLogo from "../channels/yuanbao.svg";
 import iflytekLogo from "./iflytek.svg";
 import magpieLogo from "./magpie.svg";
+import lynxceLogo from "./lynxce.png";
 import { isBotOnlyDesktop } from "../../utils/desktopBridge";
 
 export const PROVIDER_LOGOS: Record<string, string> = {
@@ -57,6 +58,7 @@ export const PROVIDER_LOGOS: Record<string, string> = {
   iflytek: iflytekLogo,
   "iflytek-astron": iflytekLogo,
   magpie: magpieLogo,
+  lynxce: lynxceLogo,
   // Same mark as the Yuanbao channel: one product, search and IM.
   yuanbao: yuanbaoLogo,
 };

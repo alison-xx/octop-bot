@@ -288,6 +288,35 @@ def _embedding_cloud_presets() -> list[dict[str, Any]]:
     ]
 
 
+def _lynxce_model(model_id: str, name: str) -> dict[str, Any]:
+    return {"id": model_id, "name": name, "enabled": True, "input": ["text"]}
+
+
+LYNXCE_API_PRESET: dict[str, Any] = {
+    "id": "lynxce",
+    "name": "灵策智算 (Lynxce)",
+    "base_url": "https://api.lynxce.cn/api/v1",
+    "protocol": "openai",
+    "api_key_prefix": "sk-",
+    "logo_id": "lynxce",
+    "vendor": "lynxce",
+    "vendor_name": "灵策智算",
+    "provider_group": "lynxce",
+    "provider_group_name": "灵策智算",
+    "models": [
+        _lynxce_model("deepseek-flash", "DeepSeek Flash"),
+        _lynxce_model("deepseek-v4-pro", "DeepSeek V4 Pro"),
+        _lynxce_model("qwen3.8-max", "Qwen3.8 Max"),
+        _lynxce_model("qwen3.8-flash", "Qwen3.8 Flash"),
+        _lynxce_model("glm-5.3", "GLM-5.3"),
+        _lynxce_model("glm-5.3-flash", "GLM-5.3 Flash"),
+        _lynxce_model("kimi-k3", "Kimi K3"),
+        _lynxce_model("doubao-seed-2.1-turbo", "Doubao Seed 2.1 Turbo"),
+        _lynxce_model("MiniMax-M3", "MiniMax M3"),
+    ],
+}
+
+
 def load_provider_presets() -> list[dict[str, Any]]:
     """Serialize octop-harness provider templates for API / CLI."""
     from importlib import resources
@@ -351,6 +380,12 @@ def load_provider_presets() -> list[dict[str, Any]]:
         from octop.infra.agents.providers.magpie import magpie_preset
 
         out.insert(0, magpie_preset())
+    if not any(p.get("id") == LYNXCE_API_PRESET["id"] for p in out):
+        # Octop Bot's own model service, listed first: one Lynxce API key reaches
+        # the account's models through an OpenAI-compatible endpoint.
+        out.insert(
+            0, {**LYNXCE_API_PRESET, "models": [dict(m) for m in LYNXCE_API_PRESET["models"]]}
+        )
     if not any(p.get("purpose") == "embedding" and p.get("id") != "onnx" for p in out):
         out.extend(_embedding_cloud_presets())
     for preset in out:

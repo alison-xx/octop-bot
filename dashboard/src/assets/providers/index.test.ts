@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import yuanbaoIcon from "../channels/yuanbao.svg";
 import iflytekIcon from "./iflytek.svg";
 import magpieIcon from "./magpie.svg";
+import lynxceIcon from "./lynxce.png";
 import deepseekIcon from "./deepseek.png";
 import genericIcon from "./custom-provider.svg";
 import { getProviderLogo } from "./index";
@@ -19,6 +20,10 @@ describe("getProviderLogo", () => {
       window.history.replaceState({}, "", url);
     }
   });
+  it("shows the Lynxce mark for the Lynxce API key preset", () => {
+    expect(getProviderLogo("lynxce")).toBe(lynxceIcon);
+  });
+
   it("uses the Yuanbao product mark shared with the channel", () => {
     expect(getProviderLogo("yuanbao")).toBe(yuanbaoIcon);
     expect(getProviderLogo("yuanbao-search")).toBe(yuanbaoIcon);
