@@ -67,7 +67,10 @@ env:
 jobs:
   frontend:
     name: Build dashboard
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.attach_from_run == ''
+    # Fork guard: forks still build desktop on PRs, but tag pushes only build upstream.
+    if: >-
+      (github.event_name != 'push' || github.repository == 'TencentCloud/Octop') &&
+      (github.event_name != 'workflow_dispatch' || github.event.inputs.attach_from_run == '')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -94,7 +97,9 @@ jobs:
   # selected runners start — PRs → darwin-* + windows-*; dispatch honors `platforms`.
   select-platforms:
     name: Select platforms
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.attach_from_run == ''
+    if: >-
+      (github.event_name != 'push' || github.repository == 'TencentCloud/Octop') &&
+      (github.event_name != 'workflow_dispatch' || github.event.inputs.attach_from_run == '')
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
@@ -377,7 +382,9 @@ jobs:
     outputs:
       tag: ${{ steps.rel.outputs.tag }}
     # always(): still run when package was skipped (attach_from_run rebuild skip).
+    # Fork guard: never attach upstream Octop desktop packages to a fork's releases.
     if: >-
+      github.repository == 'TencentCloud/Octop' &&
       always() &&
       !cancelled() &&
       (needs.package.result == 'success' || needs.package.result == 'skipped') &&
