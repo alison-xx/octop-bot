@@ -87,6 +87,9 @@
   min-height: 0;
 }
 .nav {
+  // Hover stays far lighter than the selected tab so the two never read alike.
+  --settings-nav-hover: rgba(0, 0, 0, 0.025);
+  --settings-nav-selected: rgba(0, 0, 0, 0.085);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -122,14 +125,14 @@
     transition:
       background-color 0.15s ease,
       color 0.15s ease;
-    &:hover {
-      background: var(--fn-bg-hover);
+    &:hover:not([aria-current="page"]) {
+      background: var(--settings-nav-hover);
       color: var(--fn-text-primary);
     }
     &[aria-current="page"] {
-      background: var(--fn-bg-active);
+      background: var(--settings-nav-selected);
       color: var(--fn-text-primary);
-      font-weight: 500;
+      font-weight: 600;
     }
     &:focus {
       outline: none;
@@ -139,6 +142,10 @@
       outline-offset: -2px;
     }
   }
+}
+:global(html[data-theme="dark"]) .nav {
+  --settings-nav-hover: rgba(255, 255, 255, 0.035);
+  --settings-nav-selected: rgba(255, 255, 255, 0.12);
 }
 .content {
   flex: 1;
