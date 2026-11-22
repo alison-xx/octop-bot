@@ -203,7 +203,7 @@ icon.save(Path(sys.argv[3]) / "bot-icon.ico", sizes=[(n,n) for n in (16,24,32,48
             "-c",
             script,
             stage / "portable" / "packages",
-            REPO / "dashboard/src/assets/avatars/octop-mascot.webp",
+            REPO / "desktop/src/resources/bot-icon.png",
             stage,
         ]
     )

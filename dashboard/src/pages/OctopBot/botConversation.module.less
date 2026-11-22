@@ -9,8 +9,8 @@
 }
 .conversation [data-message-list-inner] {
   --chat-column-max: 780px;
-  --chat-msg-avatar-slot: 30px;
-  --chat-msg-gutter: 8px;
+  --chat-msg-avatar-slot: 0px;
+  --chat-msg-gutter: 0px;
   box-sizing: border-box;
   width: min(100%, calc(780px + 2 * var(--chat-column-pad-x)));
   margin-inline: auto;
@@ -81,9 +81,7 @@
   gap: 8px;
 }
 .greetingAvatar {
-  width: 30px;
-  flex: none;
-  padding-top: 3px;
+  display: none;
 }
 .greetingContent {
   min-width: 0;
@@ -124,24 +122,28 @@
   white-space: normal;
 }
 .incoming {
-  background: var(--bot-card, var(--fn-bg-elevated));
-  border: 1px solid var(--bot-line, var(--fn-border-secondary));
-  border-start-start-radius: 5px;
+  background: var(--bot-incoming, var(--fn-bg-secondary));
+  border: 0;
+  border-radius: 18px;
   color: var(--bot-ink, var(--fn-text-primary));
 }
 .outgoing {
-  border-start-end-radius: 5px;
+  border-radius: 18px;
   background: var(--bot-outgoing, #222);
   color: var(--bot-outgoing-ink, white);
 }
+// One-to-one chats show no sender avatar next to the bubbles.
+.conversation [class*="avatarCol"] {
+  display: none;
+}
 .conversation .botMessage,
 .conversation .userMessage {
-  grid-template-columns: 30px minmax(0, 1fr);
-  column-gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 0;
   margin: 0 0 13px;
 }
 .botMessage.botMessage > .body {
-  grid-column: 2;
+  grid-column: 1;
   grid-row: 1;
   justify-self: start;
   max-width: min(94%, 680px);
@@ -158,12 +160,12 @@
   line-height: 1.65;
 }
 .conversation .body .incoming {
-  border: 1px solid var(--bot-line, var(--fn-border-secondary));
-  border-radius: 5px 16px 16px;
-  background: var(--bot-card, var(--fn-bg-elevated));
+  border: 0;
+  border-radius: 18px;
+  background: var(--bot-incoming, var(--fn-bg-secondary));
 }
 .conversation .body .outgoing {
-  border-radius: 16px 5px 16px 16px;
+  border-radius: 18px;
   background: var(--bot-outgoing, #222);
   color: var(--bot-outgoing-ink, white);
 }
@@ -279,12 +281,12 @@
   gap: 6px;
 }
 .suggestions button {
-  background: transparent;
+  background: var(--bot-card, transparent);
   color: var(--bot-ink, var(--fn-text-secondary));
   border: 1px solid var(--bot-line, var(--fn-border-primary));
-  border-radius: 14px;
-  padding: 4px 9px;
-  font-size: 12px;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
   line-height: 18px;
 }
 .suggestions button:hover,
@@ -314,14 +316,12 @@
   min-width: 0;
   max-width: 780px;
   margin: 0 auto;
-  padding: 7px 8px;
-  border-radius: 17px;
-  box-shadow: var(--bot-shadow);
+  padding: 6px 7px;
+  border-radius: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 .composer .composerShell:focus-within {
-  border-color: var(--bot-accent, var(--fn-text-brand));
-  box-shadow: 0 0 0 3px
-    color-mix(in srgb, var(--bot-accent, var(--fn-text-brand)) 14%, transparent);
+  border-color: color-mix(in srgb, var(--bot-line) 60%, var(--bot-muted));
 }
 .composerShell > * {
   grid-column: 1 / -1;
@@ -348,10 +348,10 @@
 }
 .composer .leading button,
 .composer .trailing button:not(.model) {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  border-radius: 10px;
+  border-radius: 50%;
 }
 .composer .leading button {
   background: var(--bot-incoming, var(--fn-bg-secondary));
@@ -390,7 +390,7 @@
 .send,
 .composer .send {
   border: 0;
-  background: var(--bot-outgoing, #242424);
+  background: var(--bot-color, var(--bot-outgoing, #191919));
   color: var(--bot-outgoing-ink, white);
 }
 .composer .send:disabled {

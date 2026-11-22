@@ -445,3 +445,26 @@
     -webkit-user-drag: none;
   }
 }
+
+// Bot client accents follow the neutral black-and-white chat UI, including
+// modals and menus portalled outside the client root.
+:global(html[data-bot-client][data-bot-client]) {
+  --fn-color-brand: #191919;
+  --fn-text-brand: #191919;
+  --fn-color-brand-hover: #333333;
+  --fn-color-brand-bg: rgba(0, 0, 0, 0.05);
+  --fn-border-focus: #191919;
+  --fn-bg-hover: rgba(0, 0, 0, 0.04);
+  --fn-bg-active: rgba(0, 0, 0, 0.07);
+  --fn-bg-selected: rgba(0, 0, 0, 0.05);
+}
+:global(html[data-bot-client][data-bot-client][data-theme="dark"]) {
+  --fn-color-brand: #ededed;
+  --fn-text-brand: #ededed;
+  --fn-color-brand-hover: #ffffff;
+  --fn-color-brand-bg: rgba(255, 255, 255, 0.08);
+  --fn-border-focus: #ededed;
+  --fn-bg-hover: rgba(255, 255, 255, 0.06);
+  --fn-bg-active: rgba(255, 255, 255, 0.1);
+  --fn-bg-selected: rgba(255, 255, 255, 0.08);
+}

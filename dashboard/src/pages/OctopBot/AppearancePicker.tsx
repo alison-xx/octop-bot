@@ -62,7 +62,7 @@ export function AppearancePicker({
         ) : (
           <BotCharacter
             bot={bot}
-            size={55}
+            size={72}
             look={{ ...look, source }}
             photo={value?.kind === "photo" ? value.photo.image : bot?.icon_url}
             badges={false}
@@ -101,36 +101,38 @@ export function AppearancePicker({
       ) : (
         <>
           <div className={styles.shapeGrid}>
-            {shapeIds.map((shape) => (
-              <button
-                key={shape}
-                type="button"
-                className={styles.choice}
-                aria-label={t("octopBot.avatar.shapes." + shape)}
-                title={t("octopBot.avatar.shapes." + shape)}
-                aria-pressed={
-                  look.shape === shape &&
-                  source === "character" &&
-                  value?.kind !== "reset"
-                }
-                onClick={() =>
-                  onChange({
-                    kind: "character",
-                    shape,
-                    color:
-                      shape === octopCharacter.shape
-                        ? octopCharacter.color
-                        : look.color,
-                  })
-                }
-              >
-                <BotCharacter
-                  look={{ shape, color: look.color, source: "character" }}
-                  size={32}
-                  badges={false}
-                />
-              </button>
-            ))}
+            {shapeIds
+              .filter((shape) => bot?.is_main || shape !== octopCharacter.shape)
+              .map((shape) => (
+                <button
+                  key={shape}
+                  type="button"
+                  className={styles.choice}
+                  aria-label={t("octopBot.avatar.shapes." + shape)}
+                  title={t("octopBot.avatar.shapes." + shape)}
+                  aria-pressed={
+                    look.shape === shape &&
+                    source === "character" &&
+                    value?.kind !== "reset"
+                  }
+                  onClick={() =>
+                    onChange({
+                      kind: "character",
+                      shape,
+                      color:
+                        shape === octopCharacter.shape
+                          ? octopCharacter.color
+                          : look.color,
+                    })
+                  }
+                >
+                  <BotCharacter
+                    look={{ shape, color: look.color, source: "character" }}
+                    size={38}
+                    badges={false}
+                  />
+                </button>
+              ))}
           </div>
           {look.shape !== octopCharacter.shape && (
             <div className={styles.colors}>

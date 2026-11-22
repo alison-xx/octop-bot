@@ -167,7 +167,10 @@ describe("standalone chat model settings", () => {
     ]);
     openSettings();
     fireEvent.click(
-      screen.getByRole("button", { name: "octopBot.retainedFolders" }),
+      screen.getByRole("button", { name: "botClient.nav.general" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "botClient.nav.manage" }),
     );
     await screen.findByText("/former/files");
     expect(
@@ -181,9 +184,10 @@ describe("standalone chat model settings", () => {
       expect(
         await screen.findByRole("heading", { name: "Catalog" }),
       ).toBeVisible();
-      expect(
-        screen.getByRole("button", { name: "octopBot.retainedFolders" }),
-      ).toBeVisible();
+      fireEvent.click(
+        screen.getByRole("button", { name: "botClient.nav.general" }),
+      );
+      expect(screen.getByText("octopBot.retainedFolders")).toBeVisible();
       expect(lynxceBotApi.status).not.toHaveBeenCalled();
       expect(
         screen.queryByRole("button", { name: "account.checkUpdates" }),

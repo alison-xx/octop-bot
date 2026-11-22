@@ -26,13 +26,14 @@ from octop.infra.agents.bot_sections import (
 )
 from octop.infra.agents.bot_side import answer_side, reference, search_history
 from octop.infra.agents.bot_workspace import (
+    bot_activity,
     bot_card,
     chief_key,
     ensure_chief,
     is_private_bot,
     list_bot_cards,
 )
-from octop.infra.bot_groups.service import list_groups
+from octop.infra.bot_groups.service import GroupActivity, group_activity, list_groups
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 
@@ -200,6 +201,35 @@ async def open_workspace(
         bots=[Bot.model_validate(card) for card in cards],
         groups=[GroupCard.model_validate(item, from_attributes=True) for item in groups],
     )
+
+
+class BotActivity(BaseModel):
+    agent_id: str
+    unread_count: int = Field(description="Unread proactive or room pushes across my threads.")
+    last_active: int | None = Field(
+        default=None, description="Latest turn time in my own chats with this bot."
+    )
+
+
+class Activity(BaseModel):
+    bots: list[BotActivity]
+    groups: list[GroupActivity]
+
+
+@router.get(
+    "/activity",
+    summary="Poll unread activity across my bots and groups",
+    response_model=Activity,
+    description="Lightweight snapshot for sidebar badges, the app badge and new-message notifications.",
+)
+async def read_activity(
+    user: User = Depends(current_user), server: Any = Depends(get_server)
+) -> Activity:
+    bots, groups = await asyncio.gather(
+        asyncio.to_thread(bot_activity, server.services, user.id),
+        asyncio.to_thread(group_activity, server.services, user.id),
+    )
+    return Activity(bots=[BotActivity.model_validate(b) for b in bots], groups=groups)
 
 
 @router.put(

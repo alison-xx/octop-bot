@@ -1,0 +1,72 @@
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 4px 8px 4px 4px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--bot-ink, var(--fn-text-primary));
+  font: inherit;
+  font-size: 14px;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  &:hover,
+  &[aria-expanded="true"] {
+    background: var(--bot-hover, var(--fn-bg-hover));
+  }
+  &[data-compact] {
+    flex: none;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+  }
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--bot-selection, var(--fn-bg-secondary));
+  color: var(--bot-muted, var(--fn-text-secondary));
+  font-size: 13px;
+  font-weight: 500;
+}
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.orbDot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin: 0 1px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+}
+.overlay :global(.octop-dropdown-menu),
+.menu {
+  min-width: 220px;
+  padding: 6px !important;
+  border-radius: 14px !important;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(0, 0, 0, 0.04) !important;
+}
+.menu :global(.octop-dropdown-menu-item),
+.menu :global(.octop-dropdown-menu-submenu-title) {
+  min-height: 36px;
+  border-radius: 9px !important;
+  gap: 2px;
+}

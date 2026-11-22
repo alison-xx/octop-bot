@@ -5,6 +5,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  Notification,
   net,
   protocol,
   screen,
@@ -21,6 +22,7 @@ import { pathToFileURL } from "node:url";
 
 import {
   IPC_CHANNELS,
+  type BotNotification,
   type BotShortcut,
   type ClientSettings,
   type IssuedSession,
@@ -85,6 +87,7 @@ import { createMainWindow, installDashboardGuards } from "./windows/main-window"
 import type { EarlyWindow } from "./windows/early-window";
 import { isWindowOnScreen, presentWindows, shouldKeepWindowOnClose } from "./windows/present";
 import { BotOrb } from "./windows/bot-orb";
+import { sanitizeBadgeCount, sanitizeNotification, trayTooltip } from "./windows/attention";
 import {
   shouldInstallSystemTray,
   trayExecutableFallback,
@@ -432,6 +435,16 @@ async function runShellUpdate(
 
 function registerIpcHandlers(): void {
   ipcMain.on(IPC_CHANNELS.showBotOrb, () => botOrb?.show(true));
+  ipcMain.on(IPC_CHANNELS.botNotify, (event, payload: unknown) => {
+    const note = sanitizeNotification(payload);
+    if (!note) return;
+    showBotNotification(event.sender, note);
+  });
+  ipcMain.on(IPC_CHANNELS.botUnreadBadge, (_event, count: unknown) => {
+    const total = sanitizeBadgeCount(count);
+    app.setBadgeCount(total);
+    tray?.setToolTip(trayTooltip(productName, total, app.getLocale()));
+  });
   ipcMain.handle(IPC_CHANNELS.getPlatformInfo, (): PlatformInfo => ({
     platform: process.platform as PlatformInfo["platform"],
     arch: process.arch,
@@ -868,6 +881,28 @@ function installAppMenu(version: string): void {
     botOnly ? openBotSettings : undefined,
   );
   Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
+}
+
+/** OS notification for a new reply; clicking it opens that conversation. */
+function showBotNotification(sender: WebContents, note: BotNotification): void {
+  const win = BrowserWindow.fromWebContents(sender);
+  if (!win || win.isDestroyed()) return;
+  if (Notification.isSupported()) {
+    const icon = botWindowIcon();
+    const shown = new Notification({
+      title: note.title,
+      body: note.body,
+      silent: note.silent === true,
+      ...(icon && process.platform !== "darwin" ? { icon } : {}),
+    });
+    shown.on("click", () => {
+      revealAppWindow();
+      if (!sender.isDestroyed()) sender.send(IPC_CHANNELS.botNotificationOpen, note.target);
+    });
+    shown.show();
+  }
+  if (process.platform === "darwin") app.dock?.bounce("informational");
+  else win.flashFrame(true);
 }
 
 function openBotSettings(): void {

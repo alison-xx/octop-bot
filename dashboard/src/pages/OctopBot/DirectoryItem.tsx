@@ -154,6 +154,7 @@ export const DirectoryItem = memo(function DirectoryItem({
       }
       data-selected={selected}
       data-chief={chief}
+      data-unread={unread > 0 || undefined}
       draggable={!chief && !disabled}
       onDragEnd={() => onDragging(false)}
       onDragStart={(e) => {
@@ -183,7 +184,14 @@ export const DirectoryItem = memo(function DirectoryItem({
         ) : (
           <span>{item.name}</span>
         )}
-        {unread > 0 && <b className={styles.unread}>{unread}</b>}
+        {unread > 0 && (
+          <b
+            className={styles.unread}
+            aria-label={t("botNotify.unreadCount", { count: unread })}
+          >
+            {unread > 99 ? "99+" : unread}
+          </b>
+        )}
         {pinned && !chief && !compact && <Pin size={12} />}
       </button>
       {!compact && (

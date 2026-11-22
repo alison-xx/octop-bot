@@ -24,6 +24,7 @@ from octop.infra.bot_groups.service import (
     group_row,
     list_groups,
     list_messages,
+    mark_group_read,
     set_goal,
     update_group,
 )
@@ -189,6 +190,16 @@ def messages(
     ),
 ) -> list[Message]:
     return list_messages(services, user.id, group_id, after_id=after_id)
+
+
+@router.post(
+    "/{group_id}/read",
+    summary="Mark a Bot group read",
+    description="Moves my read cursor to the latest room message.",
+    status_code=204,
+)
+def mark_read(group_id: str, services: Services, user: Owner) -> None:
+    mark_group_read(services, user.id, group_id)
 
 
 @router.post(

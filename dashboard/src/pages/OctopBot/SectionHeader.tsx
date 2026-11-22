@@ -140,7 +140,7 @@ export default function SectionHeader({
         )}
         <small>{count}</small>
         {section.collapsed && unread > 0 && (
-          <b className={styles.unread}>{unread}</b>
+          <b className={styles.unread}>{unread > 99 ? "99+" : unread}</b>
         )}
       </button>
       <Button

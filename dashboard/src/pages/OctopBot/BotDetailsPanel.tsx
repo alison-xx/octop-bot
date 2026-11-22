@@ -11,6 +11,7 @@ import {
   History,
   Image,
   MessagesSquare,
+  Monitor,
   NotebookPen,
   Pencil,
   Shield,
@@ -41,6 +42,7 @@ import { BotCharacter, type BotMotion } from "./BotCharacter";
 import { useLynxceStatus } from "../../hooks/useLynxceStatus";
 import { isBotOnlyDesktop } from "../../utils/desktopBridge";
 import styles from "./BotDetailsPanel.module.less";
+import BotComputerCard from "./BotComputerCard";
 import BotSchedulesDialog from "./BotSchedulesDialog";
 import BotUsageDialog from "./BotUsageDialog";
 
@@ -334,6 +336,17 @@ export default function BotDetailsPanel({
             </small>
           )}
         </section>
+        {agent?.kind === "expert" &&
+          !agent.is_shared &&
+          canAccessPath(user, "/remote-desktop/desktop") && (
+            <section className={styles.block}>
+              <h4>
+                <Monitor size={14} />
+                {t("octopBot.computer.section")}
+              </h4>
+              <BotComputerCard key={bot.agent_id} botId={bot.agent_id} />
+            </section>
+          )}
         <section className={styles.block}>
           <h4>{t("botClient.profile.actions")}</h4>
           {actions.map(({ icon: Icon, label, open }) => (

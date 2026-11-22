@@ -88,6 +88,16 @@ def list_bot_cards(
     ]
 
 
+def bot_activity(services: SharedServices, owner: int) -> list[dict[str, Any]]:
+    """Unread pushes and latest own-chat activity for every bot in the workspace."""
+    ids = [row.agent_id for row in services.agent_repo.list_by_user(owner) if row.kind != "team"]
+    unread = services.session_repo.unread_totals_by_agent(owner, ids)
+    active = services.thread_repo.latest_activity_by_agent(owner, ids)
+    return [
+        {"agent_id": i, "unread_count": unread.get(i, 0), "last_active": active.get(i)} for i in ids
+    ]
+
+
 async def ensure_chief(services: SharedServices, registry: AgentManager, user_id: int) -> str:
     from octop.infra.agents.manager import AgentCreateSpec
 

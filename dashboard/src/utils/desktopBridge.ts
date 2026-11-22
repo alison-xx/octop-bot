@@ -77,6 +77,18 @@ export interface OctopDesktopBridge {
   ) => () => void;
   botOnly?: boolean;
   onOpenBotSettings?: (callback: () => void) => () => void;
+  /** OS notification plus dock bounce / taskbar flash. Absent on older shells. */
+  notify?: (note: {
+    title: string;
+    body: string;
+    /** ``bot:<agent_id>`` or ``group:<group_id>`` */
+    target: string;
+    silent?: boolean;
+  }) => void;
+  /** Unread total on the app icon and tray tooltip. */
+  setUnreadBadge?: (count: number) => void;
+  /** Target of a clicked notification. */
+  onNotificationOpen?: (callback: (target: string) => void) => () => void;
   session?: DesktopSessionBridge;
   /**
    * Where to dial WebSockets (§5.2). Absent on an older shell, and null when the

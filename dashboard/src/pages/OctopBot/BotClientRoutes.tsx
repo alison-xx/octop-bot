@@ -6,7 +6,9 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
+import { ConfigProvider } from "antd";
 import BrandLoading from "../../components/BrandLoading";
+import { useTheme } from "../../context/ThemeContext";
 import {
   BOT_HOME,
   BOT_CAPABILITIES,
@@ -48,7 +50,21 @@ function BotRedirect() {
   );
 }
 
+// Neutral black-and-white accents for the Bot client, also inside portals.
+const lightAccent = { colorPrimary: "#191919", colorLink: "#191919" };
+const darkAccent = {
+  colorPrimary: "#ededed",
+  colorLink: "#ededed",
+  colorTextLightSolid: "#161616",
+};
+
 export default function BotClientRoutes() {
+  const { isDark } = useTheme();
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute("data-bot-client", "");
+    return () => root.removeAttribute("data-bot-client");
+  }, []);
   const navigate = useNavigate();
   const location = useLocation();
   // IPC callbacks subscribe once and read the route through this ref.
@@ -83,34 +99,39 @@ export default function BotClientRoutes() {
     [],
   );
   return (
-    <div className={styles.client} data-bot-client>
-      <Suspense fallback={<BrandLoading viewport />}>
-        <Routes>
-          <Route path={BOT_HOME} element={<Workspace />} />
-          {!isBotWebClient() && (
-            <>
-              <Route path={BOT_CLOUD} element={<CloudWorkspace />} />
-              <Route path={BOT_GUIDE} element={<Guide />} />
-            </>
-          )}
-          <Route
-            path="/octop-bot/bots/:agentId/:threadId?"
-            element={<Workspace />}
-          />
-          <Route path="/octop-bot/groups/:groupId" element={<Workspace />} />
-          <Route path={BOT_SETTINGS} element={<Settings />} />
-          <Route
-            path={BOT_CAPABILITIES + "/:section?"}
-            element={<Capabilities />}
-          />
-          <Route
-            path="/admin/models"
-            element={<Navigate replace to={BOT_SETTINGS} />}
-          />
-          <Route path="/chat/:agentId?/:threadId?" element={<BotRedirect />} />
-          <Route path="*" element={<BotRedirect />} />
-        </Routes>
-      </Suspense>
-    </div>
+    <ConfigProvider theme={{ token: isDark ? darkAccent : lightAccent }}>
+      <div className={styles.client} data-bot-client>
+        <Suspense fallback={<BrandLoading viewport />}>
+          <Routes>
+            <Route path={BOT_HOME} element={<Workspace />} />
+            {!isBotWebClient() && (
+              <>
+                <Route path={BOT_CLOUD} element={<CloudWorkspace />} />
+                <Route path={BOT_GUIDE} element={<Guide />} />
+              </>
+            )}
+            <Route
+              path="/octop-bot/bots/:agentId/:threadId?"
+              element={<Workspace />}
+            />
+            <Route path="/octop-bot/groups/:groupId" element={<Workspace />} />
+            <Route path={BOT_SETTINGS} element={<Settings />} />
+            <Route
+              path={BOT_CAPABILITIES + "/:section?"}
+              element={<Capabilities />}
+            />
+            <Route
+              path="/admin/models"
+              element={<Navigate replace to={BOT_SETTINGS} />}
+            />
+            <Route
+              path="/chat/:agentId?/:threadId?"
+              element={<BotRedirect />}
+            />
+            <Route path="*" element={<BotRedirect />} />
+          </Routes>
+        </Suspense>
+      </div>
+    </ConfigProvider>
   );
 }
