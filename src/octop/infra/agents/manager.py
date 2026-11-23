@@ -5198,7 +5198,10 @@ class AgentManager:
             skills_disabled=frozenset(skills_disabled_set(cfg) | plugin_skills_disabled),
             skills_dir=skill_dirs or None,
             default_timezone=self._config.default_timezone,
-            media_generation=self._media_generation.harness_config(),
+            # The image and video providers are the operator's; a cloud tenant would bill them.
+            media_generation=(
+                None if self._cloud_tenant(row.user_id) else self._media_generation.harness_config()
+            ),
             **harness_fields,
             **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),

@@ -26,6 +26,7 @@ async def test_fresh_web_build_offers_lynxce_sign_in(
         assert body["capabilities"] == {
             "wallet": False,
             "cloud_computer": False,
+            "media_generation": True,
             "file_store": "local",
         }
         assert body["version"]
@@ -63,3 +64,14 @@ async def test_version_is_read_once_and_off_the_event_loop(
         assert (await client.get(INFO)).json()["version"] == "9.9.9"
     assert len(calls) == 1
     assert calls[0] != loop_thread
+
+
+def test_a_failed_version_read_is_not_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.api.routers import bot_server
+
+    reads = iter(["0.0.0", "1.0.4"])
+    monkeypatch.setattr(bot_server, "_local_version", None)
+    monkeypatch.setattr(bot_server, "get_local_version", lambda: next(reads))
+    assert bot_server._read_local_version_once() == "0.0.0"
+    assert bot_server._read_local_version_once() == "1.0.4"  # tried again, then kept
+    assert bot_server._read_local_version_once() == "1.0.4"

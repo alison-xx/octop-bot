@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -96,7 +97,8 @@ async def _project_chunks(
     loc = normalize_locale(str(locale))
     tool_state = _ToolProjectionState()
     harness_workspace = harness_workspace_for_agent(agent_manager, agent_id)
-    host_files = agent_manager.host_files_allowed(agent_id)
+    # Reads the agent and owner rows: off the event loop.
+    host_files = await asyncio.to_thread(agent_manager.host_files_allowed, agent_id)
 
     def _tool_label(raw: str) -> str:
         return tool_display_name(raw, loc)

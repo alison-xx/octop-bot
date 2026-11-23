@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -168,7 +169,9 @@ class CronDeliveryService:
                 path=command.script_path,
                 workspace=workspace,
                 backend_spec=self._backend_spec(command.agent_id),
-                host=self._agent_manager.host_files_allowed(command.agent_id),
+                host=await asyncio.to_thread(
+                    self._agent_manager.host_files_allowed, command.agent_id
+                ),
             )
         except ScriptRunError as exc:
             raise RuntimeError(self._script_error_text(exc, locale, command)) from exc

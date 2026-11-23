@@ -86,6 +86,7 @@ class ComputerDriver(Protocol):
     def pause(self, instance_id: str) -> None: ...
     def stop(self, instance_id: str) -> None: ...
     def state(self, instance_id: str) -> State: ...
+    def stopped_at(self, instance_id: str) -> float | None: ...
     def instances(self) -> list[Instance]: ...
     def run(self, instance_id: str, command: str, timeout: int) -> tuple[int, str]: ...
     def write(self, instance_id: str, path: str, data: bytes) -> None: ...
@@ -135,13 +136,20 @@ _PAUSED = {"PAUSED", "PAUSING"}
 
 
 def _timestamp(value: str | None) -> float:
-    """AGS ISO-8601 time → Unix time; unknown counts as brand new (never reaped by age)."""
-    from datetime import datetime  # noqa: PLC0415
+    """AGS ISO-8601 time → Unix time; unknown counts as brand new (never reaped by age).
+
+    A time without a zone is UTC, never this server's local time (which would make a starting
+    instance look hours old to the orphan scan).
+    """
+    from datetime import UTC, datetime  # noqa: PLC0415
 
     try:
-        return datetime.fromisoformat(str(value)).timestamp()
+        parsed = datetime.fromisoformat(str(value))
     except ValueError:
         return time.time()
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.timestamp()
 
 
 def state_of(status: str | None) -> State:
@@ -218,6 +226,15 @@ class AgsDriver:
         request.InstanceIds = [instance_id]
         found = self._api().DescribeSandboxInstances(request).InstanceSet or []
         return state_of(found[0].Status) if found else "gone"
+
+    def stopped_at(self, instance_id: str) -> float | None:
+        """When AGS stopped this instance (its last update), or None if it cannot tell."""
+        request = self._models().DescribeSandboxInstancesRequest()
+        request.InstanceIds = [instance_id]
+        found = self._api().DescribeSandboxInstances(request).InstanceSet or []
+        if not found or state_of(found[0].Status) != "gone" or not found[0].UpdateTime:
+            return None
+        return _timestamp(found[0].UpdateTime)
 
     def instances(self) -> list[Instance]:
         """Every instance in this AGS account and region (for cleaning up lost starts)."""

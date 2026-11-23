@@ -469,7 +469,7 @@ async def enrich_tool_result_with_backend(
     *,
     agent_id: str,
     workspace: BackendWorkspace,
-    host_files: bool = True,
+    host_files: bool = False,
 ) -> dict[str, Any]:
     """Import external ``file://`` media into workspace and set ``preview_url``.
 
@@ -558,7 +558,7 @@ def _file_block_path(block: dict[str, Any], raw_url: str) -> str | None:
 
 
 async def _enrich_block_with_backend(
-    block: Any, *, agent_id: str, workspace: BackendWorkspace, host_files: bool = True
+    block: Any, *, agent_id: str, workspace: BackendWorkspace, host_files: bool = False
 ) -> Any:
     if not isinstance(block, dict) or block.get("type") not in _MEDIA_BLOCK_TYPES:
         return block
@@ -609,7 +609,7 @@ async def enrich_tool_output_string(
     *,
     agent_id: str,
     workspace: BackendWorkspace | None,
-    host_files: bool = True,
+    host_files: bool = False,
 ) -> str:
     """Rewrite ``file://`` media in a tool-result JSON string to workspace download URLs."""
     if not output.strip():
@@ -676,7 +676,7 @@ async def _enrich_plain_text_tool_media(
     *,
     agent_id: str,
     workspace: BackendWorkspace | None,
-    host_files: bool = True,
+    host_files: bool = False,
 ) -> str:
     """When tool output is plain text with a screenshot path, append an image block."""
     stripped = output.strip()
@@ -747,7 +747,7 @@ async def iter_dashboard_attachment_frames(
     live_tool_call_ids: set[str],
     emitted_media_ids: set[str],
     emitted_attachment_keys: set[str],
-    host_files: bool = True,
+    host_files: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield pushable dashboard attachments for this turn.
 
@@ -779,7 +779,7 @@ async def attachment_frames_from_tool_result(
     *,
     agent_id: str,
     workspace: BackendWorkspace,
-    host_files: bool = True,
+    host_files: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield dashboard WS attachment frames with workspace download URLs.
 
@@ -855,7 +855,7 @@ async def attachment_frames_from_tool_result(
 
 
 async def _attachment_frame_from_bytes(
-    block: dict[str, Any], *, workspace: BackendWorkspace, host_files: bool = True
+    block: dict[str, Any], *, workspace: BackendWorkspace, host_files: bool = False
 ) -> dict[str, Any] | None:
     """Fallback: inline base64 when workspace import is impossible."""
     data = await read_media_block_bytes(block, workspace=workspace, host_files=host_files)
@@ -879,7 +879,7 @@ async def read_media_block_bytes(
     block: dict[str, Any],
     *,
     workspace: BackendWorkspace,
-    host_files: bool = True,
+    host_files: bool = False,
 ) -> tuple[bytes, str] | None:
     raw_source = block.get("source")
     source = raw_source if isinstance(raw_source, dict) else {}
@@ -911,7 +911,7 @@ async def block_to_content_part(
     block: dict[str, Any],
     *,
     workspace: BackendWorkspace,
-    host_files: bool = True,
+    host_files: bool = False,
 ) -> ContentPart | None:
     btype = block.get("type")
     if btype not in _MEDIA_BLOCK_TYPES:
@@ -998,7 +998,7 @@ async def media_events_from_tool_result(
     chunk: dict[str, Any],
     *,
     workspace: BackendWorkspace,
-    host_files: bool = True,
+    host_files: bool = False,
 ) -> AsyncIterator[MessageEvent]:
     """Yield IM media events from allowlisted delivery-tool results only.
 

@@ -36,6 +36,9 @@ IDLE_PAUSE_SECONDS = 10 * 60
 # takeover with no one watching is handed back to the Bot.
 VIEWER_GRACE_SECONDS = 90
 CHUNK_MINUTES = 5
+# Reaper passes (30 s apart) a failing settle is retried; Lynxce settles a reservation itself
+# 15 minutes after it expires, so an hour is plenty.
+MAX_SETTLE_ATTEMPTS = 120
 REAP_INTERVAL_SECONDS = 30
 # Instances this server started but has no record of (a start that timed out, a crash before the
 # record was saved) are stopped once they are this old; younger ones may still be starting.
@@ -94,6 +97,7 @@ class Unsettled:
 
     reservation: Reservation
     used_seconds: int
+    attempts: int = 0
 
 
 @dataclass
@@ -116,8 +120,6 @@ class ComputerRecord:
     # Last time someone was watching the screen; a watched computer is not idle.
     viewed_at: float = 0.0
     unsettled: list[Unsettled] = field(default_factory=list)
-    # Set before asking the provider for a new instance, cleared once it is recorded.
-    starting_at: float | None = None
     # The Bot's object-store files were copied onto its computer once.
     seeded: bool = False
 
@@ -130,7 +132,9 @@ class ComputerRecord:
         data = json.loads(raw)
         data["reservations"] = [Reservation(**r) for r in data.get("reservations", [])]
         data["unsettled"] = [
-            Unsettled(Reservation(**u["reservation"]), int(u["used_seconds"]))
+            Unsettled(
+                Reservation(**u["reservation"]), int(u["used_seconds"]), int(u.get("attempts", 0))
+            )
             for u in data.get("unsettled", [])
         ]
         known = set(cls.__dataclass_fields__)
@@ -138,6 +142,15 @@ class ComputerRecord:
 
     def dump(self) -> str:
         return json.dumps(asdict(self))
+
+
+def _settle_refused(exc: Exception) -> bool:
+    """A settle Lynxce will never accept: the reservation is unknown, or the request invalid."""
+    if not isinstance(exc, OctopError):
+        return False
+    if exc.code == ErrorCode.NOT_FOUND:
+        return True
+    return exc.code == ErrorCode.BOT_CLOUD_REQUEST_REJECTED and exc.status in {400, 409, 422}
 
 
 class Billing:
@@ -309,9 +322,9 @@ class ComputerManager:
                 if state == "paused":
                     self._driver.resume(record.instance_id or "")
                 elif state == "gone":
-                    # Recorded before the provider call: a start that times out after AGS made
-                    # the instance, or a crash right after, leaves a trace the reaper cleans up.
-                    record.starting_at = now
+                    # A start that times out after AGS made the instance, or a crash right
+                    # after, leaves an instance no record knows: the orphan scan stops it by its
+                    # octop-server label.
                     record.instance_id = None
                     self._save(record)
                     record.instance_id = self._driver.start(
@@ -322,12 +335,11 @@ class ComputerManager:
                             "octop-server": self.server_id(),
                         },
                     )
-                    record.starting_at = None
                     fresh = True
             except Exception:
-                record.starting_at = None
-                self._save(record)
+                # Settle first: a settle that fails is kept in ``unsettled``, saved here.
                 self._settle_one(record, reservation, 0)
+                self._save(record)
                 raise
             # AGS says RUNNING before the desktop listens; wait so the first command works.
             try:
@@ -375,16 +387,30 @@ class ComputerManager:
             record.started_at = None
             self._save(record)
 
-    def _settle_one(self, record: ComputerRecord, reservation: Reservation, used: int) -> None:
-        """Settle one reservation; on failure keep it for the reaper to retry."""
+    def _settle_one(
+        self, record: ComputerRecord, reservation: Reservation, used: int, attempts: int = 0
+    ) -> None:
+        """Settle one reservation; on a passing failure keep it for the reaper to retry.
+
+        Gives up when Lynxce refuses it for good (unknown reservation, invalid request) or after
+        ``MAX_SETTLE_ATTEMPTS``: by then Lynxce has settled the expired reservation itself, and
+        a record that never empties would keep a deleted Bot's computer record forever.
+        """
         try:
             self._billing.settle(record, reservation, used)
-        except Exception:  # noqa: BLE001 - retried by the reaper, never dropped
-            logger.warning("settling %s failed; will retry", reservation.id)
-            record.unsettled.append(Unsettled(reservation, used))
+        except Exception as exc:  # noqa: BLE001 - classified below
+            if _settle_refused(exc):
+                logger.warning("Lynxce refused settling %s (%s); dropped", reservation.id, exc)
+            elif attempts + 1 >= MAX_SETTLE_ATTEMPTS:
+                logger.warning("settling %s failed %s times; dropped", reservation.id, attempts + 1)
+            else:
+                logger.warning("settling %s failed; will retry", reservation.id)
+                record.unsettled.append(Unsettled(reservation, used, attempts + 1))
 
-    def _settle(self, record: ComputerRecord) -> None:
-        used = int(self._clock() - (record.running_since or self._clock()))
+    def _settle(self, record: ComputerRecord, until: float | None = None) -> None:
+        """Settle every open reservation for the time run up to ``until`` (default: now)."""
+        end = self._clock() if until is None else until
+        used = max(0, int(end - (record.running_since or end)))
         for reservation in record.reservations:
             share = min(used, reservation.minutes * 60)
             used -= share
@@ -412,7 +438,7 @@ class ComputerManager:
                 return
             pending, record.unsettled = record.unsettled, []
             for item in pending:
-                self._settle_one(record, item.reservation, item.used_seconds)
+                self._settle_one(record, item.reservation, item.used_seconds, item.attempts)
             self._save(record)
 
     def tick(self) -> None:
@@ -488,7 +514,14 @@ class ComputerManager:
         with self._lock(agent_id):
             record = self.record(agent_id, user_id)
             if record.running:
-                self._settle(record)
+                # Bill only until AGS stopped it (e.g. while this server was down); when AGS
+                # cannot tell, only the time already paid for.
+                stopped = (
+                    self._driver.stopped_at(record.instance_id) if record.instance_id else None
+                )
+                now = self._clock()
+                until = min(stopped, now) if stopped else min(now, record.paid_until)
+                self._settle(record, until=until)
             record.running = False
             record.running_since = None
             record.started_at = None
@@ -510,7 +543,7 @@ class ComputerManager:
                 self._settle(record)
             pending, record.unsettled = record.unsettled, []
             for item in pending:
-                self._settle_one(record, item.reservation, item.used_seconds)
+                self._settle_one(record, item.reservation, item.used_seconds, item.attempts)
             if record.unsettled:
                 # Keep the record until Lynxce has every settle; the computer is gone already.
                 record.running = False
