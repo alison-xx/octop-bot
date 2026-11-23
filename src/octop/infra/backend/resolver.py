@@ -101,6 +101,16 @@ def resolve_agent_backend_spec(
         return resolve_agent_backend_spec(inner, repo=repo)
 
     if kind == "bot_cloud":
+        from octop.infra.cloud.computers.manager import current_manager  # noqa: PLC0415
+
+        manager = current_manager()
+        if manager is not None:
+            # Cloud computers configured: the Bot works on its own AGS sandbox.
+            from octop.infra.cloud.computers.backend import CloudComputer  # noqa: PLC0415
+
+            return CloudComputer(
+                manager, user_id=int(spec["user_id"]), agent_id=str(spec["agent_id"])
+            )
         from octop.infra.cloud.bot_cloud.files import harness_spec  # noqa: PLC0415
 
         return harness_spec(spec)

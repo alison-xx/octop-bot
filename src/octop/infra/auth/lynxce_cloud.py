@@ -513,6 +513,9 @@ _TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
     ("GET", "/api/billing/app/recharge-packages"): _IAP_HEADERS,
     ("POST", "/api/billing/apple/purchase-intents"): _IAP_HEADERS,
     ("POST", "/api/billing/apple/transactions"): _IAP_HEADERS,
+    # Cloud computers: minutes reserved before running, settled by the second at pause.
+    ("POST", "/api/billing/octop-bot/compute/reserve"): {},
+    ("POST", "/api/billing/octop-bot/compute/settle"): {},
 }
 
 

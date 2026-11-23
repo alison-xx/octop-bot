@@ -8777,5 +8777,17 @@
     "systemBlocked": "Notifications are blocked in this browser. Allow them in the site settings.",
     "soundLabel": "Sound",
     "soundHint": "Play a short chime when a new message arrives"
+  },
+  "cloudComputer": {
+    "section": "Cloud computer",
+    "state": {
+      "none": "Not started",
+      "running": "Running",
+      "paused": "Paused"
+    },
+    "runningFor": "Running for {{minutes}} min, charged by the minute in Lynxce credits",
+    "hint": "Starts when the Bot first needs to run something and pauses after 10 idle minutes; files stay while it's paused.",
+    "pause": "Pause now",
+    "unavailable": "Cloud computer unavailable"
   }
 }

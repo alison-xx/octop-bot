@@ -8777,5 +8777,17 @@
     "systemBlocked": "浏览器已拦截通知，请在网站设置里允许",
     "soundLabel": "提示音",
     "soundHint": "收到新消息时播放一声短提示音"
+  },
+  "cloudComputer": {
+    "section": "云电脑",
+    "state": {
+      "none": "未开机",
+      "running": "运行中",
+      "paused": "已暂停"
+    },
+    "runningFor": "本次已运行 {{minutes}} 分钟，按分钟扣灵策积分",
+    "hint": "Bot 第一次需要运行命令时自动开机，空闲 10 分钟自动暂停，暂停后文件保留。",
+    "pause": "立即暂停",
+    "unavailable": "云电脑暂不可用"
   }
 }

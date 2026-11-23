@@ -40,6 +40,7 @@
 		C4FEC5251E5ED4CB56B08AA8 /* VoiceModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B36A66B6B51F3F46A0C5001 /* VoiceModeView.swift */; };
 		C771D8F5FBC1CCEA9E472EE8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7F42D68AD0EF0EE042F76EBF /* Assets.xcassets */; };
 		D0594327B5388BA21151650A /* LaunchSplash@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 6F77470F5AE016E9DEF759F6 /* LaunchSplash@2x.png */; };
+		D6C8001E9D47CD4082C819F4 /* CloudComputerSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 687A510E1D53E5F2DED96BFF /* CloudComputerSection.swift */; };
 		D79859D85ACC51E337C24629 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8FC5EE7F64E7D3DE6CC62A4 /* OnboardingView.swift */; };
 		DB504ED3D1733302B3F10D9E /* CreditAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5466325A942736154E927DB0 /* CreditAccount.swift */; };
 		DEC5AC974DAE214BF6C67D43 /* Hitl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44AA9D2522DD5EC8E5320048 /* Hitl.swift */; };
@@ -77,6 +78,7 @@
 		5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LynxceBackend.swift; sourceTree = "<group>"; };
 		60FE975D80457770F2B56FE7 /* CreditsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditsView.swift; sourceTree = "<group>"; };
 		64A1DD83356759A7465B69ED /* HitlCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitlCard.swift; sourceTree = "<group>"; };
+		687A510E1D53E5F2DED96BFF /* CloudComputerSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudComputerSection.swift; sourceTree = "<group>"; };
 		6F77470F5AE016E9DEF759F6 /* LaunchSplash@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LaunchSplash@2x.png"; sourceTree = "<group>"; };
 		7280A8EE1534AA92B85CF8D7 /* characters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = characters.json; sourceTree = "<group>"; };
 		75A1511FD9AC865EEFAC5AC4 /* OctopBot.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OctopBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -209,6 +211,7 @@
 			isa = PBXGroup;
 			children = (
 				FB0D4BB60CF5FB920280CF55 /* ChatScreen.swift */,
+				687A510E1D53E5F2DED96BFF /* CloudComputerSection.swift */,
 				60FE975D80457770F2B56FE7 /* CreditsView.swift */,
 				3673E4497A330EC42D8B0AE4 /* GroupRoomView.swift */,
 				64A1DD83356759A7465B69ED /* HitlCard.swift */,
@@ -360,6 +363,7 @@
 				8330BE0127CCDC3E8975B833 /* Characters.swift in Sources */,
 				94F0BEE560698A2E757BFE90 /* ChatScreen.swift in Sources */,
 				ABC1C4B78D4E12D40A46D64A /* ChatSession.swift in Sources */,
+				D6C8001E9D47CD4082C819F4 /* CloudComputerSection.swift in Sources */,
 				DB504ED3D1733302B3F10D9E /* CreditAccount.swift in Sources */,
 				4BACAF514D63D9CBB1311E3D /* CreditStore.swift in Sources */,
 				7D0158402BB9F1236A22B6A9 /* CreditsView.swift in Sources */,

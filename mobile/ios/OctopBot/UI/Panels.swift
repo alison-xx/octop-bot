@@ -164,6 +164,9 @@ struct BotEditor: View {
                         .padding(.vertical, 8)
                     }
                 }
+                if !isNew, let server = model.server, server.isCloud {
+                    CloudComputerSection(server: server, botId: bot.id)
+                }
                 if let error { Section { Text(error).foregroundStyle(.red) } }
                 if bot.isLocal && !isNew {
                     Section {

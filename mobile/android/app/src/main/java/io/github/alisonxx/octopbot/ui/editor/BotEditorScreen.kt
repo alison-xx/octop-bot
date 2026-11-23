@@ -91,6 +91,9 @@ fun BotEditorScreen(model: AppViewModel, botId: String?, onDone: () -> Unit) {
             model.deleteBot(bot)
             onDone()
         },
+        computer = model.cloudServer?.takeIf { original != null }?.let { server ->
+            { CloudComputerPanel(server, original!!.id) }
+        },
     )
 }
 
@@ -101,6 +104,8 @@ fun BotEditor(
     onCancel: () -> Unit,
     onSave: (name: String, persona: String, look: Look) -> Unit,
     onDelete: (BotProfile) -> Unit,
+    /** Octop Bot cloud: this Bot's computer. */
+    computer: (@Composable () -> Unit)? = null,
 ) {
     val library = rememberCharacterLibrary()
     val palette = LocalPalette.current
@@ -214,6 +219,7 @@ fun BotEditor(
                         }
                     }
                 }
+                if (computer != null) computer()
                 if (original?.isLocal == true) {
                     Spacer(Modifier.height(8.dp))
                     Row(

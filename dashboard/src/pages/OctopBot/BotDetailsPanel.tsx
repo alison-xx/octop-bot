@@ -46,6 +46,8 @@ import styles from "./BotDetailsPanel.module.less";
 import BotComputerCard from "./BotComputerCard";
 import BotSchedulesDialog from "./BotSchedulesDialog";
 import BotUsageDialog from "./BotUsageDialog";
+import CloudComputerCard from "./CloudComputerCard";
+import { useBotServerInfo } from "./useBotServerInfo";
 import ModelName from "./ModelName";
 import ModelSelect, { type ModelItem } from "./ModelSelect";
 
@@ -75,6 +77,7 @@ export default function BotDetailsPanel({
   onDelete,
 }: Props) {
   const { t } = useTranslation();
+  const cloud = useBotServerInfo()?.edition === "cloud";
   const { agents, refresh } = useAgent();
   const user = useCurrentUser();
   const navigate = useNavigate();
@@ -356,6 +359,15 @@ export default function BotDetailsPanel({
               <BotComputerCard key={bot.agent_id} botId={bot.agent_id} />
             </section>
           )}
+        {cloud && agent && !agent.is_shared && (
+          <section className={styles.block}>
+            <h4>
+              <Monitor size={14} />
+              {t("cloudComputer.section")}
+            </h4>
+            <CloudComputerCard key={bot.agent_id} botId={bot.agent_id} />
+          </section>
+        )}
         <section className={styles.block}>
           <h4>{t("botClient.profile.actions")}</h4>
           {actions.map(({ icon: Icon, label, open }) => (

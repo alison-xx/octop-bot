@@ -254,6 +254,14 @@ class ServerBackend(
         json("POST", "/api/octop-bot/account/delete")
     }
 
+    /** Octop Bot cloud: a Bot's cloud computer. */
+    suspend fun computerStatus(botId: String): ServerProtocol.ComputerStatus =
+        ServerProtocol.computerStatus(json("GET", "/api/octop-bot/computers/" + segment(botId))) ?: throw ApiException.badResponse()
+
+    suspend fun pauseComputer(botId: String): ServerProtocol.ComputerStatus =
+        ServerProtocol.computerStatus(json("POST", "/api/octop-bot/computers/" + segment(botId) + "/pause"))
+            ?: throw ApiException.badResponse()
+
     /** Octop Bot cloud: a short-lived object-store link for a file a Bot linked to. */
     suspend fun downloadLink(uri: String): String {
         val parsed = (session.baseUrl + uri).toHttpUrl()

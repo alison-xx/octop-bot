@@ -204,3 +204,39 @@ async def test_tenants_buy_credits_and_delete_their_account_through_the_server(
         assert srv.services.user_repo.get(uid).disabled
         assert accounts.load_model_key(srv.services, uid) is None
         assert cloud.cloud_status(srv.services, uid).connected is False
+
+
+async def test_with_ags_configured_each_bot_gets_its_own_computer(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.backend.resolver import resolve_agent_backend_spec
+    from octop.infra.cloud.computers import manager as computers
+    from octop.infra.cloud.computers.backend import CloudComputer
+
+    for name, value in {
+        "OCTOP_AGS_SECRET_ID": "id",
+        "OCTOP_AGS_SECRET_KEY": "key",
+        "OCTOP_AGS_API_KEY": "e2b_test",
+        "OCTOP_AGS_TOOL": "octop-bot-desktop",
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(computers, "_manager", None)
+    async with octop_client(tmp_octop_home) as (client, srv):
+        alice = await _sign_in(client, "13800000006")
+        bob = await _sign_in(client, "13800000007")
+        row = await srv.app_runtime.agent_registry.create(
+            AgentCreateSpec(user_id=alice["user"]["id"], name="Analyst"), defer_bootstrap=True
+        )
+        backend = resolve_agent_backend_spec(
+            cloud_files.agent_backend(alice["user"]["id"], row.agent_id), repo=None
+        )
+        assert isinstance(backend, CloudComputer)
+        assert backend.id == f"computer-{row.agent_id}"
+
+        path = f"/api/octop-bot/computers/{row.agent_id}"
+        mine = await client.get(path, headers={"Authorization": f"Bearer {alice['access_token']}"})
+        assert mine.status_code == 200
+        assert mine.json()["state"] == "none"
+        theirs = await client.get(path, headers={"Authorization": f"Bearer {bob['access_token']}"})
+        assert theirs.status_code == 404

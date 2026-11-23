@@ -283,4 +283,12 @@
     <string name="settings_delete_account_done">已提交注销申请，并已退出登录。</string>
     <string name="onboarding_agreement"><![CDATA[继续即表示同意<a href="https://admin.lynxce.cn/legal/app/user-agreement">《灵策用户协议》</a>和<a href="https://octop-bot.lynxce.cn/privacy.html">《隐私政策》</a>]]></string>
     <string name="file_open_unsupported">请在 Octop Bot 网页版或桌面端打开这个文件。</string>
+    <string name="computer_header">云电脑</string>
+    <string name="computer_title">这个 Bot 的电脑</string>
+    <string name="computer_state_none">未开机</string>
+    <string name="computer_state_running">运行中</string>
+    <string name="computer_state_paused">已暂停</string>
+    <string name="computer_pause">立即暂停</string>
+    <string name="computer_unavailable">暂不可用</string>
+    <string name="computer_footer">Bot 第一次需要运行命令时自动开机，空闲 10 分钟自动暂停。运行时按分钟扣灵策积分，暂停后文件保留。</string>
 </resources>

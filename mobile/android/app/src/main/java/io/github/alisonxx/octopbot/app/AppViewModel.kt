@@ -159,6 +159,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         }
     }
 
+    /** Signed in to Octop Bot cloud. */
+    val cloudServer: ServerBackend?
+        get() = ((session.value as? SessionState.Ready)?.backend as? ServerBackend)?.takeIf { it.isCloud }
+
     /** The Lynxce wallet: direct with Lynxce, or kept by Octop Bot cloud. */
     val creditAccount: CreditAccount?
         get() = when (val backend = (session.value as? SessionState.Ready)?.backend) {

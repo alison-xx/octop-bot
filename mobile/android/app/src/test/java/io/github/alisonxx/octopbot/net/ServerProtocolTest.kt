@@ -227,4 +227,13 @@ class ServerProtocolTest {
         assertFalse(ServerProtocol.isWorkspaceDownload("https://example.com/api/agents/A/workspace/download?path=x"))
         assertFalse(ServerProtocol.isWorkspaceDownload("/api/agents/A/workspace/tree"))
     }
+
+    @Test
+    fun computerStatusParses() {
+        val running = ServerProtocol.computerStatus(Http.parse("""{"state":"running","spec":"standard","running_since":1700000000.5}"""))
+        assertEquals(ServerProtocol.ComputerStatus.State.Running, running?.state)
+        assertEquals(1_700_000_000_500L, running?.runningSinceMillis)
+        assertEquals(ServerProtocol.ComputerStatus.State.None, ServerProtocol.computerStatus(Http.parse("""{"state":"none"}"""))?.state)
+        assertNull(ServerProtocol.computerStatus(Http.parse("""{"state":"melted"}""")))
+    }
 }

@@ -574,3 +574,14 @@ final class CloudTests: XCTestCase {
         XCTAssertThrowsError(try LynxceBackend.intent(from: ["productId": "x"]))
     }
 }
+
+@MainActor
+final class ComputerTests: XCTestCase {
+    func testComputerStatusParses() throws {
+        let running = try ServerBackend.ComputerStatus.parse(["state": "running", "spec": "standard", "running_since": 1_700_000_000.0])
+        XCTAssertEqual(running.state, .running)
+        XCTAssertEqual(running.runningSince, Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(try ServerBackend.ComputerStatus.parse(["state": "none", "spec": "standard"]).state, .none)
+        XCTAssertThrowsError(try ServerBackend.ComputerStatus.parse(["state": "melted"]))
+    }
+}

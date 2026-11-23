@@ -43,6 +43,22 @@ object ServerProtocol {
         return obj.str("product") == "octop-bot" && obj.str("edition") == "cloud"
     }
 
+    /** A Bot's cloud computer on Octop Bot cloud (`/api/octop-bot/computers/{id}`). */
+    data class ComputerStatus(val state: State, val runningSinceMillis: Long?) {
+        enum class State { None, Running, Paused }
+    }
+
+    fun computerStatus(data: JsonElement): ComputerStatus? {
+        val obj = data.asObject() ?: return null
+        val state = when (obj.str("state")) {
+            "none" -> ComputerStatus.State.None
+            "running" -> ComputerStatus.State.Running
+            "paused" -> ComputerStatus.State.Paused
+            else -> return null
+        }
+        return ComputerStatus(state, obj.double("running_since")?.let { (it * 1000).toLong() })
+    }
+
     /** `/api/agents/{id}/workspace/download?path=…`, the link Octop puts in a reply for a file. */
     fun isWorkspaceDownload(uri: String): Boolean {
         if (uri.contains("://")) return false
