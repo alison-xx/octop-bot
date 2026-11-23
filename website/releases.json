@@ -3,6 +3,62 @@
   "product": "octop-bot",
   "releases": [
     {
+      "version": "1.0.4",
+      "channel": "stable",
+      "date": "2026-11-23",
+      "tag": "octop-bot-v1.0.4",
+      "notes": {
+        "zh": [
+          "全新界面：会话列表显示未读数，Bot 回复完成时发系统通知；提问改为卡片式，设置页改为分栏。",
+          "首次推出 Android 和 iPhone 手机客户端：每个 Bot 是会动的角色，可以用灵策智算账号直接对话，也能连接自己的 NAS 或 Docker 服务器。",
+          "可以用 WorkBuddy 账号登录灵策智算。首屏直接选择登录、自己配置模型或稍后配置。",
+          "新增「能力」区，在客户端里管理连接器、技能、知识库、记忆、IM 频道和定时任务。",
+          "桌面版会自动检查更新，在后台下载并校验，准备好后提示重启。macOS 版已签名并通过苹果公证。",
+          "网页版、Docker 和飞牛版可以直接用灵策智算账号登录，不再需要向导口令。"
+        ],
+        "en": [
+          "A new look: unread counts in the chat list, a notification when a bot finishes replying, card-style questions and a tabbed settings page.",
+          "The first Android and iPhone apps. Every bot is an animated character; chat with your Lynxce account or connect to your own NAS or Docker server.",
+          "Sign in to Lynxce with a WorkBuddy account. The first screen now offers sign-in, your own model, or later.",
+          "A new Capabilities area for connectors, skills, knowledge bases, memory, IM channels and scheduled tasks.",
+          "The desktop app checks for updates, downloads and verifies them in the background, and asks you to restart when ready. The macOS build is signed and notarized by Apple.",
+          "The web, Docker and fnOS editions can sign in with a Lynxce account directly, without a setup code."
+        ]
+      },
+      "assets": [
+        {
+          "platform": "android",
+          "kind": "apk",
+          "name": "octop-bot-1.0.0.apk",
+          "appVersion": "1.0.0",
+          "url": "https://github.com/alison-xx/octop-bot/releases/download/octop-bot-v1.0.4/octop-bot-1.0.0.apk",
+          "size": 15968341,
+          "sha256": "d04767c5e60782b88f6f2c7a9cfc2e174db47473f65dc8819558a700a43fd148"
+        }
+      ]
+    },
+    {
+      "version": "1.0.3-beta.8",
+      "channel": "beta",
+      "date": "2026-11-21",
+      "tag": "octop-bot-v1.0.3-beta.8",
+      "notes": {
+        "zh": [
+          "可以在通讯录或资料里删除 Bot，删除前会说明历史和文件怎么处理。",
+          "可以对某个 Bot 开始新私聊，也可以沿用原群成员另开群聊，每个群保留独立的历史和文件。",
+          "群聊输入框可以一次拖入多个文件，逐个显示上传进度。",
+          "支持用 Docker Compose 部署网页版，并提供飞牛 fnOS 安装包。"
+        ],
+        "en": [
+          "Delete a bot from the directory or its profile; you are told first what happens to its history and files.",
+          "Start a fresh direct chat with a bot, or a new group with the same members. Each group keeps its own history and files.",
+          "Drop several files into a group chat at once, with upload progress for each.",
+          "Deploy the web edition with Docker Compose, or install the fnOS package."
+        ]
+      },
+      "assets": []
+    },
+    {
       "version": "1.0.3-beta.7",
       "channel": "beta",
       "date": "2026-11-20",
