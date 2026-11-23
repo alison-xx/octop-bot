@@ -26,6 +26,8 @@ class Upstream:
         self.counts: Counter[str] = Counter()
         self.keys: list[dict[str, Any]] = []
         self.revoked: set[str] = set()
+        self.forbidden: set[str] = set()
+        self.mint_fails = False
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         assert req.url.host == "api.lynxce.cn" and req.url.scheme == "https"
@@ -35,6 +37,8 @@ class Upstream:
             secret = req.headers["Authorization"].removeprefix("Bearer ")
             if secret in self.revoked:
                 return httpx.Response(401, json={"error": {"message": "invalid key"}})
+            if secret in self.forbidden:
+                return httpx.Response(403, json={"error": {"message": "insufficient balance"}})
             return httpx.Response(200, json={"object": "list", "data": []})
         assert req.headers["X-Lynxce-Client"] == "web"
         if path == "/api/auth/phone-login":
@@ -55,6 +59,8 @@ class Upstream:
             )
         if path == "/api/user/personal-api-keys":
             assert req.headers["Authorization"].startswith("Bearer access-")
+            if self.mint_fails:
+                return httpx.Response(503, json={"message": "busy"})
             body = json.loads(req.content)
             self.keys.append(body)
             n = len(self.keys)
@@ -327,7 +333,7 @@ async def test_tenants_one_shot_calls_use_their_own_key_and_not_the_servers_voic
 
 
 async def test_host_files_are_closed_to_tenant_agents_only(
-    tmp_octop_home: Path, upstream: Upstream
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from octop.infra.agents.manager import AgentCreateSpec
     from octop.infra.users.identity import Role
@@ -346,6 +352,74 @@ async def test_host_files_are_closed_to_tenant_agents_only(
         )
         assert registry.host_files_allowed(tenant_bot.agent_id) is False
         assert registry.host_files_allowed(operator_bot.agent_id) is True
+
+        # Image and video generation run on the operator's providers: not for tenants.
+        from octop.infra.agents.settings.media_generation import MediaProviderUpdate
+
+        await registry.save_media_generation(
+            enabled=True,
+            providers=[
+                MediaProviderUpdate(
+                    id="ark",
+                    provider="volcengine",
+                    display_name="Ark",
+                    enabled=True,
+                    base_url="https://ark.cn-beijing.volces.com/api/v3",
+                    image_enabled=True,
+                    video_enabled=True,
+                    image_model="seedream-test",
+                    video_model="seedance-test",
+                    api_key="ark-test",
+                )
+            ],
+            default_image_provider="ark",
+            default_video_provider="ark",
+        )
+        rows = srv.services.agent_repo
+        # Building the config peeks at the bootstrap marker; there is no object store here.
+        import octop_harness.middleware.bootstrap as bootstrap
+
+        monkeypatch.setattr(bootstrap, "bootstrap_marker_exists", lambda *a, **k: True)
+        tenant_cfg = registry._build_harness_config(rows.get(tenant_bot.agent_id))
+        operator_cfg = registry._build_harness_config(rows.get(operator_bot.agent_id))
+        assert tenant_cfg.media_generation is None
+        assert operator_cfg.media_generation is not None
+        info = (await client.get("/api/octop-bot/server-info")).json()
+        assert info["capabilities"]["media_generation"] is False
+
+
+async def test_only_a_401_replaces_the_model_key(tmp_octop_home: Path, upstream: Upstream) -> None:
+    async with octop_client(tmp_octop_home) as (client, srv):
+        uid = (await _sign_in(client, "13800000030"))["user"]["id"]
+        # Out of credits (403): a new key would not help, so none is minted.
+        upstream.forbidden.add("sk-test-1")
+        await _sign_in(client, "13800000030")
+        assert len(upstream.keys) == 1
+        # Revoked (401) while the tenant is chatting: replaced on the next check, no sign-in.
+        from octop.infra.agents.providers import lynxce as lynxce_provider
+
+        upstream.revoked.add("sk-test-1")
+        model = lynxce_provider.CloudAccountModel(uid, "", accounts.DEFAULT_MODEL)
+        key_for_request = model.provider(srv.services).api_key
+        lynxce_provider._key_checked.pop(uid, None)
+        assert await key_for_request() == "sk-test-2"  # type: ignore[operator]
+        assert len(upstream.keys) == 2
+
+
+async def test_a_sign_in_that_cannot_get_a_model_key_closes_its_session(
+    tmp_octop_home: Path, upstream: Upstream
+) -> None:
+    from octop.infra.auth import lynxce_cloud
+
+    async with octop_client(tmp_octop_home) as (client, srv):
+        upstream.mint_fails = True
+        res = await client.post(CODE_LOGIN, json={"target": "13800000031", "code": "123456"})
+        assert res.status_code >= 400
+        assert upstream.counts["/api/auth/logout"] >= 1
+        provider_id = accounts._provider_id(srv.services)
+        user = srv.services.user_repo.get_by_sso(provider_id, "lx-13800000031")
+        assert user is not None
+        assert lynxce_cloud._load(srv.services, user.id) is None
 
 
 async def test_disabled_tenants_and_cancelled_deletions(

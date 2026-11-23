@@ -163,8 +163,14 @@ async def provision(
         await lynxce_cloud.discard_session(session)
         raise
     await lynxce_cloud.keep_session(services, user.id, session)
-    # Signing in again is how a tenant recovers from a key revoked in the Lynxce console.
-    await ensure_model_key(services, user.id, verify=True)
+    try:
+        # Signing in again is how a tenant recovers from a key revoked in the Lynxce console.
+        await ensure_model_key(services, user.id, verify=True)
+    except Exception:
+        # The sign-in fails, so its session must not stay open, here or upstream.
+        await asyncio.to_thread(lynxce_cloud.forget_session, services, user.id)
+        await lynxce_cloud.discard_session(session)
+        raise
     return user
 
 

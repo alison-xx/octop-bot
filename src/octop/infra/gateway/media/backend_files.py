@@ -200,7 +200,7 @@ async def resolve_dashboard_media_url(
     *,
     filename: str = "",
     mime: str = "",
-    host_files: bool = True,
+    host_files: bool = False,
 ) -> str:
     """Import external files when needed; preview URL keeps the original path shape."""
     media_agent = resolve_media_agent_id(agent_id, raw_url)
@@ -230,7 +230,7 @@ def is_previewable_mime(mime: str) -> bool:
     return is_preview_media_type(mime)
 
 
-def _abs_path_allowed(abs_path: str, *, workspace: Path, host_files: bool = True) -> bool:
+def _abs_path_allowed(abs_path: str, *, workspace: Path, host_files: bool = False) -> bool:
     """Host absolute paths a media read may open: OS temp, this workspace, browser screenshots.
 
     ``host_files=False`` (a cloud tenant's agent) allows none: temp and the screenshot
@@ -382,7 +382,7 @@ async def resolve_preview_payload(
     source: str,
     workspace: BackendWorkspace,
     mime_hint: str = "",
-    host_files: bool = True,
+    host_files: bool = False,
 ) -> tuple[bytes, str] | None:
     """Return ``(bytes, mime)`` for an allowed image/video preview source.
 
@@ -430,7 +430,7 @@ async def read_file_url_bytes(
     *,
     filename: str = "",
     mime: str = "",
-    host_files: bool = True,
+    host_files: bool = False,
 ) -> bytes | None:
     """Read bytes for a ``file://`` URL (workspace, import, or host fallback)."""
     path = backend_workspace_path(file_url)
@@ -476,7 +476,7 @@ async def ensure_workspace_media_path(
     *,
     filename: str = "",
     mime: str = "",
-    host_files: bool = True,
+    host_files: bool = False,
 ) -> str | None:
     """Resolve or import a ``file://`` URL into the agent workspace (``outbound/``)."""
     abs_path = backend_workspace_path(file_url)

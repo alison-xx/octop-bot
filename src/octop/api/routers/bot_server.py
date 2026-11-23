@@ -47,6 +47,11 @@ class ServerCapabilities(BaseModel):
     cloud_computer: bool = Field(
         default=False, description="Each Bot can run on its own cloud computer."
     )
+    media_generation: bool = Field(
+        default=True,
+        description="Bots can generate images and videos. Off for cloud accounts: the "
+        "providers are the server operator's.",
+    )
     file_store: Literal["local", "object"] = Field(
         default="local",
         description="Where attachments and Bot outputs are kept: this server's disk, or an object "
@@ -98,6 +103,7 @@ async def server_info(response: Response, server: Any = Depends(get_server)) -> 
         sign_in=sign_in,
         capabilities=ServerCapabilities(
             wallet=edition in ("desktop", "cloud"),
+            media_generation=edition != "cloud",
             file_store="object" if edition == "cloud" else "local",
         ),
     )

@@ -554,7 +554,9 @@ async def tenant_call(
 async def model_key_rejected(secret: str) -> bool:
     """Whether Lynxce's open gateway refuses this personal API key (revoked or expired).
 
-    Only a 401/403 counts; an unreachable gateway or any other reply keeps the key.
+    Only a 401 counts. A 403 can mean the account is out of credits or not allowed this model,
+    which a new key would not fix (and replacing on it would pile up keys); an unreachable
+    gateway or any other reply keeps the key too.
     """
     try:
         async with _client() as client:
@@ -563,7 +565,7 @@ async def model_key_rejected(secret: str) -> bool:
             )
     except httpx.HTTPError:
         return False
-    return response.status_code in {401, 403}
+    return response.status_code == 401
 
 
 async def create_model_key(services: SharedServices, user_id: int, body: dict[str, Any]) -> Any:

@@ -1785,7 +1785,7 @@ class TeamManager:
         async for event in media_events_from_tool_result(
             selected,
             workspace=workspace,
-            host_files=self._agent_manager.host_files_allowed(speaker_id),
+            host_files=await asyncio.to_thread(self._agent_manager.host_files_allowed, speaker_id),
         ):
             parts = event.content
             if not parts:

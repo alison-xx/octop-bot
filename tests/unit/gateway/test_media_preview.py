@@ -48,6 +48,7 @@ async def test_resolve_preview_from_outbound_screenshots() -> None:
             source=png.as_uri(),
             workspace=workspace,
             mime_hint="image/png",
+            host_files=True,
         )
         assert payload is not None
         data, mime = payload
@@ -66,6 +67,7 @@ async def test_resolve_preview_from_tmp_screenshot() -> None:
             source=png.as_uri(),
             workspace=workspace,
             mime_hint="image/png",
+            host_files=True,
         )
         assert payload is not None
         data, mime = payload

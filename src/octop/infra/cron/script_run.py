@@ -112,7 +112,7 @@ async def run_cron_script(
     path: str | None,
     workspace: Any,
     backend_spec: Any = None,
-    host: bool = True,
+    host: bool = False,
 ) -> ScriptRunResult:
     """Execute one script. Non-zero exits are returned, not raised.
 

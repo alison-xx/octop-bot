@@ -26,6 +26,7 @@ async def test_fresh_web_build_offers_lynxce_sign_in(
         assert body["capabilities"] == {
             "wallet": False,
             "cloud_computer": False,
+            "media_generation": True,
             "file_store": "local",
         }
         assert body["version"]

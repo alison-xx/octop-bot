@@ -114,6 +114,7 @@ async def test_ensure_workspace_media_host_fallback_when_abs_denied() -> None:
             external.as_uri(),
             filename="shot.png",
             mime="image/png",
+            host_files=True,
         )
         assert rel is not None
         assert rel.startswith("outbound/")
@@ -131,8 +132,11 @@ async def test_cloud_tenant_media_never_reads_host_files() -> None:
         await workspace.aupload_bytes("outbound/own.png", b"own")
 
         source = foreign.as_uri()
-        assert await resolve_preview_payload(source=source, workspace=workspace) is not None
-        assert await read_file_url_bytes(workspace, source) == b"\x89PNG\r\n"
+        assert (
+            await resolve_preview_payload(source=source, workspace=workspace, host_files=True)
+            is not None
+        )
+        assert await read_file_url_bytes(workspace, source, host_files=True) == b"\x89PNG\r\n"
 
         assert (
             await resolve_preview_payload(source=source, workspace=workspace, host_files=False)
