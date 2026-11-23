@@ -105,6 +105,11 @@ export const botCloudApi = {
       root + "/account",
       json("POST", { account, password }),
     ),
+  loginWorkbuddy: (handoffCode: string) =>
+    request<CloudAccount>(
+      root + "/account/workbuddy",
+      json("POST", { handoff_code: handoffCode }),
+    ),
   logout: (accountId: string) =>
     request<void>(
       root + "/account?expected_account_id=" + encodeURIComponent(accountId),

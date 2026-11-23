@@ -35,6 +35,11 @@ export interface BotNotification {
   silent?: boolean;
 }
 
+/** WorkBuddy sign-in window: Lynxce's one-time hand-off code, or why there is none. */
+export type WorkbuddyLoginResult =
+  | { ok: true; code: string }
+  | { ok: false; reason: "cancelled" | "denied" | "failed" };
+
 export interface UpdateCheckResult {
   status: "update-available" | "up-to-date" | "error";
   currentVersion: string;
@@ -88,6 +93,7 @@ export const IPC_CHANNELS = {
   botNotify: "octop:bot:notify",
   botNotificationOpen: "octop:bot:notification-open",
   botUnreadBadge: "octop:bot:unread-badge",
+  botWorkbuddyLogin: "octop:bot:workbuddy-login",
   orbPointer: "octop:orb:pointer",
   /** Linux square caption buttons. No-op on the other platforms. */
   windowMinimize: "octop:window-minimize",

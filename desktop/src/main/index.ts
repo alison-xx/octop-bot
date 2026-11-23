@@ -28,6 +28,7 @@ import {
   type IssuedSession,
   type PlatformInfo,
   type UpdateCheckResult,
+  type WorkbuddyLoginResult,
 } from "../shared/ipc-contract";
 import { resolveAppVersion } from "./app-version";
 import { BOT_HOME_PATH, BOT_PRODUCT_NAME, isBotProduct } from "../shared/product";
@@ -87,6 +88,7 @@ import { createMainWindow, installDashboardGuards } from "./windows/main-window"
 import type { EarlyWindow } from "./windows/early-window";
 import { isWindowOnScreen, presentWindows, shouldKeepWindowOnClose } from "./windows/present";
 import { BotOrb } from "./windows/bot-orb";
+import { openWorkbuddyLogin } from "./windows/workbuddy-login";
 import { sanitizeBadgeCount, sanitizeNotification, trayTooltip } from "./windows/attention";
 import {
   shouldInstallSystemTray,
@@ -445,7 +447,12 @@ function registerIpcHandlers(): void {
     app.setBadgeCount(total);
     tray?.setToolTip(trayTooltip(productName, total, app.getLocale()));
   });
-  ipcMain.handle(IPC_CHANNELS.getPlatformInfo, (): PlatformInfo => ({
+  ipcMain.handle(IPC_CHANNELS.botWorkbuddyLogin, (event): Promise<WorkbuddyLoginResult> => {
+    if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" });
+    const zh = app.getLocale().toLowerCase().startsWith("zh");
+    return openWorkbuddyLogin(BrowserWindow.fromWebContents(event.sender), zh);
+  });
+  ipcMain.handle(IPC_CHANNELS.getPlatformInfo,(): PlatformInfo => ({
     platform: process.platform as PlatformInfo["platform"],
     arch: process.arch,
     isDesktop: true,

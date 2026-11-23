@@ -23,6 +23,9 @@ _ORIGIN = "https://api.lynxce.cn"
 _ID = r"(?!\.{1,2}(?:/|$))[A-Za-z0-9_.-]{1,256}"
 _WEB_ID = r"[A-Za-z0-9._:-]{4,96}"
 CHECKOUT_PATH = "/api/billing/recharge/checkout-link"
+WORKBUDDY_SESSION_PATH = "/api/oauth/workbuddy/session"
+# Lynxce's WorkBuddy hand-off code: "wb-handoff." + base64url payload + "." + HMAC-SHA256.
+_HANDOFF = re.compile(r"wb-handoff\.[A-Za-z0-9_-]{16,1024}\.[A-Za-z0-9_-]{43}")
 _READS = {
     "/api/user/quota": set(),
     "/api/user/cloud-work/capabilities": set(),
@@ -203,14 +206,10 @@ def _token(data: Any, name: str) -> str:
     return value
 
 
-async def _password_login(account: str, password: str) -> _Grant:
-    account = account.strip()
-    if not (1 <= len(account) <= 200 and 8 <= len(password) <= 4096):
-        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
+async def _session_login(path: str, body: dict[str, str]) -> _Grant:
+    """Open a Lynxce 'web' session through one of its sign-in endpoints."""
     try:
-        data = await _send(
-            "POST", "/api/auth/password-login", json={"account": account, "password": password}
-        )
+        data = await _send("POST", path, json=body)
     except _UpstreamFailure as exc:
         if exc.status in {401, 403}:
             raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403) from None
@@ -233,6 +232,15 @@ async def _password_login(account: str, password: str) -> _Grant:
     )
 
 
+async def _password_login(account: str, password: str) -> _Grant:
+    account = account.strip()
+    if not (1 <= len(account) <= 200 and 8 <= len(password) <= 4096):
+        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
+    return await _session_login(
+        "/api/auth/password-login", {"account": account, "password": password}
+    )
+
+
 async def verify_account(account: str, password: str) -> CloudAccountStatus:
     """Prove ownership of a Lynxce account without keeping its session.
 
@@ -252,6 +260,24 @@ async def login_cloud(
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     async with _lock(services, user_id):
         grant = await _password_login(account, password)
+        await _finish(asyncio.to_thread(_save, services, user_id, grant))
+        return grant.status()
+
+
+async def login_cloud_workbuddy(
+    services: SharedServices, user_id: int, handoff_code: str
+) -> CloudAccountStatus:
+    """Sign in with the one-time code Lynxce issues after a WorkBuddy authorization.
+
+    The desktop shell captures the code from Lynxce's landing page before that page
+    can spend it. The account is the Lynxce account bound to the WorkBuddy identity.
+    """
+    if not bot_desktop_enabled():
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
+    if not _HANDOFF.fullmatch(handoff_code):
+        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
+    async with _lock(services, user_id):
+        grant = await _session_login(WORKBUDDY_SESSION_PATH, {"handoffCode": handoff_code})
         await _finish(asyncio.to_thread(_save, services, user_id, grant))
         return grant.status()
 

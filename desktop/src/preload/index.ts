@@ -9,6 +9,7 @@ import {
   type PlatformInfo,
   type UpdateCheckResult,
   type WindowChromeTheme,
+  type WorkbuddyLoginResult,
   type WsRelayEndpoint,
 } from "../shared/ipc-contract";
 
@@ -83,6 +84,11 @@ const bridge = {
     return () => {
       if (notificationOpen === callback) notificationOpen = null;
     };
+  },
+  /** Open the WorkBuddy sign-in window; resolves with Lynxce's one-time hand-off code. */
+  workbuddyLogin(): Promise<WorkbuddyLoginResult> {
+    if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" });
+    return ipcRenderer.invoke(IPC_CHANNELS.botWorkbuddyLogin);
   },
   onOpenBotSettings(callback: () => void): () => void {
     openBotSettings = callback;
