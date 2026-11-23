@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="zh-CN" data-composition-variables='[{"id": "lang", "type": "enum", "label": "Language", "default": "zh", "options": [{"value": "zh", "label": "中文"}, {"value": "en", "label": "English"}]}, {"id": "voSrc", "type": "string", "label": "Voiceover file", "default": "assets/audio/vo-zh.wav"}]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "PF"; src: local("PingFang SC"), local("PingFangSC-Regular"); font-weight: 400; }
+      @font-face { font-family: "PF"; src: local("PingFangSC-Medium"), local("PingFang SC Medium"); font-weight: 500; }
+      @font-face { font-family: "PF"; src: local("PingFangSC-Semibold"), local("PingFang SC Semibold"); font-weight: 600 900; }
+      :root {
+        --ground: #f7f6f2;
+        --ink: #121212;
+        --ink-2: #4f4d48;
+        --ink-3: #8b8881;
+        --accent: #f2484f;
+        --rae: #f58714;
+        --lin: #844ff9;
+        --peach: #f2484f;
+        --chief: #b5293a;
+        --font: "Inter", "PF", sans-serif;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ground); }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: var(--font); color: var(--ink); background: var(--ground); }
+      .scene { position: absolute; inset: 0; }
+      #hook { z-index: 5; }
+      .bot { display: block; width: 100%; height: 100%; }
+
+      /* ---------- hook ---------- */
+      #hook-title { position: absolute; left: 170px; top: 300px; width: 900px; font-size: 104px; font-weight: 700; line-height: 1.12; letter-spacing: -0.02em; }
+      #hook-title .w { display: inline-block; }
+      #hook-sub { position: absolute; left: 174px; top: 590px; font-size: 40px; font-weight: 500; color: #6f6c66; }
+      #hook-user { position: absolute; left: 1290px; top: 610px; width: 230px; height: 230px; border-radius: 50%; background: #e3e1db; display: grid; place-items: center; font-size: 92px; font-weight: 600; color: #6d6a64; }
+      .task { position: absolute; left: 1170px; width: 470px; height: 92px; border-radius: 22px; background: #fff; box-shadow: 0 2px 6px rgba(18,18,18,.05), 0 22px 50px -18px rgba(18,18,18,.28); display: flex; align-items: center; gap: 20px; padding: 0 26px; font-size: 34px; font-weight: 600; }
+      .task i { width: 46px; height: 46px; flex: none; }
+      #task-1 { top: 470px; }
+      #task-2 { top: 360px; }
+      #task-3 { top: 250px; }
+      #hook-pill { position: absolute; left: 0; top: 0; width: 100px; height: 100px; border-radius: 34px; background: #161616; opacity: 0; transform-origin: 0 0; }
+
+      /* ---------- app world ---------- */
+      #cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1200px; transform-origin: 0 0; }
+      #window { position: absolute; inset: 0; border-radius: 26px; overflow: hidden; background: #fbfbfa; box-shadow: 0 2px 8px rgba(18,18,18,.06), 0 60px 120px -40px rgba(18,18,18,.38); }
+      #sidebar { position: absolute; left: 0; top: 0; width: 422px; height: 1200px; background-size: 1920px 1200px; background-position: 0 0; background-image: url(assets/img/screen-team-zh.webp); }
+      #pane { position: absolute; left: 422px; top: 0; width: 1498px; height: 1200px; }
+      #head-pill { position: absolute; left: 50%; top: 12px; height: 56px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 0 22px 0 14px; border-radius: 28px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 6px 18px rgba(0,0,0,.05); font-size: 21px; font-weight: 600; white-space: nowrap; }
+      #head-pill .cluster { position: relative; width: 44px; height: 40px; }
+      #head-pill .mini { position: absolute; width: 21px; height: 21px; }
+      #mini-chief { left: 0; top: 0; } #mini-rae { left: 22px; top: 0; } #mini-lin { left: 0; top: 19px; } #mini-peach { left: 22px; top: 19px; }
+      #mini-chief img { width: 23px; height: auto; }
+      #head-pill .chev { width: 18px; height: 18px; color: #333; }
+      #date { position: absolute; left: 0; right: 0; top: 120px; display: flex; justify-content: center; align-items: center; gap: 16px; font-size: 17px; color: #67645e; letter-spacing: .04em; }
+      #date::before, #date::after { content: ""; width: 42px; height: 1px; background: #d8d6d0; }
+      #u-time { position: absolute; right: 116px; top: 182px; font-size: 15px; color: #67645e; }
+      #u-bubble { position: absolute; right: 112px; top: 216px; max-width: 880px; padding: 17px 22px; border-radius: 24px; background: #161616; color: #fff; font-size: 22px; line-height: 1.55; white-space: nowrap; }
+      #msgs { position: absolute; left: 113px; top: 312px; width: 1100px; display: flex; flex-direction: column; gap: 36px; }
+      .row { position: relative; padding-left: 58px; }
+      .row .av { position: absolute; left: 0; top: 2px; width: 44px; height: 44px; }
+      .row .av img { width: 48px; height: auto; margin-left: -2px; }
+      .row .meta { display: flex; align-items: center; gap: 10px; height: 24px; margin-bottom: 10px; font-size: 15px; color: #67645e; }
+      .row .meta b { font-size: 18px; font-weight: 600; }
+      .row .badge { padding: 1px 7px; border-radius: 5px; background: #ececea; font-size: 14px; color: #57544f; }
+      .bubble { display: inline-block; padding: 16px 20px; border-radius: 22px; background: #efefed; font-size: 22px; line-height: 1.75; max-width: 1020px; }
+      .bubble p + p { margin-top: 12px; }
+      #r-chief b { color: var(--chief); } #r-rae b { color: #b45a06; } #r-lin b { color: #5b33c9; } #r-peach b { color: #c21d2b; }
+      .nm { font-weight: 400; }
+      #typing { position: absolute; left: 58px; top: 34px; display: flex; gap: 8px; padding: 22px 24px; border-radius: 22px; background: #efefed; }
+      #typing i { width: 10px; height: 10px; border-radius: 50%; background: #9d9a94; }
+      #composer { position: absolute; left: 110px; top: 1108px; width: 1278px; height: 70px; border-radius: 35px; border: 1px solid #e4e3df; background: #fff; display: flex; align-items: center; gap: 18px; padding: 0 12px; font-size: 21px; color: #a7a49e; }
+      #composer .plus, #composer .send { width: 46px; height: 46px; border-radius: 50%; background: #f1f0ec; display: grid; place-items: center; color: #666; font-size: 26px; flex: none; }
+      #composer .send { margin-left: auto; }
+
+      /* ---------- cloud world ---------- */
+      #cam2 { position: absolute; left: 0; top: 0; width: 1920px; height: 1200px; transform-origin: 0 0; background-size: 1920px 1200px; background-image: url(assets/img/screen-cloud-zh.webp); }
+      #marker { position: absolute; height: 34px; border-radius: 6px; background: rgba(242,72,79,.24); transform-origin: 0 50%; }
+      #flood { background: var(--ground); }
+
+      /* ---------- end card ---------- */
+      #crew { position: absolute; left: 0; right: 0; top: 250px; display: flex; justify-content: center; align-items: flex-end; gap: 34px; height: 150px; }
+      #crew > div { width: 132px; height: 132px; }
+      #crew-chief img { width: 150px; height: auto; margin: 0 -9px; }
+      #mark { position: absolute; left: 0; right: 0; top: 470px; display: flex; justify-content: center; align-items: center; gap: 30px; }
+      #mark img { width: 128px; height: 128px; border-radius: 30px; }
+      #mark span { font-size: 124px; font-weight: 700; letter-spacing: -0.03em; }
+      #tagline { position: absolute; left: 0; right: 0; top: 660px; text-align: center; font-size: 46px; font-weight: 500; color: var(--ink-2); }
+      #cta { position: absolute; left: 0; right: 0; margin: 0 auto; width: fit-content; top: 778px; display: flex; align-items: center; gap: 16px; height: 84px; padding: 0 40px; border-radius: 42px; background: var(--ink); color: #fff; font-size: 32px; font-weight: 600; white-space: nowrap; }
+      #cta em { font-style: normal; color: #ff8a8e; font-weight: 500; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080" data-fps="30">
+
+      <!-- 1. hook: one person, three jobs -->
+      <div id="hook" class="scene clip" data-start="0" data-duration="4.75" data-track-index="1" data-track-kind="graphics">
+        <div id="hook-title"><span class="w" id="hw-1" data-zh="一期周末" data-en="A weekend">一期周末</span><span class="w" id="hw-2" data-zh="城市指南" data-en="city guide">城市指南</span></div>
+        <div id="hook-sub" data-zh="三件事，一个人" data-en="Three jobs, one of you">三件事，一个人</div>
+        <div id="hook-user"><span  data-zh="城" data-en="C">城</span></div>
+        <div class="task" id="task-1"><i><svg class="bot " viewBox="0 0 100 100" aria-hidden="true"><path d="M50 6C61 6 61 29 69 37C77 45 94 39 94 50C94 61 77 55 69 63C61 71 61 94 50 94C39 94 39 71 31 63C23 55 6 61 6 50C6 39 23 45 31 37C39 29 39 6 50 6Z" fill="#f58714"/><rect x="41.0" y="37.5" width="8" height="17" rx="4.0" transform="rotate(-25 45 46)" fill="#fff"/><rect x="53.0" y="34.5" width="8" height="17" rx="4.0" transform="rotate(-25 57 43)" fill="#fff"/></svg></i><span  data-zh="走一遍路线" data-en="Walk the route">走一遍路线</span></div>
+        <div class="task" id="task-2"><i><svg class="bot " viewBox="0 0 100 100" aria-hidden="true"><path d="M19 29C30 16 70 16 84 29C96 40 95 62 82 73C68 85 32 85 18 73C5 62 7 40 19 29Z" fill="#844ff9"/><rect x="52.5" y="30.5" width="9" height="19" rx="4.5" transform="rotate(-25 57 40)" fill="#fff"/><rect x="65.5" y="27.5" width="9" height="19" rx="4.5" transform="rotate(-25 70 37)" fill="#fff"/></svg></i><span  data-zh="写开篇" data-en="Write the opener">写开篇</span></div>
+        <div class="task" id="task-3"><i><svg class="bot " viewBox="0 0 100 100" aria-hidden="true"><path d="M50 90C28 78 8 62 8 40C8 24 20 12 34 12C42 12 47 16 50 22C53 16 58 12 66 12C80 12 92 24 92 40C92 62 72 78 50 90Z" fill="#f2484f"/><rect x="47.5" y="32.5" width="9" height="19" rx="4.5" transform="rotate(-25 52 42)" fill="#fff"/><rect x="60.5" y="29.5" width="9" height="19" rx="4.5" transform="rotate(-25 65 39)" fill="#fff"/></svg></i><span  data-zh="画路线图" data-en="Draw the map">画路线图</span></div>
+        <div id="hook-pill"></div>
+      </div>
+
+      <!-- 2-4. the app: message, Chief, the team -->
+      <div id="app" class="scene clip" data-start="4.55" data-duration="16" data-track-index="2" data-track-kind="graphics">
+        <div id="cam">
+          <div id="window">
+            <div id="sidebar"></div>
+            <div id="pane">
+              <div id="head-pill">
+                <div class="cluster">
+                  <div class="mini" id="mini-chief"><img src="assets/img/chief.webp" alt="" /></div>
+                  <div class="mini" id="mini-rae"><svg class="bot " viewBox="0 0 100 100" aria-hidden="true"><path d="M50 6C61 6 61 29 69 37C77 45 94 39 94 50C94 61 77 55 69 63C61 71 61 94 50 94C39 94 39 71 31 63C23 55 6 61 6 50C6 39 23 45 31 37C39 29 39 6 50 6Z" fill="#f58714"/><rect x="41.0" y="37.5" width="8" height="17" rx="4.0" transform="rotate(-25 45 46)" fill="#fff"/><rect x="53.0" y="34.5" width="8" height="17" rx="4.0" transform="rotate(-25 57 43)" fill="#fff"/></svg></div>
+                  <div class="mini" id="mini-lin"><svg class="bot " viewBox="0 0 100 100" aria-hidden="true"><path d="M19 29C30 16 70 16 84 29C96 40 95 62 82 73C68 85 32 85 18 73C5 62 7 40 19 29Z" fill="#844ff9"/><rect x="52.5" y="30.5" width="9" height="19" rx="4.5" transform="rotate(-25 57 40)" fill="#fff"/><rect x="65.5" y="27.5" width="9" height="19" rx="4.5" transform="rotate(-25 70 37)" fill="#fff"/></svg></div>
+                  <div class="mini" id="mini-peach"><svg class="bot " viewBox="0 0 100 100" aria-hidden="true"><path d="M50 90C28 78 8 62 8 40C8 24 20 12 34 12C42 12 47 16 50 22C53 16 58 12 66 12C80 12 92 24 92 40C92 62 72 78 50 90Z" fill="#f2484f"/><rect x="47.5" y="32.5" width="9" height="19" rx="4.5" transform="rotate(-25 52 42)" fill="#fff"/><rect x="60.5" y="29.5" width="9" height="19" rx="4.5" transform="rotate(-25 65 39)" fill="#fff"/></svg></div>
+                </div>
+                <span  data-zh="周末城市指南" data-en="Weekend City Guide">周末城市指南</span>
+                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+              </div>
+              <div id="date">2026-11-23</div>
+              <div id="u-time">06:30</div>
+              <div id="u-bubble"><span  data-zh="把河岸散步做成一期周末指南吧。90 分钟，三站就好。" data-en="Let&#39;s turn the riverside walk into a weekend guide. 90 minutes, three stops.">把河岸散步做成一期周末指南吧。90 分钟，三站就好。</span></div>
+              <div id="msgs">
+                <div class="row" id="r-chief">
+                  <div class="av"><img src="assets/img/chief.webp" alt="" /></div>
+                  <div class="meta"><b>Chief</b><span class="badge" data-zh="管理员" data-en="Administrator">管理员</span><span>06:31</span></div>
+                  <div id="typing"><i></i><i></i><i></i></div>
+                  <div class="bubble" id="chief-bubble"><span class="lang-zh">从早市走到栈桥。<span class="nm" id="nm-rae">阿澄</span>核对步程，<span class="nm" id="nm-lin">林墨</span>写开篇，<span class="nm" id="nm-peach">桃子</span>来画路线图。</span><span class="lang-en">From the morning market to the pier. <span class="nm" id="nm-rae-en">Rae</span> checks the walk, <span class="nm" id="nm-lin-en">Lin</span> writes the opener and <span class="nm" id="nm-peach-en">Peach</span> draws the route map.</span></div>
+                </div>
+                <div class="row" id="r-rae">
+                  <div class="av"><svg class="bot " viewBox="0 0 100 100" aria-hidden="true"><path d="M50 6C61 6 61 29 69 37C77 45 94 39 94 50C94 61 77 55 69 63C61 71 61 94 50 94C39 94 39 71 31 63C23 55 6 61 6 50C6 39 23 45 31 37C39 29 39 6 50 6Z" fill="#f58714"/><rect x="41.0" y="37.5" width="8" height="17" rx="4.0" transform="rotate(-25 45 46)" fill="#fff"/><rect x="53.0" y="34.5" width="8" height="17" rx="4.0" transform="rotate(-25 57 43)" fill="#fff"/></svg></div>
+                  <div class="meta"><b  data-zh="阿澄" data-en="Rae">阿澄</b><span>06:32</span></div>
+                  <div class="bubble"><p><span  data-zh="我走了一遍，三站约 2.4 公里。" data-en="I walked it: three stops, about 2.4 km.">我走了一遍，三站约 2.4 公里。</span></p><p><span  data-zh="早市 25 分钟 → 旧船厂 15 分钟 → 栈桥 10 分钟，另外留 40 分钟步行。" data-en="Market 25 min → old shipyard 15 min → pier 10 min, plus 40 minutes of walking.">早市 25 分钟 → 旧船厂 15 分钟 → 栈桥 10 分钟，另外留 40 分钟步行。</span></p></div>
+                </div>
+                <div class="row" id="r-lin">
+                  <div class="av"><svg class="bot " viewBox="0 0 100 100" aria-hidden="true"><path d="M19 29C30 16 70 16 84 29C96 40 95 62 82 73C68 85 32 85 18 73C5 62 7 40 19 29Z" fill="#844ff9"/><rect x="52.5" y="30.5" width="9" height="19" rx="4.5" transform="rotate(-25 57 40)" fill="#fff"/><rect x="65.5" y="27.5" width="9" height="19" rx="4.5" transform="rotate(-25 70 37)" fill="#fff"/></svg></div>
+                  <div class="meta"><b  data-zh="林墨" data-en="Lin">林墨</b><span>06:33</span></div>
+                  <div class="bubble"><span  data-zh="开篇有了：「从早市带走一份热早餐，沿着河岸走到旧船厂。走累了，就在栈桥坐一会儿。」" data-en="Opener: “Grab a hot breakfast at the market and follow the river to the old shipyard. When your feet give out, sit on the pier.”">开篇有了：「从早市带走一份热早餐，沿着河岸走到旧船厂。走累了，就在栈桥坐一会儿。」</span></div>
+                </div>
+                <div class="row" id="r-peach">
+                  <div class="av"><svg class="bot " viewBox="0 0 100 100" aria-hidden="true"><path d="M50 90C28 78 8 62 8 40C8 24 20 12 34 12C42 12 47 16 50 22C53 16 58 12 66 12C80 12 92 24 92 40C92 62 72 78 50 90Z" fill="#f2484f"/><rect x="47.5" y="32.5" width="9" height="19" rx="4.5" transform="rotate(-25 52 42)" fill="#fff"/><rect x="60.5" y="29.5" width="9" height="19" rx="4.5" transform="rotate(-25 65 39)" fill="#fff"/></svg></div>
+                  <div class="meta"><b  data-zh="桃子" data-en="Peach">桃子</b><span>06:34</span></div>
+                  <div class="bubble"><p><span  data-zh="我来画地图。" data-en="I&#39;ll draw the map.">我来画地图。</span></p><p><span  data-zh="用三种形状区分市场、船厂和栈桥，黑白打印也能看清。" data-en="Three shapes mark the market, shipyard and pier, so it still reads in black and white.">用三种形状区分市场、船厂和栈桥，黑白打印也能看清。</span></p></div>
+                </div>
+              </div>
+              <div id="composer"><span class="plus">+</span><span  data-zh="给 周末城市指南 发消息" data-en="Message Weekend City Guide">给 周末城市指南 发消息</span><span class="send">↑</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. the cloud workspace -->
+      <div id="cloud" class="scene clip" data-start="20.15" data-duration="5.85" data-track-index="1" data-track-kind="graphics">
+        <div id="cam2"><div id="marker"></div></div>
+      </div>
+      <div id="flood" class="scene clip" data-start="25.2" data-duration="6.8" data-track-index="3" data-track-kind="graphics"></div>
+
+      <!-- 6. end card -->
+      <div id="endcard" class="scene clip" data-start="25.7" data-duration="6.3" data-track-index="2" data-track-kind="graphics">
+        <div id="crew">
+          <div id="crew-rae"><svg class="bot " viewBox="0 0 100 100" aria-hidden="true"><path d="M50 6C61 6 61 29 69 37C77 45 94 39 94 50C94 61 77 55 69 63C61 71 61 94 50 94C39 94 39 71 31 63C23 55 6 61 6 50C6 39 23 45 31 37C39 29 39 6 50 6Z" fill="#f58714"/><rect x="41.0" y="37.5" width="8" height="17" rx="4.0" transform="rotate(-25 45 46)" fill="#fff"/><rect x="53.0" y="34.5" width="8" height="17" rx="4.0" transform="rotate(-25 57 43)" fill="#fff"/></svg></div>
+          <div id="crew-lin"><svg class="bot " viewBox="0 0 100 100" aria-hidden="true"><path d="M19 29C30 16 70 16 84 29C96 40 95 62 82 73C68 85 32 85 18 73C5 62 7 40 19 29Z" fill="#844ff9"/><rect x="52.5" y="30.5" width="9" height="19" rx="4.5" transform="rotate(-25 57 40)" fill="#fff"/><rect x="65.5" y="27.5" width="9" height="19" rx="4.5" transform="rotate(-25 70 37)" fill="#fff"/></svg></div>
+          <div id="crew-chief"><img src="assets/img/chief.webp" alt="" /></div>
+          <div id="crew-peach"><svg class="bot " viewBox="0 0 100 100" aria-hidden="true"><path d="M50 90C28 78 8 62 8 40C8 24 20 12 34 12C42 12 47 16 50 22C53 16 58 12 66 12C80 12 92 24 92 40C92 62 72 78 50 90Z" fill="#f2484f"/><rect x="47.5" y="32.5" width="9" height="19" rx="4.5" transform="rotate(-25 52 42)" fill="#fff"/><rect x="60.5" y="29.5" width="9" height="19" rx="4.5" transform="rotate(-25 65 39)" fill="#fff"/></svg></div>
+          <div id="crew-hal"><svg class="bot " viewBox="0 0 100 100" aria-hidden="true"><path d="M26 80C12 80 5 68 9 57C3 46 10 32 24 32C26 18 42 11 55 19C63 9 82 13 84 30C96 34 98 51 89 59C93 71 85 81 72 80Z" fill="#11af98"/><rect x="47.5" y="36.5" width="9" height="19" rx="4.5" transform="rotate(-25 52 46)" fill="#fff"/><rect x="60.5" y="33.5" width="9" height="19" rx="4.5" transform="rotate(-25 65 43)" fill="#fff"/></svg></div>
+        </div>
+        <div id="mark"><img id="mark-icon" src="assets/img/app-icon.webp" alt="" /><span id="mark-word">Octop Bot</span></div>
+        <div id="tagline" data-zh="一句话，组建你的 AI 团队" data-en="One sentence, a whole AI team">一句话，组建你的 AI 团队</div>
+        <div id="cta"><span  data-zh="免费下载" data-en="Free download">免费下载</span><em>octop-bot.lynxce.cn</em></div>
+      </div>
+
+      <audio id="vo" class="clip" data-start="0" data-duration="32" data-track-index="7" data-volume="1" data-var-src="voSrc" src="assets/audio/vo-zh.wav"></audio>
+      <audio id="bgm" class="clip" data-start="0" data-duration="32" data-track-index="8" data-volume="1" src="assets/audio/bgm-bed.wav"></audio>
+      <audio id="sfx-pop-1" class="clip" data-start="1.41" data-duration="0.72" data-track-index="4" data-volume="0.55" src="assets/sfx/pop.mp3"></audio>
+      <audio id="sfx-pop-2" class="clip" data-start="1.91" data-duration="0.72" data-track-index="5" data-volume="0.5" src="assets/sfx/pop.mp3"></audio>
+      <audio id="sfx-pop-3" class="clip" data-start="2.41" data-duration="0.72" data-track-index="6" data-volume="0.55" src="assets/sfx/pop.mp3"></audio>
+      <audio id="sfx-morph" class="clip" data-start="4.17" data-duration="0.58" data-track-index="4" data-volume="0.45" src="assets/sfx/whoosh-short.mp3"></audio>
+      <audio id="sfx-send" class="clip" data-start="4.92" data-duration="0.37" data-track-index="5" data-volume="0.6" src="assets/sfx/click.mp3"></audio>
+      <audio id="sfx-chief" class="clip" data-start="8.78" data-duration="2.4" data-track-index="6" data-volume="0.28" src="assets/sfx/notification.mp3"></audio>
+      <audio id="sfx-mini-1" class="clip" data-start="9.25" data-duration="0.72" data-track-index="4" data-volume="0.35" src="assets/sfx/pop.mp3"></audio>
+      <audio id="sfx-mini-2" class="clip" data-start="9.95" data-duration="0.72" data-track-index="5" data-volume="0.32" src="assets/sfx/pop.mp3"></audio>
+      <audio id="sfx-mini-3" class="clip" data-start="10.65" data-duration="0.37" data-track-index="6" data-volume="0.4" src="assets/sfx/click-soft.mp3"></audio>
+      <audio id="sfx-rae" class="clip" data-start="13.46" data-duration="0.37" data-track-index="4" data-volume="0.55" src="assets/sfx/click-soft.mp3"></audio>
+      <audio id="sfx-lin" class="clip" data-start="15.16" data-duration="0.37" data-track-index="5" data-volume="0.5" src="assets/sfx/click-soft.mp3"></audio>
+      <audio id="sfx-peach" class="clip" data-start="16.46" data-duration="0.37" data-track-index="6" data-volume="0.45" src="assets/sfx/click.mp3"></audio>
+      <audio id="sfx-pull" class="clip" data-start="17.8" data-duration="0.58" data-track-index="4" data-volume="0.4" src="assets/sfx/whoosh.mp3"></audio>
+      <audio id="sfx-dive" class="clip" data-start="17.9" data-duration="5.5" data-track-index="5" data-volume="0.45" src="assets/sfx/whoosh-cinematic.mp3"></audio>
+      <audio id="sfx-mark" class="clip" data-start="21.96" data-duration="0.37" data-track-index="6" data-volume="0.55" src="assets/sfx/click-soft.mp3"></audio>
+      <audio id="sfx-flood" class="clip" data-start="25.17" data-duration="0.58" data-track-index="4" data-volume="0.45" src="assets/sfx/whoosh-short.mp3"></audio>
+      <audio id="sfx-crew-1" class="clip" data-start="25.92" data-duration="0.72" data-track-index="5" data-volume="0.4" src="assets/sfx/pop.mp3"></audio>
+      <audio id="sfx-crew-2" class="clip" data-start="26.42" data-duration="0.72" data-track-index="6" data-volume="0.35" src="assets/sfx/pop.mp3"></audio>
+      <audio id="sfx-crew-3" class="clip" data-start="26.92" data-duration="0.72" data-track-index="4" data-volume="0.4" src="assets/sfx/pop.mp3"></audio>
+      <audio id="sfx-mark-in" class="clip" data-start="27.26" data-duration="1.8" data-track-index="5" data-volume="0.4" src="assets/sfx/sparkle.mp3"></audio>
+    </div>
+
+    <script>
+      const vars = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+      const lang = vars.lang === "en" ? "en" : "zh";
+      document.documentElement.lang = lang === "en" ? "en" : "zh-CN";
+      document.querySelectorAll("[data-zh]").forEach((el) => { el.innerHTML = lang === "en" ? el.dataset.en : el.dataset.zh; });
+      document.querySelectorAll(lang === "en" ? ".lang-zh" : ".lang-en").forEach((el) => el.remove());
+      document.getElementById("sidebar").style.backgroundImage = `url(assets/img/screen-team-${lang}.webp)`;
+      document.getElementById("cam2").style.backgroundImage = `url(assets/img/screen-cloud-${lang}.webp)`;
+      const sfx = lang === "en" ? "-en" : "";
+      const nm = (id) => document.getElementById(id + sfx) || document.getElementById(id);
+
+      // the phrase "computer off" in the cloud screenshot, in screenshot pixels
+      const MARK = lang === "en" ? { x: 832, y: 292, w: 292 } : { x: 554, y: 292, w: 196 };
+      const Z = lang === "en" ? { s: 1.6, fx: 880 } : { s: 1.9, fx: MARK.x + MARK.w / 2 - 40 };
+      const marker = document.getElementById("marker");
+      Object.assign(marker.style, { left: MARK.x - 6 + "px", top: MARK.y + "px", width: MARK.w + 12 + "px" });
+
+      // camera helpers: put app point (fx, fy) at the frame centre at scale s
+      const cam = (s, fx, fy) => ({ scale: s, x: 960 - fx * s, y: 540 - fy * s });
+
+      const tl = gsap.timeline({ paused: true });
+
+      /* ---- 1. hook ---- */
+      tl.fromTo("#hw-1", { opacity: 0.35, filter: "blur(3px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.25, ease: "power3.out" }, 0);
+      tl.fromTo("#hw-2", { opacity: 0, filter: "blur(10px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.32, ease: "power3.out" }, 0.3);
+      tl.fromTo("#hook-user", { opacity: 0.4, scale: 0.85 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.6)" }, 0.05);
+      tl.fromTo("#hook-sub", { opacity: 0 }, { opacity: 1, duration: 0.3 }, 2.6);
+      [["#task-1", 1.5, -4], ["#task-2", 2.0, 3], ["#task-3", 2.5, -2]].forEach(([sel, at, r]) => {
+        tl.fromTo(sel, { opacity: 0, y: -260, rotation: r * 3, scale: 0.9 }, { opacity: 1, y: 0, rotation: r, scale: 1, duration: 0.55, ease: "back.out(1.5)" }, at);
+      });
+      // the pile weighs on the user
+      tl.to("#hook-user", { scaleY: 0.86, scaleX: 1.06, transformOrigin: "50% 100%", duration: 0.18, ease: "power2.out" }, 2.62);
+      tl.to("#hook-user", { scaleY: 1, scaleX: 1, duration: 0.5, ease: "elastic.out(1, 0.45)" }, 2.8);
+      tl.to(["#task-1", "#task-2", "#task-3"], { rotation: (i) => [2, -3, 4][i], duration: 0.12, ease: "sine.inOut", yoyo: true, repeat: 3 }, 3.4);
+
+      // the three jobs gather into one message: a black pill that becomes the bubble
+      const bub = document.getElementById("u-bubble");
+      const s2 = Math.min(1.75, 1640 / bub.offsetWidth);
+      const S2 = { s: s2, fx: Math.min(1808 - bub.offsetWidth / 2, 1920 - 960 / s2), fy: Math.max(262, 540 / s2) };
+      const pillTarget = () => {
+        // bubble rect in app coords at the S2 camera (1.75x on the bubble)
+        const w = bub.offsetWidth, h = bub.offsetHeight;
+        const s = S2.s, fx = S2.fx, fy = S2.fy;
+        const left = 1920 - 112 - w, top = 216;
+        return { x: 960 + (left - fx) * s, y: 540 + (top - fy) * s, w: w * s, h: h * s };
+      };
+      const P = pillTarget();
+      tl.to(["#task-1", "#task-2", "#task-3"], { x: (i) => [80, 60, 40][i], y: (i) => [-130, -20, 90][i], scale: 0.55, opacity: 0, rotation: 0, duration: 0.42, ease: "power3.in" }, 4.05);
+      tl.to(["#hook-title", "#hook-sub", "#hook-user"], { opacity: 0, filter: "blur(8px)", duration: 0.25, ease: "power2.in" }, 4.15);
+      Object.assign(document.getElementById("hook-pill").style, { width: P.w + "px", height: P.h + "px", borderRadius: 24 * S2.s + "px", transformOrigin: "50% 50%" });
+      tl.set("#hook-pill", { opacity: 1, x: 1300 - P.w / 2, y: 340, scaleX: 0.42, scaleY: 0.75 }, 4.33);
+      tl.to("#hook-pill", { x: P.x, y: P.y, scaleX: 1, scaleY: 1, duration: 0.38, ease: "power3.inOut" }, 4.33);
+
+      /* ---- 2. the message ---- */
+      tl.set("#cam", cam(S2.s, S2.fx, S2.fy), 0);
+      tl.set(["#mini-rae", "#mini-lin", "#mini-peach", "#r-chief", "#r-rae", "#r-lin", "#r-peach", "#u-time"], { opacity: 0 }, 0);
+      tl.fromTo("#app", { opacity: 0 }, { opacity: 1, duration: 0.18 }, 4.55);
+      tl.fromTo("#u-bubble span", { opacity: 0 }, { opacity: 1, duration: 0.25 }, 4.75);
+      tl.to("#u-time", { opacity: 1, duration: 0.2 }, 4.95);
+
+      /* ---- 3. Chief brings the team in ---- */
+      tl.to("#cam", { ...cam(1.4, 1172, 386), duration: 1.0, ease: "power2.inOut" }, 7.4);
+      tl.set("#chief-bubble", { opacity: 0 }, 0);
+      tl.fromTo("#r-chief", { opacity: 0 }, { opacity: 1, duration: 0.2 }, 8.2);
+      tl.fromTo("#typing i", { y: 0 }, { y: -6, duration: 0.18, ease: "sine.inOut", yoyo: true, repeat: 3, stagger: 0.09 }, 8.25);
+      tl.to("#typing", { opacity: 0, duration: 0.12 }, 8.9);
+      tl.fromTo("#chief-bubble", { opacity: 0, scale: 0.97, filter: "blur(6px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", transformOrigin: "0 0", duration: 0.3, ease: "expo.out" }, 8.92);
+      const names = [["rae", "#b45a06", 9.3], ["lin", "#5b33c9", 10.0], ["peach", "#c21d2b", 10.65]];
+      names.forEach(([who, color, at]) => {
+        tl.fromTo("#mini-" + who, { opacity: 0, scale: 0.2 }, { opacity: 1, scale: 1, duration: 0.45, ease: "back.out(2)" }, at);
+        tl.to(nm("nm-" + who), { color, fontWeight: 600, duration: 0.2 }, at);
+      });
+
+      /* ---- 4. the team replies ---- */
+      tl.to("#cam", { ...cam(1.45, 1050, 690 + (lang === "en" ? 30 : 0)), duration: 1.1, ease: "power2.inOut" }, 12.4);
+      [["#r-rae", 13.5], ["#r-lin", 15.2], ["#r-peach", 16.5]].forEach(([sel, at]) => {
+        tl.fromTo(sel, { opacity: 0, scale: 0.97, filter: "blur(6px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", transformOrigin: "0 0", duration: 0.32, ease: "expo.out" }, at);
+      });
+      // pull back: the whole window, the real result
+      tl.to("#cam", { ...cam(0.76, 960, 600), duration: 1.0, ease: "power3.inOut" }, 17.85);
+      // dive into the cloud icon in the sidebar
+      tl.to("#cam", { ...cam(2.8, 377, 1148), duration: 0.6, ease: "power3.in" }, 19.65);
+
+      /* ---- 5. the cloud ---- */
+      tl.fromTo("#cam2", { clipPath: "circle(0px at 960px 560px)" }, { clipPath: "circle(1400px at 960px 560px)", duration: 0.35, ease: "power2.in" }, 20.15);
+      tl.set("#cam2", cam(1.0, 960, 560), 0);
+      tl.set("#marker", { scaleX: 0 }, 0);
+      tl.to("#cam2", { ...cam(Z.s, Z.fx, MARK.y + 10), duration: 1.1, ease: "power2.inOut" }, 20.85);
+      tl.to("#marker", { scaleX: 1, duration: 0.5, ease: "power2.out" }, 21.95);
+
+      // the marker floods the frame
+      const mx = 960 + (MARK.x - 6 - Z.fx) * Z.s;
+      const my = 540 + (MARK.y - (MARK.y + 10)) * Z.s;
+      const mw = (MARK.w + 12) * Z.s, mh = 34 * Z.s;
+      tl.fromTo("#flood",
+        { clipPath: `inset(${my}px ${1920 - mx - mw}px ${1080 - my - mh}px ${mx}px round 12px)`, backgroundColor: "rgba(242,72,79,0.24)" },
+        { clipPath: "inset(0px 0px 0px 0px round 0px)", backgroundColor: "#f7f6f2", duration: 0.55, ease: "power3.inOut" }, 25.2);
+
+      /* ---- 6. end card ---- */
+      [["#crew-rae", 26.0], ["#crew-lin", 26.25], ["#crew-chief", 26.5], ["#crew-peach", 26.75], ["#crew-hal", 27.0]].forEach(([sel, at]) => {
+        tl.fromTo(sel, { opacity: 0, y: -340, scaleY: 1.15, scaleX: 0.9 }, { opacity: 1, y: 0, scaleY: 1, scaleX: 1, duration: 0.55, ease: "back.out(1.7)" }, at - 0.12);
+      });
+      tl.fromTo("#mark-icon", { opacity: 0, scale: 0.4, rotation: -12 }, { opacity: 1, scale: 1, rotation: 0, duration: 0.55, ease: "back.out(1.8)" }, 27.25);
+      tl.fromTo("#mark-word", { clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0% 0 0)", duration: 0.5, ease: "power3.out" }, 27.4);
+      tl.fromTo("#tagline", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.3, ease: "power2.out" }, 27.95);
+      tl.fromTo("#cta", { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 0.45, ease: "expo.out" }, 28.5);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

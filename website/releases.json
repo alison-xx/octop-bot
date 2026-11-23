@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "product": "octop-bot",
+  "releases": [
+    {
+      "version": "1.0.3-beta.7",
+      "channel": "beta",
+      "date": "2026-11-20",
+      "notes": {
+        "zh": [
+          "和 Chief 私聊创建 Bot 成员，再把他们加入同一个群聊，分工完成任务。",
+          "首次启动时可连接灵策智算账号、其他模型服务或本机模型。",
+          "用同一灵策账号在另一台电脑继续云端会话。云端定时任务在电脑关机后仍可执行。"
+        ],
+        "en": [
+          "Ask Chief to create bots in a direct message, then bring them into a group chat to work on a task together.",
+          "On first launch, connect your Lynxce account, another model provider, or a local model.",
+          "Resume cloud conversations on another computer with the same Lynxce account. Scheduled cloud tasks can run while your computer is off."
+        ]
+      },
+      "assets": [
+        {
+          "platform": "win32",
+          "arch": "x64",
+          "kind": "installer",
+          "name": "Octop-Bot-Setup-1.0.3-beta.7-x64.exe",
+          "size": 313034448,
+          "sha256": "a6aa7e0fce65ce55fd05d281b3c93e8a53bc6eed630d07410d3addcf82d3e88a"
+        },
+        {
+          "platform": "win32",
+          "arch": "x64",
+          "kind": "portable",
+          "name": "Octop-Bot-1.0.3-beta.7-x64.zip",
+          "size": 419201917,
+          "sha256": "f9ac51f6fa96cefdf20e6762f2a15686cd7b08ea56cea6f1f503e8cb9c115dd7"
+        },
+        {
+          "platform": "darwin",
+          "arch": "arm64",
+          "kind": "dmg",
+          "name": "Octop-Bot-1.0.3-beta.7-mac-arm64.dmg",
+          "size": 346971868,
+          "sha256": "a358c12641d6d1fed8932c126263e5fe7fecedb3f9f6e99901f65ceb5519d05a"
+        }
+      ]
+    }
+  ]
+}

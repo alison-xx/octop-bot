@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="zh-CN" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <script>(function(){var d=document.documentElement,t,l;d.classList.remove('no-js');try{t=localStorage.getItem('ob-theme');l=localStorage.getItem('ob-lang')}catch(e){}if(t==='light'||t==='dark')d.dataset.theme=t;if(l!=='zh'&&l!=='en')l=/^zh/i.test((navigator.languages&&navigator.languages[0])||navigator.language||'')?'zh':'en';d.dataset.lang=l;if(l==='en'){d.classList.add('i18n-wait');setTimeout(function(){d.classList.remove('i18n-wait')},1500)}setTimeout(function(){if(!d.dataset.ready)d.classList.add('no-js')},3000)})();</script>
+  <title data-en="Guide · Octop Bot">使用指南 · Octop Bot</title>
+  <meta name="description" content="四步上手 Octop Bot，以及关于团队分工、Goal、云端工作区和安装的常见问题。" data-en-content="Get started with Octop Bot in four steps, with answers about teams, Goals, the cloud workspace and installation.">
+  <meta name="theme-color" content="#f7f6f2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="使用指南 · Octop Bot">
+  <meta property="og:description" content="四步上手 Octop Bot，以及关于团队分工、Goal、云端工作区和安装的常见问题。">
+  <meta property="og:image" content="https://octop-bot.lynxce.cn/assets/art/team.webp">
+  <meta property="og:url" content="https://octop-bot.lynxce.cn/guide.html">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="https://octop-bot.lynxce.cn/guide.html">
+  <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="assets/site.css?v=11">
+  <script src="assets/site.js?v=9" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
+
+  <header class="header">
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="assets/app-icon.webp" alt="" width="30" height="30">Octop Bot</a>
+      <nav class="nav" aria-label="主导航" data-en-aria-label="Main">
+        <a href="index.html" data-en="Home">首页</a>
+        <a href="features.html" data-en="Features">功能</a>
+        <a href="download.html" data-en="Download">下载</a>
+        <a href="guide.html" aria-current="page" data-en="Guide">使用指南</a>
+        <a href="download.html#changelog" data-en="Changelog">更新日志</a>
+      </nav>
+      <div class="header-tools">
+        <div class="gh-stars"><a class="gh-star" href="https://github.com/alison-xx/octop-bot" title="github.com/alison-xx/octop-bot"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop Bot">Octop Bot</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="alison-xx/octop-bot">6</b></span></a><a class="gh-star upstream" href="https://github.com/TencentCloud/Octop" title="github.com/TencentCloud/Octop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop">Octop</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="TencentCloud/Octop">12.4k</b></span></a></div>
+        <button class="icon-btn lang-btn" type="button">EN</button>
+        <button class="icon-btn theme-btn" type="button" aria-label="外观"></button>
+        <a class="btn btn-primary btn-sm" href="download.html" data-en="Download">下载</a>
+        <button class="icon-btn menu-btn" type="button" aria-expanded="false" aria-controls="mobile-nav" aria-label="菜单" data-en-aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8h16M4 16h16"/></svg></button>
+      </div>
+    </div>
+    <nav class="mobile-nav" id="mobile-nav" aria-label="主导航" data-en-aria-label="Main">
+      <a href="index.html" data-en="Home">首页</a>
+      <a href="features.html" data-en="Features">功能</a>
+      <a href="download.html" data-en="Download">下载</a>
+      <a href="guide.html" aria-current="page" data-en="Guide">使用指南</a>
+      <a href="download.html#changelog" data-en="Changelog">更新日志</a>
+      <div class="gh-stars"><a class="gh-star" href="https://github.com/alison-xx/octop-bot" title="github.com/alison-xx/octop-bot"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop Bot">Octop Bot</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="alison-xx/octop-bot">6</b></span></a><a class="gh-star upstream" href="https://github.com/TencentCloud/Octop" title="github.com/TencentCloud/Octop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop">Octop</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="TencentCloud/Octop">12.4k</b></span></a></div>
+      <a class="btn btn-primary" href="download.html" data-en="Download Octop Bot">下载 Octop Bot</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="page-hero wrap">
+      <span class="eyebrow reveal" data-en="Guide">使用指南</span>
+      <h1 class="display reveal" style="--delay:.05s" data-en="Start with Chief.">从 Chief 开始。</h1>
+      <p class="lead reveal" style="--delay:.1s" data-en="Four steps from download to your first finished task, plus answers to the questions people ask most.">从下载到完成第一件事只要四步。常见问题也都整理在这里。</p>
+    </section>
+
+    <section class="wrap">
+      <div class="quick">
+        <div class="card reveal">
+          <span class="num">1</span>
+          <h3 class="h3" data-en="Install">安装客户端</h3>
+          <p data-en="Download the Windows or Mac version and install it.">下载 Windows 或 Mac 版本并安装。</p>
+          <a class="link" href="download.html" data-en="Download →">去下载 →</a>
+        </div>
+        <div class="card reveal" style="--delay:.05s">
+          <span class="num">2</span>
+          <h3 class="h3" data-en="Connect a model">连接模型</h3>
+          <p data-en="Choose Get started, then sign in to Lynxce, add an API key or choose a local model.">选择「开始使用」，登录灵策智算、填入 API Key 或选择本机模型。</p>
+        </div>
+        <div class="card reveal" style="--delay:.1s">
+          <span class="num">3</span>
+          <h3 class="h3" data-en="Talk to Chief">和 Chief 说第一句话</h3>
+          <p data-en="Open Chief in the directory and describe the result you want. Not sure? Pick an example.">在通讯录点开 Chief，说出你想要的结果。没想好就选一句示例。</p>
+        </div>
+        <div class="card reveal" style="--delay:.15s">
+          <span class="num">4</span>
+          <h3 class="h3" data-en="Let the team work">让团队接力</h3>
+          <p data-en="Chief creates the bots and the group. @ members, set a Goal and check the result.">Chief 建好成员和群聊。在群里 @ 成员、写下 Goal，最后验收结果。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="faq">
+      <div class="wrap" style="max-width:880px">
+        <div class="section-head reveal">
+          <span class="eyebrow" data-en="FAQ">常见问题</span>
+          <h2 class="h2" data-en="Questions, answered.">你可能想知道。</h2>
+        </div>
+        <div class="faq-tools reveal">
+          <label class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <span class="sr-only" data-en="Search questions">搜索问题</span>
+            <input id="faq-search" type="search" placeholder="搜索问题，例如：云端、Goal、安装" data-en-placeholder="Search, e.g. cloud, Goal, install" autocomplete="off">
+          </label>
+          <div class="filters" role="group" aria-label="问题分类" data-en-aria-label="Categories">
+            <button type="button" data-cat="all" aria-pressed="true" data-en="All">全部</button>
+            <button type="button" data-cat="start" aria-pressed="false" data-en="Getting started">上手</button>
+            <button type="button" data-cat="team" aria-pressed="false" data-en="Teams">团队</button>
+            <button type="button" data-cat="cloud" aria-pressed="false" data-en="Cloud">云端</button>
+            <button type="button" data-cat="install" aria-pressed="false" data-en="Install">安装</button>
+          </div>
+        </div>
+        <div class="faq reveal">
+          <details id="first-chat" data-cat="start">
+            <summary data-en="How do I start my first conversation?">怎样开始第一次对话？</summary>
+            <div class="answer"><p data-en="Open Octop Bot and choose Get started. After you connect a Lynxce account, another provider or a local model, open Chief in the directory. To let Chief build groups for you, pick a model that supports tool calling.">打开 Octop Bot 客户端，选择「开始使用」。连接灵策智算账号、其他云服务或本机模型后，在通讯录点开 Chief。要让 Chief 帮你建群，请选择支持工具调用的模型。</p></div>
+          </details>
+          <details id="roles" data-cat="team">
+            <summary data-en="How do I get different bots to split the work?">怎样让不同的 Bot 分工？</summary>
+            <div class="answer"><p data-en="Tell Chief which roles you need. It can look up existing members, create missing experts and open a group chat. In the group, @ a member or write the roles and acceptance criteria into a Goal.">告诉 Chief 你需要哪些角色。它可以查找已有成员、补建专家并创建群聊。在群里用 @ 指定成员，或在 Goal 中写下分工与验收条件。</p></div>
+          </details>
+          <details id="goal" data-cat="team">
+            <summary data-en="How do I write a Goal the team can be checked against?">怎样写一个能验收的群 Goal？</summary>
+            <div class="answer"><p data-en="Take a book-club recruitment post: in the Goal, the planner offers three angles, you pick one, and the writer delivers 80–120 words. The admin then checks who it is for, when it happens and how to sign up. Reopen the group later to review each member's replies and evidence by stage.">以读书会招募为例，在 Goal 中写下分工和验收条件：策划给三个角度，你选定后，写手交付一段 80–120 字的招募文案，管理员逐项核对面向谁、何时举行、如何报名。之后重开群聊，也能按阶段查看各成员的回复和依据。</p></div>
+          </details>
+          <details id="share" data-cat="team">
+            <summary data-en="How do bots share files but keep their own chats?">怎样共享资料，同时保留各自的私聊？</summary>
+            <div class="answer"><p data-en="Send shared material as a group attachment, or pick a file the group already has from the message box. Members work from the same files and write decisions into the group notes, while keeping their own chats and working folders.">把公共材料作为群附件发送，或在群输入框选择本群已有文件。成员能围绕同一份资料工作，把定下来的事情写进群笔记，同时保留各自的会话和工作目录。</p></div>
+          </details>
+          <details id="find" data-cat="start">
+            <summary data-en="How do I find something we decided earlier?">怎样找回上次定下来的事情？</summary>
+            <div class="answer"><p data-en="Press Ctrl+K to search the directory, switch to past chats, and type a title or keyword to reopen the conversation. In a chat, use Quote conversation to insert the exact words.">按 Ctrl+K 搜索通讯录，切到「历史私聊」，输入标题或消息关键词即可重开会话。在私聊中还可以用「引用对话」插入某段原话。</p></div>
+          </details>
+          <details id="offline" data-cat="cloud">
+            <summary data-en="Can bots keep working after I shut down?">关机之后，Bot 还能继续工作吗？</summary>
+            <div class="answer"><p data-en="Local tasks need Octop to keep running. For supported cloud tasks, sign in to the cloud workspace with your Lynxce account. Once the cloud has the task, it keeps going with your computer off, and you can continue on another device.">本机任务需要保持 Octop 服务运行。对于支持的云端任务，可用灵策账号登录「云端工作区」。云端接收任务后，关机也能继续处理，你可以在另一台设备打开会话续聊。</p></div>
+          </details>
+          <details id="bring-to-cloud" data-cat="cloud">
+            <summary data-en="What goes to the cloud when I bring a local chat there?">把本机私聊带到云端时，会带上什么？</summary>
+            <div class="answer"><p data-en="Before you import, you can preview up to 20 recent visible messages. Attachments, tool logs and reasoning stay on this computer. Sign in with the same Lynxce account on another device to continue the cloud conversation.">确认导入前，可以预览最近最多 20 条可见文字。附件、工具记录和思考过程留在本机。另一台设备登录同一灵策账号后，就能打开这段云端会话续聊。</p></div>
+          </details>
+          <details id="where" data-cat="cloud">
+            <summary data-en="Should a task run locally or in the cloud?">一件事该放在本机做，还是交给云端？</summary>
+            <div class="answer"><p data-en="Files, scripts or apps that only exist on this computer: use a local bot. Fixed-time work whose material can be read in the cloud, such as a morning briefing: use a scheduled cloud task. A chat you want to continue on another device: bring it to the cloud.">文件、脚本或应用只在这台电脑上：交给本机 Bot。有固定时间、材料也能在云端读取的工作（比如晨间简报）：交给云端定时任务。想在另一台设备接着聊：把当前私聊带到云端。</p><p data-en="When moving an existing schedule to the cloud, pause the local one first so it does not run twice.">迁移已有定时任务时，先暂停本机计划，避免重复执行。</p></div>
+          </details>
+          <details id="install" data-cat="install">
+            <summary data-en="Which version should I install?">怎样选择和安装客户端？</summary>
+            <div class="answer"><p data-en="On Windows x64, install with the EXE wizard, or extract the whole ZIP and double-click Octop Bot.exe inside, keeping the files next to it. On a Mac with Apple silicon, open the DMG, drag Octop Bot to Applications and launch it from there.">Windows x64 可以用 EXE 按向导安装，或完整解压 ZIP 后双击里面的 Octop Bot.exe，并保留同目录的资源文件。使用 Apple 芯片的 Mac 请打开 DMG，将 Octop Bot 拖到「应用程序」文件夹，再从那里启动。</p></div>
+          </details>
+          <details id="verify" data-cat="install">
+            <summary data-en="How do I check that a download is genuine?">怎样确认安装包没有被篡改？</summary>
+            <div class="answer"><p data-en="Every package on the download page lists its SHA-256 checksum, and each release has a SHA256SUMS.txt file. Compare it with the checksum of the file you downloaded.">下载页的每个安装包都列出了 SHA-256 校验值，每个版本也提供 SHA256SUMS.txt。把它和你下载文件的校验值比对即可。</p><p><a class="link" href="download.html#platforms-section" data-en="Open the download page →">打开下载页 →</a></p></div>
+          </details>
+          <details id="price" data-cat="start">
+            <summary data-en="Is Octop Bot free?">Octop Bot 收费吗？</summary>
+            <div class="answer"><p data-en="The app is free and open source under the MIT license. Model usage depends on the service you connect: Lynxce and other providers bill on their own terms, and local models cost nothing extra.">客户端免费，并以 MIT 协议开源。模型用量取决于你连接的服务：灵策智算和其他服务商按各自的规则计费，本机模型不额外收费。</p></div>
+          </details>
+        </div>
+        <p class="empty faq-empty" hidden data-en="No matching questions. Try another keyword, or ask on GitHub.">没有找到相关问题。换个关键词试试，或者到 GitHub 提问。</p>
+        <div class="card reveal" style="margin-top:40px;flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+          <div style="display:grid;gap:6px">
+            <h3 class="h3" data-en="Still stuck?">还有问题？</h3>
+            <p data-en="Read the full product guide, or open an issue with the steps to reproduce.">阅读完整产品指南，或带上复现步骤提交问题。</p>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <a class="btn btn-ghost" href="https://github.com/alison-xx/octop-bot/blob/main/docs/octop-bot.md" data-en="Full guide (Chinese)">完整指南</a>
+            <a class="btn btn-primary" href="https://github.com/alison-xx/octop-bot/issues" data-en="Report an issue">提交问题</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="index.html"><img src="assets/app-icon.webp" alt="" width="30" height="30">Octop Bot</a>
+          <p data-en="One sentence, a whole AI team. A free, open-source desktop app.">一句话，组建你的 AI 团队。免费开源的桌面客户端。</p>
+        </div>
+        <div>
+          <h4 data-en="Product">产品</h4>
+          <ul>
+            <li><a href="features.html" data-en="Features">功能</a></li>
+            <li><a href="download.html" data-en="Download">下载</a></li>
+            <li><a href="download.html#changelog" data-en="Changelog">更新日志</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 data-en="Resources">资源</h4>
+          <ul>
+            <li><a href="guide.html" data-en="Getting started">快速上手</a></li>
+            <li><a href="guide.html#faq" data-en="FAQ">常见问题</a></li>
+            <li><a href="https://github.com/alison-xx/octop-bot/blob/main/docs/octop-bot.md" data-en="Full guide (Chinese) ↗">完整文档 ↗</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 data-en="Community">社区</h4>
+          <ul>
+            <li><a href="https://github.com/alison-xx/octop-bot">GitHub ↗</a></li>
+            <li><a href="https://github.com/alison-xx/octop-bot/issues" data-en="Report an issue ↗">问题反馈 ↗</a></li>
+            <li><a href="https://lynxce.cn" data-en="Lynxce ↗">灵策智算 ↗</a></li>
+            <li><a href="https://octop.cloud/" data-en="Octop project ↗">Octop 项目 ↗</a></li>
+            <li><a href="https://github.com/TencentCloud/Octop" data-en="Octop on GitHub ↗">Octop · GitHub ↗</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© <span data-year>2026</span> Octop Bot · MIT License</span>
+        <span data-en="Made with care for small teams.">为小团队用心打造。</span>
+      </div>
+    </div>
+  </footer>
+
+  <dialog class="modal" id="film" aria-label="介绍片" data-en-aria-label="Product film">
+    <button class="modal-close" type="button" aria-label="关闭" data-en-aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <video controls playsinline preload="none"></video>
+  </dialog>
+  <dialog class="modal light" id="lightbox" aria-label="查看大图" data-en-aria-label="Enlarged screenshot">
+    <button class="modal-close" type="button" aria-label="关闭" data-en-aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <img alt="">
+  </dialog>
+</body>
+</html>

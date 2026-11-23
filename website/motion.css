@@ -1,0 +1,59 @@
+/* Draw only in response to the reader's scroll or an explicit interaction. */
+.reading-line {
+  position:absolute; inset:auto 0 -1px; height:2px; background:var(--coral);
+  transform:scaleX(0); transform-origin:left; pointer-events:none;
+}
+@supports (animation-timeline:scroll(root block)) {
+  .reading-line {
+    animation:read-page linear both;
+    animation-duration:auto;
+    animation-timeline:scroll(root block);
+  }
+  @keyframes read-page { from { transform:scaleX(0) } to { transform:scaleX(1) } }
+}
+
+@media (hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference) {
+  .motion-art img, .motion-art:hover img {
+    transform:translate(var(--art-x,0px),var(--art-y,0px));
+    transition:transform .28s cubic-bezier(.2,.7,.25,1);
+  }
+  .motion-art::before,.motion-art::after {
+    content:"";position:absolute;z-index:1;width:11px;aspect-ratio:1;
+    background:var(--coral);pointer-events:none;opacity:0;
+    clip-path:polygon(50% 0,61% 39%,100% 50%,61% 61%,50% 100%,39% 61%,0 50%,39% 39%);
+    transform:translate(calc(0px - var(--art-x,0px)),calc(0px - var(--art-y,0px))) scale(.65);
+    transition:opacity .24s,transform .32s ease-out;
+  }
+  .motion-art::before {top:24%;left:15%}
+  .motion-art::after {top:32%;right:7%;width:7px;background:#d9a947}
+  .motion-art.is-tracking::before,.motion-art.is-tracking::after {
+    opacity:.8;transform:translate(calc(0px - var(--art-x,0px)),calc(0px - var(--art-y,0px))) scale(1);
+  }
+}
+
+/* The relay light marks the current handoff beside the Next stage control. */
+#demo .progress {position:relative;gap:0;align-items:center;height:12px}
+#demo .progress i,#demo .progress i.active {
+  position:relative;width:24px;height:2px;border-radius:0;background:var(--line);
+}
+#demo .progress i::before {
+  content:"";position:absolute;left:0;top:50%;width:7px;height:7px;box-sizing:border-box;
+  transform:translateY(-50%);border-radius:50%;background:var(--panel);border:1px solid var(--line);
+}
+#demo .progress i.active::before {border-color:var(--coral);background:var(--coral)}
+#demo .progress i:last-child {width:7px;background:transparent}
+#demo .progress::after {
+  content:"";position:absolute;left:-3px;top:50%;width:13px;height:13px;box-sizing:border-box;
+  border-radius:50%;border:1px solid var(--accent);
+  transform:translate(var(--relay-x,0px),-50%);
+  transition:transform .32s cubic-bezier(.18,.74,.25,1);
+}
+#demo:has([data-stage="1"][aria-pressed="true"]) {--relay-x:24px}
+#demo:has([data-stage="2"][aria-pressed="true"]) {--relay-x:48px}
+@supports not selector(:has(*)) {
+  #demo .progress::after {display:none}
+}
+@media (prefers-reduced-motion:reduce) {
+  .reading-line {display:none}
+  #demo .progress::after {transition:none}
+}
