@@ -129,7 +129,10 @@ export async function probeServer(origin: string, fetchImpl: Fetch, timeoutMs = 
   );
   if (info === true) return { ok: true };
   if (info === null) return { ok: false, reason: "unreachable" };
-  const legacy = await attempt("/api/setup/status", (body) => typeof body === "object" && body !== null);
+  const legacy = await attempt(
+    "/api/setup/status",
+    (body) => typeof (body as { setup_required?: unknown } | null)?.setup_required === "boolean",
+  );
   if (legacy === true) return { ok: true };
   return { ok: false, reason: legacy === null ? "unreachable" : "not-octop" };
 }

@@ -830,7 +830,8 @@
       "interpreter_missing": "未找到 {runtime} 解释器，无法执行脚本。",
       "timeout": "脚本执行超过 {seconds} 秒。",
       "failed": "脚本失败（退出码 {code}）：{detail}",
-      "unreadable": "无法读取工作区脚本 {path}。"
+      "unreadable": "无法读取工作区脚本 {path}。",
+      "needs_cloud_computer": "这个 Bot 还没有云电脑，无法运行脚本。"
     }
   },
   "agents": {

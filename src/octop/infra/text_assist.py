@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any, Literal, get_args
 
 from octop.i18n import tr
@@ -40,14 +42,44 @@ _FORM_KINDS: frozenset[str] = ASSIST_KINDS - _TEXT_KINDS
 _TIMEOUT_SECONDS = 30.0
 
 
-def require_host_models(server: Any) -> Any:
-    """Return the process-level model factory, or raise when runtime is down."""
-    runtime = getattr(server, "app_runtime", None)
-    registry = getattr(runtime, "agent_registry", None)
-    models = getattr(registry, "host_models", None)
-    if models is None:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, "runtime unavailable")
-    return models
+def server_agent_registry(server: Any) -> Any:
+    """The server's agent registry, or ``None`` while the runtime is down."""
+    return getattr(getattr(server, "app_runtime", None), "agent_registry", None)
+
+
+@asynccontextmanager
+async def assist_models(
+    registry: Any, user_id: int, default_model: str | None = None
+) -> AsyncIterator[tuple[Any, str | None]]:
+    """The models and model ref a one-shot assist call for ``user_id`` runs on.
+
+    A cloud tenant (``OCTOP_BOT_CLOUD``, non-admin) never reaches the operator's shared
+    providers: the call uses the tenant's own Lynxce key and chat model, billed to their
+    wallet, whatever ``default_model`` asks for. Everyone else gets the host models.
+    Raises when the runtime (``registry``) is down.
+    """
+    from octop.infra.desktop import bot_cloud_enabled  # noqa: PLC0415
+
+    tenant = (
+        await asyncio.to_thread(registry.cloud_tenant_model, user_id)
+        if registry is not None and bot_cloud_enabled()
+        else None
+    )
+    if tenant is None:
+        models = getattr(registry, "host_models", None)
+        if models is None:
+            raise OctopError(ErrorCode.INTERNAL_ERROR, "runtime unavailable")
+        yield models, default_model
+        return
+    from octop.infra.agents.providers import HostModelFactory  # noqa: PLC0415
+
+    provider, model_ref = tenant
+    factory = HostModelFactory()
+    factory.sync([provider])
+    try:
+        yield factory, model_ref
+    finally:
+        factory.close()
 
 
 def _context_name(context: dict[str, Any] | None) -> str:
@@ -134,4 +166,10 @@ async def run_text_assist(
     return polished
 
 
-__all__ = ["ASSIST_KINDS", "AssistKind", "require_host_models", "run_text_assist"]
+__all__ = [
+    "ASSIST_KINDS",
+    "AssistKind",
+    "assist_models",
+    "run_text_assist",
+    "server_agent_registry",
+]

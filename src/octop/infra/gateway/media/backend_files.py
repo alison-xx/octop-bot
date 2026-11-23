@@ -200,16 +200,21 @@ async def resolve_dashboard_media_url(
     *,
     filename: str = "",
     mime: str = "",
+    host_files: bool = True,
 ) -> str:
     """Import external files when needed; preview URL keeps the original path shape."""
     media_agent = resolve_media_agent_id(agent_id, raw_url)
     raw = raw_url.strip()
     if raw.startswith("file://"):
-        await ensure_workspace_media_path(workspace, raw, filename=filename, mime=mime)
+        await ensure_workspace_media_path(
+            workspace, raw, filename=filename, mime=mime, host_files=host_files
+        )
         return media_preview_url(media_agent, raw, mime)
     if raw.startswith("/"):
         file_url = f"file://{raw}"
-        await ensure_workspace_media_path(workspace, file_url, filename=filename, mime=mime)
+        await ensure_workspace_media_path(
+            workspace, file_url, filename=filename, mime=mime, host_files=host_files
+        )
         return media_preview_url(media_agent, file_url, mime)
     return media_preview_url(media_agent, raw, mime)
 
@@ -225,7 +230,14 @@ def is_previewable_mime(mime: str) -> bool:
     return is_preview_media_type(mime)
 
 
-def _abs_path_allowed(abs_path: str, *, workspace: Path) -> bool:
+def _abs_path_allowed(abs_path: str, *, workspace: Path, host_files: bool = True) -> bool:
+    """Host absolute paths a media read may open: OS temp, this workspace, browser screenshots.
+
+    ``host_files=False`` (a cloud tenant's agent) allows none: temp and the screenshot
+    directory are shared by every account on the server.
+    """
+    if not host_files:
+        return False
     try:
         resolved = Path(abs_path).resolve()
     except (OSError, ValueError):
@@ -370,6 +382,7 @@ async def resolve_preview_payload(
     source: str,
     workspace: BackendWorkspace,
     mime_hint: str = "",
+    host_files: bool = True,
 ) -> tuple[bytes, str] | None:
     """Return ``(bytes, mime)`` for an allowed image/video preview source.
 
@@ -392,7 +405,7 @@ async def resolve_preview_payload(
                 return data, mime
 
     if _is_host_absolute(path):
-        if not _abs_path_allowed(path, workspace=workspace.workspace_dir):
+        if not _abs_path_allowed(path, workspace=workspace.workspace_dir, host_files=host_files):
             return None
         data = await _download_via_workspace(workspace, path)
         if data is None:
@@ -417,6 +430,7 @@ async def read_file_url_bytes(
     *,
     filename: str = "",
     mime: str = "",
+    host_files: bool = True,
 ) -> bytes | None:
     """Read bytes for a ``file://`` URL (workspace, import, or host fallback)."""
     path = backend_workspace_path(file_url)
@@ -429,18 +443,21 @@ async def read_file_url_bytes(
         if data is not None:
             return data
 
-    if _is_host_absolute(path) and not _abs_path_allowed(path, workspace=workspace.workspace_dir):
+    allowed = _abs_path_allowed(path, workspace=workspace.workspace_dir, host_files=host_files)
+    if _is_host_absolute(path) and not allowed:
         return None
 
     data = await _download_via_workspace(workspace, path)
     if data is not None:
         return data
 
-    imported = await ensure_workspace_media_path(workspace, file_url, filename=filename, mime=mime)
+    imported = await ensure_workspace_media_path(
+        workspace, file_url, filename=filename, mime=mime, host_files=host_files
+    )
     if imported:
         return await _download_via_workspace(workspace, imported)
 
-    if _is_host_absolute(path) and _abs_path_allowed(path, workspace=workspace.workspace_dir):
+    if _is_host_absolute(path) and allowed:
         return await _read_host_file_bytes(path)
     return None
 
@@ -459,6 +476,7 @@ async def ensure_workspace_media_path(
     *,
     filename: str = "",
     mime: str = "",
+    host_files: bool = True,
 ) -> str | None:
     """Resolve or import a ``file://`` URL into the agent workspace (``outbound/``)."""
     abs_path = backend_workspace_path(file_url)
@@ -490,7 +508,7 @@ async def ensure_workspace_media_path(
     if not _is_host_absolute(abs_path):
         return existing
 
-    if not _abs_path_allowed(abs_path, workspace=workspace.workspace_dir):
+    if not _abs_path_allowed(abs_path, workspace=workspace.workspace_dir, host_files=host_files):
         return None
 
     dest = _outbound_dest_rel(filename=filename, abs_path=abs_path, mime=mime)

@@ -499,6 +499,12 @@ async def open_code_session(target: str, code: str) -> CloudSession:
     return await _code_login(target, code)
 
 
+async def discard_session(session: CloudSession) -> None:
+    """Close a sign-in that will not be kept (best effort), so it does not stay open upstream."""
+    with suppress(_UpstreamFailure):
+        await _send("POST", "/api/auth/logout", bearer=session.access_token, json={})
+
+
 async def keep_session(services: SharedServices, user_id: int, session: CloudSession) -> None:
     """Store a fresh sign-in for this tenant, replacing (and closing) the previous one."""
     async with _lock(services, user_id):
@@ -567,6 +573,21 @@ async def tenant_call(
                 )
             except _UpstreamFailure as again:
                 raise _rejected(again.status) from None
+
+
+async def model_key_rejected(secret: str) -> bool:
+    """Whether Lynxce's open gateway refuses this personal API key (revoked or expired).
+
+    Only a 401/403 counts; an unreachable gateway or any other reply keeps the key.
+    """
+    try:
+        async with _client() as client:
+            response = await client.get(
+                _ORIGIN + "/api/v1/models", headers={"Authorization": f"Bearer {secret}"}
+            )
+    except httpx.HTTPError:
+        return False
+    return response.status_code in {401, 403}
 
 
 async def create_model_key(services: SharedServices, user_id: int, body: dict[str, Any]) -> Any:

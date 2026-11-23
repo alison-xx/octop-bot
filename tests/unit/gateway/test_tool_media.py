@@ -895,6 +895,7 @@ async def test_project_stream_sends_only_this_turn_relative_image() -> None:
         manager = SimpleNamespace(
             stream=_stream,
             get_agent=lambda _agent_id: SimpleNamespace(workspace=workspace),
+            host_files_allowed=lambda _agent_id: True,
         )
         events = [event async for event in project_stream(manager, "agent-1", {})]
         images = [
@@ -940,6 +941,7 @@ async def test_project_stream_drops_media_when_tool_call_has_no_id() -> None:
         manager = SimpleNamespace(
             stream=_stream,
             get_agent=lambda _agent_id: SimpleNamespace(workspace=workspace),
+            host_files_allowed=lambda _agent_id: True,
         )
         events = [event async for event in project_stream(manager, "agent-1", {})]
         images = [
