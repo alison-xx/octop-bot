@@ -9,6 +9,7 @@ export interface CloudAccount {
   connected: boolean;
   account_id: string | null;
   display_name: string | null;
+  avatar_url?: string | null;
 }
 export interface CloudCapabilities {
   enabled: boolean;
@@ -103,6 +104,11 @@ export const botCloudApi = {
     request<CloudAccount>(
       root + "/account",
       json("POST", { account, password }),
+    ),
+  loginWorkbuddy: (handoffCode: string) =>
+    request<CloudAccount>(
+      root + "/account/workbuddy",
+      json("POST", { handoff_code: handoffCode }),
     ),
   logout: (accountId: string) =>
     request<void>(

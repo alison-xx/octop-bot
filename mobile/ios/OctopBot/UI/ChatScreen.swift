@@ -5,6 +5,7 @@ import SwiftUI
 struct ChatScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var sizeClass
     let chat: ChatSession
     @State private var showHistory = false
     @State private var showVoice = false
@@ -46,10 +47,13 @@ struct ChatScreen: View {
 
     private var topBar: some View {
         HStack(spacing: 4) {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left").font(.title3.weight(.semibold)).frame(width: 44, height: 44)
+            // Side by side with the directory (iPad, an unfolded iPhone Duo) there is nothing to go back to.
+            if sizeClass != .regular {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left").font(.title3.weight(.semibold)).frame(width: 44, height: 44)
+                }
+                .accessibilityLabel(Text("common.back"))
             }
-            .accessibilityLabel(Text("common.back"))
             Spacer(minLength: 0)
             Button { if model.canEdit(chat.bot) { editing = true } } label: {
                 HStack(spacing: 8) {

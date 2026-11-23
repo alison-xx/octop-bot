@@ -52,6 +52,10 @@
     "accountRequired": "Enter your Lynxce account",
     "passwordRequired": "Enter your password",
     "signIn": "Sign in to cloud workspace",
+    "workbuddySignIn": "Sign in with WorkBuddy",
+    "workbuddyHint": "WorkBuddy sign-in uses a separate Lynxce account, not the one you sign in to with a password.",
+    "workbuddyDenied": "Authorization was declined in WorkBuddy, so you are not signed in.",
+    "workbuddyFailed": "WorkBuddy sign-in did not finish. Try again.",
     "signOut": "Sign out of the cloud on this device",
     "chats": "Cloud chats",
     "newChat": "New cloud chat",
@@ -322,7 +326,10 @@
     "planPrompt": "Help me turn an idea into an actionable plan. Ask me the three most important questions first.",
     "planLabel": "Explore an idea",
     "menu": {
-      "settings": "Settings"
+      "settings": "Settings",
+      "settingsHint": "Models, appearance, language, notifications",
+      "capabilitiesHint": "Skills, connectors, knowledge and more",
+      "cloudHint": "Tasks that keep running with your computer off"
     },
     "nav": {
       "general": "General",
@@ -368,6 +375,8 @@
       "skipped": "Skipped"
     },
     "thinking": "Thinking",
+    "share": "Share",
+    "moreUnreads": "More unreads",
     "avatar": {
       "title": "Bot avatar",
       "characters": "Characters",

@@ -1,0 +1,215 @@
+// Question card in the Bot conversation flow. Neutral greys only: the
+// selected tile and the primary pill use the outgoing-bubble ink, which
+// inverts in dark mode.
+.card {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: min(94%, 680px);
+  margin: 2px 0 13px;
+  padding: 18px 12px 12px;
+  border: 1px solid var(--bot-line, var(--fn-border-secondary));
+  border-radius: 24px;
+  background: var(--bot-card, var(--fn-bg-elevated));
+  color: var(--bot-ink, var(--fn-text-primary));
+}
+
+.title {
+  margin: 0 8px 10px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+.titleDone {
+  font-weight: 500;
+  color: var(--bot-muted, var(--fn-text-secondary));
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row,
+.answer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+}
+.row {
+  cursor: pointer;
+  transition: background 0.12s ease;
+  &:hover {
+    background: var(--bot-incoming, var(--fn-bg-secondary));
+  }
+  &:focus-visible {
+    outline: 2px solid var(--bot-outgoing, var(--fn-text-primary));
+    outline-offset: -2px;
+  }
+}
+.rowOn {
+  background: var(--bot-incoming, var(--fn-bg-secondary));
+  font-weight: 500;
+  cursor: text;
+}
+.check {
+  flex: none;
+  margin-inline-start: auto;
+  color: var(--bot-ink, var(--fn-text-primary));
+}
+button.rowOn {
+  cursor: pointer;
+}
+
+.tile {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--bot-line, var(--fn-border-secondary));
+  border-radius: 8px;
+  background: var(--bot-incoming, var(--fn-bg-secondary));
+  color: var(--bot-muted, var(--fn-text-secondary));
+  font-size: 12px;
+  font-weight: 500;
+}
+.tileOn {
+  border-color: transparent;
+  background: var(--bot-outgoing, #191919);
+  color: var(--bot-outgoing-ink, #fff);
+}
+// Inside a grey row the idle tile needs a lighter face to stay visible.
+.row:hover .tile:not(.tileOn) {
+  background: var(--bot-card, var(--fn-bg-elevated));
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.desc {
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--bot-muted, var(--fn-text-tertiary));
+}
+.placeholder {
+  color: var(--bot-muted, var(--fn-text-tertiary));
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  &::placeholder {
+    color: var(--bot-muted, var(--fn-text-tertiary));
+  }
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-left: 10px;
+}
+.dots {
+  display: inline-flex;
+  gap: 6px;
+  margin-right: auto;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bot-muted, #7f7f7f) 35%, transparent);
+}
+.dotOn {
+  background: var(--bot-muted, var(--fn-text-tertiary));
+}
+
+.actions {
+  display: inline-flex;
+  gap: 8px;
+}
+.pill {
+  min-width: 64px;
+  height: 40px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bot-incoming, var(--fn-bg-secondary));
+  color: var(--bot-ink, var(--fn-text-primary));
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    opacity 0.12s ease;
+  &:hover:not(:disabled) {
+    background: var(--bot-hover, var(--fn-bg-hover));
+  }
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--bot-outgoing, var(--fn-text-primary));
+    outline-offset: 2px;
+  }
+  &:disabled {
+    cursor: default;
+    color: var(--bot-muted, var(--fn-text-tertiary));
+    opacity: 0.6;
+  }
+}
+.primary {
+  background: var(--bot-outgoing, #191919);
+  color: var(--bot-outgoing-ink, #fff);
+  &:hover:not(:disabled) {
+    background: color-mix(
+      in srgb,
+      var(--bot-outgoing, #191919) 86%,
+      var(--bot-outgoing-ink, #fff)
+    );
+  }
+}
+
+@media (max-width: 520px) {
+  .card {
+    max-width: 100%;
+  }
+  .pill {
+    min-width: 0;
+    padding: 0 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .row,
+  .pill {
+    transition: none;
+  }
+}

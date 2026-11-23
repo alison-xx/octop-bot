@@ -101,6 +101,14 @@ export interface OctopDesktopBridge {
   setUnreadBadge?: (count: number) => void;
   /** Target of a clicked notification. */
   onNotificationOpen?: (callback: (target: string) => void) => () => void;
+  /**
+   * WorkBuddy sign-in window. Resolves with Lynxce's one-time hand-off code,
+   * which the page exchanges for a Lynxce session. Absent on older shells.
+   */
+  workbuddyLogin?: () => Promise<
+    | { ok: true; code: string }
+    | { ok: false; reason: "cancelled" | "denied" | "failed" }
+  >;
   session?: DesktopSessionBridge;
   /**
    * Where to dial WebSockets (§5.2). Absent on an older shell, and null when the
