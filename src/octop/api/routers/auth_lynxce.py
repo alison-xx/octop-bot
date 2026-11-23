@@ -222,13 +222,14 @@ async def _opened[T](request: Request, opener: Callable[[], Awaitable[T]]) -> T:
 async def _cloud_sign_in(
     server: Any,
     request: Request,
-    _requested_locale: str | None,
+    requested_locale: str | None,
     opener: Callable[[], Awaitable[lynxce_cloud.CloudSession]],
 ) -> dict[str, Any]:
     """Cloud mode: any Lynxce account signs in to (and on first use, gets) its own account."""
     require_database(server)
     session = await _opened(request, opener)
-    user = await cloud_accounts.provision(server.services, server.user_manager, session)
+    locale = normalize_locale(requested_locale or resolve_request_locale(request))
+    user = await cloud_accounts.provision(server.services, server.user_manager, session, locale)
     # Tells clients this server also keeps the Lynxce wallet for the account.
     return {**_issue(server, user, "auth.lynxce_cloud_login"), "cloud": True}
 

@@ -101,14 +101,26 @@ async def ensure_model_key(services: SharedServices, user_id: int) -> ModelKey:
 
 
 async def provision(
-    services: SharedServices, users: UserManager, session: lynxce_cloud.CloudSession
+    services: SharedServices,
+    users: UserManager,
+    session: lynxce_cloud.CloudSession,
+    locale: str | None = None,
 ) -> User:
-    """Find or create the tenant for this Lynxce account and keep its session and model key."""
+    """Find or create the tenant for this Lynxce account and keep its session and model key.
+
+    A new tenant starts in ``locale`` (the sign-in's language); an existing one keeps theirs.
+    """
     provider_id = await asyncio.to_thread(_provider_id, services)
+    existing = await asyncio.to_thread(
+        services.user_repo.get_by_sso, provider_id, session.account_id
+    )
     claims: dict[str, Any] = {"name": session.display_name or ""}
     user = await users.resolve_or_create_sso_user(
         provider_id=provider_id, subject=session.account_id, claims=claims
     )
+    if existing is None and locale:
+        await asyncio.to_thread(services.user_repo.set_locale, user.id, locale)
+        user.locale = locale
     await lynxce_cloud.keep_session(services, user.id, session)
     await ensure_model_key(services, user.id)
     return user

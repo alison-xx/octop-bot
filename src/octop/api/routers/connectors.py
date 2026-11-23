@@ -778,6 +778,7 @@ async def patch_custom_mcp_server(
 async def test_custom_mcp(
     body: CustomMcpTestBody,
     user: Any = Depends(require_permission("connector_custom")),
+    _host: Any = Depends(no_cloud_tenant),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Probe connectivity for one custom MCP server (saved name or inline spec)."""

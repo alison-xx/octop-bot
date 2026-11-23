@@ -41,7 +41,8 @@ BACKEND_POLICY_TYPES: tuple[str, ...] = (
     "opensandbox",
 )
 _BACKEND_POLICY_TYPE_SET = frozenset(BACKEND_POLICY_TYPES)
-_POLICY_TYPE_ALIASES = {"shell": "local_shell"}
+# ``bot_cloud`` (Octop Bot cloud) is an S3-compatible object store under the hood.
+_POLICY_TYPE_ALIASES = {"shell": "local_shell", "bot_cloud": "s3"}
 
 
 def active_policy_value(row: Any) -> str | None:
