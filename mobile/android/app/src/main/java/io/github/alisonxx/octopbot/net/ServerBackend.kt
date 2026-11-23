@@ -280,7 +280,9 @@ class ServerBackend(
         val parsed = (session.baseUrl + uri).toHttpUrl()
         val query = (0 until parsed.querySize).associate { parsed.queryParameterName(it) to parsed.queryParameterValue(it).orEmpty() }
         val link = json("POST", parsed.encodedPath + "-link", query).asObject()?.str("url")
-        return link?.takeIf { it.startsWith("https://") } ?: throw ApiException.badResponse()
+        // https, or plain http only when this server is itself http (no downgrade).
+        return link?.takeIf { it.startsWith("https://") || it.startsWith(parsed.scheme + "://") }
+            ?: throw ApiException.badResponse()
     }
 
     /** A file's size from `HEAD` on its download URL; null when unknown (older servers answer 405). */

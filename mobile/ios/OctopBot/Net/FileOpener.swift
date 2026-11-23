@@ -22,7 +22,9 @@ extension ServerBackend {
     func downloadLink(for url: URL) async throws -> URL {
         let (path, query) = Self.parts(url)
         let body = try await json(.post, path + "-link", query: query) as? [String: Any]
-        guard let link = (body?["url"] as? String).flatMap(URL.init(string:)), link.scheme == "https" else {
+        // https, or plain http only when this server is itself http (no downgrade).
+        guard let link = (body?["url"] as? String).flatMap(URL.init(string:)),
+              link.scheme == "https" || link.scheme == session.baseURL.scheme else {
             throw APIError(kind: .server, status: 502, message: nil)
         }
         return link
@@ -166,6 +168,9 @@ enum FileOpener {
             return try await AttachmentStore.shared.localFile(file, on: server)
         } catch {
             Haptics.error()
+            let alert = UIAlertController(title: L("file.openFailed"), message: error.localizedDescription, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: L("common.done"), style: .default))
+            present(alert)
             return nil
         }
     }
