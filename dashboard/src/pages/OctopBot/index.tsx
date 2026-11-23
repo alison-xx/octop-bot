@@ -68,6 +68,7 @@ import GroupRoom from "./GroupRoom";
 import AccountMenu from "./AccountMenu";
 import RetainedFolders from "./RetainedFolders";
 import DeleteBotDialog from "./DeleteBotDialog";
+import DeleteGroupDialog from "./DeleteGroupDialog";
 import SectionEditor, {
   moveEntries,
   type SectionAction,
@@ -109,6 +110,9 @@ export default function OctopBotPage() {
   const mobile = useIsMobile();
   const [workspace, setWorkspace] = useState<BotWorkspace | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<WorkspaceBot | null>(null);
+  const [deleteGroupTarget, setDeleteGroupTarget] = useState<BotGroup | null>(
+    null,
+  );
   const [error, setError] = useState("");
   const [showList, setShowList] = useState(false);
   const { collapsed, toggle } = useListPanelCollapsed(
@@ -653,6 +657,11 @@ export default function OctopBotPage() {
     if (key === "deleteBot" && item.bot) {
       setShowList(false);
       setDeleteTarget(item.bot);
+      return;
+    }
+    if (key === "deleteGroup" && item.group) {
+      setShowList(false);
+      setDeleteGroupTarget(item.group);
       return;
     }
     if (key === "create") {
@@ -1316,6 +1325,30 @@ export default function OctopBotPage() {
             );
             if (deleteTarget.is_private) setDialog("retained");
             void refreshAgents({ silent: true, force: true });
+            void refresh();
+          }}
+        />
+      )}
+      {deleteGroupTarget && (
+        <DeleteGroupDialog
+          group={deleteGroupTarget}
+          onClose={() => setDeleteGroupTarget(null)}
+          onDeleted={() => {
+            setDeleteGroupTarget(null);
+            if (deleteGroupTarget.group_id === groupId) {
+              jump(
+                BOT_HOME + "/bots/" + encodeURIComponent(workspace.chief_id),
+              );
+            }
+            setWorkspace(
+              (current) =>
+                current && {
+                  ...current,
+                  groups: current.groups.filter(
+                    (group) => group.group_id !== deleteGroupTarget.group_id,
+                  ),
+                },
+            );
             void refresh();
           }}
         />
