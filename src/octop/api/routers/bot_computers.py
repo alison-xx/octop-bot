@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
 from octop.infra.cloud.computers.manager import computer_manager
+from octop.infra.cloud.computers.rfb import RfbClientFilter
 from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
@@ -25,6 +26,11 @@ router = APIRouter(prefix="/computers")
 session_router = APIRouter(prefix="/screen-sessions")
 
 SCREEN_TICKET_SECONDS = 60
+# An open screen keeps its computer awake for this long after it opened or after the user's
+# last input, so a tab forgotten in the background cannot spend credits forever.
+SCREEN_KEEP_AWAKE_SECONDS = 30 * 60
+# How often the relay rechecks whether the user has taken over (and may send input).
+TAKEOVER_CHECK_SECONDS = 1.0
 # A screen session lives while its screen is open (the relay refreshes it) and a little after.
 SCREEN_SESSION_IDLE_SECONDS = 120
 MAX_PASTE_CHARS = 20_000
@@ -227,6 +233,18 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
     import websockets  # noqa: PLC0415
     from websockets.typing import Subprotocol  # noqa: PLC0415
 
+    gate = RfbClientFilter()
+    opened = last_input = time.monotonic()
+    control = {"allowed": False, "checked": float("-inf")}
+
+    async def input_allowed() -> bool:
+        # View-only is a client setting; the relay itself holds input back until takeover.
+        now = time.monotonic()
+        if now - control["checked"] >= TAKEOVER_CHECK_SECONDS:
+            control["allowed"] = await asyncio.to_thread(manager.taken_over, agent_id, user_id)
+            control["checked"] = now
+        return bool(control["allowed"])
+
     try:
         url, headers = await asyncio.to_thread(manager.screen, agent_id, user_id)
         async with websockets.connect(
@@ -241,16 +259,27 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
                         await websocket.send_text(frame)
 
             async def up() -> None:
+                nonlocal last_input
                 while True:
                     message = await websocket.receive()
                     if message["type"] == "websocket.disconnect":
                         return
                     data = message.get("bytes")
-                    await upstream.send(data if data is not None else message.get("text") or "")
+                    if data is None:
+                        continue  # noVNC speaks binary only
+                    allowed = await input_allowed()
+                    forward, saw_input = gate.feed(data, allow_input=allowed)
+                    if saw_input and allowed:
+                        last_input = time.monotonic()
+                    if forward:
+                        await upstream.send(forward)
 
             async def keep_alive() -> None:
                 while True:
                     await asyncio.sleep(30)
+                    awake_since = max(opened, last_input)
+                    if time.monotonic() - awake_since >= SCREEN_KEEP_AWAKE_SECONDS:
+                        continue  # still shown, but no longer keeps the computer running
                     _refresh_sessions(agent_id, user_id)
                     await asyncio.to_thread(manager.viewing, agent_id, user_id)
 
@@ -261,5 +290,9 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
     except Exception:  # noqa: BLE001 - the viewer just closes
         logger.warning("screen relay for %s ended with an error", agent_id, exc_info=True)
     finally:
+        # Leaving the screen (closed tab, lost network, crash) hands the computer back.
+        with contextlib.suppress(Exception):
+            if await asyncio.to_thread(manager.taken_over, agent_id, user_id):
+                await asyncio.to_thread(manager.set_takeover, agent_id, user_id, False)
         with contextlib.suppress(Exception):
             await websocket.close()
