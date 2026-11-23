@@ -44,7 +44,7 @@ object ServerProtocol {
     }
 
     /** A Bot's cloud computer on Octop Bot cloud (`/api/octop-bot/computers/{id}`). */
-    data class ComputerStatus(val state: State, val runningSinceMillis: Long?) {
+    data class ComputerStatus(val state: State, val runningSinceMillis: Long?, val takeover: Boolean = false) {
         enum class State { None, Running, Paused }
     }
 
@@ -56,7 +56,17 @@ object ServerProtocol {
             "paused" -> ComputerStatus.State.Paused
             else -> return null
         }
-        return ComputerStatus(state, obj.double("running_since")?.let { (it * 1000).toLong() })
+        return ComputerStatus(state, obj.double("running_since")?.let { (it * 1000).toLong() }, obj.bool("takeover") == true)
+    }
+
+    /** The server's screen page for a Bot's computer, opened in the browser with a one-time ticket. */
+    fun screenPage(baseUrl: String, botId: String, wsPath: String, control: Boolean): String? {
+        val ticket = (baseUrl.trimEnd('/') + wsPath).toHttpUrlOrNull()?.queryParameter("ticket") ?: return null
+        return (baseUrl.trimEnd('/') + "/octop-bot/screen/").toHttpUrlOrNull()?.newBuilder()
+            ?.addPathSegment(botId)
+            ?.addQueryParameter("ticket", ticket)
+            ?.addQueryParameter("control", if (control) "1" else "0")
+            ?.build()?.toString()
     }
 
     /** `/api/agents/{id}/workspace/download?path=…`, the link Octop puts in a reply for a file. */

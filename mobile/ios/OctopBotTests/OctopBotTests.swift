@@ -585,3 +585,13 @@ final class ComputerTests: XCTestCase {
         XCTAssertThrowsError(try ServerBackend.ComputerStatus.parse(["state": "melted"]))
     }
 }
+
+@MainActor
+final class ScreenTests: XCTestCase {
+    func testScreenPageCarriesTheTicketAndControl() {
+        let url = ServerBackend.screenPage(base: URL(string: "https://bot.lynxce.cn")!, agentId: "AbC123", ticket: "t-1", control: true)
+        XCTAssertEqual(url.absoluteString, "https://bot.lynxce.cn/octop-bot/screen/AbC123?ticket=t-1&control=1")
+        let status = try? ServerBackend.ComputerStatus.parse(["state": "running", "takeover": true])
+        XCTAssertEqual(status?.takeover, true)
+    }
+}

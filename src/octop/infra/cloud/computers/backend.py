@@ -28,6 +28,10 @@ if TYPE_CHECKING:
     from octop.infra.cloud.computers.manager import ComputerManager
 
 DEFAULT_COMMAND_TIMEOUT = 30 * 60
+TAKEN_OVER = (
+    "The user has taken over this computer (for example to sign in or solve a check). "
+    "Do not use it now; tell the user what you need and wait until they hand it back."
+)
 
 
 class CloudComputer(BaseSandbox):
@@ -43,6 +47,9 @@ class CloudComputer(BaseSandbox):
         return f"computer-{self._agent_id}"
 
     def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
+        if self._manager.taken_over(self._agent_id, self._user_id):
+            # Agent-facing: the user is signing in or solving a check on this computer.
+            return ExecuteResponse(output=TAKEN_OVER, exit_code=1, truncated=False)
         exit_code, output = self._manager.run(
             self._agent_id, self._user_id, command, timeout or DEFAULT_COMMAND_TIMEOUT
         )

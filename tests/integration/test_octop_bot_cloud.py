@@ -217,7 +217,6 @@ async def test_with_ags_configured_each_bot_gets_its_own_computer(
     for name, value in {
         "OCTOP_AGS_SECRET_ID": "id",
         "OCTOP_AGS_SECRET_KEY": "key",
-        "OCTOP_AGS_API_KEY": "e2b_test",
         "OCTOP_AGS_TOOL": "octop-bot-desktop",
     }.items():
         monkeypatch.setenv(name, value)
@@ -281,3 +280,42 @@ async def test_review_fixes_locale_probe_policy_and_im_billing(
         monkeypatch.setattr(registry._repos.thread_repo, "get", lambda _id: thread)
         selected = registry._account_for_bot_turn(row.agent_id, "t1", {"user": "tg:42"})
         assert selected is not None and selected.user_id == uid
+
+
+async def test_screen_tickets_are_owner_only_and_single_use(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.cloud.computers import manager as computers
+
+    for name, value in {
+        "OCTOP_AGS_SECRET_ID": "id",
+        "OCTOP_AGS_SECRET_KEY": "key",
+        "OCTOP_AGS_TOOL": "octop-bot-desktop",
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(computers, "_manager", None)
+    monkeypatch.setattr(computers.ComputerManager, "ensure_running", lambda self, a, u: "ins-1")
+    async with octop_client(tmp_octop_home) as (client, srv):
+        alice = await _sign_in(client, "13800000008")
+        bob = await _sign_in(client, "13800000009")
+        row = await srv.app_runtime.agent_registry.create(
+            AgentCreateSpec(user_id=alice["user"]["id"], name="Clerk"), defer_bootstrap=True
+        )
+        mine = {"Authorization": f"Bearer {alice['access_token']}"}
+        path = f"/api/octop-bot/computers/{row.agent_id}"
+        assert (
+            await client.post(
+                path + "/screen", headers={"Authorization": f"Bearer {bob['access_token']}"}
+            )
+        ).status_code == 404
+        ticket = (await client.post(path + "/screen", headers=mine)).json()
+        assert ticket["ws_path"].startswith(path + "/screen/ws?ticket=")
+        taken = await client.post(path + "/takeover", headers=mine, json={"active": True})
+        assert taken.json()["takeover"] is True
+        from octop.api.routers import bot_computers
+
+        one_time = ticket["ws_path"].split("ticket=", 1)[1]
+        assert one_time in bot_computers._tickets
+        bot_computers._tickets.pop(one_time)
+        assert one_time not in bot_computers._tickets

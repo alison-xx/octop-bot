@@ -8788,6 +8788,13 @@
     "runningFor": "Running for {{minutes}} min, charged by the minute in Lynxce credits",
     "hint": "Starts when the Bot first needs to run something and pauses after 10 idle minutes; files stay while it's paused.",
     "pause": "Pause now",
-    "unavailable": "Cloud computer unavailable"
+    "unavailable": "Cloud computer unavailable",
+    "view": "View screen",
+    "takeOver": "Take over",
+    "handBack": "Hand back to the Bot",
+    "viewHint": "View only. Take over to sign in or pass a check yourself.",
+    "controlHint": "You're using this computer; the Bot waits until you hand it back.",
+    "screenConnecting": "Connecting to the screen…",
+    "screenClosed": "The screen disconnected. Close and open it again."
   }
 }

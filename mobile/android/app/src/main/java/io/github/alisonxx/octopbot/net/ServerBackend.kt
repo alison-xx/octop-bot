@@ -262,6 +262,17 @@ class ServerBackend(
         ServerProtocol.computerStatus(json("POST", "/api/octop-bot/computers/" + segment(botId) + "/pause"))
             ?: throw ApiException.badResponse()
 
+    suspend fun setTakeover(botId: String, active: Boolean): ServerProtocol.ComputerStatus =
+        ServerProtocol.computerStatus(
+            json("POST", "/api/octop-bot/computers/" + segment(botId) + "/takeover", body = Http.body(buildJsonObject { put("active", active) })),
+        ) ?: throw ApiException.badResponse()
+
+    /** The screen page for a Bot's computer, with a fresh one-time ticket. */
+    suspend fun screenUrl(botId: String, control: Boolean): String {
+        val wsPath = json("POST", "/api/octop-bot/computers/" + segment(botId) + "/screen").asObject()?.str("ws_path")
+        return wsPath?.let { ServerProtocol.screenPage(baseUrl, botId, it, control) } ?: throw ApiException.badResponse()
+    }
+
     /** Octop Bot cloud: a short-lived object-store link for a file a Bot linked to. */
     suspend fun downloadLink(uri: String): String {
         val parsed = (session.baseUrl + uri).toHttpUrl()

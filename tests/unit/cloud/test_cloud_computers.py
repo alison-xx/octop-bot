@@ -88,6 +88,9 @@ class Driver:
     def read(self, instance_id: str, path: str) -> bytes | None:
         return self.files.get(path)
 
+    def screen(self, instance_id: str) -> tuple[str, dict[str, str]]:
+        return f"wss://6080-{instance_id}.test/websockify", {"X-Access-Token": "t"}
+
 
 class Billing:
     def __init__(self) -> None:
@@ -317,3 +320,52 @@ def test_one_broken_computer_does_not_hold_up_the_others(setup: Any) -> None:
     manager.touch("bot2", 8)
     manager.tick()
     assert billing.reserved == [5, 5, 5]  # bot2 still bought its next chunk
+
+
+def test_a_taken_over_computer_turns_the_bot_away_and_stays_awake(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1")
+    computer.execute("ls")
+    manager.set_takeover("bot1", 7, True)
+    blocked = computer.execute("rm -rf /tmp/x")
+    assert blocked.exit_code == 1 and "taken over" in blocked.output
+    clock.now += computers.IDLE_PAUSE_SECONDS * 2
+    manager.touch("bot1", 7)  # keeps paying in the meantime
+    manager.tick()
+    assert ("pause", "ins-1") not in driver.calls
+    manager.set_takeover("bot1", 7, False)
+    assert computer.execute("ls").exit_code == 0
+
+
+def test_a_watched_screen_keeps_the_computer_running(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    url, headers = manager.screen("bot1", 7)
+    assert url == "wss://6080-ins-1.test/websockify" and headers == {"X-Access-Token": "t"}
+    clock.now += computers.IDLE_PAUSE_SECONDS + 10
+    manager.viewing("bot1", 7)
+    manager.tick()
+    assert ("pause", "ins-1") not in driver.calls
+    clock.now += computers.VIEWER_GRACE_SECONDS + computers.IDLE_PAUSE_SECONDS
+    manager.tick()
+    assert driver.calls[-1] == ("pause", "ins-1")
+
+
+def test_the_screen_starts_the_vnc_bridge_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = AgsConfig.from_env(
+        {"OCTOP_AGS_SECRET_ID": "id", "OCTOP_AGS_SECRET_KEY": "key", "OCTOP_AGS_TOOL": "t"}
+    )
+    assert config is not None
+    driver = ags.AgsDriver(config)
+    scripts: list[str] = []
+    uploads: list[str] = []
+    listening = ["down"]
+    monkeypatch.setattr(driver, "_execute", lambda i, s: scripts.append(s) or listening[0])
+    monkeypatch.setattr(driver, "write", lambda i, path, data: uploads.append(path))
+    monkeypatch.setattr(driver, "token", lambda i, fresh=False: "tok")
+    url, headers = driver.screen("ins")
+    assert url == "wss://8080-ins.ap-guangzhou.tencentags.com/websockify"
+    assert headers == {"X-Access-Token": "tok"}
+    assert uploads == [ags._BRIDGE] and "nohup python3" in scripts[-1]
+    listening[0] = "up"
+    driver.screen("ins")
+    assert uploads == [ags._BRIDGE]  # already running: nothing uploaded or started

@@ -310,4 +310,7 @@
     <string name="computer_pause">Pause now</string>
     <string name="computer_unavailable">Unavailable</string>
     <string name="computer_footer">Starts when the Bot first needs to run something and pauses after 10 idle minutes. Running time is charged by the minute in Lynxce credits; files stay while it\'s paused.</string>
+    <string name="computer_view">View screen</string>
+    <string name="computer_take_over">Take over</string>
+    <string name="computer_hand_back">Hand back</string>
 </resources>

@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import logging
+import secrets
+import time
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, WebSocket
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
@@ -14,7 +18,12 @@ from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/computers")
+
+SCREEN_TICKET_SECONDS = 60
+# One-time tickets for the screen WebSocket: ticket -> (agent_id, user_id, expires_at).
+_tickets: dict[str, tuple[str, int, float]] = {}
 
 
 class ComputerStatus(BaseModel):
@@ -25,6 +34,9 @@ class ComputerStatus(BaseModel):
     running_since: float | None = Field(default=None, description="Unix time it last started.")
     paid_until: float | None = Field(
         default=None, description="Unix time the running time already paid for runs out."
+    )
+    takeover: bool = Field(
+        default=False, description="The user has the mouse and keyboard; the Bot waits."
     )
 
 
@@ -41,12 +53,13 @@ def _owned(server: Any, user: User, agent_id: str) -> Any:
 def _status(manager: Any, agent_id: str, user_id: int) -> ComputerStatus:
     record = manager.record(agent_id, user_id)
     if record.instance_id is None:
-        return ComputerStatus(state="none", spec=record.spec)
+        return ComputerStatus(state="none", spec=record.spec, takeover=record.takeover)
     return ComputerStatus(
         state="running" if record.running else "paused",
         spec=record.spec,
         running_since=record.running_since,
         paid_until=record.paid_until if record.running else None,
+        takeover=record.takeover,
     )
 
 
@@ -70,3 +83,107 @@ async def pause_computer(
     manager = _owned(server, user, agent_id)
     await asyncio.to_thread(manager.pause, agent_id, user.id)
     return await asyncio.to_thread(_status, manager, agent_id, user.id)
+
+
+class TakeoverRequest(BaseModel):
+    active: bool = Field(description="true: the user takes the computer; false: hand it back.")
+
+
+@router.post(
+    "/{agent_id}/takeover",
+    summary="Take over or hand back a Bot's cloud computer",
+    description="While taken over, the Bot's commands on the computer are refused with a note "
+    "to wait, and the computer is never paused for being idle.",
+    response_model=ComputerStatus,
+)
+async def takeover(
+    agent_id: str,
+    body: TakeoverRequest,
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> ComputerStatus:
+    manager = _owned(server, user, agent_id)
+    await asyncio.to_thread(manager.set_takeover, agent_id, user.id, body.active)
+    return await asyncio.to_thread(_status, manager, agent_id, user.id)
+
+
+class ScreenTicket(BaseModel):
+    ws_path: str = Field(description="WebSocket path (VNC over WebSocket), ticket included.")
+    expires_in: int = Field(description="Seconds the one-time ticket stays valid.")
+
+
+@router.post(
+    "/{agent_id}/screen",
+    summary="Open a Bot's cloud computer screen",
+    description="Starts or resumes the computer and returns a one-time WebSocket path that "
+    "carries its desktop (RFB over WebSocket, for noVNC). The ticket is the only credential.",
+    response_model=ScreenTicket,
+)
+async def open_screen(
+    agent_id: str, user: User = Depends(current_user), server: Any = Depends(get_server)
+) -> ScreenTicket:
+    manager = _owned(server, user, agent_id)
+    await asyncio.to_thread(manager.ensure_running, agent_id, user.id)
+    now = time.time()
+    for stale in [t for t, (_, _, until) in _tickets.items() if until < now]:
+        _tickets.pop(stale, None)
+    ticket = secrets.token_urlsafe(32)
+    _tickets[ticket] = (agent_id, user.id, now + SCREEN_TICKET_SECONDS)
+    return ScreenTicket(
+        ws_path=f"/api/octop-bot/computers/{agent_id}/screen/ws?ticket={ticket}",
+        expires_in=SCREEN_TICKET_SECONDS,
+    )
+
+
+@router.websocket("/{agent_id}/screen/ws")
+async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(default="")) -> None:
+    """Relay the browser's noVNC client to the desktop inside the sandbox."""
+    claim = _tickets.pop(ticket, None)
+    if claim is None or claim[0] != agent_id or claim[2] < time.time():
+        await websocket.close(code=4001, reason="invalid ticket")
+        return
+    _, user_id, _ = claim
+    server = websocket.app.state.octop_server
+    manager = computer_manager(server.services) if bot_cloud_enabled() else None
+    if manager is None:
+        await websocket.close(code=4004, reason="no cloud computers")
+        return
+    await websocket.accept(subprotocol="binary")
+    import websockets  # noqa: PLC0415
+    from websockets.typing import Subprotocol  # noqa: PLC0415
+
+    try:
+        url, headers = await asyncio.to_thread(manager.screen, agent_id, user_id)
+        async with websockets.connect(
+            url, additional_headers=headers, subprotocols=[Subprotocol("binary")], max_size=None
+        ) as upstream:
+
+            async def down() -> None:
+                async for frame in upstream:
+                    if isinstance(frame, bytes):
+                        await websocket.send_bytes(frame)
+                    else:
+                        await websocket.send_text(frame)
+
+            async def up() -> None:
+                while True:
+                    message = await websocket.receive()
+                    if message["type"] == "websocket.disconnect":
+                        return
+                    data = message.get("bytes")
+                    await upstream.send(data if data is not None else message.get("text") or "")
+
+            async def keep_alive() -> None:
+                while True:
+                    await asyncio.sleep(30)
+                    await asyncio.to_thread(manager.viewing, agent_id, user_id)
+
+            tasks = [asyncio.create_task(job()) for job in (down, up, keep_alive)]
+            _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+    except Exception:  # noqa: BLE001 - the viewer just closes
+        logger.warning("screen relay for %s ended with an error", agent_id, exc_info=True)
+    finally:
+        with contextlib.suppress(Exception):
+            await websocket.close()

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button } from "antd";
+import { Button, Modal, Space } from "antd";
 import { useTranslation } from "react-i18next";
 import {
   botCloudComputerApi,
@@ -7,6 +7,7 @@ import {
 } from "../../api/modules/botCloudComputer";
 import { apiErrorMessage } from "../../utils/apiError";
 import styles from "./botComputer.module.less";
+import CloudComputerScreen from "./CloudComputerScreen";
 
 /** Octop Bot cloud: this Bot's computer, and pausing it to stop paying for running time. */
 export default function CloudComputerCard({ botId }: { botId: string }) {
@@ -14,6 +15,8 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
   const [status, setStatus] = useState<CloudComputerStatus | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // One-time WebSocket path for the open screen; null while the screen is closed.
+  const [screen, setScreen] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -47,6 +50,29 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
     }
   };
 
+  const openScreen = async () => {
+    setBusy(true);
+    try {
+      setScreen((await botCloudComputerApi.openScreen(botId)).ws_path);
+      setStatus(await botCloudComputerApi.status(botId));
+    } catch (e) {
+      setError(apiErrorMessage(e, t("cloudComputer.unavailable"), t));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const takeover = async (active: boolean) => {
+    setBusy(true);
+    try {
+      setStatus(await botCloudComputerApi.takeover(botId, active));
+    } catch (e) {
+      setError(apiErrorMessage(e, t("cloudComputer.unavailable"), t));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const minutes =
     status?.state === "running" && status.running_since
       ? Math.max(1, Math.round((Date.now() / 1000 - status.running_since) / 60))
@@ -68,11 +94,58 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
             : t("cloudComputer.hint")}
         </small>
       </span>
-      {status?.state === "running" && (
-        <Button size="small" loading={busy} onClick={() => void pause()}>
-          {t("cloudComputer.pause")}
-        </Button>
-      )}
+      <Space size={6}>
+        {status && (
+          <Button size="small" loading={busy} onClick={() => void openScreen()}>
+            {t("cloudComputer.view")}
+          </Button>
+        )}
+        {status?.state === "running" && !status.takeover && (
+          <Button size="small" disabled={busy} onClick={() => void pause()}>
+            {t("cloudComputer.pause")}
+          </Button>
+        )}
+      </Space>
+      <Modal
+        open={screen !== null}
+        title={t("cloudComputer.section")}
+        width={960}
+        footer={
+          <Space>
+            <span>
+              {t(
+                status?.takeover
+                  ? "cloudComputer.controlHint"
+                  : "cloudComputer.viewHint",
+              )}
+            </span>
+            <Button
+              type={status?.takeover ? "default" : "primary"}
+              loading={busy}
+              onClick={() => void takeover(!status?.takeover)}
+            >
+              {t(
+                status?.takeover
+                  ? "cloudComputer.handBack"
+                  : "cloudComputer.takeOver",
+              )}
+            </Button>
+          </Space>
+        }
+        onCancel={() => {
+          setScreen(null);
+          // Closing the screen hands the computer back to the Bot.
+          if (status?.takeover) void takeover(false);
+        }}
+        destroyOnClose
+      >
+        {screen && (
+          <CloudComputerScreen
+            wsPath={screen}
+            interactive={status?.takeover === true}
+          />
+        )}
+      </Modal>
     </div>
   );
 }

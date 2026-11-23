@@ -1,5 +1,6 @@
 package io.github.alisonxx.octopbot.ui.editor
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,7 +21,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.core.net.toUri
 import androidx.compose.ui.unit.dp
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.net.ServerBackend
@@ -33,6 +36,7 @@ import kotlinx.coroutines.launch
 fun CloudComputerPanel(server: ServerBackend, botId: String) {
     val palette = LocalPalette.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var status by remember(botId) { mutableStateOf<ComputerStatus?>(null) }
     var failed by remember(botId) { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -66,7 +70,30 @@ fun CloudComputerPanel(server: ServerBackend, botId: String) {
                 Text(stringResource(R.string.computer_title), style = MaterialTheme.typography.bodyMedium)
                 Text(label, style = MaterialTheme.typography.bodySmall, color = palette.secondary)
             }
-            if (status?.state == ComputerStatus.State.Running) {
+            if (status != null) {
+                TextButton(
+                    enabled = !busy,
+                    onClick = {
+                        busy = true
+                        scope.launch {
+                            runCatching { server.screenUrl(botId, control = status?.takeover == true) }
+                                .onSuccess { url -> context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
+                            busy = false
+                        }
+                    },
+                ) { Text(stringResource(R.string.computer_view)) }
+                TextButton(
+                    enabled = !busy,
+                    onClick = {
+                        busy = true
+                        scope.launch {
+                            runCatching { server.setTakeover(botId, status?.takeover != true) }.onSuccess { status = it }
+                            busy = false
+                        }
+                    },
+                ) { Text(stringResource(if (status?.takeover == true) R.string.computer_hand_back else R.string.computer_take_over)) }
+            }
+            if (status?.state == ComputerStatus.State.Running && status?.takeover != true) {
                 TextButton(
                     enabled = !busy,
                     onClick = {

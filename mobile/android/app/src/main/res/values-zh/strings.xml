@@ -291,4 +291,7 @@
     <string name="computer_pause">立即暂停</string>
     <string name="computer_unavailable">暂不可用</string>
     <string name="computer_footer">Bot 第一次需要运行命令时自动开机，空闲 10 分钟自动暂停。运行时按分钟扣灵策积分，暂停后文件保留。</string>
+    <string name="computer_view">查看画面</string>
+    <string name="computer_take_over">接管</string>
+    <string name="computer_hand_back">交还</string>
 </resources>

@@ -20,6 +20,12 @@ export interface CloudComputerStatus {
   spec: string;
   running_since: number | null;
   paid_until: number | null;
+  takeover: boolean;
+}
+
+export interface ScreenTicket {
+  ws_path: string;
+  expires_in: number;
 }
 
 const endpoint = (id: string) =>
@@ -30,4 +36,11 @@ export const botCloudComputerApi = {
   status: (id: string) => request<CloudComputerStatus>(endpoint(id)),
   pause: (id: string) =>
     request<CloudComputerStatus>(endpoint(id) + "/pause", { method: "POST" }),
+  takeover: (id: string, active: boolean) =>
+    request<CloudComputerStatus>(endpoint(id) + "/takeover", {
+      method: "POST",
+      body: JSON.stringify({ active }),
+    }),
+  openScreen: (id: string) =>
+    request<ScreenTicket>(endpoint(id) + "/screen", { method: "POST" }),
 };

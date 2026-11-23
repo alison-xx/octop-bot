@@ -25,6 +25,7 @@ import time
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal, Protocol
 
 Spec = Literal["standard", "pro"]
@@ -36,6 +37,9 @@ _RUNS = "/home/user/.octop/runs"
 # The desktop server kills a request's command after 120 s, so each request waits less.
 _WAIT_SECONDS = 90
 _PENDING = "__octop_pending__"
+# x11vnc listens on 5900, which AGS does not route; the bridge relays it to this port.
+_SCREEN_PORT = 8080
+_BRIDGE = "/home/user/.octop/vnc_bridge.py"
 State = Literal["running", "paused", "starting", "gone"]
 
 
@@ -50,6 +54,7 @@ class ComputerDriver(Protocol):
     def run(self, instance_id: str, command: str, timeout: int) -> tuple[int, str]: ...
     def write(self, instance_id: str, path: str, data: bytes) -> None: ...
     def read(self, instance_id: str, path: str) -> bytes | None: ...
+    def screen(self, instance_id: str) -> tuple[str, dict[str, str]]: ...
 
 
 @dataclass(frozen=True)
@@ -270,3 +275,22 @@ class AgsDriver:
         if response.status_code != 200:
             raise OSError(f"download of {path} failed ({response.status_code}): {response.text}")
         return bytes(response.content)
+
+    def screen(self, instance_id: str) -> tuple[str, dict[str, str]]:
+        """The desktop's VNC over WebSocket, and the header that opens it.
+
+        The desktop runs x11vnc on 5900, which AGS does not route; ``vnc_bridge.py`` relays it
+        to 8080, which it does. The bridge is uploaded and started on first view and keeps
+        running across pauses. Only this server ever holds the access token; browsers reach the
+        screen through Octop.
+        """
+        listening = f"ss -ltn | grep -q ':{_SCREEN_PORT} '"
+        if self._execute(instance_id, f"{listening} && echo up || echo down").strip() != "up":
+            self.write(instance_id, _BRIDGE, (Path(__file__).parent / "vnc_bridge.py").read_bytes())
+            self._execute(
+                instance_id,
+                f"nohup python3 {_BRIDGE} {_SCREEN_PORT} 5900 > /dev/null 2>&1 < /dev/null & "
+                f"for i in $(seq 1 20); do {listening} && break; sleep 0.25; done",
+            )
+        url = self.url(instance_id, _SCREEN_PORT, "/websockify", scheme="wss")
+        return url, {"X-Access-Token": self.token(instance_id)}

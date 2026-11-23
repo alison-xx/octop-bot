@@ -8788,6 +8788,13 @@
     "runningFor": "本次已运行 {{minutes}} 分钟，按分钟扣灵策积分",
     "hint": "Bot 第一次需要运行命令时自动开机，空闲 10 分钟自动暂停，暂停后文件保留。",
     "pause": "立即暂停",
-    "unavailable": "云电脑暂不可用"
+    "unavailable": "云电脑暂不可用",
+    "view": "查看画面",
+    "takeOver": "接管",
+    "handBack": "交还给 Bot",
+    "viewHint": "只能查看。需要你登录或过验证时点「接管」。",
+    "controlHint": "你正在操作这台电脑，Bot 会等你交还后再继续。",
+    "screenConnecting": "正在连接画面…",
+    "screenClosed": "画面已断开，关闭后重新打开即可。"
   }
 }

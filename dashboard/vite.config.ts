@@ -132,6 +132,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     esbuild: {
+      // noVNC (the Octop Bot cloud computer screen, loaded on demand) awaits at the top level
+      // of one module. Only that lazy chunk needs it; the app itself keeps its browser target.
+      supported: { "top-level-await": true },
       drop: isProd ? ["debugger"] : [],
       pure: isProd ? ["console.log", "console.debug", "console.info"] : [],
       // Disable identifier mangling to work around @xterm/xterm@6.0.0 crash in

@@ -29,6 +29,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 IDLE_PAUSE_SECONDS = 10 * 60
+# A screen viewer reports in every 30 s; miss a few and the computer can idle again.
+VIEWER_GRACE_SECONDS = 90
 CHUNK_MINUTES = 5
 REAP_INTERVAL_SECONDS = 30
 
@@ -50,6 +52,10 @@ class ComputerRecord:
     active_at: float = 0.0
     paid_until: float = 0.0
     reservations: list[Reservation] = field(default_factory=list)
+    # The user has the mouse and keyboard; the Bot waits until it is handed back.
+    takeover: bool = False
+    # Last time someone was watching the screen; a watched computer is not idle.
+    viewed_at: float = 0.0
 
     @classmethod
     def load(cls, raw: str) -> ComputerRecord:
@@ -253,7 +259,8 @@ class ComputerManager:
             self._lost(record.agent_id, record.user_id)
             return
         busy = self._busy.get(record.agent_id, 0) > 0
-        if not busy and now - record.active_at >= IDLE_PAUSE_SECONDS:
+        watched = record.takeover or now - record.viewed_at < VIEWER_GRACE_SECONDS
+        if not (busy or watched) and now - record.active_at >= IDLE_PAUSE_SECONDS:
             self.pause(record.agent_id, record.user_id)
             return
         self._settle_elapsed(record.agent_id, record.user_id, now)
@@ -336,6 +343,31 @@ class ComputerManager:
 
             self._reaper = threading.Thread(target=loop, name="octop-computer-reaper", daemon=True)
             self._reaper.start()
+
+    # Screen and takeover
+
+    def screen(self, agent_id: str, user_id: int) -> tuple[str, dict[str, str]]:
+        """Where to reach the running computer's desktop (VNC over WebSocket)."""
+        instance = self.ensure_running(agent_id, user_id)
+        self.viewing(agent_id, user_id)
+        return self._driver.screen(instance)
+
+    def viewing(self, agent_id: str, user_id: int) -> None:
+        with self._lock(agent_id):
+            record = self.record(agent_id, user_id)
+            record.viewed_at = record.active_at = self._clock()
+            self._save(record)
+
+    def set_takeover(self, agent_id: str, user_id: int, active: bool) -> ComputerRecord:
+        with self._lock(agent_id):
+            record = self.record(agent_id, user_id)
+            record.takeover = active
+            record.active_at = self._clock()
+            self._save(record)
+            return record
+
+    def taken_over(self, agent_id: str, user_id: int) -> bool:
+        return self.record(agent_id, user_id).takeover
 
     # Work
 

@@ -236,4 +236,13 @@ class ServerProtocolTest {
         assertEquals(ServerProtocol.ComputerStatus.State.None, ServerProtocol.computerStatus(Http.parse("""{"state":"none"}"""))?.state)
         assertNull(ServerProtocol.computerStatus(Http.parse("""{"state":"melted"}""")))
     }
+
+    @Test
+    fun screenPageCarriesTheTicket() {
+        assertEquals(
+            "https://bot.lynxce.cn/octop-bot/screen/AbC123?ticket=t-1&control=1",
+            ServerProtocol.screenPage("https://bot.lynxce.cn", "AbC123", "/api/octop-bot/computers/AbC123/screen/ws?ticket=t-1", control = true),
+        )
+        assertEquals(true, ServerProtocol.computerStatus(Http.parse("""{"state":"running","takeover":true}"""))?.takeover)
+    }
 }
