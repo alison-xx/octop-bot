@@ -45,7 +45,7 @@ def _status(manager: Any, agent_id: str, user_id: int) -> ComputerStatus:
     return ComputerStatus(
         state="running" if record.running else "paused",
         spec=record.spec,
-        running_since=record.running_since,
+        running_since=record.started_at or record.running_since,
         paid_until=record.paid_until if record.running else None,
     )
 

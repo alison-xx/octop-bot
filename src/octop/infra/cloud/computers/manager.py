@@ -26,11 +26,19 @@ from octop.infra.errors import ErrorCode, OctopError
 if TYPE_CHECKING:
     from octop.infra.db.services import SharedServices
 
+# Fills a brand-new computer: called with ``write(path_on_computer, data)``.
+Seeder = Callable[[Callable[[str, bytes], None]], None]
+
 logger = logging.getLogger(__name__)
 
 IDLE_PAUSE_SECONDS = 10 * 60
 CHUNK_MINUTES = 5
 REAP_INTERVAL_SECONDS = 30
+# Instances this server started but has no record of (a start that timed out, a crash before the
+# record was saved) are stopped once they are this old; younger ones may still be starting.
+ORPHAN_AGE_SECONDS = 15 * 60
+ORPHAN_SCAN_SECONDS = 10 * 60
+SERVER_ID_KEY = "octop_bot:computers:server_id"
 
 
 @dataclass
@@ -40,22 +48,44 @@ class Reservation:
 
 
 @dataclass
+class Unsettled:
+    """A settle Lynxce did not take yet; retried by the reaper (an unsettled chunk is charged
+    in full, so it must not be dropped)."""
+
+    reservation: Reservation
+    used_seconds: int
+
+
+@dataclass
 class ComputerRecord:
     agent_id: str
     user_id: int
     spec: Spec = "standard"
     instance_id: str | None = None
     running: bool = False
+    # Billing cursor: the start of the oldest reservation still open.
     running_since: float | None = None
+    # When the computer last started or resumed, for "running for N minutes".
+    started_at: float | None = None
     active_at: float = 0.0
     paid_until: float = 0.0
     reservations: list[Reservation] = field(default_factory=list)
+    unsettled: list[Unsettled] = field(default_factory=list)
+    # Set before asking the provider for a new instance, cleared once it is recorded.
+    starting_at: float | None = None
+    # The Bot's object-store files were copied onto its computer once.
+    seeded: bool = False
 
     @classmethod
     def load(cls, raw: str) -> ComputerRecord:
         data = json.loads(raw)
         data["reservations"] = [Reservation(**r) for r in data.get("reservations", [])]
-        return cls(**data)
+        data["unsettled"] = [
+            Unsettled(Reservation(**u["reservation"]), int(u["used_seconds"]))
+            for u in data.get("unsettled", [])
+        ]
+        known = set(cls.__dataclass_fields__)
+        return cls(**{k: v for k, v in data.items() if k in known})
 
     def dump(self) -> str:
         return json.dumps(asdict(self))
@@ -143,6 +173,8 @@ class ComputerManager:
         self._busy: dict[str, int] = {}
         self._guard = threading.Lock()
         self._reaper: threading.Thread | None = None
+        self._stopping = threading.Event()
+        self._last_orphan_scan = 0.0
 
     # Records
 
@@ -165,10 +197,27 @@ class ComputerManager:
     def _save(self, record: ComputerRecord) -> None:
         self._services.settings_repo.set(self._key(record.agent_id), record.dump())
 
+    def is_running(self, agent_id: str, user_id: int) -> bool:
+        return self.record(agent_id, user_id).running
+
+    def server_id(self) -> str:
+        """Stable id of this Octop server, labelled on its instances (several servers may share
+        one AGS account; each only ever cleans up its own)."""
+        repo = self._services.settings_repo
+        value = repo.get(SERVER_ID_KEY)
+        if isinstance(value, str) and value:
+            return value
+        value = uuid.uuid4().hex[:16]
+        repo.set(SERVER_ID_KEY, value)
+        return value
+
     # Running
 
-    def ensure_running(self, agent_id: str, user_id: int) -> str:
-        """The computer's instance id, started or resumed (and paid for) if needed."""
+    def ensure_running(self, agent_id: str, user_id: int, seed: Seeder | None = None) -> str:
+        """The computer's instance id, started or resumed (and paid for) if needed.
+
+        ``seed`` fills a brand-new computer the first time this Bot gets one.
+        """
         self._start_reaper()
         with self._lock(agent_id):
             record = self.record(agent_id, user_id)
@@ -178,24 +227,47 @@ class ComputerManager:
                 self._save(record)
                 return record.instance_id
             reservation = self._billing.reserve(record, CHUNK_MINUTES)
+            fresh = False
             try:
                 state = self._driver.state(record.instance_id) if record.instance_id else "gone"
                 if state == "paused":
                     self._driver.resume(record.instance_id or "")
                 elif state == "gone":
+                    # Recorded before the provider call: a start that times out after AGS made
+                    # the instance, or a crash right after, leaves a trace the reaper cleans up.
+                    record.starting_at = now
+                    record.instance_id = None
+                    self._save(record)
                     record.instance_id = self._driver.start(
                         spec=record.spec,
-                        labels={"octop-user": str(user_id), "octop-bot": agent_id},
+                        labels={
+                            "octop-user": str(user_id),
+                            "octop-bot": agent_id,
+                            "octop-server": self.server_id(),
+                        },
                     )
+                    record.starting_at = None
+                    fresh = True
             except Exception:
-                self._billing.settle(record, reservation, 0)
+                record.starting_at = None
+                self._save(record)
+                self._settle_one(record, reservation, 0)
                 raise
             record.running = True
             record.running_since = now
+            record.started_at = now
             record.paid_until = now + CHUNK_MINUTES * 60
             record.reservations = [reservation]
             self._save(record)
             assert record.instance_id is not None
+            if fresh and seed is not None and not record.seeded:
+                instance = record.instance_id
+                try:
+                    seed(lambda path, data: self._driver.write(instance, path, data))
+                    record.seeded = True
+                    self._save(record)
+                except Exception:  # noqa: BLE001 - the computer works; files are copied next time
+                    logger.warning("copying files onto the computer of %s failed", agent_id)
             return record.instance_id
 
     def touch(self, agent_id: str, user_id: int) -> None:
@@ -219,31 +291,87 @@ class ComputerManager:
             self._settle(record)
             record.running = False
             record.running_since = None
+            record.started_at = None
             self._save(record)
+
+    def _settle_one(self, record: ComputerRecord, reservation: Reservation, used: int) -> None:
+        """Settle one reservation; on failure keep it for the reaper to retry."""
+        try:
+            self._billing.settle(record, reservation, used)
+        except Exception:  # noqa: BLE001 - retried by the reaper, never dropped
+            logger.warning("settling %s failed; will retry", reservation.id)
+            record.unsettled.append(Unsettled(reservation, used))
 
     def _settle(self, record: ComputerRecord) -> None:
         used = int(self._clock() - (record.running_since or self._clock()))
         for reservation in record.reservations:
             share = min(used, reservation.minutes * 60)
             used -= share
-            try:
-                self._billing.settle(record, reservation, share)
-            except Exception:  # noqa: BLE001 - Lynxce settles stale reservations itself
-                logger.warning("settling %s failed", reservation.id)
+            self._settle_one(record, reservation, share)
         record.reservations = []
+        if used > 0:
+            # Ran past what was reserved (the reaper was late, or the process was down): pay
+            # for the rest with one more reservation, settled right away.
+            minutes = -(-used // 60)
+            try:
+                extra = self._billing.reserve(record, minutes)
+            except Exception:  # noqa: BLE001 - out of credits; logged for reconciliation
+                logger.warning(
+                    "computer %s ran %ss past its reservations and could not be billed",
+                    record.agent_id,
+                    used,
+                )
+            else:
+                self._settle_one(record, extra, used)
+
+    def _retry_unsettled(self, agent_id: str, user_id: int) -> None:
+        with self._lock(agent_id):
+            record = self.record(agent_id, user_id)
+            if not record.unsettled:
+                return
+            pending, record.unsettled = record.unsettled, []
+            for item in pending:
+                self._settle_one(record, item.reservation, item.used_seconds)
+            self._save(record)
 
     def tick(self) -> None:
         """One pass over every computer; a failure on one never holds up the others."""
         now = self._clock()
+        records: list[ComputerRecord] = []
         for key, raw in self._services.settings_repo.with_prefix("octop_bot:computer:").items():
             if not isinstance(raw, str):
                 continue
             try:
-                self._tick_one(ComputerRecord.load(raw), now)
+                record = ComputerRecord.load(raw)
+                records.append(record)
+                self._tick_one(record, now)
             except Exception:  # noqa: BLE001 - isolated per computer
                 logger.exception("computer %s tick failed", key)
+        if now - self._last_orphan_scan >= ORPHAN_SCAN_SECONDS:
+            self._last_orphan_scan = now
+            try:
+                self._stop_orphans(records, now)
+            except Exception:  # noqa: BLE001 - retried on the next scan
+                logger.exception("cloud computer orphan scan failed")
+
+    def _stop_orphans(self, records: list[ComputerRecord], now: float) -> None:
+        """Stop this server's instances that no record knows (lost starts, crashes)."""
+        known = {r.instance_id for r in records if r.instance_id}
+        mine = self.server_id()
+        for instance in self._driver.instances():
+            if (
+                instance.labels.get("octop-server") != mine
+                or instance.instance_id in known
+                or instance.state == "gone"
+                or now - instance.created_at < ORPHAN_AGE_SECONDS
+            ):
+                continue
+            logger.warning("stopping orphaned cloud computer %s", instance.instance_id)
+            self._driver.stop(instance.instance_id)
 
     def _tick_one(self, record: ComputerRecord, now: float) -> None:
+        if record.unsettled:
+            self._retry_unsettled(record.agent_id, record.user_id)
         if self._services.agent_repo.get(record.agent_id) is None:
             self._release(record.agent_id, record.user_id)
             return
@@ -279,6 +407,7 @@ class ComputerManager:
                 self._settle(record)
             record.running = False
             record.running_since = None
+            record.started_at = None
             record.instance_id = None
             self._save(record)
 
@@ -286,7 +415,8 @@ class ComputerManager:
         """The Bot was deleted: stop its computer for good and drop the record."""
         with self._lock(agent_id):
             record = self.record(agent_id, user_id)
-            if record.instance_id:
+            # Already reclaimed by AGS: nothing to stop, and stopping it would fail forever.
+            if record.instance_id and self._driver.state(record.instance_id) != "gone":
                 try:
                     self._driver.stop(record.instance_id)
                 except Exception:  # noqa: BLE001 - retried on the next pass
@@ -294,6 +424,15 @@ class ComputerManager:
                     raise
             if record.running:
                 self._settle(record)
+            pending, record.unsettled = record.unsettled, []
+            for item in pending:
+                self._settle_one(record, item.reservation, item.used_seconds)
+            if record.unsettled:
+                # Keep the record until Lynxce has every settle; the computer is gone already.
+                record.running = False
+                record.instance_id = None
+                self._save(record)
+                return
             self._services.settings_repo.delete(self._key(agent_id))
 
     def _settle_elapsed(self, agent_id: str, user_id: int, now: float) -> None:
@@ -312,10 +451,7 @@ class ComputerManager:
                 and now - record.running_since >= record.reservations[0].minutes * 60
             ):
                 done = record.reservations.pop(0)
-                try:
-                    self._billing.settle(record, done, done.minutes * 60)
-                except Exception:  # noqa: BLE001 - Lynxce charges an unsettled chunk in full
-                    logger.warning("settling %s failed", done.id)
+                self._settle_one(record, done, done.minutes * 60)
                 record.running_since += done.minutes * 60
                 changed = True
             if changed:
@@ -327,8 +463,7 @@ class ComputerManager:
                 return
 
             def loop() -> None:
-                while True:
-                    time.sleep(REAP_INTERVAL_SECONDS)
+                while not self._stopping.wait(REAP_INTERVAL_SECONDS):
                     try:
                         self.tick()
                     except Exception:  # noqa: BLE001 - keep reaping
@@ -337,10 +472,25 @@ class ComputerManager:
             self._reaper = threading.Thread(target=loop, name="octop-computer-reaper", daemon=True)
             self._reaper.start()
 
+    def close(self) -> None:
+        """Stop the reaper (server shutdown): it must not touch a closed database."""
+        self._stopping.set()
+        reaper = self._reaper
+        if reaper is not None and reaper is not threading.current_thread():
+            reaper.join(timeout=REAP_INTERVAL_SECONDS)
+
     # Work
 
-    def run(self, agent_id: str, user_id: int, command: str, timeout: int) -> tuple[int, str]:
-        instance = self.ensure_running(agent_id, user_id)
+    def run(
+        self,
+        agent_id: str,
+        user_id: int,
+        command: str,
+        timeout: int,
+        *,
+        seed: Seeder | None = None,
+    ) -> tuple[int, str]:
+        instance = self.ensure_running(agent_id, user_id, seed)
         with self._guard:
             self._busy[agent_id] = self._busy.get(agent_id, 0) + 1
         try:
@@ -355,11 +505,15 @@ class ComputerManager:
                 self._busy[agent_id] -= 1
             self.touch(agent_id, user_id)
 
-    def write(self, agent_id: str, user_id: int, path: str, data: bytes) -> None:
-        self._driver.write(self.ensure_running(agent_id, user_id), path, data)
+    def write(
+        self, agent_id: str, user_id: int, path: str, data: bytes, *, seed: Seeder | None = None
+    ) -> None:
+        self._driver.write(self.ensure_running(agent_id, user_id, seed), path, data)
 
-    def read(self, agent_id: str, user_id: int, path: str) -> bytes | None:
-        return self._driver.read(self.ensure_running(agent_id, user_id), path)
+    def read(
+        self, agent_id: str, user_id: int, path: str, *, seed: Seeder | None = None
+    ) -> bytes | None:
+        return self._driver.read(self.ensure_running(agent_id, user_id, seed), path)
 
 
 _manager: ComputerManager | None = None
@@ -369,6 +523,15 @@ _manager_lock = threading.Lock()
 def current_manager() -> ComputerManager | None:
     """The manager set up at server start, if cloud computers are configured."""
     return _manager
+
+
+def shutdown_manager() -> None:
+    """Server shutdown: stop the reaper and forget the manager (a restart makes a new one)."""
+    global _manager
+    with _manager_lock:
+        manager, _manager = _manager, None
+    if manager is not None:
+        manager.close()
 
 
 def computer_manager(services: SharedServices) -> ComputerManager | None:
