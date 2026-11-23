@@ -397,28 +397,146 @@
     return "other";
   }
   const os = detectOS();
+  const phone = /Android/i.test(navigator.userAgent) ? "android" : /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "ios" : null;
   root.dataset.os = os;
 
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const formatSize = (bytes) => `${(bytes / 1e6).toFixed(0)} MB`;
-  const assetUrl = (release, asset) => `${DOWNLOAD_BASE}${release.version}/${asset.name}`;
-  const pick = (release, platform, kind) =>
-    release.assets.find((a) => a.platform === platform && (!kind || a.kind === kind));
+  const assetUrl = (release, asset) => asset.url || `${DOWNLOAD_BASE}${release.version}/${asset.name}`;
+  const pick = (release, platform, kind, arch) =>
+    release.assets.find((a) => a.platform === platform && (!kind || a.kind === kind) && (!arch || a.arch === arch));
+
+  /* The signed release manifest the apps update from (docs/octop-bot-updates.md). */
+  const MANIFEST_URL = (() => {
+    const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && new URLSearchParams(location.search).get("manifest");
+    return local || `${DOWNLOAD_BASE}manifest.json`;
+  })();
+  /* Raw Ed25519 public key of the release signing key, the same one the apps carry. */
+  const MANIFEST_KEY = "jfzS5kpiVxqx/79rU5tYno7Js31ezDt05RmrmXnRTa0=";
+  const DOWNLOAD_HOST = new URL(DOWNLOAD_BASE).host;
+  const ASSET_KINDS = {
+    win_x64: { platform: "win32", arch: "x64", kind: "installer" },
+    win_x64_zip: { platform: "win32", arch: "x64", kind: "portable" },
+    win_arm: { platform: "win32", arch: "arm64", kind: "installer" },
+    mac_arm: { platform: "darwin", arch: "arm64", kind: "dmg" },
+    mac_intel: { platform: "darwin", arch: "x64", kind: "dmg" },
+    android: { platform: "android", kind: "apk" },
+    fnos: { platform: "nas", kind: "fpk" },
+  };
+  const PRE = { a: "alpha", b: "beta", rc: "rc" };
+
+  /* "1.0.4b1" (Python style, used in the manifest) → "1.0.4-beta.1" (used on the site and in file names). */
+  const displayVersion = (v) =>
+    String(v).replace(/^(\d+(?:\.\d+)*)(a|b|rc)(\d+)$/, (_, base, pre, n) => `${base}-${PRE[pre]}.${n}`);
+
+  function compareVersions(a, b) {
+    const parse = (v) => {
+      const [base, pre = ""] = displayVersion(v).split("-");
+      const [stage = "", n = "0"] = pre.split(".");
+      return { nums: base.split(".").map(Number), stage: pre ? ["alpha", "beta", "rc"].indexOf(stage) : 9, n: Number(n) };
+    };
+    const x = parse(a);
+    const y = parse(b);
+    for (let i = 0; i < Math.max(x.nums.length, y.nums.length); i++) {
+      const d = (x.nums[i] || 0) - (y.nums[i] || 0);
+      if (d) return d;
+    }
+    return x.stage - y.stage || x.n - y.n;
+  }
+
+  const onHost = (url) => {
+    try {
+      return new URL(url).host === DOWNLOAD_HOST;
+    } catch {
+      return false;
+    }
+  };
+
+  /* Release notes come from CHANGELOG Markdown; keep the bullet lines as plain text. */
+  function noteLines(markdown) {
+    const lines = String(markdown || "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#"));
+    const bullets = lines.filter((l) => /^([-*]|\d+\.)\s/.test(l));
+    return (bullets.length ? bullets : lines).map((l) =>
+      l
+        .replace(/^([-*]|\d+\.)\s+/, "")
+        .replace(/\*\*(.+?)\*\*/g, "$1")
+        .replace(/`([^`]+)`/g, "$1"),
+    );
+  }
+
+  function fromChannel(channel, entry) {
+    const assets = [];
+    for (const [key, a] of Object.entries(entry.assets || {})) {
+      if (key === "ios") {
+        if (/^https:\/\//.test(a.url || "")) assets.push({ platform: "ios", kind: "store", url: a.url, appVersion: a.version });
+        continue;
+      }
+      if (ASSET_KINDS[key] && onHost(a.url)) assets.push({ ...ASSET_KINDS[key], ...a, appVersion: a.version });
+    }
+    return {
+      version: displayVersion(entry.version),
+      channel,
+      date: entry.date,
+      notes: { zh: noteLines(entry.notes && entry.notes.zh), en: noteLines(entry.notes && entry.notes.en) },
+      nas: entry.nas,
+      assets,
+    };
+  }
+
+  const b64 = (s) => Uint8Array.from(atob(s.trim()), (c) => c.charCodeAt(0));
+  async function loadManifest() {
+    const get = (url, as) =>
+      fetch(url, { cache: "no-cache" }).then((r) => (r.ok ? r[as]() : Promise.reject(new Error(`HTTP ${r.status}`))));
+    const [body, signature] = await Promise.all([get(MANIFEST_URL, "arrayBuffer"), get(`${MANIFEST_URL}.sig`, "text")]);
+    let key = null;
+    try {
+      key = await crypto.subtle.importKey("raw", b64(MANIFEST_KEY), { name: "Ed25519" }, false, ["verify"]);
+    } catch {
+      /* No Ed25519 in this browser's WebCrypto. The apps still verify before installing. */
+    }
+    if (key && !(await crypto.subtle.verify({ name: "Ed25519" }, key, b64(signature), body))) {
+      throw new Error("manifest signature does not match");
+    }
+    const manifest = JSON.parse(new TextDecoder().decode(body));
+    if (manifest.product !== "octop-bot") throw new Error("not the Octop Bot manifest");
+    return ["stable", "beta"]
+      .filter((name) => manifest.channels && manifest.channels[name])
+      .map((name) => fromChannel(name, manifest.channels[name]));
+  }
 
   const OS_ICON = {
     win: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.1 10.4 4v7.2H3V5.1Zm0 13.8 7.4 1.1v-7.1H3v6Zm8.3 1.2L21 21.5v-8.6h-9.7v7.2ZM11.3 3.9v7.3H21V2.5l-9.7 1.4Z"/></svg>',
     mac: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.6-1-2.6-3.9ZM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4Z"/></svg>',
+    phone:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="6" y="2.5" width="12" height="19" rx="3"/><path d="M10.5 18.5h3"/></svg>',
+    nas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="4" width="17" height="7" rx="2"/><rect x="3.5" y="13" width="17" height="7" rx="2"/><path d="M7.5 7.5h.01M7.5 16.5h.01M11 7.5h6M11 16.5h6"/></svg>',
   };
   const ARROW =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg>';
+  const OUT =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M8 7h9v9"/></svg>';
+  const storeName = (url) => (/testflight\.apple\.com/.test(url) ? "TestFlight" : "App Store");
 
   function primaryChoice(release) {
     if (os === "win") {
-      const a = pick(release, "win32", "installer");
+      const a = pick(release, "win32", "installer", "x64");
       return a && { href: assetUrl(release, a), label: t("下载 Windows 版", "Download for Windows"), sub: `x64 · ${formatSize(a.size)}`, icon: OS_ICON.win };
     }
     if (os === "mac") {
-      const a = pick(release, "darwin");
+      const a = pick(release, "darwin", null, "arm64");
       return a && { href: assetUrl(release, a), label: t("下载 macOS 版", "Download for Mac"), sub: `${t("Apple 芯片", "Apple silicon")} · ${formatSize(a.size)}`, icon: OS_ICON.mac };
+    }
+    if (phone === "android") {
+      const a = pick(release, "android");
+      return a && { href: assetUrl(release, a), label: t("下载 Android 版", "Download for Android"), sub: `APK · ${formatSize(a.size)}`, icon: OS_ICON.phone, version: a.appVersion };
+    }
+    if (phone === "ios") {
+      const a = pick(release, "ios");
+      return a && { href: a.url, external: true, label: t("下载 iPhone 版", "Get it for iPhone"), sub: storeName(a.url), icon: OS_ICON.phone, version: a.appVersion };
     }
     return null;
   }
@@ -426,9 +544,15 @@
   function renderPrimary(release) {
     const choice = primaryChoice(release);
     $$("[data-download-primary]").forEach((btn) => {
+      btn.removeAttribute("target");
+      btn.removeAttribute("rel");
       if (choice) {
         btn.href = choice.href;
-        btn.setAttribute("download", "");
+        if (choice.external) {
+          btn.removeAttribute("download");
+          btn.target = "_blank";
+          btn.rel = "noopener";
+        } else btn.setAttribute("download", "");
         btn.innerHTML = `${choice.icon}<span>${choice.label}</span>`;
       } else {
         btn.href = "download.html";
@@ -438,7 +562,7 @@
     });
     $$("[data-download-note]").forEach((el) => {
       el.textContent = choice
-        ? `${t("版本", "Version")} ${release.version} · ${choice.sub} · ${t("免费开源", "Free & open source")}`
+        ? `${t("版本", "Version")} ${choice.version || release.version} · ${choice.sub} · ${t("免费开源", "Free & open source")}`
         : os === "mobile"
           ? t("Octop Bot 是桌面客户端，请在 Windows 或 Mac 电脑上下载。", "Octop Bot is a desktop app. Download it on a Windows PC or a Mac.")
           : t("提供 Windows x64 和 Apple 芯片 Mac 版本。", "Available for Windows x64 and Macs with Apple silicon.");
@@ -450,68 +574,167 @@
   function fileRow(release, asset, title, meta, recommended) {
     return `<div class="file">
       <div><b>${title}${recommended ? ` <span class="badge" style="margin-left:6px">${t("推荐", "Recommended")}</span>` : ""}</b><small>${meta} · ${formatSize(asset.size)}</small></div>
-      <a class="btn ${recommended ? "btn-primary" : "btn-ghost"} btn-sm" href="${assetUrl(release, asset)}" download>${ARROW}<span>${t("下载", "Download")}</span></a>
-      <div class="sha"><span>SHA-256</span><code title="${asset.sha256}">${asset.sha256}</code><button class="copy" type="button" data-copy="${asset.sha256}">${t("复制", "Copy")}</button></div>
+      <a class="btn ${recommended ? "btn-primary" : "btn-ghost"} btn-sm" href="${esc(assetUrl(release, asset))}" download>${ARROW}<span>${t("下载", "Download")}</span></a>
+      <div class="sha"><span>SHA-256</span><code title="${esc(asset.sha256)}">${esc(asset.sha256)}</code><button class="copy" type="button" data-copy="${esc(asset.sha256)}">${t("复制", "Copy")}</button></div>
     </div>`;
   }
 
-  function renderPlatforms(release) {
+  const card = (key, icon, title, sub, body, detected) => `<article class="platform${detected ? " detected" : ""}" data-platform="${key}">
+        <div class="platform-head">${icon}<div><h3 class="h3">${title}</h3><small class="muted">${sub}</small></div>${detected ? `<span class="badge">${t("你的系统", "Your system")}</span>` : ""}</div>
+        ${body}</article>`;
+
+  function renderPlatforms(release, beta) {
     const box = $("#platforms");
     if (!box) return;
-    const win = pick(release, "win32", "installer");
+    const win = pick(release, "win32", "installer", "x64");
+    const winArm = pick(release, "win32", "installer", "arm64");
     const zip = pick(release, "win32", "portable");
-    const mac = pick(release, "darwin");
+    const mac = pick(release, "darwin", null, "arm64");
+    const intel = pick(release, "darwin", null, "x64");
+    const apk = pick(release, "android");
+    const ios = pick(release, "ios");
+    const fpk = pick(release, "nas");
+    const image = release.nas && release.nas.image;
     const cards = [];
-    if (win || zip) {
-      cards.push(`<article class="platform${os === "win" ? " detected" : ""}">
-        <div class="platform-head">${OS_ICON.win}<div><h3 class="h3">Windows</h3><small class="muted">Windows 10 / 11 · x64</small></div>${os === "win" ? `<span class="badge">${t("你的系统", "Your system")}</span>` : ""}</div>
-        <div class="files">
-          ${win ? fileRow(release, win, t("安装版", "Installer"), "EXE", true) : ""}
+    if (win || winArm || zip) {
+      cards.push(
+        card(
+          "win",
+          OS_ICON.win,
+          "Windows",
+          winArm ? "Windows 10 / 11 · x64 · ARM64" : "Windows 10 / 11 · x64",
+          `<div class="files">
+          ${win ? fileRow(release, win, t("安装版", "Installer"), "EXE · x64", true) : ""}
           ${zip ? fileRow(release, zip, t("免安装版", "Portable"), t("ZIP · 解压即用", "ZIP · unzip and run"), false) : ""}
-        </div></article>`);
+          ${winArm ? fileRow(release, winArm, t("安装版（ARM）", "Installer (ARM)"), "EXE · arm64", false) : ""}
+        </div>`,
+          os === "win",
+        ),
+      );
     }
-    if (mac) {
-      cards.push(`<article class="platform${os === "mac" ? " detected" : ""}">
-        <div class="platform-head">${OS_ICON.mac}<div><h3 class="h3">macOS</h3><small class="muted">${t("Apple 芯片（M 系列）", "Apple silicon (M-series)")}</small></div>${os === "mac" ? `<span class="badge">${t("你的系统", "Your system")}</span>` : ""}</div>
-        <div class="files">${fileRow(release, mac, t("磁盘映像", "Disk image"), "DMG · arm64", true)}</div>
-        <p class="muted" style="font-size:14px">${t("暂不支持 Intel 芯片的 Mac。", "Intel-based Macs are not supported yet.")}</p>
-      </article>`);
+    if (mac || intel) {
+      cards.push(
+        card(
+          "mac",
+          OS_ICON.mac,
+          "macOS",
+          intel ? t("Apple 芯片和 Intel 芯片", "Apple silicon and Intel") : t("Apple 芯片（M 系列）", "Apple silicon (M-series)"),
+          `<div class="files">
+          ${mac ? fileRow(release, mac, t("Apple 芯片", "Apple silicon"), "DMG · arm64", true) : ""}
+          ${intel ? fileRow(release, intel, t("Intel 芯片", "Intel"), "DMG · x64", !mac) : ""}
+        </div>${intel ? "" : `<p class="muted" style="font-size:14px">${t("暂不支持 Intel 芯片的 Mac。", "Intel-based Macs are not supported yet.")}</p>`}`,
+          os === "mac",
+        ),
+      );
+    }
+    if (apk || ios) {
+      const version = (apk || ios).appVersion;
+      cards.push(
+        card(
+          "phone",
+          OS_ICON.phone,
+          t("手机", "Phone"),
+          `${[apk && "Android", ios && "iPhone"].filter(Boolean).join(" · ")}${version ? ` · ${t("版本", "Version")} ${esc(version)}` : ""}`,
+          `<div class="files">
+          ${apk ? fileRow(release, apk, "Android", "APK", phone === "android") : ""}
+          ${
+            ios
+              ? `<div class="file"><div><b>iPhone / iPad</b><small>${storeName(ios.url)}</small></div><a class="btn ${phone === "ios" ? "btn-primary" : "btn-ghost"} btn-sm" href="${esc(ios.url)}" target="_blank" rel="noopener"><span>${t("前往获取", "Get it")}</span>${OUT}</a></div>`
+              : ""
+          }
+        </div><p class="muted" style="font-size:14px">${t("手机端连接你电脑或 NAS 上的 Octop Bot 使用。", "The phone app connects to Octop Bot on your computer or NAS.")}</p>`,
+          os === "mobile",
+        ),
+      );
+    }
+    if (fpk || image) {
+      cards.push(
+        card(
+          "nas",
+          OS_ICON.nas,
+          "NAS",
+          t("飞牛 fnOS · Docker", "fnOS · Docker"),
+          `<div class="files">
+          ${fpk ? fileRow(release, fpk, t("飞牛 fnOS 应用", "fnOS app"), "FPK", true) : ""}
+          ${
+            image
+              ? `<div class="file"><div><b>Docker</b><small><code>${esc(image)}</code></small></div><button class="copy" type="button" data-copy="docker pull ${esc(image)}" data-toast="${t("命令已复制", "Command copied")}">${t("复制", "Copy")}</button></div>`
+              : ""
+          }
+        </div><p style="font-size:14px"><a class="link" style="display:inline" href="https://github.com/alison-xx/octop-bot/blob/main/docs/octop-bot-nas.md">${t("NAS 安装说明", "NAS install guide")} ↗</a></p>`,
+          false,
+        ),
+      );
+    }
+    if (beta) {
+      const links = [
+        [pick(beta, "win32", "installer", "x64"), "Windows"],
+        [pick(beta, "darwin", null, "arm64"), "macOS"],
+      ]
+        .filter(([a]) => a)
+        .map(([a, name]) => `<a class="link" style="display:inline" href="${esc(assetUrl(beta, a))}" download>${name}</a>`)
+        .join(" · ");
+      if (links) {
+        cards.push(
+          `<p class="muted beta-note" style="grid-column:1/-1;text-align:center;font-size:14px">${t("测试版", "Beta")} <b>${esc(beta.version)}</b> ${t("已发布，可以抢先体验：", "is out if you want to try it early:")} ${links} · <a class="link" style="display:inline" href="#changelog">${t("更新说明", "What's new")}</a></p>`,
+        );
+      }
     }
     box.innerHTML = cards.join("");
+    $$("[data-intel-note]").forEach((el) => (el.hidden = Boolean(intel)));
   }
 
   function renderHistory(releases) {
     const box = $("#history");
     if (!box) return;
     box.innerHTML = releases
-      .map(
-        (r, i) => `<article class="release reveal in">
-        <div><h3>${r.version}${i === 0 ? ` <span class="badge" style="vertical-align:middle">${t("最新", "Latest")}</span>` : ""}</h3><time datetime="${r.date}">${r.date}</time></div>
-        <div><ul>${(r.notes[lang] || r.notes.zh || []).map((n) => `<li>${n}</li>`).join("")}</ul>
-        <p style="margin-top:16px"><a class="link" href="${DOWNLOAD_BASE}${r.version}/SHA256SUMS.txt">${t("该版本全部安装包的 SHA-256", "SHA-256 for every package in this release")} <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M8 7h9v9"/></svg></a></p></div>
-      </article>`,
-      )
+      .map((r, i) => {
+        const notes = (r.notes[lang] && r.notes[lang].length ? r.notes[lang] : r.notes.zh) || [];
+        const badge =
+          i === 0
+            ? ` <span class="badge" style="vertical-align:middle">${t("最新", "Latest")}</span>`
+            : r.channel === "beta" && r.live
+              ? ` <span class="badge neutral" style="vertical-align:middle">${t("测试版", "Beta")}</span>`
+              : "";
+        return `<article class="release reveal in">
+        <div><h3>${esc(r.version)}${badge}</h3><time datetime="${esc(r.date)}">${esc(r.date)}</time></div>
+        <div><ul>${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
+        ${r.live ? "" : `<p style="margin-top:16px"><a class="link" href="${DOWNLOAD_BASE}${esc(r.version)}/SHA256SUMS.txt">${t("该版本全部安装包的 SHA-256", "SHA-256 for every package in this release")} ${OUT}</a></p>`}</div>
+      </article>`;
+      })
       .join("");
   }
 
-  let releasesData = null;
+  /* The manifest decides the current version; releases.json keeps older releases for the changelog
+     and stands in while no manifest is published. The static HTML is the last fallback. */
+  let site = null;
   function renderReleases() {
-    if (!releasesData) return;
-    const latest = releasesData.releases[0];
-    renderPrimary(latest);
-    renderPlatforms(latest);
-    renderHistory(releasesData.releases);
+    if (!site) return;
+    renderPrimary(site.latest);
+    renderPlatforms(site.latest, site.beta);
+    renderHistory(site.history);
   }
   if ($("[data-download-primary], #platforms, #history")) {
-    fetch("releases.json", { cache: "no-cache" })
+    const live = loadManifest()
+      .then((list) => list.map((r) => ({ ...r, live: true })))
+      .catch(() => []);
+    const listed = fetch("releases.json", { cache: "no-cache" })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((data) => {
-        releasesData = data;
-        renderReleases();
-      })
-      .catch(() => {
-        /* static fallbacks in the HTML stay usable */
-      });
+      .then((data) => data.releases)
+      .catch(() => []);
+    Promise.all([live, listed]).then(([fromManifest, fromList]) => {
+      const stable = fromManifest.find((r) => r.channel === "stable");
+      const beta = fromManifest.find((r) => r.channel === "beta");
+      const latest = stable || beta || fromList[0];
+      if (!latest) return;
+      const seen = new Set();
+      /* For a version in both, keep the hand-written bilingual notes from releases.json. */
+      const history = [...fromList, ...fromManifest]
+        .filter((r) => !seen.has(r.version) && seen.add(r.version))
+        .sort((a, b) => compareVersions(b.version, a.version));
+      site = { latest, beta: stable && beta && compareVersions(beta.version, stable.version) > 0 ? beta : null, history };
+      renderReleases();
+    });
     document.addEventListener("langchange", renderReleases);
   }
 
@@ -521,7 +744,7 @@
     const done = () => {
       btn.classList.add("done");
       btn.textContent = t("已复制", "Copied");
-      toast(t("校验值已复制", "Checksum copied"));
+      toast(btn.dataset.toast || t("校验值已复制", "Checksum copied"));
       setTimeout(() => {
         btn.classList.remove("done");
         btn.textContent = t("复制", "Copy");
