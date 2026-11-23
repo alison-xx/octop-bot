@@ -130,3 +130,24 @@ def test_input_waits_for_takeover_and_leaving_hands_the_computer_back(relay: Any
         wait_for(lambda: upstream.sent == [HANDSHAKE, UPDATE, POINTER])
         ws.close()  # the tab goes away while the user still has control
         wait_for(lambda: manager.handed_back)
+
+
+def test_a_view_only_screen_closing_keeps_a_takeover_made_elsewhere(relay: Any) -> None:
+    client, manager, upstream = relay
+    with client.websocket_connect(path("bot-a", ticket())) as ws:
+        ws.send_bytes(HANDSHAKE)
+        wait_for(lambda: upstream.sent == [HANDSHAKE])
+        manager.takeover = True  # the phone takes over, then swaps this page for the control one
+        ws.close()
+    time.sleep(0.2)
+    assert manager.takeover and not manager.handed_back
+
+
+def test_a_screen_opened_in_control_hands_back_when_it_closes(relay: Any) -> None:
+    client, manager, upstream = relay
+    manager.takeover = True
+    with client.websocket_connect(path("bot-a", ticket())) as ws:
+        ws.send_bytes(HANDSHAKE)
+        wait_for(lambda: upstream.sent == [HANDSHAKE])
+        ws.close()
+    wait_for(lambda: manager.handed_back)
