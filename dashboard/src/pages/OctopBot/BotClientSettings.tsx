@@ -58,6 +58,7 @@ import {
 } from "../Chat/utils/accountDisplayName";
 import styles from "./index.module.less";
 import settings from "./BotClientSettings.module.less";
+import ModelName from "./ModelName";
 
 type ModelSource = "lynxce" | "cloud" | "custom" | "local";
 type SettingsTab = "models" | "general" | "account";
@@ -512,14 +513,13 @@ export default function BotClientSettings() {
                     >
                       {personalModel ? (
                         <li>
-                          <span>{personalModel}</span>
+                          <ModelName id={personalModel} />
                           <small>{t("botClient.lynxce.source")}</small>
                         </li>
                       ) : (
                         models?.map((m) => (
                           <li key={JSON.stringify([m.provider_id, m.model])}>
-                            <span>{m.name || m.model}</span>
-                            <small>{m.provider_name}</small>
+                            <ModelName id={m.model} name={m.name} />
                           </li>
                         ))
                       )}

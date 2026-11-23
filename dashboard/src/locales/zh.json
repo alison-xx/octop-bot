@@ -335,9 +335,20 @@
       "signedInAs": "当前账号",
       "manage": "管理",
       "language": "语言"
+    },
+    "account": {
+      "local": "本机账号",
+      "lynxce": "灵策智算账号"
     }
   },
   "octopBot": {
+    "ask": {
+      "somethingElse": "其他想法",
+      "skip": "跳过",
+      "done": "完成",
+      "skipped": "已跳过"
+    },
+    "thinking": "正在思考",
     "avatar": {
       "title": "Bot 头像",
       "characters": "角色",
@@ -534,7 +545,22 @@
     "openApproval": "打开成员会话",
     "search": "搜索",
     "capabilities": "能力与设置",
-    "groupMemoryPlaceholder": "所有成员在此群中可使用的记忆"
+    "groupMemoryPlaceholder": "所有成员在此群中可使用的记忆",
+    "modelVendor": {
+      "deepseek": "DeepSeek",
+      "qwen": "通义千问",
+      "glm": "智谱 GLM",
+      "kimi": "Kimi",
+      "doubao": "豆包",
+      "hunyuan": "腾讯混元",
+      "minimax": "MiniMax",
+      "gemini": "Gemini",
+      "claude": "Claude",
+      "openai": "OpenAI",
+      "mimo": "小米 MiMo",
+      "other": "其他模型"
+    },
+    "searchModels": "搜索模型"
   },
   "app": {
     "pageTitle": "Octop"

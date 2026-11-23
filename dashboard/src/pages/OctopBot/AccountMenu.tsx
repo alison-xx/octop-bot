@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dropdown, type MenuProps } from "antd";
 import {
   Blocks,
   BookOpen,
+  Check,
   Cloud,
   FolderLock,
   Languages,
@@ -43,6 +44,9 @@ import {
   accountInitials,
 } from "../Chat/utils/accountDisplayName";
 import { ProfileAvatar } from "../Admin/Users/ProfileAvatar";
+import { botCloudApi } from "../../api/modules/botCloud";
+import lynxceLogo from "../../assets/providers/lynxce.png";
+import { BotCharacter, octopCharacter } from "./BotCharacter";
 import RetainedFolders from "./RetainedFolders";
 import styles from "./accountMenu.module.less";
 
@@ -92,7 +96,30 @@ export default function AccountMenu({
   const { preference, setPreference } = useTheme();
   const [foldersOpen, setFoldersOpen] = useState(false);
   const [language, setLanguage] = useLanguage();
-  const name = accountDisplayName(user);
+  // Signed in to Lynxce: that account's name, with the Lynxce mark. Otherwise
+  // the local account ("local"), never a team or other borrowed name.
+  const [lynxceName, setLynxceName] = useState<string | null>(null);
+  const desktop = isBotOnlyDesktop();
+  useEffect(() => {
+    if (!desktop) return;
+    let current = true;
+    botCloudApi.account().then(
+      (a) =>
+        current &&
+        setLynxceName(a.connected ? a.display_name || a.account_id : null),
+      () => current && setLynxceName(null),
+    );
+    return () => {
+      current = false;
+    };
+  }, [desktop]);
+  const lynxce = desktop ? Boolean(lynxceName) : true;
+  const name = desktop
+    ? lynxceName || user?.username || ""
+    : accountDisplayName(user);
+  const source = t(
+    lynxce ? "botClient.account.lynxce" : "botClient.account.local",
+  );
   const from = { state: { from: location.pathname } };
   const web = isBotWebClient();
   const bridge = getDesktopBridge();
@@ -133,6 +160,7 @@ export default function AccountMenu({
         key: "theme:" + value,
         icon: <Icon size={15} />,
         label: t(label),
+        extra: preference === value ? <Check size={14} /> : undefined,
         onClick: () => setPreference(value),
       })),
     },
@@ -143,6 +171,7 @@ export default function AccountMenu({
       children: LANGUAGES.map(([value, label]) => ({
         key: "language:" + value,
         label,
+        extra: language === value ? <Check size={14} /> : undefined,
         onClick: () => void setLanguage(value),
       })),
     },
@@ -182,14 +211,22 @@ export default function AccountMenu({
     },
   ];
   const avatar =
-    user?.avatar_url || user?.avatar_icon ? (
+    lynxce && (user?.avatar_url || user?.avatar_icon) ? (
       <ProfileAvatar
         className={styles.avatar}
         url={user.avatar_url}
         icon={user.avatar_icon}
       />
-    ) : (
+    ) : lynxce ? (
       <span className={styles.avatar}>{accountInitials(name)}</span>
+    ) : (
+      <span className={styles.avatar} data-chief>
+        <BotCharacter
+          look={{ ...octopCharacter, source: "character" }}
+          size={26}
+          badges={false}
+        />
+      </span>
     );
   return (
     <>
@@ -209,10 +246,18 @@ export default function AccountMenu({
           className={styles.trigger}
           data-compact={compact || undefined}
           aria-label={name + " · " + t("botClient.menu.settings")}
-          title={compact ? name : undefined}
+          title={compact ? name + " · " + source : undefined}
         >
-          {avatar}
-          {!compact && <span className={styles.name}>{name}</span>}
+          <span className={styles.avatarWrap}>
+            {avatar}
+            {lynxce && <img className={styles.badge} src={lynxceLogo} alt="" />}
+          </span>
+          {!compact && (
+            <span className={styles.who}>
+              <span className={styles.name}>{name}</span>
+              <small>{source}</small>
+            </span>
+          )}
         </button>
       </Dropdown>
       {foldersOpen && <RetainedFolders onClose={() => setFoldersOpen(false)} />}

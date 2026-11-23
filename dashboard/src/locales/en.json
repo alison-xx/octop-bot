@@ -335,9 +335,20 @@
       "signedInAs": "Signed in as",
       "manage": "Manage",
       "language": "Language"
+    },
+    "account": {
+      "local": "Local account",
+      "lynxce": "Lynxce account"
     }
   },
   "octopBot": {
+    "ask": {
+      "somethingElse": "Something else",
+      "skip": "Skip",
+      "done": "Done",
+      "skipped": "Skipped"
+    },
+    "thinking": "Thinking",
     "avatar": {
       "title": "Bot avatar",
       "characters": "Characters",
@@ -534,7 +545,22 @@
     "openApproval": "Open member conversation",
     "search": "Search",
     "capabilities": "Capabilities and settings",
-    "groupMemoryPlaceholder": "Notes available to all members of this group"
+    "groupMemoryPlaceholder": "Notes available to all members of this group",
+    "modelVendor": {
+      "deepseek": "DeepSeek",
+      "qwen": "Qwen",
+      "glm": "Zhipu GLM",
+      "kimi": "Kimi",
+      "doubao": "Doubao",
+      "hunyuan": "Tencent Hunyuan",
+      "minimax": "MiniMax",
+      "gemini": "Gemini",
+      "claude": "Claude",
+      "openai": "OpenAI",
+      "mimo": "Xiaomi MiMo",
+      "other": "Other models"
+    },
+    "searchModels": "Search models"
   },
   "app": {
     "pageTitle": "Octop"

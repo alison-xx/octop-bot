@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Select, Spin } from "antd";
+import { Alert, Button, Spin } from "antd";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -12,6 +12,7 @@ import { apiErrorMessage, isNotFoundApiError } from "../../utils/apiError";
 import WalletBalance from "./WalletBalance";
 import LynxceRegistration from "./LynxceRegistration";
 import styles from "./BotClientSettings.module.less";
+import ModelSelect from "./ModelSelect";
 
 function externalUrl(value: string) {
   try {
@@ -321,17 +322,16 @@ export default function LynxceAccount({
               <label htmlFor="lynxce-personal-model">
                 {t("botClient.lynxce.choose")}
               </label>
-              <Select
+              <ModelSelect
                 id="lynxce-personal-model"
-                showSearch
-                optionFilterProp="label"
                 value={choice}
                 placeholder={t("botClient.lynxce.choose")}
                 disabled={!!busy}
                 onChange={setChoice}
-                options={models.map((m) => ({
+                items={models.map((m) => ({
                   value: m.id,
-                  label: m.name || m.id,
+                  id: m.id,
+                  name: m.name,
                 }))}
               />
               <Button

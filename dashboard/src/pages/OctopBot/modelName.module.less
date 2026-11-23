@@ -1,0 +1,84 @@
+.model {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.logo {
+  flex: none;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.letter {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--fn-bg-hover, #f0f0f0);
+  color: var(--fn-text-secondary, #595959);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.optionText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.35;
+  small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--fn-text-tertiary, #8c8c8c);
+    font-size: 11px;
+    font-weight: 400;
+  }
+}
+.tick {
+  flex: none;
+  color: var(--fn-text-primary, #181818);
+}
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  img {
+    border-radius: 3px;
+    object-fit: contain;
+  }
+}
+// Open but nothing typed: hide the current value and show the search hint.
+// Once a query is typed antd hides the whole item, hint included.
+.picker:global(.octop-select-open) :global(.octop-select-selection-item) {
+  position: relative;
+  color: transparent;
+  > * {
+    visibility: hidden;
+  }
+  &::after {
+    content: var(--model-search);
+    position: absolute;
+    inset: 0 auto 0 0;
+    display: flex;
+    align-items: center;
+    color: var(--fn-text-placeholder, #bfbfbf);
+  }
+}

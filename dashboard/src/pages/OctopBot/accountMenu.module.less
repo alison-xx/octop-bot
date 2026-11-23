@@ -70,3 +70,34 @@
   border-radius: 9px !important;
   gap: 2px;
 }
+.avatarWrap {
+  position: relative;
+  flex: none;
+  display: grid;
+}
+.avatar[data-chief] {
+  background: var(--bot-selection, var(--fn-bg-secondary));
+}
+.badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px var(--bot-rail, var(--fn-bg-primary));
+}
+.who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+  small {
+    color: var(--bot-muted, var(--fn-text-secondary));
+    font-size: 11px;
+  }
+}
+.menu :global(.octop-dropdown-menu-item-extra) {
+  display: inline-flex;
+  color: var(--fn-text-primary);
+}
