@@ -139,6 +139,8 @@ class ComputerManager:
         self._billing = billing or Billing(services)
         self._clock = clock
         self._locks: dict[str, threading.Lock] = {}
+        # Commands running right now, per agent: a computer mid-command is never idle.
+        self._busy: dict[str, int] = {}
         self._guard = threading.Lock()
         self._reaper: threading.Thread | None = None
 
@@ -231,29 +233,68 @@ class ComputerManager:
         record.reservations = []
 
     def tick(self) -> None:
-        """Pause idle computers; pay for the next chunk of busy ones (or pause them)."""
+        """One pass over every computer; a failure on one never holds up the others."""
         now = self._clock()
         for key, raw in self._services.settings_repo.with_prefix("octop_bot:computer:").items():
             if not isinstance(raw, str):
                 continue
-            record = ComputerRecord.load(raw)
-            if not record.running:
-                continue
-            if now - record.active_at >= IDLE_PAUSE_SECONDS:
-                self.pause(record.agent_id, record.user_id)
-                continue
-            self._settle_elapsed(record.agent_id, record.user_id, now)
-            if now >= record.paid_until - 60:
-                with self._lock(record.agent_id):
-                    current = self.record(record.agent_id, record.user_id)
-                    try:
-                        current.reservations.append(self._billing.reserve(current, CHUNK_MINUTES))
-                        current.paid_until += CHUNK_MINUTES * 60
-                        self._save(current)
-                        continue
-                    except Exception:  # noqa: BLE001 - out of credits (402) or Lynxce down
-                        logger.info("computer %s could not be paid for; pausing", key)
-                self.pause(record.agent_id, record.user_id)
+            try:
+                self._tick_one(ComputerRecord.load(raw), now)
+            except Exception:  # noqa: BLE001 - isolated per computer
+                logger.exception("computer %s tick failed", key)
+
+    def _tick_one(self, record: ComputerRecord, now: float) -> None:
+        if self._services.agent_repo.get(record.agent_id) is None:
+            self._release(record.agent_id, record.user_id)
+            return
+        if not record.running:
+            return
+        if record.instance_id and self._driver.state(record.instance_id) == "gone":
+            self._lost(record.agent_id, record.user_id)
+            return
+        busy = self._busy.get(record.agent_id, 0) > 0
+        if not busy and now - record.active_at >= IDLE_PAUSE_SECONDS:
+            self.pause(record.agent_id, record.user_id)
+            return
+        self._settle_elapsed(record.agent_id, record.user_id, now)
+        with self._lock(record.agent_id):
+            current = self.record(record.agent_id, record.user_id)
+            # Re-read under the lock: a pause may have landed since the snapshot above.
+            if not current.running or now < current.paid_until - 60:
+                return
+            try:
+                current.reservations.append(self._billing.reserve(current, CHUNK_MINUTES))
+                current.paid_until += CHUNK_MINUTES * 60
+                self._save(current)
+                return
+            except Exception:  # noqa: BLE001 - out of credits (402) or Lynxce down
+                logger.info("computer %s could not be paid for; pausing", record.agent_id)
+        self.pause(record.agent_id, record.user_id)
+
+    def _lost(self, agent_id: str, user_id: int) -> None:
+        """The provider no longer has the instance (stopped, expired): close its billing."""
+        with self._lock(agent_id):
+            record = self.record(agent_id, user_id)
+            if record.running:
+                self._settle(record)
+            record.running = False
+            record.running_since = None
+            record.instance_id = None
+            self._save(record)
+
+    def _release(self, agent_id: str, user_id: int) -> None:
+        """The Bot was deleted: stop its computer for good and drop the record."""
+        with self._lock(agent_id):
+            record = self.record(agent_id, user_id)
+            if record.instance_id:
+                try:
+                    self._driver.stop(record.instance_id)
+                except Exception:  # noqa: BLE001 - retried on the next pass
+                    logger.warning("stopping the computer of deleted bot %s failed", agent_id)
+                    raise
+            if record.running:
+                self._settle(record)
+            self._services.settings_repo.delete(self._key(agent_id))
 
     def _settle_elapsed(self, agent_id: str, user_id: int, now: float) -> None:
         """Settle chunks that are fully used as soon as they end.
@@ -300,9 +341,18 @@ class ComputerManager:
 
     def run(self, agent_id: str, user_id: int, command: str, timeout: int) -> tuple[int, str]:
         instance = self.ensure_running(agent_id, user_id)
+        with self._guard:
+            self._busy[agent_id] = self._busy.get(agent_id, 0) + 1
         try:
             return self._driver.run(instance, command, timeout)
+        except Exception:
+            # The instance may have gone away underneath (expired, stopped elsewhere).
+            if self._driver.state(instance) == "gone":
+                self._lost(agent_id, user_id)
+            raise
         finally:
+            with self._guard:
+                self._busy[agent_id] -= 1
             self.touch(agent_id, user_id)
 
     def write(self, agent_id: str, user_id: int, path: str, data: bytes) -> None:
@@ -330,4 +380,7 @@ def computer_manager(services: SharedServices) -> ComputerManager | None:
     with _manager_lock:
         if _manager is None:
             _manager = ComputerManager(services, AgsDriver(config))
+            # Computers left running by a previous process are billed and paused from now on,
+            # not from their next tool call.
+            _manager._start_reaper()
         return _manager

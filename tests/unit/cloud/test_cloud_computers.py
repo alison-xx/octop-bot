@@ -26,10 +26,22 @@ class Settings:
     def with_prefix(self, prefix: str) -> dict[str, str]:
         return {k: v for k, v in self.data.items() if k.startswith(prefix)}
 
+    def delete(self, key: str) -> None:
+        self.data.pop(key, None)
+
+
+class Agents:
+    def __init__(self) -> None:
+        self.deleted: set[str] = set()
+
+    def get(self, agent_id: str) -> object | None:
+        return None if agent_id in self.deleted else object()
+
 
 class Services:
     def __init__(self) -> None:
         self.settings_repo = Settings()
+        self.agent_repo = Agents()
 
 
 class Driver:
@@ -38,6 +50,7 @@ class Driver:
         self.calls: list[tuple[str, str]] = []
         self.files: dict[str, bytes] = {}
         self.fail_start = False
+        self.broken: set[str] = set()
 
     def start(self, *, spec: str, labels: Mapping[str, str]) -> str:
         if self.fail_start:
@@ -57,8 +70,11 @@ class Driver:
 
     def stop(self, instance_id: str) -> None:
         self.states[instance_id] = "gone"
+        self.calls.append(("stop", instance_id))
 
     def state(self, instance_id: str) -> State:
+        if instance_id in self.broken:
+            raise RuntimeError("provider error")
         return self.states.get(instance_id, "gone")
 
     def run(self, instance_id: str, command: str, timeout: int) -> tuple[int, str]:
@@ -200,3 +216,60 @@ def test_finished_chunks_are_settled_while_the_computer_keeps_running(setup: Any
     assert billing.settled == [("r1", 300)]
     manager.pause("bot1", 7)
     assert billing.settled == [("r1", 300), ("r2", 240), ("r3", 0)]
+
+
+def test_a_deleted_bots_computer_is_stopped_settled_and_forgotten(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    manager._services.agent_repo.deleted.add("bot1")
+    clock.now += 60
+    manager.tick()
+    assert driver.calls[-1] == ("stop", "ins-1")
+    assert billing.settled == [("r1", 60)]
+    assert manager._services.settings_repo.with_prefix("octop_bot:computer:") == {}
+
+
+def test_a_vanished_instance_closes_billing_and_starts_fresh(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1")
+    computer.execute("ls")
+    driver.states["ins-1"] = "gone"  # stopped by its own timeout
+    clock.now += 120
+    manager.tick()
+    assert billing.settled == [("r1", 120)]
+    computer.execute("ls")
+    assert driver.calls[-1] == ("start", "bot1")
+
+
+def test_a_long_command_is_not_idle(setup: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    manager, driver, billing, clock = setup
+
+    def slow(instance_id: str, command: str, timeout: int) -> tuple[int, str]:
+        clock.now += computers.IDLE_PAUSE_SECONDS + 60
+        manager.tick()  # the reaper runs while the command is still going
+        return 0, "built"
+
+    monkeypatch.setattr(driver, "run", slow)
+    assert CloudComputer(manager, user_id=7, agent_id="bot1").execute("make").output == "built"
+    assert ("pause", "ins-1") not in driver.calls
+
+
+def test_a_stale_snapshot_never_renews_a_paused_computer(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    stale = manager.record("bot1", 7)
+    manager.pause("bot1", 7)
+    clock.now += 5 * 60
+    manager._tick_one(stale, clock.now)
+    assert billing.reserved == [5]
+
+
+def test_one_broken_computer_does_not_hold_up_the_others(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    CloudComputer(manager, user_id=8, agent_id="bot2").execute("ls")
+    driver.broken.add("ins-1")
+    clock.now += 4 * 60 + 30
+    manager.touch("bot2", 8)
+    manager.tick()
+    assert billing.reserved == [5, 5, 5]  # bot2 still bought its next chunk
