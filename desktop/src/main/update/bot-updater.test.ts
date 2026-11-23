@@ -23,6 +23,8 @@ function harness(overrides: Partial<BotUpdaterDeps> = {}) {
     },
     verify: async () => true,
     notifyReady: (r) => notified.push(r.tag),
+    autoDownload: () => true,
+    notifyAvailable: (r) => notified.push(`available:${r.tag}`),
     onChange: (s) => states.push(s.kind),
     log: () => {},
     setTimer: (run, ms) => {
@@ -101,4 +103,14 @@ test("the schedule checks soon after launch, then every few hours", async () => 
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(h.timers[1]?.ms, CHECK_INTERVAL_MS);
+});
+
+test("with auto-download off a release is announced, not downloaded", async () => {
+  const h = harness({ autoDownload: () => false });
+  const state = await h.updater.check();
+  assert.equal(state.kind, "available");
+  assert.deepEqual(h.downloads, []);
+  assert.deepEqual(h.notified, ["available:1.0.4"]);
+  await h.updater.check();
+  assert.deepEqual(h.notified, ["available:1.0.4"], "announced once per version");
 });

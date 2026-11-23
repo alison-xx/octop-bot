@@ -21,6 +21,7 @@ import io.github.alisonxx.octopbot.store.Previews
 import io.github.alisonxx.octopbot.store.SpeechRate
 import io.github.alisonxx.octopbot.store.TextSize
 import io.github.alisonxx.octopbot.store.UserSettings
+import io.github.alisonxx.octopbot.update.UpdateState
 import io.github.alisonxx.octopbot.voice.Speaker
 import io.github.alisonxx.octopbot.voice.VoiceInput
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.UUID
 
 sealed interface SessionState {
@@ -83,6 +85,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         store.previews.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     val settings: StateFlow<UserSettings> =
         store.settings.stateIn(viewModelScope, SharingStarted.Eagerly, UserSettings())
+
+    /** In-app updates: the offer and its check/download status. */
+    val update: StateFlow<UpdateState> = app.updater.state
+    /** The version code whose home banner was closed. */
+    val dismissedUpdate: StateFlow<Int?> = store.dismissedUpdate.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    /** Verified APKs to hand to the system installer. */
+    val updateInstalls: Flow<File> = app.updater.installs
 
     private val _speakingMessage = MutableStateFlow<String?>(null)
     /** The message being read aloud, so its read-aloud button turns into stop. */
@@ -303,6 +312,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         }
     }
     fun setNotifications(value: Boolean) = viewModelScope.launch { store.setNotifications(value) }
+
+    // Updates
+
+    /** Settings → About → Check for updates; only this check reports a failure. */
+    fun checkForUpdates() {
+        viewModelScope.launch {
+            if (!app.updater.check(manual = true)) notice(resources.getString(R.string.update_check_failed))
+        }
+    }
+
+    fun startUpdate() = app.updater.update()
+    fun cancelUpdateDownload() = app.updater.cancelDownload()
+    fun dismissUpdate(versionCode: Int) = viewModelScope.launch { store.setDismissedUpdate(versionCode) }
+
+    /** Turning the beta channel on or off re-evaluates the manifest right away. */
+    fun setReceiveBeta(value: Boolean) = viewModelScope.launch {
+        store.setReceiveBeta(value)
+        app.updater.check(manual = false)
+    }
     fun setModel(value: String?) = viewModelScope.launch { store.setModel(value) }
 
     // ChatHost

@@ -18,6 +18,7 @@ import { lynxceBotApi } from "../../api/modules/lynxceBot";
 import { refreshBotModels, useLynxceStatus } from "../../hooks/useLynxceStatus";
 import LynxceAccount from "./LynxceAccount";
 import RetainedFolders from "./RetainedFolders";
+import BotUpdatePanel from "./BotUpdatePanel";
 import { authApi } from "../../api/modules/auth";
 import { providerApi } from "../../api/modules/provider";
 import type { ResolvedModel } from "../../api/types";
@@ -536,6 +537,7 @@ export default function BotClientSettings() {
               </Button>
             )}
           </section>
+          <BotUpdatePanel />
         </div>
       )}
       {foldersOpen && <RetainedFolders onClose={() => setFoldersOpen(false)} />}

@@ -29,6 +29,7 @@ import {
   type IssuedSession,
   type PlatformInfo,
   type UpdateCheckResult,
+  type BotUpdateStatus,
 } from "../shared/ipc-contract";
 import { resolveAppVersion } from "./app-version";
 import { BOT_HOME_PATH, BOT_PRODUCT_NAME, isBotProduct } from "../shared/product";
@@ -540,7 +541,12 @@ function startBotUpdater(): void {
     },
     verify: (release, path) => verifyPackage(release, path),
     notifyReady: notifyBotUpdateReady,
-    onChange: refreshUpdateMenus,
+    autoDownload: () => settingsStore.load().autoDownloadUpdates,
+    notifyAvailable: notifyBotUpdateAvailable,
+    onChange: () => {
+      refreshUpdateMenus();
+      broadcastBotUpdateStatus();
+    },
     log: (message) => desktopLog().info(message),
     setTimer: (run, ms) => setTimeout(run, ms),
     clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -564,6 +570,47 @@ function notifyBotUpdateReady(release: SelectedRelease): void {
   });
   notice.on("click", () => void applyBotUpdate());
   notice.show();
+}
+
+/** Auto-download is off: say a release is out; clicking downloads and installs it. */
+function notifyBotUpdateAvailable(release: SelectedRelease): void {
+  if (!Notification.isSupported()) return;
+  const zh = chineseUi();
+  const urgent = belowMinimumSupported();
+  const notice = new Notification({
+    title: zh ? `Octop Bot ${release.tag} 可以更新了` : `Octop Bot ${release.tag} is available`,
+    body: urgent
+      ? zh
+        ? "当前版本已停止支持，点击下载并更新。"
+        : "This version is no longer supported. Click to download and update."
+      : zh
+      ? "点击下载并更新。"
+      : "Click to download and update.",
+  });
+  notice.on("click", () => void applyBotUpdate());
+  notice.show();
+}
+
+/** The update state for the settings page. */
+function botUpdateStatus(): BotUpdateStatus {
+  const state = botUpdater?.current ?? { kind: "idle" as const };
+  const release = "release" in state ? state.release : null;
+  return {
+    kind: state.kind,
+    currentVersion: appVersion,
+    version: release?.tag ?? null,
+    notes: release && botManifest ? releaseNotes(botManifest, release.tag, chineseUi()) || null : null,
+    urgent: release !== null && belowMinimumSupported(),
+    error: state.kind === "error" ? state.message : null,
+  };
+}
+
+function broadcastBotUpdateStatus(): void {
+  const status = botUpdateStatus();
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win === botOrb?.window || win.isDestroyed()) continue;
+    win.webContents.send(IPC_CHANNELS.botUpdateChanged, status);
+  }
 }
 
 /** Install the waiting (or a freshly downloaded) release: stop Python, hand off, quit. */
@@ -644,6 +691,9 @@ function updateMenuItems(): MenuItemConstructorOptions[] {
   if (state?.kind === "ready") {
     return [{ label: zh ? `重启以更新到 ${state.release.tag}` : `Restart to Update to ${state.release.tag}`, click: () => void applyBotUpdate() }];
   }
+  if (state?.kind === "available") {
+    return [{ label: zh ? `下载并更新到 ${state.release.tag}` : `Download and Update to ${state.release.tag}`, click: () => void applyBotUpdate() }];
+  }
   const busy = state?.kind === "checking" || state?.kind === "downloading";
   return [{ label: zh ? "检查更新…" : "Check for Updates…", enabled: !busy, click: () => void checkBotUpdatesNow() }];
 }
@@ -693,7 +743,28 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.clientSettingsSet, (_e, patch: Partial<ClientSettings>) => {
     const saved = settingsStore.save(patch);
     closeBehavior = saved.closeBehavior;
+    // A changed channel or turning auto-download on takes effect right away.
+    if (botUpdater && patch && ("stableOnly" in patch || "autoDownloadUpdates" in patch)) void botUpdater.check();
     return saved;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.botUpdateState, (): BotUpdateStatus => botUpdateStatus());
+  ipcMain.handle(IPC_CHANNELS.botUpdateCheck, async (): Promise<BotUpdateStatus> => {
+    if (!botOnly) return botUpdateStatus();
+    if (botUpdater) {
+      await botUpdater.check();
+      return botUpdateStatus();
+    }
+    // Unpackaged dev build: no background updater, report the check only.
+    try {
+      const release = await resolveSelectedRelease();
+      return { ...botUpdateStatus(), kind: release ? "available" : "idle", version: release?.tag ?? null };
+    } catch (err) {
+      return { ...botUpdateStatus(), kind: "error", error: errorMessageOf(err) };
+    }
+  });
+  ipcMain.handle(IPC_CHANNELS.botUpdateApply, async (): Promise<void> => {
+    if (botOnly) await applyBotUpdate();
   });
 
   // Synchronous on purpose: the renderer builds WebSocket URLs inside render

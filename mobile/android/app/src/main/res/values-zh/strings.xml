@@ -244,4 +244,25 @@
     <string name="hitl_next">下一题</string>
     <string name="hitl_collapse">收起</string>
     <string name="hitl_expand">展开</string>
+
+    <!-- 应用内更新 -->
+    <string name="update_banner">有新版本 %1$s</string>
+    <string name="update_banner_urgent">当前版本已不再支持，请更新到 %1$s</string>
+    <string name="update_action">更新</string>
+    <string name="update_install_to">更新到 %1$s</string>
+    <string name="update_check">检查更新</string>
+    <string name="update_receive_beta">接收测试版</string>
+    <string name="update_status_latest">已是最新</string>
+    <string name="update_status_checking">正在检查…</string>
+    <string name="update_status_available">有新版本 %1$s</string>
+    <string name="update_status_downloading">正在下载 %1$d%%</string>
+    <string name="update_status_downloading_plain">正在下载…</string>
+    <string name="update_status_ready">可以安装</string>
+    <string name="update_status_check_failed">检查失败</string>
+    <string name="update_status_download_failed">下载失败</string>
+    <string name="update_status_verify_failed">校验失败</string>
+    <string name="update_check_failed">检查更新失败，请稍后再试</string>
+    <string name="update_permission_title">允许安装更新</string>
+    <string name="update_permission_text">安装更新需要允许 Octop Bot 安装未知应用。在接下来的页面打开开关后返回，更新会自动继续。</string>
+    <string name="update_permission_open">去设置</string>
 </resources>
