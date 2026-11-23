@@ -40,6 +40,13 @@ HITL_TOOL_EXCLUDE: frozenset[str] = frozenset(
         "acp_runner",
         # Managed ACP permission fallback. It is not a built-in tool users toggle.
         "external-agent",
+        # Run on the user's phone; the phone and its own confirmation are the gate.
+        "device_health_summary",
+        "device_calendar_events",
+        "device_calendar_create_event",
+        "device_calendar_update_event",
+        "device_reminders",
+        "device_reminder_create",
     }
 )
 

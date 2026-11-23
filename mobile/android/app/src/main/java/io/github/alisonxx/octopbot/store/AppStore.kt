@@ -49,6 +49,9 @@ data class UserSettings(
     val speechRate: SpeechRate = SpeechRate.Normal,
     /** Settings → About: also follow the `beta` update channel. */
     val receiveBeta: Boolean = false,
+    /** Settings → Device connectors (off by default; also needs the system permission). */
+    val deviceHealth: Boolean = false,
+    val deviceCalendar: Boolean = false,
 )
 
 /** Chat text size, as a multiple of the body style. */
@@ -94,6 +97,8 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
         val expandReasoning = booleanPreferencesKey("settings.expandReasoning")
         val speechRate = stringPreferencesKey("settings.speechRate")
         val receiveBeta = booleanPreferencesKey("settings.receiveBeta")
+        val deviceHealth = booleanPreferencesKey("settings.device.health")
+        val deviceCalendar = booleanPreferencesKey("settings.device.calendar")
         val installId = stringPreferencesKey("update.installId")
         val lastUpdateCheck = longPreferencesKey("update.lastCheck")
         val dismissedUpdate = intPreferencesKey("update.dismissedVersionCode")
@@ -126,6 +131,8 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
             expandReasoning = it[Keys.expandReasoning] ?: false,
             speechRate = SpeechRate.entries.firstOrNull { entry -> entry.name == it[Keys.speechRate] } ?: SpeechRate.Normal,
             receiveBeta = it[Keys.receiveBeta] ?: false,
+            deviceHealth = it[Keys.deviceHealth] ?: false,
+            deviceCalendar = it[Keys.deviceCalendar] ?: false,
         )
     }
 
@@ -160,6 +167,8 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
     suspend fun setExpandReasoning(value: Boolean) = store.edit { it[Keys.expandReasoning] = value }
     suspend fun setSpeechRate(value: SpeechRate) = store.edit { it[Keys.speechRate] = value.name }
     suspend fun setReceiveBeta(value: Boolean) = store.edit { it[Keys.receiveBeta] = value }
+    suspend fun setDeviceHealth(value: Boolean) = store.edit { it[Keys.deviceHealth] = value }
+    suspend fun setDeviceCalendar(value: Boolean) = store.edit { it[Keys.deviceCalendar] = value }
     suspend fun setModel(value: String?) = store.edit { if (value == null) it.remove(Keys.model) else it[Keys.model] = value }
 
     suspend fun lastBot(): String? = store.data.first()[Keys.lastBot]

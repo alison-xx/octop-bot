@@ -9,6 +9,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.PermissionController
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -108,7 +110,14 @@ data class SettingsState(
     /** The system blocks this app's notifications (permission denied or turned off). */
     val notificationsBlocked: Boolean,
     val update: UpdateState = UpdateState(),
+    /** Device connectors: on in Settings and permitted by the system. */
+    val deviceHealth: Boolean = false,
+    val deviceCalendar: Boolean = false,
+    val deviceNotice: DeviceNotice? = null,
 )
+
+/** Why a device connector switch stayed off. */
+enum class DeviceNotice { CalendarDenied, HealthDenied, HealthUnavailable, HealthUpdate }
 
 /** What the settings page can change. */
 class SettingsActions(
@@ -134,6 +143,10 @@ class SettingsActions(
     val onUpdate: () -> Unit = {},
     val onCancelUpdate: () -> Unit = {},
     val onReceiveBeta: (Boolean) -> Unit = {},
+    val onDeviceHealth: (Boolean) -> Unit = {},
+    val onDeviceCalendar: (Boolean) -> Unit = {},
+    /** Opens where the [DeviceNotice] can be fixed: app permissions, Health Connect, or the store. */
+    val onFixDevice: () -> Unit = {},
 )
 
 @Composable
@@ -151,12 +164,35 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
     val copied = stringResource(R.string.common_copied)
     val cleared = stringResource(R.string.settings_cache_cleared)
     var blocked by remember { mutableStateOf(!notificationsAllowed(context)) }
-    // Coming back from system settings re-checks the permission.
+    val device = model.device
+    var calendarPermitted by remember { mutableStateOf(device.calendar.permitted()) }
+    var healthPermitted by remember { mutableStateOf(false) }
+    var deviceNotice by remember { mutableStateOf<DeviceNotice?>(null) }
+    // Coming back from system settings re-checks the permissions.
     // Coming back from the recharge page shows the new balance.
     LifecycleResumeEffect(Unit) {
         blocked = !notificationsAllowed(context)
         model.refreshBalance()
-        onPauseOrDispose {}
+        calendarPermitted = device.calendar.permitted()
+        val check = scope.launch {
+            healthPermitted = device.health.permitted()
+            if ((deviceNotice == DeviceNotice.CalendarDenied && calendarPermitted) ||
+                (deviceNotice == DeviceNotice.HealthDenied && healthPermitted)
+            ) {
+                deviceNotice = null
+            }
+        }
+        onPauseOrDispose { check.cancel() }
+    }
+    val askCalendar = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        calendarPermitted = device.calendar.permitted()
+        if (calendarPermitted) model.setDeviceCalendar(true)
+        deviceNotice = if (calendarPermitted) null else DeviceNotice.CalendarDenied
+    }
+    val askHealth = rememberLauncherForActivityResult(PermissionController.createRequestPermissionResultContract()) { granted ->
+        healthPermitted = granted.any { it in device.health.permissions }
+        if (healthPermitted) model.setDeviceHealth(true)
+        deviceNotice = if (healthPermitted) null else DeviceNotice.HealthDenied
     }
     val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         blocked = !notificationsAllowed(context)
@@ -173,6 +209,9 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
             language = AppLocale.tag(),
             notificationsBlocked = blocked,
             update = update,
+            deviceHealth = settings.deviceHealth && healthPermitted,
+            deviceCalendar = settings.deviceCalendar && calendarPermitted,
+            deviceNotice = deviceNotice,
         ),
         actions = SettingsActions(
             onBack = onBack,
@@ -210,8 +249,42 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
             onUpdate = model::startUpdate,
             onCancelUpdate = model::cancelUpdateDownload,
             onReceiveBeta = { model.setReceiveBeta(it) },
+            onDeviceHealth = { on ->
+                when {
+                    !on -> model.setDeviceHealth(false)
+                    healthPermitted -> model.setDeviceHealth(true)
+                    else -> when (device.health.status()) {
+                        HealthConnectClient.SDK_AVAILABLE -> askHealth.launch(device.health.permissions)
+                        HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> deviceNotice = DeviceNotice.HealthUpdate
+                        else -> deviceNotice = DeviceNotice.HealthUnavailable
+                    }
+                }
+            },
+            onDeviceCalendar = { on ->
+                when {
+                    !on -> model.setDeviceCalendar(false)
+                    calendarPermitted -> model.setDeviceCalendar(true)
+                    else -> askCalendar.launch(device.calendar.permissions)
+                }
+            },
+            onFixDevice = { deviceNotice?.let { openDeviceFix(context, it) } },
         ),
     )
+}
+
+private const val HEALTH_CONNECT_PACKAGE = "com.google.android.apps.healthdata"
+
+private fun openDeviceFix(context: Context, notice: DeviceNotice) {
+    val appDetails = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri())
+    val intent = when (notice) {
+        DeviceNotice.CalendarDenied, DeviceNotice.HealthUnavailable -> appDetails
+        DeviceNotice.HealthDenied -> Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
+        DeviceNotice.HealthUpdate -> Intent(
+            Intent.ACTION_VIEW,
+            "market://details?id=$HEALTH_CONNECT_PACKAGE&url=healthconnect%3A%2F%2Fonboarding".toUri(),
+        )
+    }
+    runCatching { context.startActivity(intent) }.onFailure { runCatching { context.startActivity(appDetails) } }
 }
 
 private fun notificationsAllowed(context: Context): Boolean = NotificationManagerCompat.from(context).areNotificationsEnabled()
@@ -318,6 +391,39 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
                 },
             ) {
                 row { Toggle(stringResource(R.string.settings_notify), state.settings.notifications, actions.onNotifications) }
+            }
+
+            Group(
+                stringResource(R.string.settings_device),
+                footer = {
+                    Column {
+                        FooterText(stringResource(R.string.settings_device_footer))
+                        state.deviceNotice?.let { notice ->
+                            FooterText(
+                                stringResource(
+                                    when (notice) {
+                                        DeviceNotice.CalendarDenied, DeviceNotice.HealthDenied -> R.string.settings_device_denied
+                                        DeviceNotice.HealthUnavailable -> R.string.settings_device_health_unavailable
+                                        DeviceNotice.HealthUpdate -> R.string.settings_device_health_update
+                                    },
+                                ),
+                            )
+                            if (notice != DeviceNotice.HealthUnavailable) {
+                                TextButton(onClick = actions.onFixDevice, modifier = Modifier.padding(start = 4.dp)) {
+                                    Text(
+                                        stringResource(
+                                            if (notice == DeviceNotice.HealthUpdate) R.string.settings_device_health_install else R.string.settings_open_system_settings,
+                                        ),
+                                        color = SettingsLink,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+            ) {
+                row { Toggle(stringResource(R.string.settings_device_health), state.deviceHealth, actions.onDeviceHealth) }
+                row { Toggle(stringResource(R.string.settings_device_calendar), state.deviceCalendar, actions.onDeviceCalendar) }
             }
 
             Group(stringResource(R.string.settings_storage), footer = { FooterText(stringResource(R.string.settings_clear_cache_footer)) }) {

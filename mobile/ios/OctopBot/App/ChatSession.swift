@@ -18,8 +18,10 @@ final class ChatSession {
     /// Bumped to ask the composer to take focus (e.g. after "Edit").
     private(set) var focusRequest = 0
     private var task: Task<Void, Never>?
-    /// A question or approval the Bot is waiting on (server mode).
+    /// A question or approval the Bot is waiting on.
     var pause: HitlPause?
+    /// Device tools are running on this phone for the open pause.
+    private(set) var isRunningDevice = false
     /// Messages written while a reply was streaming; sent in order when it ends.
     private(set) var queued: [ChatMessage] = []
     private var currentRun: UUID?
@@ -76,6 +78,7 @@ final class ChatSession {
             if conversationId == conversation.id {
                 messages = loaded
                 pause = backend.openPause(in: conversation)
+                runDeviceReads()
             }
         } catch {
             if conversationId == conversation.id { self.error = error.localizedDescription }
@@ -92,7 +95,7 @@ final class ChatSession {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let backend = app?.backend, !trimmed.isEmpty || !images.isEmpty else { return }
         // Never block: while a reply streams, queue the message and send it when the reply ends.
-        if isStreaming {
+        if isStreaming || isRunningDevice {
             queued.append(ChatMessage(role: .user, text: trimmed, images: images))
             return
         }
@@ -136,14 +139,43 @@ final class ChatSession {
     /// Approve or reject an open approval.
     /// `reason` is the user's own message when they decline by just writing something else.
     func decide(_ pause: HitlPause, approve: Bool, reason: String? = nil) {
+        let names = pause.actions.map(\.label).joined(separator: "、")
+        let note = L(approve ? "hitl.approvedNote %@" : "hitl.rejectedNote %@", names)
+        if approve, pause.hasDeviceActions {
+            runDevice(pause, note: note)
+            return
+        }
         let decision: [String: Any] = approve
             ? ["type": "approve"]
-            : ["type": "reject", "message": reason ?? L("hitl.rejectedMessage")]
-        let names = pause.actions.map(\.label).joined(separator: "、")
-        resume(
-            pause, decisions: pause.actions.map { _ in decision }, echo: reason,
-            note: L(approve ? "hitl.approvedNote %@" : "hitl.rejectedNote %@", names)
-        )
+            : ["type": "reject", "message": reason ?? L(pause.hasDeviceActions ? "device.declined" : "hitl.rejectedMessage")]
+        resume(pause, decisions: pause.actions.map { _ in decision }, echo: reason, note: note)
+    }
+
+    /// Device tools that only read run as soon as the Bot asks; writes wait for the card.
+    private func runDeviceReads() {
+        guard let pause, pause.runsUnattended, !isStreaming else { return }
+        runDevice(pause, note: nil)
+    }
+
+    /// Run the pause's device tools on this phone and answer with their results; other tools are approved.
+    private func runDevice(_ pause: HitlPause, note: String?) {
+        self.pause = nil
+        isRunningDevice = true
+        let conversation = conversationId
+        Task {
+            var decisions: [[String: Any]] = []
+            for action in pause.actions {
+                if action.isDevice {
+                    decisions.append(["type": "respond", "message": await DeviceConnectors.shared.run(action.name, argsJSON: action.args)])
+                } else {
+                    decisions.append(["type": "approve"])
+                }
+            }
+            isRunningDevice = false
+            // The user may have left this conversation while the tools ran.
+            guard conversationId == conversation, self.pause == nil else { return }
+            resume(pause, decisions: decisions, note: note)
+        }
     }
 
     /// Close an open question without answering.
@@ -188,16 +220,19 @@ final class ChatSession {
                 }
                 update(replyId) { $0.status = .done }
                 removeEmptyReply(replyId)
-                let text = messages.first { $0.id == replyId }?.text ?? ""
-                let summary = text.isEmpty ? (pause?.questions.first?.question ?? pause.map { _ in L("hitl.title") } ?? "") : text
-                app?.recordPreview(summary, for: bot)
-                if app?.notifyOnReply == true, !summary.isEmpty { Notifier.replyFinished(bot: bot.name, text: summary) }
-                if let onReply {
-                    onReply(text)
-                } else if app?.readAloud == true, !text.isEmpty {
-                    Speaker.shared.speak(text, backend: backend, id: replyId)
+                // Paused only for device reads: the phone answers by itself and the reply goes on.
+                if pause?.runsUnattended != true {
+                    let text = messages.first { $0.id == replyId }?.text ?? ""
+                    let summary = text.isEmpty ? (pause?.questions.first?.question ?? pause.map { _ in L("hitl.title") } ?? "") : text
+                    app?.recordPreview(summary, for: bot)
+                    if app?.notifyOnReply == true, !summary.isEmpty { Notifier.replyFinished(bot: bot.name, text: summary) }
+                    if let onReply {
+                        onReply(text)
+                    } else if app?.readAloud == true, !text.isEmpty {
+                        Speaker.shared.speak(text, backend: backend, id: replyId)
+                    }
+                    await reloadConversations()
                 }
-                await reloadConversations()
             } catch is CancellationError {
                 update(replyId) { $0.status = .done }
                 removeEmptyReply(replyId)
@@ -208,6 +243,7 @@ final class ChatSession {
             }
             guard currentRun == run else { return }
             isStreaming = false
+            runDeviceReads()
             sendQueued()
         }
     }

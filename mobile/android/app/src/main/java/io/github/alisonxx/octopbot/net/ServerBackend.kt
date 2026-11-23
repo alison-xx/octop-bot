@@ -1,5 +1,6 @@
 package io.github.alisonxx.octopbot.net
 
+import io.github.alisonxx.octopbot.device.DeviceToolbox
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
@@ -289,12 +290,14 @@ class ServerBackend(
         conversation: String?,
         history: List<ChatMessage>,
         model: String?,
+        device: DeviceToolbox,
     ): Flow<StreamEvent> = channelFlow {
         val threadId = conversation ?: run {
             val created = json("POST", agent(bot) + "/threads").asObject()?.str("thread_id") ?: throw ApiException.badResponse()
             send(StreamEvent.Conversation(created))
             created
         }
+        val deviceTools = device.offered().map { it.name }
         val content = if (images.isEmpty()) JsonPrimitive(text) else {
             ServerProtocol.imageContent(text, images.mapIndexed { index, image -> upload(image, index, bot) })
         }
@@ -327,7 +330,7 @@ class ServerBackend(
             }
         }
         try {
-            socket.send(ServerProtocol.userTurn(threadId, text, content, model).toString())
+            socket.send(ServerProtocol.userTurn(threadId, text, content, model, deviceTools).toString())
             val mapper = ServerProtocol.FrameMapper(toolLabels())
             for (raw in frames) {
                 val frame = Http.parse(raw).asObject() ?: continue
