@@ -141,3 +141,55 @@ def test_previous_manifest_must_be_ours(tmp_path: Path, monkeypatch: pytest.Monk
     (tmp_path / "manifest.json.sig").write_text("AAAA")
     with pytest.raises(SystemExit):
         mod.load_previous(str(forged))
+
+
+def test_mobile_assets_carry_their_own_versions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mod = _load()
+    key_path, public = _key(tmp_path)
+    monkeypatch.setattr(mod, "PUBLIC_KEY", public)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "octop-bot-0.2.0.apk").write_bytes(b"apk")
+    out = tmp_path / "out"
+    base = [
+        "build",
+        "--version",
+        "1.0.4",
+        "--dist",
+        str(dist),
+        "--key",
+        str(key_path),
+        "--out",
+        str(out),
+    ]
+    base += ["--changelog", str(tmp_path / "missing.md")]
+    with pytest.raises(SystemExit):
+        mod.main(base)  # an APK without its versionCode is refused
+    mod.main(
+        [
+            *base,
+            "--android-version",
+            "0.2.0",
+            "--android-version-code",
+            "2",
+            "--android-min-version-code",
+            "1",
+            "--ios-url",
+            "https://apps.apple.com/app/id1",
+            "--ios-version",
+            "0.2.0",
+            "--ios-min-version",
+            "0.1.0",
+        ]
+    )
+    assets = json.loads((out / "manifest.json").read_bytes())["channels"]["beta"]["assets"]
+    assert assets["android"]["version_code"] == 2
+    assert assets["android"]["version"] == "0.2.0"
+    assert assets["android"]["min_version_code"] == 1
+    assert assets["ios"] == {
+        "url": "https://apps.apple.com/app/id1",
+        "version": "0.2.0",
+        "min_version": "0.1.0",
+    }

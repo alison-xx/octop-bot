@@ -1,8 +1,19 @@
+import java.net.URI
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
+
+// In-app updates read this signed manifest. A debug build can point at a local fake with
+// -PoctopBotUpdateManifestUrl=… -PoctopBotUpdatePublicKey=<base64 SPKI>; release builds always use these.
+val updateManifestUrl = "https://dl.lynxce.cn/releases/octop-bot/manifest.json"
+val updatePublicKey = "MCowBQYDK2VwAyEAjfzS5kpiVxqx/79rU5tYno7Js31ezDt05RmrmXnRTa0="
+val debugManifestUrl = providers.gradleProperty("octopBotUpdateManifestUrl").orNull
+val debugPublicKey = providers.gradleProperty("octopBotUpdatePublicKey").orNull
+
+fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
     namespace = "io.github.alisonxx.octopbot"
@@ -14,9 +25,23 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+
+        buildConfigField("String", "UPDATE_MANIFEST_URL", quoted(updateManifestUrl))
+        buildConfigField("String", "UPDATE_PUBLIC_KEY", quoted(updatePublicKey))
+        // Debug only: the origin (scheme://host:port) of a test manifest, also allowed for the APK download.
+        buildConfigField("String", "UPDATE_DEBUG_ORIGIN", quoted(""))
     }
 
     buildTypes {
+        debug {
+            debugManifestUrl?.let { url ->
+                val uri = URI(url)
+                buildConfigField("String", "UPDATE_MANIFEST_URL", quoted(url))
+                val port = if (uri.port == -1) "" else ":${uri.port}"
+                buildConfigField("String", "UPDATE_DEBUG_ORIGIN", quoted("${uri.scheme}://${uri.host}$port"))
+            }
+            debugPublicKey?.let { buildConfigField("String", "UPDATE_PUBLIC_KEY", quoted(it)) }
+        }
         release {
             isMinifyEnabled = false
         }

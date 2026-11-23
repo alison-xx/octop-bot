@@ -17,6 +17,7 @@ export const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export type BotUpdateState =
   | { kind: "idle" }
   | { kind: "checking" }
+  | { kind: "available"; release: SelectedRelease }
   | { kind: "downloading"; release: SelectedRelease }
   | { kind: "ready"; release: SelectedRelease; path: string }
   | { kind: "error"; message: string };
@@ -30,6 +31,10 @@ export interface BotUpdaterDeps {
   verify(release: SelectedRelease, path: string): Promise<boolean>;
   /** Tell the user a release is ready (once per version). */
   notifyReady(release: SelectedRelease): void;
+  /** Whether to download in the background; off means "announce only". */
+  autoDownload(): boolean;
+  /** Tell the user a release is out when auto-download is off (once per version). */
+  notifyAvailable(release: SelectedRelease): void;
   /** Rebuild menus that show the update state. */
   onChange(state: BotUpdateState): void;
   log(message: string): void;
@@ -103,6 +108,15 @@ export class BotUpdater {
     }
     if (before.kind === "ready" && before.release.tag === release.tag) {
       this.set(before);
+      return this.state;
+    }
+    if (!this.deps.autoDownload()) {
+      this.set({ kind: "available", release });
+      const key = `available:${release.tag}`;
+      if (!this.notified.has(key)) {
+        this.notified.add(key);
+        this.deps.notifyAvailable(release);
+      }
       return this.state;
     }
     this.set({ kind: "downloading", release });

@@ -9,6 +9,18 @@ export interface DesktopClientSettings {
   closeBehavior: "quit" | "tray";
   themeBackground: "system" | "light" | "dark";
   stableOnly: boolean;
+  /** Octop Bot: download newer releases in the background (default on). */
+  autoDownloadUpdates?: boolean;
+}
+
+/** Octop Bot background update state (desktop shell `botUpdates`). */
+export interface DesktopBotUpdateStatus {
+  kind: "idle" | "checking" | "available" | "downloading" | "ready" | "error";
+  currentVersion: string;
+  version: string | null;
+  notes: string | null;
+  urgent: boolean;
+  error: string | null;
 }
 
 export interface DesktopUpdateCheckResult {
@@ -138,6 +150,13 @@ export interface OctopDesktopBridge {
   checkForUpdates(): Promise<DesktopUpdateCheckResult>;
   /** Start the shell install. Takes no arguments; the page confirms first. */
   installUpdate(): Promise<void>;
+  /** Octop Bot shell only: background update state, check now, install the release on offer. */
+  botUpdates?: {
+    state(): Promise<DesktopBotUpdateStatus>;
+    check(): Promise<DesktopBotUpdateStatus>;
+    apply(): Promise<void>;
+    onChange(callback: (status: DesktopBotUpdateStatus) => void): () => void;
+  };
 }
 
 declare global {

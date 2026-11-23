@@ -263,4 +263,25 @@
     <string name="hitl_next">Next</string>
     <string name="hitl_collapse">Collapse</string>
     <string name="hitl_expand">Expand</string>
+
+    <!-- In-app updates -->
+    <string name="update_banner">Version %1$s is available</string>
+    <string name="update_banner_urgent">This version is no longer supported. Please update to %1$s.</string>
+    <string name="update_action">Update</string>
+    <string name="update_install_to">Update to %1$s</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_receive_beta">Receive beta versions</string>
+    <string name="update_status_latest">Up to date</string>
+    <string name="update_status_checking">Checking…</string>
+    <string name="update_status_available">%1$s available</string>
+    <string name="update_status_downloading">Downloading %1$d%%</string>
+    <string name="update_status_downloading_plain">Downloading…</string>
+    <string name="update_status_ready">Ready to install</string>
+    <string name="update_status_check_failed">Check failed</string>
+    <string name="update_status_download_failed">Download failed</string>
+    <string name="update_status_verify_failed">Verification failed</string>
+    <string name="update_check_failed">Couldn\'t check for updates. Try again later.</string>
+    <string name="update_permission_title">Allow installing the update</string>
+    <string name="update_permission_text">To install updates, allow Octop Bot to install unknown apps on the next screen, then come back. The update continues by itself.</string>
+    <string name="update_permission_open">Open settings</string>
 </resources>

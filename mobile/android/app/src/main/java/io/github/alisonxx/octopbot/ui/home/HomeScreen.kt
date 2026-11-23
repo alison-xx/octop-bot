@@ -3,7 +3,10 @@ package io.github.alisonxx.octopbot.ui.home
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.SmartToy
@@ -76,6 +79,8 @@ import io.github.alisonxx.octopbot.ui.common.relativeTime
 import io.github.alisonxx.octopbot.ui.common.rememberHaptics
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
 import io.github.alisonxx.octopbot.ui.theme.OctopTheme
+import io.github.alisonxx.octopbot.update.UpdatePhase
+import io.github.alisonxx.octopbot.update.UpdateSelection
 
 /** Everything the directory shows; separate from the ViewModel so previews can feed it. */
 data class DirectoryState(
@@ -86,7 +91,11 @@ data class DirectoryState(
     val showGroups: Boolean,
     /** Shown as a banner when a refresh failed and cached Bots are on screen. */
     val error: String? = null,
+    /** A newer version, until its banner is closed. */
+    val update: UpdateBanner? = null,
 )
+
+data class UpdateBanner(val version: String, val versionCode: Int, val urgent: Boolean, val phase: UpdatePhase)
 
 @Composable
 fun HomeScreen(
@@ -108,6 +117,8 @@ fun HomeScreen(
     val lastBot by model.lastBotId.collectAsStateWithLifecycle()
     val error by model.directoryError.collectAsStateWithLifecycle()
     val refreshing by model.refreshing.collectAsStateWithLifecycle()
+    val update by model.update.collectAsStateWithLifecycle()
+    val dismissedUpdate by model.dismissedUpdate.collectAsStateWithLifecycle()
     Directory(
         state = DirectoryState(
             bots = bots,
@@ -116,6 +127,8 @@ fun HomeScreen(
             replying = replying,
             showGroups = backend.supportsGroups,
             error = error,
+            update = update.offer?.takeIf { UpdateSelection.showBanner(it, dismissedUpdate) }
+                ?.let { UpdateBanner(it.version, it.versionCode, it.urgent, update.phase) },
         ),
         refreshing = refreshing,
         onRefresh = model::refreshDirectory,
@@ -130,6 +143,9 @@ fun HomeScreen(
         },
         onDeleteBot = model::deleteBot,
         onNewGroup = { newGroup = true },
+        onUpdate = model::startUpdate,
+        onCancelUpdate = model::cancelUpdateDownload,
+        onDismissUpdate = { model.dismissUpdate(it) },
     )
     if (newGroup) NewGroupSheet(bots, onCreate = model::createGroup, onDismiss = { newGroup = false })
 }
@@ -149,6 +165,10 @@ fun Directory(
     onVoice: (String?) -> Unit,
     onDeleteBot: (BotProfile) -> Unit,
     onNewGroup: () -> Unit,
+    onUpdate: () -> Unit = {},
+    onCancelUpdate: () -> Unit = {},
+    /** The version code whose banner was closed. */
+    onDismissUpdate: (Int) -> Unit = {},
 ) {
     val palette = LocalPalette.current
     var query by rememberSaveable { mutableStateOf("") }
@@ -194,6 +214,7 @@ fun Directory(
                 style = MaterialTheme.typography.headlineLarge,
                 modifier = Modifier.padding(start = 20.dp, top = 4.dp, bottom = 8.dp),
             )
+            state.update?.let { UpdateBannerRow(it, onUpdate, onCancelUpdate, onDismiss = { onDismissUpdate(it.versionCode) }) }
             SearchField(
                 query = query,
                 onQueryChange = { query = it },
@@ -285,6 +306,72 @@ private fun ErrorBanner(message: String, onRetry: () -> Unit) {
         Spacer(Modifier.width(10.dp))
         Text(message, style = MaterialTheme.typography.bodyMedium, color = palette.secondary, modifier = Modifier.weight(1f))
         TextButton(onClick = onRetry) { Text(stringResource(R.string.chat_retry)) }
+    }
+}
+
+/** "Version X is available" with Update, download progress, and a close button that hides this version for good. */
+@Composable
+private fun UpdateBannerRow(banner: UpdateBanner, onUpdate: () -> Unit, onCancel: () -> Unit, onDismiss: () -> Unit) {
+    val palette = LocalPalette.current
+    val phase = banner.phase
+    Column(
+        Modifier
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(palette.raised)
+            .padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Rounded.SystemUpdate,
+                contentDescription = null,
+                tint = if (banner.urgent) MaterialTheme.colorScheme.error else palette.text,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(if (banner.urgent) R.string.update_banner_urgent else R.string.update_banner, banner.version),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.text,
+                )
+                val detail = when (phase) {
+                    is UpdatePhase.Downloading -> if (phase.percent < 0) {
+                        stringResource(R.string.update_status_downloading_plain)
+                    } else {
+                        stringResource(R.string.update_status_downloading, phase.percent)
+                    }
+                    is UpdatePhase.DownloadFailed -> stringResource(
+                        if (phase.integrity) R.string.update_status_verify_failed else R.string.update_status_download_failed,
+                    )
+                    else -> null
+                }
+                detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = palette.secondary) }
+            }
+            when (phase) {
+                is UpdatePhase.Downloading -> TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }
+                is UpdatePhase.DownloadFailed -> TextButton(onClick = onUpdate) { Text(stringResource(R.string.chat_retry)) }
+                else -> TextButton(onClick = onUpdate) { Text(stringResource(R.string.update_action)) }
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.common_close), tint = palette.secondary)
+            }
+        }
+        if (phase is UpdatePhase.Downloading) {
+            val progress = Modifier.fillMaxWidth().padding(end = 12.dp, top = 2.dp, bottom = 6.dp)
+            if (phase.percent < 0) {
+                LinearProgressIndicator(progress, color = palette.text, trackColor = palette.hairline)
+            } else {
+                LinearProgressIndicator(
+                    progress = { phase.percent / 100f },
+                    modifier = progress,
+                    color = palette.text,
+                    trackColor = palette.hairline,
+                )
+            }
+        }
     }
 }
 
@@ -423,6 +510,7 @@ private fun DirectoryPreview() {
                 ),
                 replying = setOf("researcher"),
                 showGroups = true,
+                update = UpdateBanner("0.2.0", 2, urgent = false, phase = UpdatePhase.Downloading(42)),
             ),
             refreshing = false,
             onRefresh = {},

@@ -6,6 +6,8 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.alisonxx.octopbot.model.BotProfile
@@ -19,6 +21,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
+import java.util.UUID
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "octop")
 
@@ -44,6 +47,8 @@ data class UserSettings(
     val haptics: Boolean = true,
     val expandReasoning: Boolean = false,
     val speechRate: SpeechRate = SpeechRate.Normal,
+    /** Settings → About: also follow the `beta` update channel. */
+    val receiveBeta: Boolean = false,
 )
 
 /** Chat text size, as a multiple of the body style. */
@@ -88,6 +93,10 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
         val haptics = booleanPreferencesKey("settings.haptics")
         val expandReasoning = booleanPreferencesKey("settings.expandReasoning")
         val speechRate = stringPreferencesKey("settings.speechRate")
+        val receiveBeta = booleanPreferencesKey("settings.receiveBeta")
+        val installId = stringPreferencesKey("update.installId")
+        val lastUpdateCheck = longPreferencesKey("update.lastCheck")
+        val dismissedUpdate = intPreferencesKey("update.dismissedVersionCode")
     }
 
     private val stringMap = MapSerializer(String.serializer(), String.serializer())
@@ -116,6 +125,7 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
             haptics = it[Keys.haptics] ?: true,
             expandReasoning = it[Keys.expandReasoning] ?: false,
             speechRate = SpeechRate.entries.firstOrNull { entry -> entry.name == it[Keys.speechRate] } ?: SpeechRate.Normal,
+            receiveBeta = it[Keys.receiveBeta] ?: false,
         )
     }
 
@@ -149,6 +159,7 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
     suspend fun setHaptics(value: Boolean) = store.edit { it[Keys.haptics] = value }
     suspend fun setExpandReasoning(value: Boolean) = store.edit { it[Keys.expandReasoning] = value }
     suspend fun setSpeechRate(value: SpeechRate) = store.edit { it[Keys.speechRate] = value.name }
+    suspend fun setReceiveBeta(value: Boolean) = store.edit { it[Keys.receiveBeta] = value }
     suspend fun setModel(value: String?) = store.edit { if (value == null) it.remove(Keys.model) else it[Keys.model] = value }
 
     suspend fun lastBot(): String? = store.data.first()[Keys.lastBot]
@@ -161,6 +172,21 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
     /** The address last typed into the server form; kept across sign-outs. */
     suspend fun lastServer(): String? = store.data.first()[Keys.lastServer]
     suspend fun setLastServer(address: String) = store.edit { it[Keys.lastServer] = address }
+
+    /** A random id made once per install; keeps this install in the same staged-rollout bucket. */
+    suspend fun installId(): String {
+        store.data.first()[Keys.installId]?.let { return it }
+        var id = ""
+        store.edit { id = it[Keys.installId] ?: UUID.randomUUID().toString().also { new -> it[Keys.installId] = new } }
+        return id
+    }
+
+    suspend fun lastUpdateCheck(): Long? = store.data.first()[Keys.lastUpdateCheck]
+    suspend fun setLastUpdateCheck(at: Long) = store.edit { it[Keys.lastUpdateCheck] = at }
+
+    /** The version code whose home banner was closed; that version never shows it again. */
+    val dismissedUpdate: Flow<Int?> = store.data.map { it[Keys.dismissedUpdate] }
+    suspend fun setDismissedUpdate(versionCode: Int) = store.edit { it[Keys.dismissedUpdate] = versionCode }
 
     /** Forget what belongs to the signed-in account: tokens and caches. Settings toggles stay. */
     suspend fun clearAccount() {

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -84,6 +85,8 @@ import io.github.alisonxx.octopbot.ui.common.TopBarTitle
 import io.github.alisonxx.octopbot.ui.common.rememberHaptics
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
 import io.github.alisonxx.octopbot.ui.theme.OctopTheme
+import io.github.alisonxx.octopbot.update.UpdatePhase
+import io.github.alisonxx.octopbot.update.UpdateState
 import kotlinx.coroutines.launch
 
 private const val ISSUE_URL = "https://github.com/alison-xx/octop-bot/issues/new"
@@ -104,6 +107,7 @@ data class SettingsState(
     val language: String,
     /** The system blocks this app's notifications (permission denied or turned off). */
     val notificationsBlocked: Boolean,
+    val update: UpdateState = UpdateState(),
 )
 
 /** What the settings page can change. */
@@ -124,6 +128,10 @@ class SettingsActions(
     val onSwitchAccount: () -> Unit,
     val onSignOut: () -> Unit,
     val onOpenUrl: (String) -> Unit,
+    val onCheckUpdates: () -> Unit = {},
+    val onUpdate: () -> Unit = {},
+    val onCancelUpdate: () -> Unit = {},
+    val onReceiveBeta: (Boolean) -> Unit = {},
 )
 
 @Composable
@@ -133,6 +141,7 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
     val balance by model.balance.collectAsStateWithLifecycle()
     val models by model.models.collectAsStateWithLifecycle()
     val settings by model.settings.collectAsStateWithLifecycle()
+    val update by model.update.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
@@ -160,6 +169,7 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
             settings = settings,
             language = AppLocale.tag(),
             notificationsBlocked = blocked,
+            update = update,
         ),
         actions = SettingsActions(
             onBack = onBack,
@@ -191,6 +201,10 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
             onSwitchAccount = model::switchAccount,
             onSignOut = { model.signOut() },
             onOpenUrl = { url -> context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) },
+            onCheckUpdates = model::checkForUpdates,
+            onUpdate = model::startUpdate,
+            onCancelUpdate = model::cancelUpdateDownload,
+            onReceiveBeta = { model.setReceiveBeta(it) },
         ),
     )
 }
@@ -319,7 +333,15 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
             }
 
             Group(stringResource(R.string.settings_about)) {
-                row { Item(stringResource(R.string.settings_version), value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})") }
+                row { VersionItem(state.update) }
+                state.update.offer?.let { offer ->
+                    row { UpdateItem(offer.version, state.update.phase, actions.onUpdate, actions.onCancelUpdate) }
+                }
+                row {
+                    val busy = state.update.phase == UpdatePhase.Checking || state.update.phase is UpdatePhase.Downloading
+                    Item(stringResource(R.string.update_check), onClick = actions.onCheckUpdates.takeUnless { busy })
+                }
+                row { Toggle(stringResource(R.string.update_receive_beta), state.settings.receiveBeta, actions.onReceiveBeta) }
                 row { RepoItem(GitHubStars.bot) { actions.onOpenUrl(GitHubStars.bot.url) } }
                 row { RepoItem(GitHubStars.octop) { actions.onOpenUrl(GitHubStars.octop.url) } }
                 row { Item(stringResource(R.string.settings_report), external = true) { actions.onOpenUrl(ISSUE_URL) } }
@@ -443,6 +465,85 @@ private fun FooterText(text: String) {
         color = LocalPalette.current.secondary,
         modifier = Modifier.padding(start = 16.dp, top = 6.dp, end = 16.dp),
     )
+}
+
+/** "Version 0.1.0 (1)" with the update status on the right. */
+@Composable
+private fun VersionItem(update: UpdateState) {
+    val palette = LocalPalette.current
+    val offer = update.offer
+    val status = when (val phase = update.phase) {
+        UpdatePhase.Checking -> stringResource(R.string.update_status_checking)
+        is UpdatePhase.Downloading -> if (phase.percent < 0) {
+            stringResource(R.string.update_status_downloading_plain)
+        } else {
+            stringResource(R.string.update_status_downloading, phase.percent)
+        }
+        is UpdatePhase.DownloadFailed ->
+            stringResource(if (phase.integrity) R.string.update_status_verify_failed else R.string.update_status_download_failed)
+        UpdatePhase.CheckFailed -> stringResource(R.string.update_status_check_failed)
+        is UpdatePhase.Ready -> stringResource(R.string.update_status_ready)
+        UpdatePhase.UpToDate -> stringResource(R.string.update_status_latest)
+        UpdatePhase.Idle -> offer?.let { stringResource(R.string.update_status_available, it.version) }
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column {
+            Text(stringResource(R.string.settings_version), style = MaterialTheme.typography.bodyLarge, color = palette.text)
+            Text(
+                "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.secondary,
+            )
+        }
+        Text(
+            status.orEmpty(),
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (offer != null && update.phase == UpdatePhase.Idle) SettingsLink else palette.secondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f).padding(start = 12.dp),
+        )
+    }
+}
+
+/** "Update to X": downloads, verifies and installs; while downloading it shows progress and cancels. */
+@Composable
+private fun UpdateItem(version: String, phase: UpdatePhase, onUpdate: () -> Unit, onCancel: () -> Unit) {
+    val palette = LocalPalette.current
+    val downloading = phase as? UpdatePhase.Downloading
+    Column(Modifier.fillMaxWidth().clickable(onClick = if (downloading != null) onCancel else onUpdate)) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.update_install_to, version),
+                style = MaterialTheme.typography.bodyLarge,
+                color = SettingsLink,
+                modifier = Modifier.weight(1f),
+            )
+            val action = when {
+                downloading != null -> stringResource(R.string.common_cancel)
+                phase is UpdatePhase.DownloadFailed -> stringResource(R.string.chat_retry)
+                else -> null
+            }
+            action?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = palette.secondary) }
+        }
+        downloading?.let {
+            val modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+            if (it.percent < 0) {
+                LinearProgressIndicator(modifier, color = SettingsGreen, trackColor = palette.hairline)
+            } else {
+                LinearProgressIndicator(
+                    progress = { it.percent / 100f },
+                    modifier = modifier,
+                    color = SettingsGreen,
+                    trackColor = palette.hairline,
+                )
+            }
+        }
+    }
 }
 
 /** A GitHub project with its star count, like the website's header. */

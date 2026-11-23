@@ -3,4 +3,6 @@
     <cache-path name="camera" path="camera/" />
     <!-- Images re-encoded for the share sheet. -->
     <cache-path name="shared" path="shared/" />
+    <!-- Downloaded app updates, opened by the system installer. -->
+    <cache-path name="updates" path="updates/" />
 </paths>

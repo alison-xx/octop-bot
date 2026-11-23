@@ -21,6 +21,7 @@ import { refreshBotModels, useLynxceStatus } from "../../hooks/useLynxceStatus";
 import LynxceAccount from "./LynxceAccount";
 import BotNotifySettings from "./BotNotifySettings";
 import RetainedFolders from "./RetainedFolders";
+import BotUpdatePanel from "./BotUpdatePanel";
 import { providerApi } from "../../api/modules/provider";
 import type { ResolvedModel } from "../../api/types";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -391,6 +392,7 @@ export default function BotClientSettings() {
                 )}
               </div>
               <BotNotifySettings />
+              <BotUpdatePanel />
               <h3>{t("botClient.nav.privacy")}</h3>
               <div className={settings.group}>
                 <div className={settings.row}>

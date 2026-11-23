@@ -1,3 +1,4 @@
+import CryptoKit
 import SwiftUI
 import XCTest
 @testable import OctopBot
@@ -394,5 +395,50 @@ final class StarsTests: XCTestCase {
         XCTAssertEqual(GitHubStars.format(1234), "1.23k")
         XCTAssertEqual(GitHubStars.format(12_400), "12.4k")
         XCTAssertEqual(GitHubStars.format(12_000), "12k")
+    }
+}
+
+@MainActor
+final class AppUpdaterTests: XCTestCase {
+    private let key = Curve25519.Signing.PrivateKey()
+
+    private func signed(_ manifest: [String: Any]) throws -> (Data, String) {
+        let body = try JSONSerialization.data(withJSONObject: manifest)
+        return (body, try key.signature(for: body).base64EncodedString())
+    }
+
+    private var publicKey: String { key.publicKey.rawRepresentation.base64EncodedString() }
+
+    private func manifest(stable: String?, beta: String?, rollout: Int = 100, minimum: String? = nil) -> [String: Any] {
+        func entry(_ v: String) -> [String: Any] {
+            var ios: [String: Any] = ["url": "https://apps.apple.com/app/id1", "version": v]
+            if let minimum { ios["min_version"] = minimum }
+            return ["version": "1.0.\(v.split(separator: ".").last ?? "0")", "rollout": rollout, "assets": ["ios": ios]]
+        }
+        var channels: [String: Any] = [:]
+        if let stable { channels["stable"] = entry(stable) }
+        if let beta { channels["beta"] = entry(beta) }
+        return ["schema": 1, "product": "octop-bot", "channels": channels]
+    }
+
+    func testSignatureMustMatchTheExactBytes() throws {
+        let (body, signature) = try signed(manifest(stable: "0.2.0", beta: nil))
+        XCTAssertNotNil(try AppUpdater.verify(body, signature: signature, publicKey: publicKey))
+        XCTAssertThrowsError(try AppUpdater.verify(body + Data(" ".utf8), signature: signature, publicKey: publicKey))
+        XCTAssertThrowsError(try AppUpdater.verify(body, signature: signature, publicKey: AppUpdater.publicKey))
+        XCTAssertThrowsError(try AppUpdater.verify(body, signature: "nope", publicKey: publicKey))
+    }
+
+    func testSelectionFollowsChannelVersionAndRollout() {
+        let m = manifest(stable: "0.2.0", beta: "0.3.0")
+        XCTAssertEqual(AppUpdater.select(m, installed: "0.1.0", receiveBeta: false, installId: "a")?.version, "0.2.0")
+        XCTAssertEqual(AppUpdater.select(m, installed: "0.1.0", receiveBeta: true, installId: "a")?.version, "0.3.0")
+        XCTAssertNil(AppUpdater.select(m, installed: "0.2.0", receiveBeta: false, installId: "a"))
+        XCTAssertNil(AppUpdater.select(manifest(stable: "0.2.0", beta: nil, rollout: 0), installed: "0.1.0", receiveBeta: false, installId: "a"))
+        XCTAssertEqual(AppUpdater.select(manifest(stable: "0.2.0", beta: nil, minimum: "0.1.5"), installed: "0.1.0", receiveBeta: false, installId: "a")?.urgent, true)
+        XCTAssertEqual(AppUpdater.compare("0.10.0", "0.9.1"), .orderedDescending)
+        XCTAssertEqual(AppUpdater.bucket(installId: "a", version: "1.0.4"), AppUpdater.bucket(installId: "a", version: "1.0.4"))
+        let inside = (0..<1000).filter { AppUpdater.bucket(installId: "id-\($0)", version: "1.0.4") < 30 }.count
+        XCTAssertTrue((220...380).contains(inside), "about 30 % expected, got \(inside)")
     }
 }

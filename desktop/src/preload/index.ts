@@ -4,6 +4,7 @@ import {
   IPC_CHANNELS,
   type BotNotification,
   type BotShortcut,
+  type BotUpdateStatus,
   type ClientSettings,
   type IssuedSession,
   type PlatformInfo,
@@ -181,6 +182,26 @@ const bridge = {
   installUpdate(): Promise<void> {
     return ipcRenderer.invoke(IPC_CHANNELS.installUpdate);
   },
+  /**
+   * Octop Bot background updates. The page reads the state and asks for a
+   * check or the install; it can never name a package (the shell selects it).
+   */
+  botUpdates: botOnly
+    ? {
+        state(): Promise<BotUpdateStatus> {
+          return ipcRenderer.invoke(IPC_CHANNELS.botUpdateState);
+        },
+        check(): Promise<BotUpdateStatus> {
+          return ipcRenderer.invoke(IPC_CHANNELS.botUpdateCheck);
+        },
+        apply(): Promise<void> {
+          return ipcRenderer.invoke(IPC_CHANNELS.botUpdateApply);
+        },
+        onChange(callback: (status: BotUpdateStatus) => void): () => void {
+          return subscribe(IPC_CHANNELS.botUpdateChanged, callback);
+        },
+      }
+    : undefined,
   /**
    * Device session (§7 accounts). The renderer can ask for a JWT, but the
    * credential behind it never crosses this bridge.

@@ -1,0 +1,25 @@
+/* Layout comes from BotClientSettings.module.less (group / row); only the extras live here. */
+.status[data-tone="new"] {
+  color: var(--fn-text-primary);
+  font-weight: 600;
+}
+
+.status[data-tone="urgent"],
+.status[data-tone="error"] {
+  color: var(--fn-color-warning-text);
+}
+
+.notes {
+  flex: 1;
+  max-height: 160px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--fn-bg-secondary);
+  color: var(--fn-text-secondary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}

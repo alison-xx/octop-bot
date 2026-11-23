@@ -15,6 +15,21 @@ export interface ClientSettings {
   themeBackground: "system" | "light" | "dark";
   /** Whether the shell update check should follow the stable channel only. */
   stableOnly: boolean;
+  /** Octop Bot: download a newer release in the background (otherwise only announce it). */
+  autoDownloadUpdates: boolean;
+}
+
+/** Octop Bot background update state, as the settings page shows it. */
+export interface BotUpdateStatus {
+  kind: "idle" | "checking" | "available" | "downloading" | "ready" | "error";
+  currentVersion: string;
+  /** The release on offer (available / downloading / ready). */
+  version: string | null;
+  /** Release notes in the UI language, when the manifest has them. */
+  notes: string | null;
+  /** The installed version is below the manifest's `min_supported`. */
+  urgent: boolean;
+  error: string | null;
 }
 
 export interface PlatformInfo {
@@ -80,6 +95,11 @@ export const IPC_CHANNELS = {
   checkForUpdates: "octop:check-for-updates",
   /** Page already confirmed. No arguments: the shell re-selects the release. */
   installUpdate: "octop:install-update",
+  /** Octop Bot updates: read state, check now, install the release on offer, state pushes. */
+  botUpdateState: "octop:bot:update-state",
+  botUpdateCheck: "octop:bot:update-check",
+  botUpdateApply: "octop:bot:update-apply",
+  botUpdateChanged: "octop:bot:update-changed",
   windowsMenuModel: "octop:windows-menu:model",
   windowsMenuInvoke: "octop:windows-menu:invoke",
   openBotSettings: "octop:bot:open-settings",

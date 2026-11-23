@@ -372,7 +372,21 @@ struct SettingsView: View {
                 }
 
                 Section("settings.about") {
-                    LabeledContent { Text(verbatim: version) } label: { row("settings.version", "info.circle", .gray) }
+                    LabeledContent {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(verbatim: version)
+                            updateStatus
+                        }
+                    } label: { row("settings.version", "info.circle", .gray) }
+                    Button { AppUpdater.shared.check() } label: {
+                        LabeledContent {
+                            if AppUpdater.shared.status == .checking { ProgressView() }
+                        } label: { row("update.check", "arrow.triangle.2.circlepath", .blue) }
+                    }
+                    .foregroundStyle(Palette.text)
+                    .disabled(AppUpdater.shared.status == .checking)
+                    Toggle(isOn: Bindable(AppUpdater.shared).receiveBeta) { row("update.beta", "testtube.2", .purple) }
+                        .tint(.green)
                     repoLink(GitHubStars.bot)
                     repoLink(GitHubStars.octop)
                     link("settings.feedback", "exclamationmark.bubble", .orange, "https://github.com/alison-xx/octop-bot/issues/new")
@@ -415,6 +429,28 @@ struct SettingsView: View {
                     notifications = await Notifier.status()
                 }
             }
+        }
+    }
+
+    /// One line under the version: current, available (tap to open the store), or failed.
+    @ViewBuilder
+    private var updateStatus: some View {
+        switch AppUpdater.shared.status {
+        case .upToDate:
+            Text("update.upToDate").font(.caption).foregroundStyle(Palette.secondary)
+        case .available(let latest, let url, let urgent):
+            Link(destination: url) {
+                Text(urgent ? L("update.urgent %@", latest) : L("update.available %@", latest))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(urgent ? .orange : .blue)
+                    .multilineTextAlignment(.trailing)
+            }
+        case .failed:
+            Text("update.failed").font(.caption).foregroundStyle(.orange)
+        case .checking:
+            Text("update.checking").font(.caption).foregroundStyle(Palette.secondary)
+        case .idle:
+            EmptyView()
         }
     }
 

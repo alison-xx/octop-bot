@@ -107,6 +107,7 @@ def release_entry(
     rollout: int,
     ios_url: str | None,
     released: str,
+    mobile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     entry: dict[str, Any] = {
         "version": version,
@@ -120,8 +121,25 @@ def release_entry(
     }
     if min_supported:
         entry["min_supported"] = min_supported
+    mobile = mobile or {}
+    android = entry["assets"].get("android")
+    if android is not None:
+        # The phone apps have their own version numbers; Android compares version_code.
+        if mobile.get("android_version_code") is None:
+            raise SystemExit("an APK needs --android-version-code (and --android-version)")
+        android["version_code"] = mobile["android_version_code"]
+        if mobile.get("android_version"):
+            android["version"] = mobile["android_version"]
+        if mobile.get("android_min_version_code") is not None:
+            android["min_version_code"] = mobile["android_min_version_code"]
     if ios_url:
-        entry["assets"]["ios"] = {"url": ios_url}
+        ios: dict[str, Any] = {"url": ios_url}
+        if not mobile.get("ios_version"):
+            raise SystemExit("--ios-url needs --ios-version")
+        ios["version"] = mobile["ios_version"]
+        if mobile.get("ios_min_version"):
+            ios["min_version"] = mobile["ios_min_version"]
+        entry["assets"]["ios"] = ios
     return entry
 
 
@@ -200,6 +218,13 @@ def cmd_build(args: argparse.Namespace) -> None:
         min_supported=args.min_supported,
         rollout=args.rollout,
         ios_url=args.ios_url,
+        mobile={
+            "android_version": args.android_version,
+            "android_version_code": args.android_version_code,
+            "android_min_version_code": args.android_min_version_code,
+            "ios_version": args.ios_version,
+            "ios_min_version": args.ios_min_version,
+        },
         released=args.date or date.today().isoformat(),
     )
     target = write(manifest, Path(args.out), load_key(Path(args.key)))
@@ -258,6 +283,15 @@ def main(argv: list[str] | None = None) -> None:
     build.add_argument("--min-supported", help="clients older than this are told they must update")
     build.add_argument("--rollout", type=int, default=100, choices=range(0, 101), metavar="0-100")
     build.add_argument("--ios-url", help="App Store or TestFlight link")
+    build.add_argument("--ios-version", help="iOS app version (MARKETING_VERSION), e.g. 0.2.0")
+    build.add_argument(
+        "--ios-min-version", help="iOS versions below this are told they must update"
+    )
+    build.add_argument("--android-version", help="Android versionName, e.g. 0.2.0")
+    build.add_argument("--android-version-code", type=int, help="Android versionCode of the APK")
+    build.add_argument(
+        "--android-min-version-code", type=int, help="Android versionCodes below this must update"
+    )
     build.add_argument("--date")
     build.add_argument("--key", default=str(DEFAULT_KEY))
     build.add_argument("--out", required=True)

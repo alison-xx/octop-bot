@@ -20,6 +20,11 @@ struct HomeView: View {
     var body: some View {
         NavigationStack(path: $path) {
             List {
+                if let release = AppUpdater.shared.bannerRelease {
+                    UpdateBanner(release: release)
+                        .listRowBackground(Palette.background)
+                        .listRowSeparator(.hidden)
+                }
                 if let error = model.loadError, !model.bots.isEmpty {
                     Label(error, systemImage: "wifi.exclamationmark")
                         .font(.footnote)
@@ -124,7 +129,15 @@ struct HomeView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             // Bots, looks and groups may have changed on the desktop while we were away.
-            if phase == .active { Task { await model.refresh() } }
+            if phase == .active {
+                Task { await model.refresh() }
+                AppUpdater.shared.checkIfDue()
+            }
+        }
+        .task {
+            // A quiet update check shortly after launch; never in the way of the first screen.
+            try? await Task.sleep(for: .seconds(10))
+            AppUpdater.shared.checkIfDue()
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
         .sheet(item: $editing) { bot in BotEditor(bot: bot) }
@@ -301,5 +314,34 @@ private struct GroupCreator: View {
                 self.error = error.localizedDescription
             }
         }
+    }
+}
+
+/// "Version X is available": opens the App Store / TestFlight; closing it hides this version for good.
+private struct UpdateBanner: View {
+    let release: AppUpdater.Release
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: release.urgent ? "exclamationmark.arrow.circlepath" : "arrow.down.circle.fill")
+                .font(.title2)
+                .foregroundStyle(release.urgent ? .orange : .blue)
+            Text(release.urgent ? L("update.urgent %@", release.version) : L("update.available %@", release.version))
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Palette.text)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button("update.action") { openURL(release.url) }
+                .buttonStyle(PillButtonStyle(filled: true))
+            Button {
+                withAnimation(.snappy) { AppUpdater.shared.dismissBanner() }
+            } label: {
+                Image(systemName: "xmark").font(.footnote.weight(.semibold)).foregroundStyle(Palette.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("common.close"))
+        }
+        .padding(12)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }

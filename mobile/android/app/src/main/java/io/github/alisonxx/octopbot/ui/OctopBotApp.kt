@@ -10,7 +10,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import io.github.alisonxx.octopbot.R
+import io.github.alisonxx.octopbot.update.ApkInstaller
+import java.io.File
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
@@ -154,6 +163,7 @@ private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<String?>)
         nav.navigate(Routes.chat(bot)) { popUpTo(Routes.HOME) }
     }
     AskForNotifications(model)
+    InstallUpdates(model)
     NavHost(nav, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
             HomeScreen(
@@ -209,5 +219,53 @@ private fun AskForNotifications(model: AppViewModel) {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     LaunchedEffect(settings.notifications) {
         if (settings.notifications) launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+}
+
+/**
+ * Hands each verified update APK to the system installer. Without the "install unknown apps" permission it
+ * explains, opens that system page, and continues when the user comes back with it granted.
+ */
+@Composable
+private fun InstallUpdates(model: AppViewModel) {
+    val context = LocalContext.current
+    var waiting by remember { mutableStateOf<File?>(null) }
+    var explain by remember { mutableStateOf(false) }
+    fun install(apk: File) {
+        runCatching { context.startActivity(ApkInstaller.installIntent(context, apk)) }
+    }
+    LaunchedEffect(model) {
+        model.updateInstalls.collect { apk ->
+            if (ApkInstaller.canInstall(context)) {
+                install(apk)
+            } else {
+                waiting = apk
+                explain = true
+            }
+        }
+    }
+    LifecycleResumeEffect(waiting) {
+        val apk = waiting
+        if (apk != null && !explain && ApkInstaller.canInstall(context)) {
+            waiting = null
+            install(apk)
+        }
+        onPauseOrDispose {}
+    }
+    if (explain) {
+        AlertDialog(
+            onDismissRequest = { explain = false; waiting = null },
+            title = { Text(stringResource(R.string.update_permission_title), style = MaterialTheme.typography.titleLarge) },
+            text = { Text(stringResource(R.string.update_permission_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    explain = false
+                    runCatching { context.startActivity(ApkInstaller.unknownSourcesIntent(context)) }
+                }) { Text(stringResource(R.string.update_permission_open)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { explain = false; waiting = null }) { Text(stringResource(R.string.common_cancel)) }
+            },
+        )
     }
 }

@@ -21,6 +21,7 @@
 		2B28871028EA4B40CBC4DAEE /* OctopBotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 185F69E704AE68F0C0ED11C1 /* OctopBotTests.swift */; };
 		2CCBCC317754D53E26034F28 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15BBCE5B206951E544D4FD60 /* Keychain.swift */; };
 		41B9ABBCAFF713FEA04C284C /* HTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1E4C98857F2A9A92FA53F6 /* HTTP.swift */; };
+		50D8356BA21790C2FFF46F1D /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2022CECD87289127591F30D /* AppUpdater.swift */; };
 		5E31F9FF32F06FBE952A0A9F /* octop-mascot.webp in Resources */ = {isa = PBXBuildFile; fileRef = 7B4198C3433D9E46B368560D /* octop-mascot.webp */; };
 		670A22CF3CD26D0459F1C862 /* GroupRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3673E4497A330EC42D8B0AE4 /* GroupRoomView.swift */; };
 		701243634B93B3D55795922A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CF6F0F3501DAF6D838B0A354 /* LaunchScreen.storyboard */; };
@@ -81,6 +82,7 @@
 		A58EF3F0541F5BFE3F7F8B17 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		B0B4725C78C81A15A4357C17 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		B376C8BCAD0157318169A260 /* OctopBotTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OctopBotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C2022CECD87289127591F30D /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
 		C235A1CAB3877508B396E0E7 /* Voice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Voice.swift; sourceTree = "<group>"; };
 		C7C5948840F044AA5B01E6FB /* CharacterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterView.swift; sourceTree = "<group>"; };
 		C8FC5EE7F64E7D3DE6CC62A4 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -184,6 +186,7 @@
 		CBB80F86FC24FBC28491DE50 /* Store */ = {
 			isa = PBXGroup;
 			children = (
+				C2022CECD87289127591F30D /* AppUpdater.swift */,
 				15BBCE5B206951E544D4FD60 /* Keychain.swift */,
 				07983C65452A324E84BBF59A /* LocalBots.swift */,
 				273BA3F6AD10D4A909CDADE6 /* Preferences.swift */,
@@ -340,6 +343,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F9AAC368DBB70E5F7E9FA7D7 /* AppModel.swift in Sources */,
+				50D8356BA21790C2FFF46F1D /* AppUpdater.swift in Sources */,
 				23EE84C97894827ED6A8E595 /* CharacterView.swift in Sources */,
 				8330BE0127CCDC3E8975B833 /* Characters.swift in Sources */,
 				94F0BEE560698A2E757BFE90 /* ChatScreen.swift in Sources */,
