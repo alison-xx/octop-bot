@@ -550,4 +550,18 @@ final class CreditTests: XCTestCase {
         XCTAssertFalse(CreditStore.isCreditPack("cn.lynxce.omni.credits.1000"))
         XCTAssertFalse(CreditStore.isCreditPack("cn.lynxce.octopbot"))
     }
+
+    func testOnlyFinalRefusalsFinishATransaction() throws {
+        let body = #"{"error":{"code":"apple_sandbox_rejected","message":"no sandbox"}}"#
+        var refused: APIError?
+        XCTAssertThrowsError(try LynxceBackend.unwrap(Data(body.utf8), status: 403)) { refused = $0 as? APIError }
+        XCTAssertEqual(refused?.code, "apple_sandbox_rejected")
+        XCTAssertTrue(CreditStore.isFinalRefusal(try XCTUnwrap(refused)))
+        // Bought while another Lynxce account was signed in: stays queued for that account.
+        let otherAccount = APIError(kind: .rejected, status: 403, message: nil, code: "apple_account_token_mismatch")
+        XCTAssertFalse(CreditStore.isFinalRefusal(otherAccount))
+        // Not configured yet, or offline: tried again later.
+        XCTAssertFalse(CreditStore.isFinalRefusal(APIError(kind: .rejected, status: 409, message: nil, code: "apple_product_unknown")))
+        XCTAssertFalse(CreditStore.isFinalRefusal(.network))
+    }
 }

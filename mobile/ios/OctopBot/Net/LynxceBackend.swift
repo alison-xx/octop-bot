@@ -131,7 +131,7 @@ final class LynxceBackend: ChatBackend {
     static func unwrap(_ data: Data, status: Int) throws -> Any {
         let object = try? JSONSerialization.jsonObject(with: data)
         guard (200..<300).contains(status) else {
-            throw APIError.from(status: status, message: HTTP.errorMessage(data))
+            throw APIError.from(status: status, message: HTTP.errorMessage(data), code: HTTP.errorCode(data))
         }
         guard let envelope = object as? [String: Any], let code = envelope["code"] as? Int else {
             throw APIError(kind: .server, status: 502, message: nil)
