@@ -250,7 +250,7 @@ object ServerProtocol {
         return out
     }
 
-    private val fileDeliveryTools = setOf("send_file", "send_file_to_user")
+    private val fileDeliveryTools = setOf("send_file", "send_file_to_user", "generate_image", "generate_video")
 
     /** Files in a history `role:"tool"` row of `send_file_to_user` (its `output` is a JSON block or a list of them). */
     fun sentFiles(row: JsonObject, agentId: String?): List<FileAttachment> =
@@ -261,11 +261,25 @@ object ServerProtocol {
             val output = block.str("output")?.trim().orEmpty()
             if (output.isEmpty() || output[0] !in "{[") return@flatMap emptyList()
             when (val parsed = Http.parse(output)) {
-                is JsonObject -> listOfNotNull(sentFile(parsed, agentId))
+                is JsonObject -> generatedFiles(parsed, agentId) ?: listOfNotNull(sentFile(parsed, agentId))
                 is JsonArray -> parsed.objects().mapNotNull { sentFile(it, agentId) }
                 else -> emptyList()
             }
         }
+
+    /** A `generate_image` / `generate_video` result: its `images` / `videos` rows, or null for other blocks. */
+    private fun generatedFiles(result: JsonObject, agentId: String?): List<FileAttachment>? {
+        val field = when (result.str("type")) {
+            "image_gen_tool_result" -> "images"
+            "video_gen_tool_result" -> "videos"
+            else -> return null
+        }
+        return result.arr(field)?.objects().orEmpty().mapNotNull { row ->
+            val path = row.str("path")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val url = agentId?.let { workspaceDownloadPath(it, path) } ?: return@mapNotNull null
+            FileAttachment(url, FileCards.baseName(path), row.str("mediaType"))
+        }
+    }
 
     private fun sentFile(block: JsonObject, agentId: String?): FileAttachment? {
         val type = block.str("type")

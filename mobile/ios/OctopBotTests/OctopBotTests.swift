@@ -710,4 +710,22 @@ final class FileAttachmentTests: XCTestCase {
         XCTAssertEqual(orphan[0].role, .assistant)
         XCTAssertTrue(orphan[0].attachments[0].isImage)
     }
+
+    func testHistoryAttachesGeneratedImagesAndVideos() {
+        let image = #"{"type":"image_gen_tool_result","images":[{"path":"generated/images/cat.png","mediaType":"image/png"}]}"#
+        let video = #"{"type":"video_gen_tool_result","videos":[{"path":"generated/videos/sea.mp4","mediaType":"video/mp4"}]}"#
+        let messages = ServerBackend.history([
+            ["role": "user", "content": "画一只猫，再做一段海浪的视频"],
+            ["role": "tool", "content": [["type": "tool_result", "name": "generate_image", "output": image]]],
+            ["role": "tool", "content": [["type": "tool_result", "name": "generate_video", "output": video]]],
+            ["role": "assistant", "content": [["type": "text", "text": "好了。"]]],
+        ], agent: "A1")
+        XCTAssertEqual(messages[1].attachments.map(\.name), ["cat.png", "sea.mp4"])
+        XCTAssertEqual(messages[1].attachments.map(\.url), [
+            "/api/agents/A1/workspace/download?path=generated/images/cat.png",
+            "/api/agents/A1/workspace/download?path=generated/videos/sea.mp4",
+        ])
+        XCTAssertTrue(messages[1].attachments[0].isImage)
+        XCTAssertEqual(messages[1].attachments[1].mime, "video/mp4")
+    }
 }

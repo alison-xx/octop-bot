@@ -124,6 +124,35 @@ export function ToolMediaStrip({
     return null;
   }
 
+  if (rich) {
+    // Octop Bot: generated pictures and videos are attachment cards like any file the Bot
+    // sends (the picture is the card itself), with preview and download.
+    // A generated video also arrives as a pushed file attachment, under another URL.
+    const seen = new Set<string>();
+    const cards = [...images, ...videos, ...files].filter((file) => {
+      const key = file.filename || file.url;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }) as Array<{ url: string; filename?: string; mimeType?: string }>;
+    return (
+      <div className={styles.toolMediaStrip}>
+        <div className={styles.messageFiles}>
+          {cards.map((file, idx) => (
+            <MessageFileCard
+              key={`${file.url}-${idx}`}
+              url={file.url}
+              filename={file.filename}
+              mediaType={file.mimeType}
+              agentId={agentId}
+              rich
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.toolMediaStrip}>
       {images.length > 0 && (

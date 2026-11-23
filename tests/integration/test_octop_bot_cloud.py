@@ -28,6 +28,7 @@ class Upstream:
         self.revoked: set[str] = set()
         self.forbidden: set[str] = set()
         self.mint_fails = False
+        self.patched: list[tuple[str, dict[str, Any]]] = []
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         assert req.url.host == "api.lynxce.cn" and req.url.scheme == "https"
@@ -67,6 +68,10 @@ class Upstream:
             return httpx.Response(
                 200, json={"code": 0, "data": {"id": f"key-{n}", "secret": f"sk-test-{n}"}}
             )
+        if req.method == "PATCH" and path.startswith("/api/user/personal-api-keys/"):
+            assert req.headers["Authorization"].startswith("Bearer access-")
+            self.patched.append((path.rsplit("/", 1)[1], json.loads(req.content)))
+            return httpx.Response(200, json={"code": 0, "data": {}})
         if path == "/api/auth/logout":
             return httpx.Response(200, json={"code": 0, "data": {}})
         if path == "/api/billing/app/recharge-packages":
@@ -144,7 +149,8 @@ async def test_each_lynxce_account_gets_its_own_tenant(
         again = await _sign_in(client, "13800000001")
         assert again["user"]["id"] == alice["user"]["id"]
         assert [k["name"] for k in upstream.keys] == [accounts.KEY_NAME, accounts.KEY_NAME]
-        assert upstream.keys[0]["scopes"] == ["model:chat"]
+        assert upstream.keys[0]["scopes"] == ["model:chat", "media:image", "media:video"]
+        assert upstream.patched == []  # new keys already have the media scopes
         # The replaced session is closed upstream.
         assert upstream.counts["/api/auth/logout"] == 1
 
@@ -481,8 +487,39 @@ async def test_host_files_are_closed_to_tenant_agents_only(
         operator_cfg = registry._build_harness_config(rows.get(operator_bot.agent_id))
         assert tenant_cfg.media_generation is None
         assert operator_cfg.media_generation is not None
+        # Tenants make them with their own Lynxce key instead.
+        from octop.infra.agents.providers.lynxce_media import LynxceMediaTools
+
+        def media_tools(cfg: Any) -> list[str]:
+            return [
+                t.name
+                for m in cfg.middleware or []
+                if isinstance(m, LynxceMediaTools)
+                for t in m.tools
+            ]
+
+        assert media_tools(tenant_cfg) == ["generate_image", "generate_video"]
+        assert media_tools(operator_cfg) == []
         info = (await client.get("/api/octop-bot/server-info")).json()
-        assert info["capabilities"]["media_generation"] is False
+        assert info["capabilities"]["media_generation"] is True
+
+
+async def test_a_chat_only_model_key_gets_the_media_scopes_once(
+    tmp_octop_home: Path, upstream: Upstream
+) -> None:
+    async with octop_client(tmp_octop_home) as (client, srv):
+        uid = (await _sign_in(client, "13800000024"))["user"]["id"]
+        key = accounts.load_model_key(srv.services, uid)
+        assert key is not None and key.scopes == accounts.KEY_SCOPES
+        # A key minted before media generation: no scopes recorded.
+        accounts._save_model_key(srv.services, uid, accounts.ModelKey(key.key_id, key.secret))
+        from octop.infra.agents.providers import lynxce as lynxce_provider
+
+        auth = await lynxce_provider.media_auth(srv.services, uid)
+        assert (auth.base_url, auth.bearer) == (lynxce_provider.GATEWAY_URL, key.secret)
+        assert upstream.patched == [(key.key_id, {"scopes": list(accounts.KEY_SCOPES)})]
+        await lynxce_provider.media_auth(srv.services, uid)
+        assert len(upstream.patched) == 1
 
 
 async def test_only_a_401_replaces_the_model_key(tmp_octop_home: Path, upstream: Upstream) -> None:

@@ -287,6 +287,27 @@ class ServerProtocolTest {
     }
 
     @Test
+    fun historyAttachesGeneratedImagesAndVideos() {
+        val messages = ServerProtocol.history(
+            Http.parse(
+                """[
+                  {"role":"user","content":"画一只猫，再做一段海浪的视频"},
+                  {"role":"tool","content":[{"type":"tool_result","name":"generate_image",
+                    "output":"{\"type\":\"image_gen_tool_result\",\"images\":[{\"path\":\"generated/images/cat.png\",\"mediaType\":\"image/png\"}]}"}]},
+                  {"role":"tool","content":[{"type":"tool_result","name":"generate_video",
+                    "output":"{\"type\":\"video_gen_tool_result\",\"videos\":[{\"path\":\"generated/videos/sea.mp4\",\"mediaType\":\"video/mp4\"}]}"}]},
+                  {"role":"assistant","content":[{"type":"text","text":"好了。"}]}
+                ]""",
+            ) as kotlinx.serialization.json.JsonArray,
+            agentId = "A1",
+        )
+        val files = messages[1].attachments
+        assertEquals(listOf("cat.png", "sea.mp4"), files.map { it.name })
+        assertEquals("/api/agents/A1/workspace/download?path=generated%2Fvideos%2Fsea.mp4", files[1].url)
+        assertEquals(listOf("image/png", "video/mp4"), files.map { it.mime })
+    }
+
+    @Test
     fun attachmentFramesStreamIntoTheReply() {
         val mapper = ServerProtocol.FrameMapper()
         val outcome = mapper.map(

@@ -5049,6 +5049,27 @@ class AgentManager:
         merged_tools.extend(knowledge_tools)
         merged_tools.extend(mobile_tools)
         merged_tools.extend(plugin_tools)
+        # The image and video providers the operator configured are theirs; a cloud tenant
+        # would bill them. Without them, a Lynxce credential (the tenant's own key, the desktop
+        # app's Lynxce account, or the server's Lynxce API key) makes images and videos.
+        operator_media = (
+            None if self._cloud_tenant(row.user_id) else self._media_generation.harness_config()
+        )
+        if operator_media is None:
+            from octop.infra.agents.providers.lynxce import media_auth, media_source
+            from octop.infra.agents.providers.lynxce_media import (
+                LynxceMediaTools,
+                lynxce_media_tools,
+            )
+
+            account_services = self._account_services()
+            if media_source(account_services, row.user_id) is not None:
+                owner = row.user_id
+                agent_middleware.append(
+                    LynxceMediaTools(
+                        lynxce_media_tools(ws, lambda: media_auth(account_services, owner))
+                    )
+                )
         # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.
 
         acp_section = cfg.get("acp")
@@ -5198,10 +5219,7 @@ class AgentManager:
             skills_disabled=frozenset(skills_disabled_set(cfg) | plugin_skills_disabled),
             skills_dir=skill_dirs or None,
             default_timezone=self._config.default_timezone,
-            # The image and video providers are the operator's; a cloud tenant would bill them.
-            media_generation=(
-                None if self._cloud_tenant(row.user_id) else self._media_generation.harness_config()
-            ),
+            media_generation=operator_media,
             **harness_fields,
             **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),

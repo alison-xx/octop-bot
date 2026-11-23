@@ -9,6 +9,7 @@ own Lynxce wallet and shows up, revocable, in their Lynxce account centre.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -24,9 +25,13 @@ if TYPE_CHECKING:
     from octop.infra.users.identity import User
     from octop.infra.users.manager import UserManager
 
+logger = logging.getLogger(__name__)
+
 SSO_KIND = "lynxce"
 KEY_NAME = "Octop Bot 云端"
 DEFAULT_MODEL = "deepseek-flash"
+# Chat, plus the Bots' image and video generation (lynxce_media.py).
+KEY_SCOPES = ("model:chat", "media:image", "media:video")
 # UserManager.disabled_reason of a tenant who asked Lynxce to delete their account.
 DELETION_PENDING = "lynxce_deletion_pending"
 
@@ -35,6 +40,8 @@ DELETION_PENDING = "lynxce_deletion_pending"
 class ModelKey:
     key_id: str
     secret: str
+    # Scopes this server gave the key; keys minted before media generation have none recorded.
+    scopes: tuple[str, ...] = ()
 
 
 def _provider_id(services: SharedServices) -> int:
@@ -65,7 +72,12 @@ def load_model_key(services: SharedServices, user_id: int) -> ModelKey | None:
     if not blob:
         return None
     data = decrypt_json(repo, ref + ".fernet", blob)
-    return ModelKey(key_id=str(data["key_id"]), secret=str(data["secret"]))
+    scopes = data.get("scopes")
+    return ModelKey(
+        key_id=str(data["key_id"]),
+        secret=str(data["secret"]),
+        scopes=tuple(str(s) for s in scopes) if isinstance(scopes, list) else (),
+    )
 
 
 def forget_model_key(services: SharedServices, user_id: int) -> None:
@@ -75,13 +87,15 @@ def forget_model_key(services: SharedServices, user_id: int) -> None:
 def _save_model_key(services: SharedServices, user_id: int, key: ModelKey) -> None:
     repo = services.secret_repo
     ref = _key_ref(user_id)
-    repo.put(ref, encrypt_json(repo, ref + ".fernet", {"key_id": key.key_id, "secret": key.secret}))
+    data = {"key_id": key.key_id, "secret": key.secret, "scopes": list(key.scopes)}
+    repo.put(ref, encrypt_json(repo, ref + ".fernet", data))
 
 
 def _key_request() -> dict[str, Any]:
-    """Chat only; the daily cap is Lynxce's default unless OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT says
-    otherwise (``none`` = no cap). The user can change it in their Lynxce account centre."""
-    body: dict[str, Any] = {"name": KEY_NAME, "scopes": ["model:chat"]}
+    """Chat and media generation; the daily cap is Lynxce's default unless
+    OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT says otherwise (``none`` = no cap). The user can change it
+    in their Lynxce account centre."""
+    body: dict[str, Any] = {"name": KEY_NAME, "scopes": list(KEY_SCOPES)}
     raw = (os.environ.get("OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT") or "").strip().lower()
     if raw == "none":
         body["dailyCreditLimit"] = None
@@ -119,9 +133,39 @@ async def _mint_model_key(services: SharedServices, user_id: int) -> ModelKey:
     secret = data.get("secret") if isinstance(data, dict) else None
     if not isinstance(key_id, str) or not isinstance(secret, str) or not secret.startswith("sk-"):
         raise OctopError.localized(ErrorCode.NETWORK_ERROR)
-    key = ModelKey(key_id=key_id, secret=secret)
+    key = ModelKey(key_id=key_id, secret=secret, scopes=KEY_SCOPES)
     await asyncio.to_thread(_save_model_key, services, user_id, key)
     return key
+
+
+async def ensure_media_scopes(services: SharedServices, user_id: int) -> None:
+    """Give a key minted for chat only the media scopes too, once, with the tenant's session.
+
+    Lynxce does not upgrade an existing key's scopes. On failure (no session, Lynxce down) the
+    key is used as it is: the gateway then answers ``api_key_scope_forbidden``, and signing in
+    again retries this.
+    """
+    async with _key_lock(services, user_id):
+        key = await asyncio.to_thread(load_model_key, services, user_id)
+        if key is None or set(KEY_SCOPES) <= set(key.scopes):
+            return
+        try:
+            await lynxce_cloud.tenant_call(
+                services,
+                user_id,
+                "PATCH",
+                f"/api/user/personal-api-keys/{key.key_id}",
+                {"scopes": list(KEY_SCOPES)},
+            )
+        except Exception:  # noqa: BLE001 - see the docstring
+            logger.warning("Could not add media scopes to the Lynxce key of user %s", user_id)
+            return
+        await asyncio.to_thread(
+            _save_model_key,
+            services,
+            user_id,
+            ModelKey(key_id=key.key_id, secret=key.secret, scopes=KEY_SCOPES),
+        )
 
 
 async def provision(
@@ -166,6 +210,7 @@ async def provision(
     try:
         # Signing in again is how a tenant recovers from a key revoked in the Lynxce console.
         await ensure_model_key(services, user.id, verify=True)
+        await ensure_media_scopes(services, user.id)
     except Exception:
         # The sign-in fails, so its session must not stay open, here or upstream.
         await asyncio.to_thread(lynxce_cloud.forget_session, services, user.id)
