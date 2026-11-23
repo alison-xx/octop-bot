@@ -51,4 +51,30 @@ describe("cloud computer float", () => {
     expect(nearestCorner(10, 10, 1000, 800)).toBe("tl");
     expect(nearestCorner(10, 700, 1000, 800)).toBe("bl");
   });
+
+  it("stays closed until asked for again, except for a takeover", () => {
+    const busy = { ...running, busy: true, activity: "type" };
+    expect(nextMode("window", busy, { ...rules, closed: true })).toBe("hidden");
+    expect(
+      nextMode(
+        "hidden",
+        { ...running, takeover: true },
+        { ...rules, closed: true },
+      ),
+    ).toBe("expanded");
+  });
+
+  it("shows at least the pill when asked for from the header, even with the computer off", () => {
+    expect(nextMode("hidden", null, { ...rules, pinned: true })).toBe("pill");
+    expect(
+      nextMode(
+        "hidden",
+        { ...running, state: "paused" },
+        { ...rules, pinned: true },
+      ),
+    ).toBe("pill");
+    expect(nextMode("hidden", running, { ...rules, pinned: true })).toBe(
+      "window",
+    );
+  });
 });

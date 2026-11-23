@@ -622,3 +622,11 @@ def test_the_floating_screen_knows_what_the_bot_is_doing(setup: Any) -> None:
     assert glance == computers.Glance(window="Sign in to GitHub - Google Chrome", thumbnail="abc")
     manager.glance("bot1", 7)
     assert len(scripts) == 1  # cached for a few seconds, shared by every viewer
+
+
+def test_legacy_root_system_files_stay_in_the_store() -> None:
+    from octop.infra.cloud.computers.backend import on_store
+
+    for path in ("/.bootstrapped", "/manifest.json", "/.octop-auth/token", "/.octop/x"):
+        assert on_store(path), path
+    assert not on_store("/notes/manifest.json")

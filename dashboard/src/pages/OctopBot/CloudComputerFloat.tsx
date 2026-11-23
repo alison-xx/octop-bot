@@ -12,6 +12,7 @@ import {
   Maximize2,
   Monitor,
   RectangleHorizontal,
+  X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -37,6 +38,23 @@ const MAX_WIDTH = 640;
 const DEFAULT_WIDTH = 360;
 
 const storageKey = (name: string) => `octop.cloudFloat.${name}`;
+
+/**
+ * The chat header's "cloud computer" button and the float talk through this bus: the
+ * button toggles the float, the float reports whether it is open and the Bot is busy.
+ */
+const bus = new EventTarget();
+interface FloatState {
+  botId: string;
+  open: boolean;
+  busy: boolean;
+}
+export function toggleCloudFloat(botId: string) {
+  bus.dispatchEvent(new CustomEvent("toggle", { detail: botId }));
+}
+function announce(state: FloatState) {
+  bus.dispatchEvent(new CustomEvent("state", { detail: state }));
+}
 function readStored<T>(name: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(storageKey(name));
@@ -64,10 +82,21 @@ export function nextMode(
     pillOnly,
     idleSinceMs,
     nowMs,
-  }: { pillOnly: boolean; idleSinceMs: number | null; nowMs: number },
+    closed = false,
+    pinned = false,
+  }: {
+    pillOnly: boolean;
+    idleSinceMs: number | null;
+    nowMs: number;
+    /** The user closed the float for this Bot: only a takeover brings it back. */
+    closed?: boolean;
+    /** The user asked to see it (header button): show at least the pill. */
+    pinned?: boolean;
+  },
 ): FloatMode {
-  if (!status || status.state !== "running") return "hidden";
-  if (status.takeover) return "expanded";
+  if (status?.takeover && status.state === "running") return "expanded";
+  if (closed) return "hidden";
+  if (!status || status.state !== "running") return pinned ? "pill" : "hidden";
   if (status.busy) {
     if (current === "expanded" || current === "window") return current;
     return pillOnly ? "pill" : "window";
@@ -79,6 +108,7 @@ export function nextMode(
       : "window";
   }
   if (current === "pill") return "pill";
+  if (pinned) return "window";
   const recent =
     status.activity_at != null &&
     nowMs / 1000 - status.activity_at < RECENT_SECONDS;
@@ -126,6 +156,11 @@ export default function CloudComputerFloat({
   const [pillOnly, setPillOnly] = useState(() =>
     readStored<boolean>(`pillOnly.${botId}`, false),
   );
+  const [closed, setClosed] = useState(() =>
+    readStored<boolean>(`closed.${botId}`, false),
+  );
+  // Shown on request from the header button (sticks until closed again).
+  const [pinned, setPinned] = useState(false);
   const [busy, setBusy] = useState(false);
   const idleSince = useRef<number | null>(null);
   const [dragging, setDragging] = useState<{ x: number; y: number } | null>(
@@ -158,9 +193,41 @@ export default function CloudComputerFloat({
         pillOnly,
         idleSinceMs: idleSince.current,
         nowMs: Date.now(),
+        closed,
+        pinned,
       }),
     );
-  }, [status, pillOnly]);
+  }, [status, pillOnly, closed, pinned]);
+
+  const close = useCallback(() => {
+    setClosed(true);
+    setPinned(false);
+    writeStored(`closed.${botId}`, true);
+    setMode("hidden");
+  }, [botId]);
+
+  // The header button: show the float (as the live window) or close it.
+  useEffect(() => {
+    const onToggle = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== botId) return;
+      if (mode !== "hidden") {
+        close();
+        return;
+      }
+      setClosed(false);
+      writeStored(`closed.${botId}`, false);
+      setPillOnly(false);
+      writeStored(`pillOnly.${botId}`, false);
+      setPinned(true);
+      setMode(status?.state === "running" ? "window" : "pill");
+    };
+    bus.addEventListener("toggle", onToggle);
+    return () => bus.removeEventListener("toggle", onToggle);
+  }, [botId, close, mode, status?.state]);
+
+  useEffect(() => {
+    announce({ botId, open: mode !== "hidden", busy: Boolean(status?.busy) });
+  }, [botId, mode, status?.busy]);
 
   // Window title and the pill's thumbnail; a glance never wakes the computer.
   useEffect(() => {
@@ -255,6 +322,12 @@ export default function CloudComputerFloat({
   const title = glance?.window || botName;
   const activity = status?.takeover
     ? t("cloudComputer.float.youControl")
+    : status?.state !== "running"
+    ? t(
+        status?.state === "paused"
+          ? "cloudComputer.state.paused"
+          : "cloudComputer.state.none",
+      )
     : status?.busy && status.activity
     ? t(`cloudComputer.float.activity.${status.activity}`, {
         defaultValue: t("cloudComputer.float.working"),
@@ -263,26 +336,40 @@ export default function CloudComputerFloat({
 
   if (mode === "pill") {
     return (
-      <button
-        type="button"
+      <div
         className={styles.pill}
         data-corner={corner}
         data-busy={status?.busy || undefined}
-        onClick={open}
-        aria-label={t("cloudComputer.float.open")}
       >
-        {glance?.thumbnail ? (
-          <img
-            src={`data:image/jpeg;base64,${glance.thumbnail}`}
-            alt=""
-            className={styles.pillThumb}
-          />
-        ) : (
-          <Monitor size={15} aria-hidden="true" />
-        )}
-        <span className={styles.dot} aria-hidden="true" />
-        <span className={styles.pillText}>{activity}</span>
-      </button>
+        <button
+          type="button"
+          className={styles.pillOpen}
+          onClick={open}
+          disabled={status?.state !== "running"}
+          aria-label={t("cloudComputer.float.open")}
+        >
+          {glance?.thumbnail ? (
+            <img
+              src={`data:image/jpeg;base64,${glance.thumbnail}`}
+              alt=""
+              className={styles.pillThumb}
+            />
+          ) : (
+            <Monitor size={15} aria-hidden="true" />
+          )}
+          <span className={styles.dot} aria-hidden="true" />
+          <span className={styles.pillText}>{activity}</span>
+        </button>
+        <button
+          type="button"
+          className={styles.pillClose}
+          onClick={close}
+          aria-label={t("cloudComputer.float.close")}
+          title={t("cloudComputer.float.close")}
+        >
+          <X size={13} />
+        </button>
+      </div>
     );
   }
 
@@ -334,6 +421,15 @@ export default function CloudComputerFloat({
                 aria-label={t("cloudComputer.float.collapse")}
                 icon={<ChevronDown size={14} />}
                 onClick={collapse}
+              />
+            </Tooltip>
+            <Tooltip title={t("cloudComputer.float.close")}>
+              <Button
+                type="text"
+                size="small"
+                aria-label={t("cloudComputer.float.close")}
+                icon={<X size={14} />}
+                onClick={close}
               />
             </Tooltip>
           </header>
@@ -409,5 +505,38 @@ export default function CloudComputerFloat({
         )}
       </Modal>
     </>
+  );
+}
+
+/**
+ * The chat header's cloud computer button: shows or closes the floating screen, with a
+ * breathing dot while the Bot is working on the computer.
+ */
+export function CloudComputerToggle({ botId }: { botId: string }) {
+  const { t } = useTranslation();
+  const [state, setState] = useState<FloatState | null>(null);
+  useEffect(() => {
+    const onState = (event: Event) => {
+      const next = (event as CustomEvent<FloatState>).detail;
+      if (next.botId === botId) setState(next);
+    };
+    bus.addEventListener("state", onState);
+    return () => bus.removeEventListener("state", onState);
+  }, [botId]);
+  const label = t(
+    state?.open ? "cloudComputer.float.close" : "cloudComputer.float.show",
+  );
+  return (
+    <Button
+      type="text"
+      className={styles.toggle}
+      data-busy={state?.busy || undefined}
+      data-open={state?.open || undefined}
+      title={label}
+      aria-label={label}
+      aria-pressed={state?.open ?? false}
+      icon={<Monitor size={17} />}
+      onClick={() => toggleCloudFloat(botId)}
+    />
   );
 }

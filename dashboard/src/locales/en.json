@@ -8833,7 +8833,9 @@
         "elements": "Reading the interface",
         "zoom": "Zooming in",
         "command": "Running a command"
-      }
+      },
+      "close": "Close the floating screen",
+      "show": "Show the cloud computer screen"
     }
   }
 }

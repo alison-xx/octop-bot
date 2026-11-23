@@ -214,3 +214,61 @@
     box-shadow: 0 0 0 2px @control;
   }
 }
+
+// Pill = open button + close button side by side.
+.pill {
+  padding: 0;
+  gap: 0;
+  cursor: default;
+}
+.pillOpen {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 6px 5px 5px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  &:disabled {
+    cursor: default;
+  }
+}
+.pillClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  &:hover {
+    background: var(--fn-fill-secondary, rgba(0, 0, 0, 0.06));
+    color: var(--fn-text-primary);
+  }
+}
+.toggle {
+  position: relative;
+  &[data-open] {
+    color: var(--fn-text-primary);
+    background: var(--fn-fill-secondary, rgba(0, 0, 0, 0.06));
+  }
+  &[data-busy]::after {
+    content: "";
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 2px var(--fn-bg-elevated);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+}
