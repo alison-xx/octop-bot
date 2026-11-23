@@ -521,14 +521,26 @@
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M8 7h9v9"/></svg>';
   const storeName = (url) => (/testflight\.apple\.com/.test(url) ? "TestFlight" : "App Store");
 
-  function primaryChoice(release) {
+  /* A release can skip a platform (say, no Windows build). Offer that platform's newest package instead. */
+  function releaseWith(test) {
+    const list = site ? [site.latest, ...site.history] : [];
+    return list.find((r) => r.assets.some(test) || (test.nas && r.nas && r.nas.image)) || null;
+  }
+  const versionTag = (r) => (site && r !== site.latest && r.version !== site.latest.version ? ` · ${t("版本", "Version")} ${esc(r.version)}` : "");
+  const isWin = (a) => a.platform === "win32";
+  const isMac = (a) => a.platform === "darwin";
+  const isPhone = (a) => a.platform === "android" || a.platform === "ios";
+  const isNas = Object.assign((a) => a.platform === "nas", { nas: true });
+
+  function primaryChoice(latest) {
+    const release = releaseWith(os === "win" ? isWin : os === "mac" ? isMac : isPhone) || latest;
     if (os === "win") {
       const a = pick(release, "win32", "installer", "x64");
-      return a && { href: assetUrl(release, a), label: t("下载 Windows 版", "Download for Windows"), sub: `x64 · ${formatSize(a.size)}`, icon: OS_ICON.win };
+      return a && { href: assetUrl(release, a), label: t("下载 Windows 版", "Download for Windows"), sub: `x64 · ${formatSize(a.size)}`, icon: OS_ICON.win, version: release.version };
     }
     if (os === "mac") {
       const a = pick(release, "darwin", null, "arm64");
-      return a && { href: assetUrl(release, a), label: t("下载 macOS 版", "Download for Mac"), sub: `${t("Apple 芯片", "Apple silicon")} · ${formatSize(a.size)}`, icon: OS_ICON.mac };
+      return a && { href: assetUrl(release, a), label: t("下载 macOS 版", "Download for Mac"), sub: `${t("Apple 芯片", "Apple silicon")} · ${formatSize(a.size)}`, icon: OS_ICON.mac, version: release.version };
     }
     if (phone === "android") {
       const a = pick(release, "android");
@@ -562,7 +574,7 @@
     });
     $$("[data-download-note]").forEach((el) => {
       el.textContent = choice
-        ? `${t("版本", "Version")} ${choice.version || release.version} · ${choice.sub} · ${t("免费开源", "Free & open source")}`
+        ? `${t("版本", "Version")} ${choice.version} · ${choice.sub} · ${t("免费开源", "Free & open source")}`
         : os === "mobile"
           ? t("Octop Bot 是桌面客户端，请在 Windows 或 Mac 电脑上下载。", "Octop Bot is a desktop app. Download it on a Windows PC or a Mac.")
           : t("提供 Windows x64 和 Apple 芯片 Mac 版本。", "Available for Windows x64 and Macs with Apple silicon.");
@@ -583,18 +595,22 @@
         <div class="platform-head">${icon}<div><h3 class="h3">${title}</h3><small class="muted">${sub}</small></div>${detected ? `<span class="badge">${t("你的系统", "Your system")}</span>` : ""}</div>
         ${body}</article>`;
 
-  function renderPlatforms(release, beta) {
+  function renderPlatforms(latest, beta) {
     const box = $("#platforms");
     if (!box) return;
-    const win = pick(release, "win32", "installer", "x64");
-    const winArm = pick(release, "win32", "installer", "arm64");
-    const zip = pick(release, "win32", "portable");
-    const mac = pick(release, "darwin", null, "arm64");
-    const intel = pick(release, "darwin", null, "x64");
-    const apk = pick(release, "android");
-    const ios = pick(release, "ios");
-    const fpk = pick(release, "nas");
-    const image = release.nas && release.nas.image;
+    const winRel = releaseWith(isWin) || latest;
+    const macRel = releaseWith(isMac) || latest;
+    const phoneRel = releaseWith(isPhone) || latest;
+    const nasRel = releaseWith(isNas) || latest;
+    const win = pick(winRel, "win32", "installer", "x64");
+    const winArm = pick(winRel, "win32", "installer", "arm64");
+    const zip = pick(winRel, "win32", "portable");
+    const mac = pick(macRel, "darwin", null, "arm64");
+    const intel = pick(macRel, "darwin", null, "x64");
+    const apk = pick(phoneRel, "android");
+    const ios = pick(phoneRel, "ios");
+    const fpk = pick(nasRel, "nas");
+    const image = nasRel.nas && nasRel.nas.image;
     const cards = [];
     if (win || winArm || zip) {
       cards.push(
@@ -602,11 +618,11 @@
           "win",
           OS_ICON.win,
           "Windows",
-          winArm ? "Windows 10 / 11 · x64 · ARM64" : "Windows 10 / 11 · x64",
+          `${winArm ? "Windows 10 / 11 · x64 · ARM64" : "Windows 10 / 11 · x64"}${versionTag(winRel)}`,
           `<div class="files">
-          ${win ? fileRow(release, win, t("安装版", "Installer"), "EXE · x64", true) : ""}
-          ${zip ? fileRow(release, zip, t("免安装版", "Portable"), t("ZIP · 解压即用", "ZIP · unzip and run"), false) : ""}
-          ${winArm ? fileRow(release, winArm, t("安装版（ARM）", "Installer (ARM)"), "EXE · arm64", false) : ""}
+          ${win ? fileRow(winRel, win, t("安装版", "Installer"), "EXE · x64", true) : ""}
+          ${zip ? fileRow(winRel, zip, t("免安装版", "Portable"), t("ZIP · 解压即用", "ZIP · unzip and run"), false) : ""}
+          ${winArm ? fileRow(winRel, winArm, t("安装版（ARM）", "Installer (ARM)"), "EXE · arm64", false) : ""}
         </div>`,
           os === "win",
         ),
@@ -618,10 +634,10 @@
           "mac",
           OS_ICON.mac,
           "macOS",
-          intel ? t("Apple 芯片和 Intel 芯片", "Apple silicon and Intel") : t("Apple 芯片（M 系列）", "Apple silicon (M-series)"),
+          `${intel ? t("Apple 芯片和 Intel 芯片", "Apple silicon and Intel") : t("Apple 芯片（M 系列）", "Apple silicon (M-series)")}${versionTag(macRel)}`,
           `<div class="files">
-          ${mac ? fileRow(release, mac, t("Apple 芯片", "Apple silicon"), "DMG · arm64", true) : ""}
-          ${intel ? fileRow(release, intel, t("Intel 芯片", "Intel"), "DMG · x64", !mac) : ""}
+          ${mac ? fileRow(macRel, mac, t("Apple 芯片", "Apple silicon"), "DMG · arm64", true) : ""}
+          ${intel ? fileRow(macRel, intel, t("Intel 芯片", "Intel"), "DMG · x64", !mac) : ""}
         </div>${intel ? "" : `<p class="muted" style="font-size:14px">${t("暂不支持 Intel 芯片的 Mac。", "Intel-based Macs are not supported yet.")}</p>`}`,
           os === "mac",
         ),
@@ -636,7 +652,7 @@
           t("手机", "Phone"),
           `${[apk && "Android", ios && "iPhone"].filter(Boolean).join(" · ")}${version ? ` · ${t("版本", "Version")} ${esc(version)}` : ""}`,
           `<div class="files">
-          ${apk ? fileRow(release, apk, "Android", "APK", phone === "android") : ""}
+          ${apk ? fileRow(phoneRel, apk, "Android", "APK", phone === "android") : ""}
           ${
             ios
               ? `<div class="file"><div><b>iPhone / iPad</b><small>${storeName(ios.url)}</small></div><a class="btn ${phone === "ios" ? "btn-primary" : "btn-ghost"} btn-sm" href="${esc(ios.url)}" target="_blank" rel="noopener"><span>${t("前往获取", "Get it")}</span>${OUT}</a></div>`
@@ -655,7 +671,7 @@
           "NAS",
           t("飞牛 fnOS · Docker", "fnOS · Docker"),
           `<div class="files">
-          ${fpk ? fileRow(release, fpk, t("飞牛 fnOS 应用", "fnOS app"), "FPK", true) : ""}
+          ${fpk ? fileRow(nasRel, fpk, t("飞牛 fnOS 应用", "fnOS app"), "FPK", true) : ""}
           ${
             image
               ? `<div class="file"><div><b>Docker</b><small><code>${esc(image)}</code></small></div><button class="copy" type="button" data-copy="docker pull ${esc(image)}" data-toast="${t("命令已复制", "Command copied")}">${t("复制", "Copy")}</button></div>`
@@ -699,7 +715,13 @@
         return `<article class="release reveal in">
         <div><h3>${esc(r.version)}${badge}</h3><time datetime="${esc(r.date)}">${esc(r.date)}</time></div>
         <div><ul>${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
-        ${r.live ? "" : `<p style="margin-top:16px"><a class="link" href="${DOWNLOAD_BASE}${esc(r.version)}/SHA256SUMS.txt">${t("该版本全部安装包的 SHA-256", "SHA-256 for every package in this release")} ${OUT}</a></p>`}</div>
+        ${
+          r.tag
+            ? `<p style="margin-top:16px"><a class="link" href="https://github.com/alison-xx/octop-bot/releases/tag/${esc(r.tag)}">${t("该版本的全部安装包和 SHA-256", "Every package and SHA-256 for this release")} ${OUT}</a></p>`
+            : r.live
+              ? ""
+              : `<p style="margin-top:16px"><a class="link" href="${DOWNLOAD_BASE}${esc(r.version)}/SHA256SUMS.txt">${t("该版本全部安装包的 SHA-256", "SHA-256 for every package in this release")} ${OUT}</a></p>`
+        }</div>
       </article>`;
       })
       .join("");
@@ -720,9 +742,12 @@
       .catch(() => []);
     const listed = fetch("releases.json", { cache: "no-cache" })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((data) => data.releases)
-      .catch(() => []);
-    Promise.all([live, listed]).then(([fromManifest, fromList]) => {
+      .catch(() => ({}));
+    Promise.all([live, listed]).then(([manifestReleases, data]) => {
+      /* releases.json "hidden" lists platforms not to offer yet, e.g. "ios" before the App Store listing is live. */
+      const hidden = new Set(data.hidden || []);
+      const fromManifest = manifestReleases.map((r) => ({ ...r, assets: r.assets.filter((a) => !hidden.has(a.platform)) }));
+      const fromList = data.releases || [];
       const stable = fromManifest.find((r) => r.channel === "stable");
       const beta = fromManifest.find((r) => r.channel === "beta");
       const latest = stable || beta || fromList[0];
