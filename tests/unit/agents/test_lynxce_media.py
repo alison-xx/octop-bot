@@ -182,3 +182,24 @@ async def test_a_server_with_a_lynxce_api_key_uses_it(monkeypatch: pytest.Monkey
     assert (auth.base_url, auth.bearer) == ("https://api.lynxce.cn/api/v1", "sk-lynxce")
     rows.pop()
     assert lynxce.media_source(services, None) is None
+
+
+async def test_a_result_still_being_labelled_is_not_done_yet() -> None:
+    gateway = Gateway()
+    provider = _provider(gateway)
+    submission = await provider.submit_image(ImageGenerationRequest(prompt="猫"))
+    assert submission.task is not None
+    temporary = [{"url": "https://upstream.example.com/tmp.png"}]
+    gateway.fail = httpx.Response(
+        200, json={"status": "succeeded", "aigc_label_ready": False, "data": temporary}
+    )
+    assert (await provider.poll(submission.task)).status == "running"
+    gateway.fail = httpx.Response(
+        200,
+        json={
+            "status": "succeeded",
+            "aigc_label_ready": True,
+            "data": [{"url": "https://cdn.example.com/a.png"}],
+        },
+    )
+    assert (await provider.poll(submission.task)).status == "succeeded"

@@ -212,6 +212,10 @@ class LynxceMediaProvider:
 
     def _update(self, body: dict[str, Any], task_id: str | None) -> MediaJobUpdate:
         status = str(body.get("status") or "")
+        if status == "succeeded" and body.get("aigc_label_ready") is False:
+            # Still being labelled and rehosted: the links until then are temporary ones that
+            # Lynxce deletes, and fetching one can fail. Lynxce asks to poll again.
+            return MediaJobUpdate(status="running")
         if status == "succeeded":
             artifacts = _artifacts(body)
             if artifacts:
