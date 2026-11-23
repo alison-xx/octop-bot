@@ -1,6 +1,9 @@
 {
   "schemaVersion": 1,
   "product": "octop-bot",
+  "hidden": [
+    "ios"
+  ],
   "releases": [
     {
       "version": "1.0.4",
@@ -27,13 +30,29 @@
       },
       "assets": [
         {
+          "platform": "win32",
+          "arch": "x64",
+          "kind": "installer",
+          "name": "Octop-Bot-Setup-1.0.4-x64.exe",
+          "size": 313316984,
+          "sha256": "d175e386b4a031e1b158ee4104e2e4c5d56d787f4cfdd07818aa034e6ff201a4"
+        },
+        {
+          "platform": "win32",
+          "arch": "x64",
+          "kind": "portable",
+          "name": "Octop-Bot-1.0.4-x64.zip",
+          "size": 419515149,
+          "sha256": "8bb3ae5b5d882efad974c0593f821bd4fb0d95889752c08b01fcf9be0a160a11"
+        },
+        {
           "platform": "android",
           "kind": "apk",
-          "name": "octop-bot-1.0.0.apk",
+          "name": "octop-bot-1.0.0-3.apk",
           "appVersion": "1.0.0",
-          "url": "https://github.com/alison-xx/octop-bot/releases/download/octop-bot-v1.0.4/octop-bot-1.0.0.apk",
-          "size": 15968341,
-          "sha256": "d04767c5e60782b88f6f2c7a9cfc2e174db47473f65dc8819558a700a43fd148"
+          "url": "https://dl.lynxce.cn/releases/octop-bot/1.0.4/octop-bot-1.0.0-3.apk",
+          "size": 15986117,
+          "sha256": "040406c23cee03062cf74895301fdc266d38792d677dbda991ecb7a3bb2906e2"
         }
       ]
     },

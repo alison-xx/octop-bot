@@ -742,9 +742,12 @@
       .catch(() => []);
     const listed = fetch("releases.json", { cache: "no-cache" })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((data) => data.releases)
-      .catch(() => []);
-    Promise.all([live, listed]).then(([fromManifest, fromList]) => {
+      .catch(() => ({}));
+    Promise.all([live, listed]).then(([manifestReleases, data]) => {
+      /* releases.json "hidden" lists platforms not to offer yet, e.g. "ios" before the App Store listing is live. */
+      const hidden = new Set(data.hidden || []);
+      const fromManifest = manifestReleases.map((r) => ({ ...r, assets: r.assets.filter((a) => !hidden.has(a.platform)) }));
+      const fromList = data.releases || [];
       const stable = fromManifest.find((r) => r.channel === "stable");
       const beta = fromManifest.find((r) => r.channel === "beta");
       const latest = stable || beta || fromList[0];
