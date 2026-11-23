@@ -82,6 +82,10 @@ class ComputerDriver(Protocol):
     def write(self, instance_id: str, path: str, data: bytes) -> None: ...
     def read(self, instance_id: str, path: str) -> bytes | None: ...
     def screen(self, instance_id: str) -> tuple[str, dict[str, str]]: ...
+    def screenshot(self, instance_id: str) -> bytes: ...
+    def accessibility(self, instance_id: str) -> str: ...
+    def run_python(self, instance_id: str, code: str) -> str: ...
+    def wait_ready(self, instance_id: str, timeout: float = 90.0) -> None: ...
     def paste_text(self, instance_id: str, text: str) -> None: ...
     def read_clipboard(self, instance_id: str) -> str: ...
 
@@ -215,13 +219,16 @@ class AgsDriver:
                 self._tokens[instance_id] = token
         return token
 
-    def _request(self, instance_id: str, path: str, *, timeout: float, **kwargs: Any) -> Any:
+    def _request(
+        self, instance_id: str, path: str, *, timeout: float, method: str = "POST", **kwargs: Any
+    ) -> Any:
         import httpx  # noqa: PLC0415
 
         if self._http is None:
             self._http = httpx.Client()
         for attempt in range(2):
-            response = self._http.post(
+            response = self._http.request(
+                method,
                 self.url(instance_id, 5000, path),
                 headers={"X-Access-Token": self.token(instance_id, fresh=attempt > 0)},
                 timeout=timeout,
@@ -347,3 +354,49 @@ class AgsDriver:
         return self._execute(
             instance_id, "timeout 3 xclip -selection clipboard -o 2>/dev/null || true"
         )
+
+    # -- computer use -----------------------------------------------------------
+
+    def wait_ready(self, instance_id: str, timeout: float = 90.0) -> None:
+        """After a start or resume: wait until the desktop's server answers and its screen is up.
+
+        AGS reports RUNNING before the desktop service listens; actions in that window fail
+        with 502/503.
+        """
+        deadline = time.monotonic() + timeout
+        probe = "import pyautogui; print(pyautogui.size())"
+        while True:
+            try:
+                response = self._request(
+                    instance_id, "/run_python", json={"code": probe}, timeout=15
+                )
+                if response.status_code == 200 and response.json().get("status") == "success":
+                    return
+            except Exception:  # noqa: BLE001 - not listening yet
+                pass
+            if time.monotonic() >= deadline:
+                raise RuntimeError("the cloud computer did not come up in time")
+            time.sleep(1.5)
+
+    def screenshot(self, instance_id: str) -> bytes:
+        """The whole desktop with the pointer, as PNG (1920x1080)."""
+        response = self._request(instance_id, "/screenshot", method="GET", timeout=60)
+        if response.status_code != 200:
+            raise RuntimeError(f"screenshot failed ({response.status_code}): {response.text}")
+        return bytes(response.content)
+
+    def accessibility(self, instance_id: str) -> str:
+        """The desktop's AT-SPI tree as XML (roles, names, screen coordinates)."""
+        response = self._request(instance_id, "/accessibility", method="GET", timeout=60)
+        if response.status_code != 200:
+            raise RuntimeError(f"accessibility failed ({response.status_code}): {response.text}")
+        return str(response.json().get("AT") or "")
+
+    def run_python(self, instance_id: str, code: str) -> str:
+        """Run a short Python script on the desktop (pyautogui is there); its output."""
+        response = self._request(instance_id, "/run_python", json={"code": code}, timeout=60)
+        body = response.json() if response.status_code in (200, 500) else {}
+        if response.status_code != 200 or body.get("status") != "success":
+            message = body.get("message") or body.get("error") or response.text
+            raise RuntimeError(f"desktop action failed: {message}")
+        return str(body.get("output") or "")

@@ -3,6 +3,7 @@ import {
   ASK_USER_TOOL_NAME,
   extractAskQuestions,
   isAskHitl,
+  parseActionArgs,
   questionsFromUnknown,
   type HitlDecisionHandler,
 } from "../../api/types/hitl";
@@ -25,6 +26,7 @@ import { useAgent } from "../../context/AgentContext";
 import BotCreationEvents from "./BotCreationEvents";
 import { separateCreations } from "./creationEvents";
 import BotAskCard, { parseAskAnswers } from "./BotAskCard";
+import CloudComputerHandoff from "./CloudComputerHandoff";
 import styles from "./botConversation.module.less";
 
 interface BotTurnViewProps {
@@ -103,20 +105,27 @@ export default function BotTurnView({
         );
       const pending =
         (hitl.status ?? "pending") === "pending" && isResumableHitl(hitl);
+      // `request_takeover`: the question also names the Bot's cloud computer to take over.
+      const computer = actions
+        .map((a) => parseActionArgs(a.args).cloud_computer)
+        .find((v): v is string => typeof v === "string");
       return (
-        <BotAskCard
-          questions={extractAskQuestions(actions)}
-          onSubmit={
-            pending && onHitlDecision
-              ? (answer) =>
-                  onHitlDecision(
-                    actions.map(() => ({ type: "respond", message: answer })),
-                    undefined,
-                    hitl.pending_id,
-                  )
-              : undefined
-          }
-        />
+        <>
+          {pending && computer && <CloudComputerHandoff botId={computer} />}
+          <BotAskCard
+            questions={extractAskQuestions(actions)}
+            onSubmit={
+              pending && onHitlDecision
+                ? (answer) =>
+                    onHitlDecision(
+                      actions.map(() => ({ type: "respond", message: answer })),
+                      undefined,
+                      hitl.pending_id,
+                    )
+                : undefined
+            }
+          />
+        </>
       );
     }
     const tool = message.toolData;

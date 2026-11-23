@@ -4998,7 +4998,24 @@ class AgentManager:
 
             services = SharedServices(paths=self._paths, config=self._config, repos=self._repos)
             workspace_tools = [show_view, own_chat_tool(services, row.agent_id, row.user_id)]
-            if not row.is_shared and row.kind == "expert":
+            if self._cloud_tenant(row.user_id):
+                # Lynxce cloud: the Bot's computer is its own cloud computer, never the host's.
+                from octop.infra.cloud.computers.manager import current_manager
+
+                computers = current_manager()
+                if computers is not None:
+                    from octop.infra.cloud.computers.computer_use import (
+                        computer_use_tool,
+                        request_takeover_tool,
+                    )
+
+                    workspace_tools.append(computer_use_tool(computers, row.agent_id, row.user_id))
+                    workspace_tools.append(
+                        request_takeover_tool(
+                            computers, self._repos.user_repo, row.agent_id, row.user_id
+                        )
+                    )
+            elif not row.is_shared and row.kind == "expert":
                 from octop.infra.agents.bot_computer import computer_tool
 
                 workspace_tools.append(

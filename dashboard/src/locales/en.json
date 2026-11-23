@@ -8807,6 +8807,8 @@
     "inputFailed": "Couldn't reach the cloud computer.",
     "pasted": "Pasted this Mac's clipboard at the cloud computer's cursor.",
     "copyBlocked": "Copied on the cloud computer; this browser would not let the page write your clipboard. Use \"Get the cloud computer's clipboard\".",
-    "macShortcuts": "On a Mac, ⌘C / ⌘V copy and paste between this Mac and the cloud computer; other ⌘ shortcuts work like Ctrl."
+    "macShortcuts": "On a Mac, ⌘C / ⌘V copy and paste between this Mac and the cloud computer; other ⌘ shortcuts work like Ctrl.",
+    "handoffOpen": "Take over the cloud computer",
+    "handoffHint": "When you're done, close the screen and choose Done in the chat; the Bot carries on."
   }
 }

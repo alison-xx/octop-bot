@@ -53,6 +53,7 @@ class Driver:
         self.files: dict[str, bytes] = {}
         self.fail_start = False
         self.broken: set[str] = set()
+        self.readied: list[str] = []
         self.clipboard = ""
 
     def start(self, *, spec: str, labels: Mapping[str, str]) -> str:
@@ -74,6 +75,9 @@ class Driver:
     def stop(self, instance_id: str) -> None:
         self.states[instance_id] = "gone"
         self.calls.append(("stop", instance_id))
+
+    def wait_ready(self, instance_id: str, timeout: float = 90.0) -> None:
+        self.readied.append(instance_id)
 
     def state(self, instance_id: str) -> State:
         if instance_id in self.broken:
@@ -169,6 +173,8 @@ def test_a_paused_computer_resumes_with_its_files(setup: Any) -> None:
     clock.now += 60
     assert computer.download_files(["/root/notes.md"])[0].content == b"hi"
     assert driver.calls == [("start", "bot1"), ("pause", "ins-1"), ("resume", "ins-1")]
+    # Both the start and the resume waited for the desktop to come up.
+    assert driver.readied == ["ins-1", "ins-1"]
     assert computer.download_files(["/missing"])[0].error == "file_not_found"
     assert driver.files == {f"{WORKSPACE}/root/notes.md": b"hi"}
 
@@ -408,3 +414,20 @@ def test_pasting_sends_text_as_base64_and_presses_the_paste_shortcut(
     monkeypatch.setattr(driver, "_execute", lambda i, s: "")
     with pytest.raises(RuntimeError):
         driver.paste_text("ins", "你好")
+
+
+def test_billing_is_lynxce_credits_in_the_cloud_unless_turned_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OCTOP_BOT_CLOUD", "1")
+    monkeypatch.delenv("OCTOP_BOT_COMPUTE_BILLING", raising=False)
+    assert isinstance(computers.billing_for(Services()), computers.Billing)  # type: ignore[arg-type]
+    monkeypatch.setenv("OCTOP_BOT_COMPUTE_BILLING", "off")
+    free = computers.billing_for(Services())  # type: ignore[arg-type]
+    assert isinstance(free, computers.FreeBilling)
+    record = computers.ComputerRecord(agent_id="bot1", user_id=7)
+    free.settle(record, free.reserve(record, 5), 300)
+    # A self-hosted server (not the cloud) never bills Lynxce for its own AGS account.
+    monkeypatch.delenv("OCTOP_BOT_CLOUD")
+    monkeypatch.delenv("OCTOP_BOT_COMPUTE_BILLING")
+    assert isinstance(computers.billing_for(Services()), computers.FreeBilling)  # type: ignore[arg-type]

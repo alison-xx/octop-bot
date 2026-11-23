@@ -109,6 +109,29 @@ class Billing:
         )
 
 
+class FreeBilling:
+    """No Lynxce billing: a self-hosted server on its own AGS account, or a local test run
+    (``OCTOP_BOT_COMPUTE_BILLING=off``). The operator pays AGS directly."""
+
+    def reserve(self, record: ComputerRecord, minutes: int) -> Reservation:
+        return Reservation(f"free-{uuid.uuid4().hex[:12]}", minutes)
+
+    def settle(self, record: ComputerRecord, reservation: Reservation, used_seconds: int) -> None:
+        return None
+
+
+def billing_for(services: SharedServices) -> Billing | FreeBilling:
+    """Lynxce credits in Octop Bot cloud, unless the operator turned billing off."""
+    import os  # noqa: PLC0415
+
+    from octop.infra.desktop import bot_cloud_enabled  # noqa: PLC0415
+
+    off = (os.environ.get("OCTOP_BOT_COMPUTE_BILLING") or "").strip().lower() in {"off", "0"}
+    if off or not bot_cloud_enabled():
+        return FreeBilling()
+    return Billing(services)
+
+
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     """Run a coroutine to completion from sync code, even on a thread that has a loop."""
     try:
@@ -137,7 +160,7 @@ class ComputerManager:
         services: SharedServices,
         driver: ComputerDriver,
         *,
-        billing: Billing | None = None,
+        billing: Billing | FreeBilling | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._services = services
@@ -196,6 +219,11 @@ class ComputerManager:
             except Exception:
                 self._billing.settle(record, reservation, 0)
                 raise
+            # AGS says RUNNING before the desktop listens; wait so the first command works.
+            try:
+                self._driver.wait_ready(record.instance_id or "")
+            except Exception:  # noqa: BLE001 - commands will report the failure themselves
+                logger.warning("computer %s is slow to come up", agent_id)
             record.running = True
             record.running_since = now
             record.paid_until = now + CHUNK_MINUTES * 60
@@ -403,6 +431,18 @@ class ComputerManager:
                 self._busy[agent_id] -= 1
             self.touch(agent_id, user_id)
 
+    def use[T](self, agent_id: str, user_id: int, work: Callable[[ComputerDriver, str], T]) -> T:
+        """Do something on the running computer (computer use); it counts as busy meanwhile."""
+        instance = self.ensure_running(agent_id, user_id)
+        with self._guard:
+            self._busy[agent_id] = self._busy.get(agent_id, 0) + 1
+        try:
+            return work(self._driver, instance)
+        finally:
+            with self._guard:
+                self._busy[agent_id] -= 1
+            self.touch(agent_id, user_id)
+
     def write(self, agent_id: str, user_id: int, path: str, data: bytes) -> None:
         self._driver.write(self.ensure_running(agent_id, user_id), path, data)
 
@@ -427,7 +467,7 @@ def computer_manager(services: SharedServices) -> ComputerManager | None:
         return None
     with _manager_lock:
         if _manager is None:
-            _manager = ComputerManager(services, AgsDriver(config))
+            _manager = ComputerManager(services, AgsDriver(config), billing=billing_for(services))
             # Computers left running by a previous process are billed and paused from now on,
             # not from their next tool call.
             _manager._start_reaper()
