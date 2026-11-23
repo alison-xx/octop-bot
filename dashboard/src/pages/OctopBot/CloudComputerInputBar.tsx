@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { botCloudComputerApi } from "../../api/modules/botCloudComputer";
 import { apiErrorMessage } from "../../utils/apiError";
 import styles from "./cloudComputerScreen.module.less";
-import { copyToThisDevice, isApplePlatform } from "./macShortcuts";
+import { copyToThisDevice, isMacDesktop } from "./macShortcuts";
 
 /**
  * Under a taken-over cloud computer screen: type with this device's own input method (Chinese
@@ -102,7 +102,7 @@ export default function CloudComputerInputBar({
           {t("cloudComputer.fetchClipboard")}
         </Button>
         <span className={styles.inputNote} role="status">
-          {note || (isApplePlatform() ? t("cloudComputer.macShortcuts") : "")}
+          {note || (isMacDesktop() ? t("cloudComputer.macShortcuts") : "")}
         </span>
       </div>
     </div>
