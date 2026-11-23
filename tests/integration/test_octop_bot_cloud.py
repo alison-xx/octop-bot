@@ -230,7 +230,6 @@ async def test_with_ags_configured_each_bot_gets_its_own_computer(
     for name, value in {
         "OCTOP_AGS_SECRET_ID": "id",
         "OCTOP_AGS_SECRET_KEY": "key",
-        "OCTOP_AGS_API_KEY": "e2b_test",
         "OCTOP_AGS_TOOL": "octop-bot-desktop",
     }.items():
         monkeypatch.setenv(name, value)
