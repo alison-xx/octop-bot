@@ -55,6 +55,7 @@ class Driver:
         self.fail_start = False
         self.broken: set[str] = set()
         self.clipboard = ""
+        self.stopped: dict[str, float] = {}
 
         self.listed: list[driver_module.Instance] = []
 
@@ -82,6 +83,9 @@ class Driver:
         if instance_id in self.broken:
             raise RuntimeError("provider error")
         return self.states.get(instance_id, "gone")
+
+    def stopped_at(self, instance_id: str) -> float | None:
+        return self.stopped.get(instance_id)
 
     def instances(self) -> list[driver_module.Instance]:
         return self.listed
@@ -112,6 +116,7 @@ class Billing:
         self.settled: list[tuple[str, int]] = []
         self.broke = False
         self.settle_down = False
+        self.settle_refused = False
 
     def reserve(self, record: Any, minutes: int) -> computers.Reservation:
         if self.broke:
@@ -122,6 +127,8 @@ class Billing:
     def settle(self, record: Any, reservation: computers.Reservation, used: int) -> None:
         if self.settle_down:
             raise RuntimeError("Lynxce unavailable")
+        if self.settle_refused:
+            raise OctopError.localized(ErrorCode.NOT_FOUND)
         self.settled.append((reservation.id, used))
 
 
@@ -493,12 +500,11 @@ def test_deleting_follows_the_path_mapping(setup: Any, store: Any) -> None:
     assert computer.delete("/").error
 
 
-def test_a_start_that_fails_leaves_a_trace_and_orphans_are_stopped(setup: Any) -> None:
+def test_a_start_that_fails_is_refunded_and_orphans_are_stopped(setup: Any) -> None:
     manager, driver, billing, clock = setup
     driver.fail_start = True
     with pytest.raises(RuntimeError):
         CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
-    assert manager.record("bot1", 7).starting_at is None
     mine = manager.server_id()
     old = clock.now - computers.ORPHAN_AGE_SECONDS - 1
     driver.listed = [
@@ -577,3 +583,73 @@ def test_compute_billing_carries_the_cloud_server_key(monkeypatch: pytest.Monkey
     assert lynxce_cloud._service_headers(settle) == {"X-Octop-Service-Key": "k" * 32}
     # Only compute billing: other tenant calls never carry the server's key.
     assert lynxce_cloud._service_headers("/api/user/personal-api-keys") == {}
+
+
+def test_a_computer_stopped_while_the_server_was_down_is_billed_until_it_stopped(
+    setup: Any,
+) -> None:
+    manager, driver, billing, clock = setup
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    started = clock.now
+    driver.states["ins-1"] = "gone"
+    driver.stopped["ins-1"] = started + 90  # AGS stopped it 90 s in
+    clock.now += 3 * 3600  # and this server was down for hours
+    manager.tick()
+    assert billing.settled == [("r1", 90)]
+    assert billing.reserved == [5]  # nothing billed past the stop
+
+
+def test_without_a_stop_time_only_paid_time_is_billed(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    driver.states["ins-1"] = "gone"
+    clock.now += 3 * 3600
+    manager.tick()
+    assert billing.settled == [("r1", 300)] and billing.reserved == [5]
+
+
+def test_settles_lynxce_refuses_or_that_keep_failing_are_dropped(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    billing.settle_refused = True  # e.g. Lynxce no longer knows the reservation
+    manager.pause("bot1", 7)
+    assert manager.record("bot1", 7).unsettled == []
+    billing.settle_refused = False
+
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    billing.settle_down = True
+    manager.pause("bot1", 7)
+    for _ in range(computers.MAX_SETTLE_ATTEMPTS):
+        manager.tick()
+    assert manager.record("bot1", 7).unsettled == []
+    # A deleted Bot's record is not held forever by a settle that never lands.
+    manager._services.agent_repo.deleted.add("bot1")
+    manager.tick()
+    assert manager._services.settings_repo.with_prefix("octop_bot:computer:") == {}
+
+
+def test_a_failed_start_keeps_a_failed_refund(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    driver.fail_start = True
+    billing.settle_down = True
+    with pytest.raises(RuntimeError):
+        CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    # The refund did not land; it is saved for the reaper rather than lost.
+    assert [u.used_seconds for u in manager.record("bot1", 7).unsettled] == [0]
+
+
+def test_ags_times_without_a_zone_are_utc() -> None:
+    assert driver_module._timestamp("2026-11-24T01:44:02") == driver_module._timestamp(
+        "2026-11-24T01:44:02+00:00"
+    )
+    assert driver_module._timestamp("2026-11-24T09:44:02+08:00") == driver_module._timestamp(
+        "2026-11-24T01:44:02Z"
+    )
+
+
+def test_the_old_layouts_bootstrap_marker_lives_in_the_store() -> None:
+    from octop.infra.cloud.computers.backend import on_store
+
+    assert on_store("/.bootstrapped")
+    assert on_store("/.octop/.bootstrapped")
+    assert not on_store("/notes/.bootstrapped")

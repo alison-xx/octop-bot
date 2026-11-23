@@ -10,6 +10,8 @@ export interface BotServerInfo {
   capabilities: {
     wallet: boolean;
     cloud_computer: boolean;
+    /** Off for cloud accounts: the image and video providers are the operator's. */
+    media_generation: boolean;
     file_store: "local" | "object";
   };
 }

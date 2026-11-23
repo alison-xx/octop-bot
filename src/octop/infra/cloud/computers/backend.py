@@ -53,6 +53,9 @@ STORE_FILES = frozenset(
         "/IDENTITY.md",
         "/TOOLS.md",
         "/HEARTBEAT.md",
+        # The bootstrap marker of the older layout (system_files_path unset); checking it must
+        # not start the computer, and it lived in the object store before computers existed.
+        "/.bootstrapped",
     }
 )
 STORE_DIRS = ("/.octop/", "/memory/", "/memories/", "/skills/", "/inbound/")
