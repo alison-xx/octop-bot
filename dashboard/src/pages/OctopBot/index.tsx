@@ -82,6 +82,7 @@ import {
   type DirectoryEntry,
 } from "./DirectoryItem";
 import directory from "./directory.module.less";
+import MoreUnreads from "./MoreUnreads";
 import styles from "./index.module.less";
 import offlineArt from "../../assets/bot/offline.webp";
 
@@ -1033,6 +1034,9 @@ export default function OctopBotPage() {
             }),
             { section: s, index },
           ),
+        )}
+        {standalone && !compactDirectory && (
+          <MoreUnreads watch={botActivity.unread} />
         )}
       </div>
       {standalone ? (

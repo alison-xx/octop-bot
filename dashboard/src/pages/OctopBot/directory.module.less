@@ -323,6 +323,40 @@
   color: var(--bot-muted);
 }
 /* A conversation with replies the user has not opened reads stronger. */
+// Unread is a small blue dot in the full list; the collapsed rail keeps
+// the count. The number stays in the badge's aria-label.
+.directory:not([data-collapsed]) .contactButton > b {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  border-radius: 50%;
+  background: #2f7cf6;
+  font-size: 0;
+}
+.moreUnreads {
+  position: sticky;
+  bottom: 8px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 8px auto 0;
+  height: 30px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 15px;
+  background: #2f7cf6;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(47, 124, 246, 0.3);
+  cursor: pointer;
+}
+.moreUnreads[hidden] {
+  display: none;
+}
 .contact[data-unread="true"] .contactText small {
   color: var(--bot-ink);
 }
@@ -445,6 +479,28 @@
   text-overflow: ellipsis;
 }
 .identity:hover {
+  background: var(--bot-hover);
+}
+.roomActions {
+  position: absolute;
+  inset-inline-end: 14px;
+  top: 8px;
+  display: flex;
+  gap: 6px;
+}
+.roomPill {
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--bot-line);
+  border-radius: 18px;
+  background: var(--bot-card);
+  color: var(--bot-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.roomPill:hover {
   background: var(--bot-hover);
 }
 .mobileList {

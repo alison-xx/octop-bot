@@ -2010,7 +2010,7 @@ function ChatPageInner() {
             {!focused && (
               <ChatComposerChrome sessionUsageLabel={sessionUsageLabel} />
             )}
-            {pendingAsk ? (
+            {pendingAsk && !focused ? (
               <div className={styles.askQuestionDock}>
                 <div className={styles.askQuestionDockInner}>
                   <AskQuestionCard

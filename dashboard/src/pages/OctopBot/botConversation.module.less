@@ -63,17 +63,10 @@
   gap: 10px;
   margin: 18px 0 22px;
   text-align: center;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   color: var(--bot-muted, var(--fn-text-tertiary));
   font-variant-numeric: tabular-nums;
-  &::before,
-  &::after {
-    content: "";
-    width: 28px;
-    height: 1px;
-    background: var(--bot-line, var(--fn-border-secondary));
-  }
 }
 .greetingRow {
   display: flex;
@@ -184,20 +177,52 @@
 .pinnedTool {
   width: min(94%, 680px);
 }
-.meta {
+// Hover icons sit beside the bubble, so showing them never moves the flow.
+.conversation .body {
+  position: relative;
+}
+.actions {
+  position: absolute;
+  bottom: 4px;
+  inset-inline-start: calc(100% + 6px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
   color: var(--bot-muted, var(--fn-text-tertiary));
-  font-size: 11px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
-.conversation .usage {
-  visibility: hidden;
+.userMessage .actions {
+  inset-inline-start: auto;
+  inset-inline-end: calc(100% + 6px);
 }
-.conversation .botMessage:hover .usage,
-.conversation .botMessage:focus-within .usage {
-  visibility: visible;
+.botMessage:hover .actions,
+.userMessage:hover .actions,
+.actions:focus-within,
+.actions:has([aria-expanded="true"]) {
+  opacity: 1;
 }
-.conversation .meta {
-  min-height: 24px;
-  margin-top: 2px;
+.actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.actions button:hover {
+  background: var(--bot-incoming, var(--fn-bg-secondary));
+  color: var(--bot-ink, var(--fn-text-primary));
+}
+@media (hover: none) {
+  .actions {
+    opacity: 1;
+  }
 }
 .incoming :is(p, li) {
   line-height: 1.72;
@@ -290,17 +315,6 @@
       opacity: 0.4;
       transform: scale(0.75);
     }
-  }
-}
-@media (hover: hover) {
-  .conversation .meta button {
-    opacity: 0;
-  }
-  .conversation .botMessage:hover .meta button,
-  .conversation .userMessage:hover .meta button,
-  .conversation .botMessage:focus-within .meta button,
-  .conversation .userMessage:focus-within .meta button {
-    opacity: 1;
   }
 }
 .connect,
@@ -450,7 +464,7 @@
 .send,
 .composer .send {
   border: 0;
-  background: var(--bot-color, var(--bot-outgoing, #191919));
+  background: var(--bot-outgoing, #191919);
   color: var(--bot-outgoing-ink, white);
 }
 .composer .send:disabled {
