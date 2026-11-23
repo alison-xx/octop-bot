@@ -103,6 +103,18 @@ final class AppModel {
         phase = .ready
         await first.value
         if let pushToken { await backend.registerPush(token: pushToken) }
+        if backend is LynxceBackend {
+            CreditStore.shared.start(
+                account: { [weak self] in self?.backend as? LynxceBackend },
+                credited: { [weak self] in await self?.refreshBalance() }
+            )
+            await CreditStore.shared.flush()
+        }
+    }
+
+    func refreshBalance() async {
+        guard let lynxce = backend as? LynxceBackend else { return }
+        if let fresh = await lynxce.balance() { balance = fresh }
     }
 
     func refresh() async {
@@ -123,7 +135,7 @@ final class AppModel {
         }
         if let server { groups = (try? await server.groups()) ?? groups }
         models = (try? await backend.models()) ?? []
-        if let lynxce = backend as? LynxceBackend { balance = await lynxce.balance() }
+        await refreshBalance()
     }
 
     /// One chat per Bot, so several Bots can reply at once.
@@ -218,6 +230,16 @@ final class AppModel {
     func setLook(_ look: Look, for bot: BotProfile) async throws {
         try await server?.setLook(look, for: bot)
         await refresh()
+    }
+
+    /// Settings → Delete account: Lynxce starts its cooling-off period, then this phone signs out.
+    /// Returns the cooling-off days to tell the user.
+    func deleteAccount() async throws -> Int {
+        guard let lynxce = backend as? LynxceBackend else { return 0 }
+        let days = try await lynxce.requestDeletion()
+        LocalBots.shared.deleteAll()
+        await signOut()
+        return days
     }
 
     func signOut() async {

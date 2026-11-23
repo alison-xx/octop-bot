@@ -220,6 +220,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         viewModelScope.launch { _balance.value = backend.balance() }
     }
 
+    /** Open Lynxce's recharge page signed in as this account (a 15-minute ticket, as on the desktop). */
+    fun recharge(open: (String) -> Unit) {
+        val backend = (session.value as? SessionState.Ready)?.backend as? LynxceBackend ?: return
+        viewModelScope.launch {
+            runCatching { backend.checkoutUrl() }
+                .onSuccess(open)
+                .onFailure { notice(resources.describe(it)) }
+        }
+    }
+
+    /** Settings → Delete account: Lynxce starts its cooling-off period, then this phone signs out. */
+    fun deleteAccount() {
+        val backend = (session.value as? SessionState.Ready)?.backend as? LynxceBackend ?: return
+        viewModelScope.launch {
+            runCatching { backend.requestDeletion() }
+                .onSuccess {
+                    store.setCustomBots(emptyList())
+                    signOut(notice = resources.getString(R.string.settings_delete_account_done))
+                }
+                .onFailure { notice(resources.describe(it)) }
+        }
+    }
+
     override fun bot(id: String): BotProfile? = _bots.value.firstOrNull { it.id == id }
 
     fun chat(botId: String): ChatSession = chats.getOrPut(botId) { ChatSession(botId, viewModelScope, this) }

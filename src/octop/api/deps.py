@@ -56,6 +56,8 @@ _JWT_EXEMPT_EXACT = (
     "/api/auth/lynxce/code",
     "/api/auth/lynxce/code-login",
     "/api/auth/lynxce/status",
+    # Octop Bot clients check an address before showing a sign-in form.
+    "/api/octop-bot/server-info",
     # Desktop shells renew an expired session here; the device token is the
     # credential and the router enforces shell-flag + loopback + digest match.
     "/api/auth/device/token",

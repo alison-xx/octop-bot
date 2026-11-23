@@ -280,9 +280,7 @@ export default function BotClientSetup() {
           }
           onError={(e) => setError(apiErrorMessage(e, t("octopBot.failed"), t))}
           onClearError={() => setError("")}
-        >
-          <LynxceRegistration />
-        </LynxceSignInForm>
+        />
       ) : (
         <form
           className={intro.form}

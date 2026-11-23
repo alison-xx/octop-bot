@@ -24,6 +24,8 @@ test("Bot's File/Settings shortcut and About use its own product identity", () =
   assert.equal(file[0]?.accelerator, "Ctrl+,");
   file[0]?.click?.({} as never, undefined, {} as never);
   assert.equal(opened, true);
+  assert.equal(file[1]?.id, "server");
+  assert.equal(windowsMenuCommandId("server"), "server");
   assert.deepEqual(windowsMenuModel("zh-CN", true).menus[3][0], {
     kind: "command", id: "about", label: "关于 Octop Bot", accelerator: null,
   });

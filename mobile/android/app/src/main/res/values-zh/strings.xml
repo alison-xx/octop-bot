@@ -38,7 +38,7 @@
     <string name="onboarding_account">手机号或邮箱</string>
     <string name="onboarding_password">密码</string>
     <string name="onboarding_sign_in">登录</string>
-    <string name="onboarding_register">还没有账号？去 lynxce.cn 注册</string>
+    <string name="onboarding_register">还没有账号？用验证码登录即可注册</string>
     <string name="onboarding_server">连接自己的服务器</string>
     <string name="onboarding_footnote">也可以连接自己的 Octop Bot 服务器，使用 NAS 上的 Bot、工具、记忆和群组。</string>
     <string name="onboarding_code">验证码</string>
@@ -275,4 +275,11 @@
     <string name="update_permission_title">允许安装更新</string>
     <string name="update_permission_text">安装更新需要允许 Octop Bot 安装未知应用。在接下来的页面打开开关后返回，更新会自动继续。</string>
     <string name="update_permission_open">去设置</string>
+    <string name="settings_recharge">充值积分</string>
+    <string name="settings_delete_account">注销账号</string>
+    <string name="settings_delete_account_footer">注销的是灵策账号，官网和其他设备上的 Octop Bot 都将无法再使用。</string>
+    <string name="settings_delete_account_confirm">确定注销灵策账号吗？</string>
+    <string name="settings_delete_account_message">账号会立即在所有设备上退出，且无法再登录。7 天冷静期后数据将被删除，冷静期内可联系灵策客服恢复。</string>
+    <string name="settings_delete_account_done">已提交注销申请，并已退出登录。</string>
+    <string name="onboarding_agreement"><![CDATA[继续即表示同意<a href="https://admin.lynxce.cn/legal/app/user-agreement">《灵策用户协议》</a>和<a href="https://octop-bot.lynxce.cn/privacy.html">《隐私政策》</a>]]></string>
 </resources>

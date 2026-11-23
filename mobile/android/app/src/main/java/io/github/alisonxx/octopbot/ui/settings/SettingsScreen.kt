@@ -128,6 +128,8 @@ class SettingsActions(
     val onSwitchAccount: () -> Unit,
     val onSignOut: () -> Unit,
     val onOpenUrl: (String) -> Unit,
+    val onRecharge: () -> Unit = {},
+    val onDeleteAccount: () -> Unit = {},
     val onCheckUpdates: () -> Unit = {},
     val onUpdate: () -> Unit = {},
     val onCancelUpdate: () -> Unit = {},
@@ -150,14 +152,15 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
     val cleared = stringResource(R.string.settings_cache_cleared)
     var blocked by remember { mutableStateOf(!notificationsAllowed(context)) }
     // Coming back from system settings re-checks the permission.
+    // Coming back from the recharge page shows the new balance.
     LifecycleResumeEffect(Unit) {
         blocked = !notificationsAllowed(context)
+        model.refreshBalance()
         onPauseOrDispose {}
     }
     val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         blocked = !notificationsAllowed(context)
     }
-    LaunchedEffect(Unit) { model.refreshBalance() }
     Settings(
         state = SettingsState(
             accountName = backend.accountName,
@@ -201,6 +204,8 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
             onSwitchAccount = model::switchAccount,
             onSignOut = { model.signOut() },
             onOpenUrl = { url -> context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) },
+            onRecharge = { model.recharge { url -> context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) } },
+            onDeleteAccount = model::deleteAccount,
             onCheckUpdates = model::checkForUpdates,
             onUpdate = model::startUpdate,
             onCancelUpdate = model::cancelUpdateDownload,
@@ -217,6 +222,7 @@ private enum class Picker { Language, Appearance, TextSize, SpeechRate }
 fun Settings(state: SettingsState, actions: SettingsActions) {
     var picker by rememberSaveable { mutableStateOf<Picker?>(null) }
     var confirmSignOut by rememberSaveable { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var confirmClear by rememberSaveable { mutableStateOf(false) }
     val languages = listOf(
         AppLocale.SYSTEM to stringResource(R.string.settings_follow_system),
@@ -320,6 +326,16 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
 
             Group(stringResource(R.string.settings_account)) {
                 row { Item(stringResource(R.string.settings_signed_in_as), value = state.accountName) }
+                if (state.lynxce) {
+                    row {
+                        Item(
+                            stringResource(R.string.settings_recharge),
+                            value = state.balance?.let { stringResource(R.string.settings_balance_chip, it) },
+                            external = true,
+                            onClick = actions.onRecharge,
+                        )
+                    }
+                }
                 row {
                     val address = state.serverAddress
                     Item(
@@ -330,6 +346,12 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
                 }
                 row { Item(stringResource(R.string.settings_switch_account), chevron = true, onClick = actions.onSwitchAccount) }
                 row { Item(stringResource(R.string.settings_sign_out), danger = true) { confirmSignOut = true } }
+            }
+
+            if (state.lynxce) {
+                Group(null, footer = { FooterText(stringResource(R.string.settings_delete_account_footer)) }) {
+                    row { Item(stringResource(R.string.settings_delete_account), danger = true) { confirmDelete = true } }
+                }
             }
 
             Group(stringResource(R.string.settings_about)) {
@@ -373,6 +395,15 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
             confirm = stringResource(R.string.settings_clear),
             onConfirm = actions.onClearCache,
             onDismiss = { confirmClear = false },
+        )
+    }
+    if (confirmDelete) {
+        ConfirmDialog(
+            title = stringResource(R.string.settings_delete_account_confirm),
+            text = stringResource(R.string.settings_delete_account_message),
+            confirm = stringResource(R.string.settings_delete_account),
+            onConfirm = actions.onDeleteAccount,
+            onDismiss = { confirmDelete = false },
         )
     }
     if (confirmSignOut) {

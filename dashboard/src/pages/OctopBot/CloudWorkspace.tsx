@@ -23,7 +23,6 @@ import { apiErrorMessage } from "../../utils/apiError";
 import { getDesktopBridge } from "../../utils/desktopBridge";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
 import WalletBalance from "./WalletBalance";
-import LynxceRegistration from "./LynxceRegistration";
 import LynxceSignInForm from "./LynxceSignInForm";
 import CloudChat from "./CloudChat";
 import CloudSchedules from "./CloudSchedules";
@@ -209,7 +208,6 @@ export default function CloudWorkspace() {
                 <p>{t("botCloud.workbuddyHint")}</p>
               </div>
             )}
-            <LynxceRegistration />
           </section>
         </div>
       ) : (

@@ -48,6 +48,7 @@ export default defineConfig({
           // fatal error). They must not be handed the Dashboard's API.
           early: resolve(__dirname, "preload/early.ts"),
           orb: resolve(__dirname, "preload/orb.ts"),
+          server: resolve(__dirname, "preload/server.ts"),
         },
       },
     },

@@ -15,6 +15,7 @@ from octop.api.routers.bot_cloud_import import router as cloud_import_router
 from octop.api.routers.bot_cloud_work import router as cloud_work_router
 from octop.api.routers.bot_computer import router as computer_router
 from octop.api.routers.bot_lynxce import router as lynxce_router
+from octop.api.routers.bot_server import router as server_router
 from octop.api.routers.bot_wallet import router as wallet_router
 from octop.infra.agents.bot_appearance import Appearance, Character, set_character
 from octop.infra.agents.bot_sections import (
@@ -38,6 +39,7 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 
 router = APIRouter(prefix="/octop-bot")
+router.include_router(server_router)
 router.include_router(avatar_library_router)
 router.include_router(cloud_account_router)
 router.include_router(cloud_import_router)

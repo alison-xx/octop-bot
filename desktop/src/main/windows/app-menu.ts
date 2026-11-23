@@ -30,6 +30,7 @@ const WINDOWS_MENU_COMMANDS = [
   "togglefullscreen",
   "about",
   "settings",
+  "server",
 ] as const;
 
 export type WindowsMenuCommandId = (typeof WINDOWS_MENU_COMMANDS)[number];
@@ -105,7 +106,12 @@ export function windowsMenuModel(locale: string, botOnly = false): WindowsMenuMo
     titles: [labels.file, labels.edit, labels.view, labels.help],
     menus: [
       [
-        ...(botOnly ? [command("settings", text("Octop Bot 设置", "Octop Bot Settings"), "Ctrl+,")] : []),
+        ...(botOnly
+          ? [
+              command("settings", text("Octop Bot 设置", "Octop Bot Settings"), "Ctrl+,"),
+              command("server", text("切换服务器…", "Switch Server…"), null),
+            ]
+          : []),
         command("close", text("关闭", "Close"), "Ctrl+W"),
         { kind: "separator" },
         command("quit", text("退出", "Exit"), null),
@@ -141,6 +147,7 @@ export function windowsApplicationMenu(
   locale: string,
   onAbout: () => void,
   onBotSettings?: () => void,
+  onServer?: () => void,
 ): MenuItemConstructorOptions[] {
   const model = windowsMenuModel(locale, Boolean(onBotSettings));
   return model.titles.map((label, index) => ({
@@ -149,6 +156,7 @@ export function windowsApplicationMenu(
       if (entry.kind === "separator") return { type: "separator" };
       if (entry.id === "about") return { id: entry.id, label: entry.label, click: onAbout };
       if (entry.id === "settings") return { id: entry.id, label: entry.label, accelerator: "Ctrl+,", click: onBotSettings };
+      if (entry.id === "server") return { id: entry.id, label: entry.label, click: onServer };
       return { id: entry.id, role: entry.id };
     }),
   }));

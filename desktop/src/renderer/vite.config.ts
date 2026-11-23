@@ -44,6 +44,7 @@ export default defineConfig({
         splash: resolve(root, "splash.html"),
         error: resolve(root, "error.html"),
         orb: resolve(root, "orb.html"),
+        server: resolve(root, "server.html"),
       },
     },
   },

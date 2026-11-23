@@ -141,15 +141,26 @@ struct OnboardingView: View {
             .padding(.top, 2)
             .accessibilityIdentifier("loginMode")
             if usePassword {
-                Link("onboarding.register", destination: URL(string: "https://www.lynxce.cn")!)
-                    .font(.footnote)
-                    .foregroundStyle(Palette.secondary)
+                // New accounts have no password: the code sign-in creates them.
+                Button("onboarding.register") {
+                    usePassword = false
+                    error = nil
+                }
+                .font(.footnote)
+                .foregroundStyle(Palette.secondary)
+                .accessibilityIdentifier("register")
             } else {
                 Text("onboarding.codeHint")
                     .font(.footnote)
                     .foregroundStyle(Palette.secondary)
                     .multilineTextAlignment(.center)
             }
+            Text("onboarding.agreement")
+                .font(.caption)
+                .foregroundStyle(Palette.secondary)
+                .tint(Palette.text)
+                .multilineTextAlignment(.center)
+                .padding(.top, 4)
         }
     }
 

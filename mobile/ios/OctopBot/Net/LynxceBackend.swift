@@ -109,10 +109,15 @@ final class LynxceBackend: ChatBackend {
 
     // MARK: Transport
 
-    private static func headers(_ bearer: String?) -> [String: String] {
+    /// Picks Octop Bot's App Store products on Lynxce's in-app purchase endpoints without moving
+    /// the sign-in out of the multi-session 'web' channel.
+    nonisolated static let iapApp = "cn.lynxce.octopbot"
+
+    private static func headers(_ bearer: String?, iap: Bool = false) -> [String: String] {
         // 'web' is Lynxce's multi-session channel; signing in here never signs other devices out.
         var headers = ["X-Lynxce-Client": "web"]
         if let bearer { headers["Authorization"] = "Bearer \(bearer)" }
+        if iap { headers["X-Lynxce-Iap-App"] = iapApp }
         return headers
     }
 
@@ -140,22 +145,23 @@ final class LynxceBackend: ChatBackend {
 
     private static func call(
         _ method: HTTPMethod, _ path: String, bearer: String? = nil,
-        query: [String: String] = [:], json: Any? = nil, form: [FormPart]? = nil
+        query: [String: String] = [:], json: Any? = nil, form: [FormPart]? = nil, iap: Bool = false
     ) async throws -> Any {
-        let request = try HTTP.request(url(path, query: query), method: method, headers: headers(bearer), json: json, form: form)
+        let request = try HTTP.request(url(path, query: query), method: method, headers: headers(bearer, iap: iap), json: json, form: form)
         let (data, response) = try await HTTP.data(for: request)
         return try unwrap(data, status: response.statusCode)
     }
 
     /// Authenticated call that rotates the access token once on 401.
     private func call(
-        _ method: HTTPMethod, _ path: String, query: [String: String] = [:], json: Any? = nil, form: [FormPart]? = nil
+        _ method: HTTPMethod, _ path: String, query: [String: String] = [:], json: Any? = nil, form: [FormPart]? = nil,
+        iap: Bool = false
     ) async throws -> Any {
         do {
-            return try await Self.call(method, path, bearer: grant.accessToken, query: query, json: json, form: form)
+            return try await Self.call(method, path, bearer: grant.accessToken, query: query, json: json, form: form, iap: iap)
         } catch let error as APIError where error.kind == .unauthorized {
             let fresh = try await refreshed()
-            return try await Self.call(method, path, bearer: fresh.accessToken, query: query, json: json, form: form)
+            return try await Self.call(method, path, bearer: fresh.accessToken, query: query, json: json, form: form, iap: iap)
         }
     }
 
@@ -421,12 +427,73 @@ final class LynxceBackend: ChatBackend {
     }
 
     func balance() async -> String? {
-        guard let data = try? await call(.get, "/api/user/quota") as? [String: Any] else { return nil }
-        for key in ["balance", "credits", "remaining", "points"] {
-            if let value = data[key] as? NSNumber { return value.stringValue }
-            if let value = data[key] as? String { return value }
+        guard let data = try? await call(.get, "/api/user/quota") else { return nil }
+        return Self.credits(inQuota: data).map(Self.formatCredits)
+    }
+
+    /// The wallet balance from `/api/user/quota`, the figure a recharge adds to. (`effectiveCreditsRemaining`
+    /// can instead be an enterprise member's monthly allowance, so it is not shown next to "Recharge".)
+    static func credits(inQuota data: Any) -> Double? {
+        ((data as? [String: Any])?["creditsRemaining"] as? NSNumber)?.doubleValue
+    }
+
+    /// Credits have a cent quantum: "1,280" or "12.5".
+    static func formatCredits(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 2
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.usesGroupingSeparator = true
+        formatter.groupingSeparator = ","
+        return formatter.string(from: NSNumber(value: value)) ?? String(value)
+    }
+
+    // MARK: Credit packs (App Store)
+
+    struct CreditPack: Identifiable, Equatable {
+        let id: String
+        let name: String
+        let credits: Double
+        let productId: String
+    }
+
+    /// Packs sold in this app, and whether Lynxce has App Store purchases switched on for it.
+    func creditPacks() async throws -> (packs: [CreditPack], enabled: Bool) {
+        Self.creditPacks(from: try await call(.get, "/api/billing/app/recharge-packages", iap: true))
+    }
+
+    static func creditPacks(from data: Any) -> (packs: [CreditPack], enabled: Bool) {
+        let body = data as? [String: Any] ?? [:]
+        let rows = body["packages"] as? [[String: Any]] ?? []
+        let packs = rows.compactMap { row -> CreditPack? in
+            guard let id = row["id"] as? String, let product = row["appleProductId"] as? String, !product.isEmpty else { return nil }
+            return CreditPack(id: id, name: row["name"] as? String ?? "", credits: (row["credits"] as? NSNumber)?.doubleValue ?? 0, productId: product)
         }
-        return nil
+        let apple = (body["payment"] as? [String: Any])?["apple"] as? [String: Any]
+        return (packs, apple?["enabled"] as? Bool ?? false)
+    }
+
+    /// Lynxce ties the purchase to this account through the returned App Store account token.
+    func purchaseIntent(packId: String) async throws -> (productId: String, accountToken: UUID) {
+        let data = try await call(.post, "/api/billing/apple/purchase-intents", json: ["packageId": packId], iap: true)
+        guard
+            let body = data as? [String: Any],
+            let product = body["productId"] as? String,
+            let token = (body["appAccountToken"] as? String).flatMap(UUID.init(uuidString:))
+        else { throw APIError(kind: .server, status: 502, message: nil) }
+        return (product, token)
+    }
+
+    /// Report a StoreKit transaction; Lynxce verifies it with Apple and credits the wallet once.
+    func submitTransaction(_ signedTransaction: String) async throws {
+        _ = try await call(.post, "/api/billing/apple/transactions", json: ["signedTransaction": signedTransaction], iap: true)
+    }
+
+    /// App Store rule 5.1.1(v): accounts created in the app can be deleted in the app. Lynxce keeps a
+    /// cooling-off period before erasing the account; signing in is refused from now on.
+    func requestDeletion() async throws -> Int {
+        let data = try await call(.post, "/api/user/account/deletion-request", json: ["confirm": "注销账号"])
+        return (data as? [String: Any])?["coolingDays"] as? Int ?? 7
     }
 
     func signOut() async {

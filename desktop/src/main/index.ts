@@ -40,6 +40,7 @@ import { DeviceCredentialStore } from "./session/device-credential";
 import { DeviceSessionClient } from "./session/device-session";
 import { safeStorageCipher, warnIfKeychainUnavailable } from "./session/safe-storage-cipher";
 import { ClientSettingsStore, defaultClientSettingsPath } from "./storage/client-settings";
+import { defaultServerChoicePath, ServerChoiceStore } from "./server/server-choice";
 import { readLoginShellEnv, resolveOctopHome } from "./supervisor/shell-env";
 import { reserveRandomPort } from "./supervisor/random-port";
 import {
@@ -100,6 +101,8 @@ import { createMainWindow, installDashboardGuards } from "./windows/main-window"
 import type { EarlyWindow } from "./windows/early-window";
 import { isWindowOnScreen, presentWindows, shouldKeepWindowOnClose } from "./windows/present";
 import { BotOrb } from "./windows/bot-orb";
+import { createRemoteWindow } from "./windows/remote-window";
+import { ServerPicker } from "./windows/server-window";
 import { openWorkbuddyLogin } from "./windows/workbuddy-login";
 import { sanitizeBadgeCount, sanitizeNotification, trayTooltip } from "./windows/attention";
 import {
@@ -173,6 +176,11 @@ let trayIcon: NativeImage | null = null;
 // Set once the Dashboard has opened, so a later Dock click can open it again.
 let dashboardOrigin: string | null = null;
 let botOrb: BotOrb | null = null;
+// Octop Bot can run on a self-hosted server instead of its own local service.
+let serverChoice: ServerChoiceStore | null = null;
+let serverPicker: ServerPicker | null = null;
+// Set when this launch shows a self-hosted server; no local service runs then.
+let remoteOrigin: string | null = null;
 // Octop Bot background updates (packaged Bot builds only) and the last verified manifest.
 let botUpdater: BotUpdater | null = null;
 let botManifest: BotManifest | null = null;
@@ -703,7 +711,8 @@ function updateMenuItems(): MenuItemConstructorOptions[] {
 }
 
 function refreshUpdateMenus(): void {
-  installAppMenu(appVersion);
+  if (remoteOrigin) installRemoteMenu();
+  else installAppMenu(appVersion);
   if (process.platform === "linux" && tray && !tray.isDestroyed()) tray.setContextMenu(trayMenu());
 }
 
@@ -1047,6 +1056,7 @@ function revealAppWindow(): void {
     return;
   }
   if (dashboardOrigin) openDashboardWindow(dashboardOrigin);
+  else if (remoteOrigin) openRemoteWindow(remoteOrigin);
 }
 
 function showAboutDialog(version: string): void {
@@ -1132,6 +1142,9 @@ function runWindowsMenuCommand(win: BrowserWindow, command: WindowsMenuCommandId
     case "settings":
       openBotSettings();
       return;
+    case "server":
+      serverPicker?.open(win);
+      return;
   }
 }
 
@@ -1148,6 +1161,7 @@ function installAppMenu(version: string): void {
               accelerator: "Cmd+,",
               click: openBotSettings,
             },
+            ...serverMenuItems(),
             ...updateMenuItems(),
             { type: "separator" },
             { role: "services" },
@@ -1170,6 +1184,7 @@ function installAppMenu(version: string): void {
     app.getLocale(),
     () => showAboutDialog(version),
     botOnly ? openBotSettings : undefined,
+    botOnly ? () => serverPicker?.open(BrowserWindow.getFocusedWindow()) : undefined,
   );
   Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
 }
@@ -1242,11 +1257,105 @@ function repoRootWithGit(start: string): string | null {
   return null;
 }
 
+/** "Server" submenu: this computer's service, recent self-hosted servers, or a new one. */
+function serverMenuItems(): MenuItemConstructorOptions[] {
+  if (!botOnly || !serverChoice) return [];
+  const zh = app.getLocale().startsWith("zh");
+  const { current, recent } = serverChoice.load();
+  return [
+    {
+      label: zh ? "服务器" : "Server",
+      submenu: [
+        {
+          label: zh ? "本机服务" : "This computer",
+          type: "radio",
+          checked: current === null,
+          click: () => serverPicker?.switchTo(null),
+        },
+        ...recent.map((origin): MenuItemConstructorOptions => ({
+          label: new URL(origin).host,
+          type: "radio",
+          checked: current === origin,
+          click: () => serverPicker?.switchTo(origin),
+        })),
+        { type: "separator" },
+        {
+          label: zh ? "连接自建服务器…" : "Connect to a Server…",
+          click: () => serverPicker?.open(BrowserWindow.getFocusedWindow()),
+        },
+      ],
+    },
+  ];
+}
+
+/** Quit and start again, so the next launch picks up the chosen server. */
+function restartApp(): void {
+  app.relaunch();
+  app.quit();
+}
+
+function openRemoteWindow(origin: string): BrowserWindow {
+  const chromeTheme = resolveWindowChromeTheme(settingsStore.load().themeBackground);
+  const win = createRemoteWindow({
+    origin,
+    backgroundColor: windowBackground(chromeTheme.mode),
+    icon: botWindowIcon(),
+    onNavigate: openExternal,
+    onLoadFailed: (description) => void showRemoteFailure(win, origin, description),
+  });
+  win.on("close", (event) => {
+    if (!shouldKeepWindowOnClose({ platform: process.platform, closeBehavior, quitting, trayReady: tray !== null })) return;
+    event.preventDefault();
+    win.hide();
+  });
+  return win;
+}
+
+/** The self-hosted server didn't answer: retry, go back to this computer's service, or pick another. */
+async function showRemoteFailure(win: BrowserWindow, origin: string, description: string): Promise<void> {
+  if (win.isDestroyed()) return;
+  if (!win.isVisible()) win.show();
+  const zh = app.getLocale().startsWith("zh");
+  const { response } = await dialog.showMessageBox(win, {
+    type: "warning",
+    message: zh ? `连接不上 ${new URL(origin).host}` : `Couldn't reach ${new URL(origin).host}`,
+    detail: description,
+    buttons: zh ? ["重试", "改用本机服务", "换个服务器…"] : ["Retry", "Use This Computer", "Another Server…"],
+    defaultId: 0,
+    cancelId: 0,
+  });
+  if (win.isDestroyed()) return;
+  if (response === 0) void win.loadURL(origin + BOT_HOME_PATH);
+  else if (response === 1) serverPicker?.switchTo(null);
+  else serverPicker?.open(win);
+}
+
+/** Native menus while showing a self-hosted server: its page draws no desktop menu of its own. */
+function installRemoteMenu(): void {
+  const zh = app.getLocale().startsWith("zh");
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {
+      label: BOT_PRODUCT_NAME,
+      submenu: [
+        ...(process.platform === "darwin" ? [{ role: "about" as const }, { type: "separator" as const }] : []),
+        ...serverMenuItems(),
+        ...updateMenuItems(),
+        { type: "separator" },
+        { role: "quit", label: zh ? "退出" : undefined },
+      ],
+    },
+    { role: "editMenu" },
+    { role: "viewMenu" },
+    { role: "windowMenu" },
+  ]));
+}
+
 function trayMenu(): Menu {
   const labels = trayMenuLabels(app.getLocale(), botOnly);
   return Menu.buildFromTemplate([
     { label: labels.show, click: () => revealAppWindow() },
-    ...(botOnly ? [{ label: app.getLocale().startsWith("zh") ? "显示桌面悬浮球" : "Show floating button", click: () => botOrb?.show(true) }] : []),
+    ...(botOnly && !remoteOrigin ? [{ label: app.getLocale().startsWith("zh") ? "显示桌面悬浮球" : "Show floating button", click: () => botOrb?.show(true) }] : []),
+    ...serverMenuItems(),
     ...updateMenuItems(),
     { type: "separator" },
     { label: labels.quit, click: () => app.quit() },
@@ -1333,7 +1442,13 @@ async function boot(): Promise<void> {
     app.setAboutPanelOptions({ applicationName: productName, applicationVersion: appVersion, iconPath });
     if (iconPath && !app.isPackaged) app.dock?.setIcon(iconPath);
   }
-  installAppMenu(appVersion);
+  if (botOnly) {
+    serverChoice = new ServerChoiceStore(defaultServerChoicePath(app.getPath("userData")));
+    serverPicker = new ServerPicker({ store: serverChoice, restart: restartApp, icon: botWindowIcon() });
+    remoteOrigin = serverChoice.load().current;
+  }
+  if (remoteOrigin) installRemoteMenu();
+  else installAppMenu(appVersion);
 
   settingsStore = new ClientSettingsStore(defaultClientSettingsPath(app.getPath("userData")));
   const settings = settingsStore.load();
@@ -1345,6 +1460,17 @@ async function boot(): Promise<void> {
     scheme: settings.themeBackground,
   });
   const chromeTheme = resolveWindowChromeTheme(settings.themeBackground);
+
+  if (remoteOrigin) {
+    // A self-hosted server: no local runtime, sidecar or Dashboard bridge on this launch.
+    const loginShellEnv = process.platform === "win32" ? {} : await readLoginShellEnv(process.env.SHELL);
+    installDesktopLog(resolveOctopHome(process.env, loginShellEnv, undefined, botOnly));
+    desktopLog().info(`desktop ${appVersion} server=${remoteOrigin}`);
+    await installSystemTray();
+    openRemoteWindow(remoteOrigin);
+    startBotUpdater();
+    return;
+  }
 
   const early = createEarlyWindow({
     splashFile: SPLASH_PATH,
@@ -1532,11 +1658,14 @@ app.on("before-quit", (event) => {
   destroySystemTray();
   const sidecar = supervisor;
   const relay = wsRelay;
+  // Set before any return: a server-window close handler reads it, and with
+  // closeBehavior "tray" it would otherwise hide the window and cancel the
+  // quit (remote mode has neither a sidecar nor a relay).
+  quitting = true;
   if (!sidecar && !relay) return;
   // §3.4: the sidecar runs in its own process group, so quitting without
   // waiting would orphan Python. Give it the grace window, then really quit.
   event.preventDefault();
-  quitting = true;
   // Close the relay first: nothing may attach to a sidecar that is shutting
   // down, and its listening socket would keep the process alive otherwise.
   void (async () => {

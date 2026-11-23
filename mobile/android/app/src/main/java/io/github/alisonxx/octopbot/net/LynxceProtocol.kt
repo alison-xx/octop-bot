@@ -171,16 +171,36 @@ object LynxceProtocol {
         }
     }
 
-    /** The first numeric of `balance`/`credits`/`remaining`/`points`. */
-    fun balance(data: JsonElement): String? {
+    /**
+     * The wallet balance from `/api/user/quota`, the figure a recharge adds to. (`effectiveCreditsRemaining`
+     * can instead be an enterprise member's monthly allowance, so it is not shown next to "Recharge".)
+     */
+    fun balance(data: JsonElement): String? = data.asObject()?.double("creditsRemaining")?.let(::formatCredits)
+
+    /** Credits have a cent quantum: "12,800" or "12.5". */
+    fun formatCredits(value: Double): String =
+        java.text.DecimalFormat("#,##0.##", java.text.DecimalFormatSymbols(java.util.Locale.US)).format(value)
+
+    const val CHECKOUT_PORTAL = "https://admin.lynxce.cn/recharge?token="
+    private val CHECKOUT_TICKET = Regex("(?!mcrt1\\.)[A-Za-z0-9_-]{1,4096}\\.[A-Za-z0-9_-]{43}")
+
+    /**
+     * The hosted checkout Lynxce minted for this account (`POST /api/billing/recharge/checkout-link`).
+     * Only the official recharge page with a well-formed 15-minute ticket is opened, as on the desktop.
+     */
+    fun checkoutUrl(data: JsonElement, now: java.time.Instant = java.time.Instant.now()): String? {
         val obj = data.asObject() ?: return null
-        for (key in listOf("balance", "credits", "remaining", "points")) {
-            val value = obj[key] as? JsonPrimitive ?: continue
-            if (value is JsonNull) continue
-            if (!value.isString || value.content.toDoubleOrNull() != null) return value.content
-        }
-        return null
+        val url = obj.str("url") ?: return null
+        if (!url.startsWith(CHECKOUT_PORTAL)) return null
+        val ticket = url.removePrefix(CHECKOUT_PORTAL)
+        if (!CHECKOUT_TICKET.matches(ticket) || (obj.str("token") ?: ticket) != ticket) return null
+        val expires = obj.str("expiresAt")?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() } ?: return null
+        val left = java.time.Duration.between(now, expires)
+        return url.takeIf { !left.isNegative && !left.isZero && left <= java.time.Duration.ofMinutes(16) }
     }
+
+    /** App Store-style self-service deletion; Lynxce asks for this exact confirmation text. */
+    fun deletionBody() = buildJsonObject { put("confirm", "注销账号") }
 
     fun loginBody(account: String, password: String) = buildJsonObject {
         put("account", account)

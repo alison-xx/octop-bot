@@ -521,3 +521,33 @@ final class AppUpdaterTests: XCTestCase {
         XCTAssertTrue((220...380).contains(inside), "about 30 % expected, got \(inside)")
     }
 }
+
+@MainActor
+final class CreditTests: XCTestCase {
+    func testBalanceIsTheWalletNotAMemberAllowance() {
+        XCTAssertEqual(LynxceBackend.credits(inQuota: ["creditsRemaining": 1280.5, "effectiveCreditsRemaining": 10]), 1280.5)
+        XCTAssertNil(LynxceBackend.credits(inQuota: ["balance": 3]))
+        XCTAssertEqual(LynxceBackend.formatCredits(12800), "12,800")
+        XCTAssertEqual(LynxceBackend.formatCredits(12.5), "12.5")
+    }
+
+    func testOnlyPacksWithAnAppStoreProductAreListed() {
+        let data: [String: Any] = [
+            "packages": [
+                ["id": "p1", "name": "Small", "credits": 1000, "appleProductId": "cn.lynxce.octopbot.credits.1000"],
+                ["id": "p2", "name": "Web only", "credits": 5000],
+            ],
+            "payment": ["apple": ["enabled": true]],
+        ]
+        let (packs, enabled) = LynxceBackend.creditPacks(from: data)
+        XCTAssertTrue(enabled)
+        XCTAssertEqual(packs, [LynxceBackend.CreditPack(id: "p1", name: "Small", credits: 1000, productId: "cn.lynxce.octopbot.credits.1000")])
+        XCTAssertFalse(LynxceBackend.creditPacks(from: ["packages": []]).enabled)
+    }
+
+    func testOnlyThisAppsProductsAreDelivered() {
+        XCTAssertTrue(CreditStore.isCreditPack("cn.lynxce.octopbot.credits.1000"))
+        XCTAssertFalse(CreditStore.isCreditPack("cn.lynxce.omni.credits.1000"))
+        XCTAssertFalse(CreditStore.isCreditPack("cn.lynxce.octopbot"))
+    }
+}
