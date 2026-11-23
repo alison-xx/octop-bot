@@ -35,6 +35,11 @@ async def test_group_unread_counts_replies_after_the_read_cursor(env_with_agent)
     assert latest["text"] == "second" and latest["agent_id"] == chief
     assert any(b["agent_id"] == chief for b in activity["bots"])
 
+    assert server.services.settings_repo.get(f"bot-room-read:{owner}:{legacy}") is not None
+    _turn(repo, legacy, "r4", chief, "after read tracking")
+    groups = {g["group_id"]: g for g in (await client.get(ACTIVITY, headers=auth)).json()["groups"]}
+    assert groups[legacy]["unread_count"] == 1
+
     read = await client.post(f"/api/octop-bot/groups/{room}/read", headers=auth)
     assert read.status_code == 204
     _turn(repo, room, "r3", chief, "third")
