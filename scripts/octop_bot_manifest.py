@@ -51,6 +51,8 @@ ASSET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("win_x64", re.compile(r"(?i)setup.*(x64|win).*\.exe$")),
     ("mac_arm", re.compile(r"(?i)mac.*arm64\.dmg$")),
     ("mac_intel", re.compile(r"(?i)mac.*(x64|intel)\.dmg$")),
+    # Windows portable build. Only the download page uses it; the apps update with the installer.
+    ("win_x64_zip", re.compile(r"(?i)^(?!.*mac).*x64\.zip$")),
     ("android", re.compile(r"(?i)\.apk$")),
     ("fnos", re.compile(r"(?i)\.fpk$")),
 ]

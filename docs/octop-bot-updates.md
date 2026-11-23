@@ -58,7 +58,8 @@ Octop Bot 设置页有一块「关于与更新」：当前版本、状态（已�
 ```
 
 - `version` 用产品版本号（与 `pyproject.toml` 一致，如 `1.0.4b1`）。客户端把 `1.0.4b1` 和 `1.0.4-beta.1` 视为同一个版本，`beta.10` 排在 `beta.9` 之后。
-- 桌面安装包的键：`win_x64`、`win_arm`、`mac_arm`、`mac_intel`。脚本按文件名自动识别（`Setup…x64.exe`、`Setup…arm64.exe`、`mac…arm64.dmg`、`mac…x64.dmg`、`.apk`、`.fpk`）。
+- 桌面安装包的键：`win_x64`、`win_arm`、`mac_arm`、`mac_intel`。脚本按文件名自动识别（`Setup…x64.exe`、`Setup…arm64.exe`、`mac…arm64.dmg`、`mac…x64.dmg`、`.apk`、`.fpk`）。Windows 免安装版 `…x64.zip` 记为 `win_x64_zip`，只给官网下载页用，客户端更新只认安装包。
+- 官网下载页（octop-bot.lynxce.cn/download.html）直接读这份清单并验签：清单里的稳定版就是页面上的当前版本，测试版更新时页面会多一行「测试版 X 已发布」，手机端和 NAS 有安装包时各多一张卡片。没有清单或验签失败时，页面退回到网站目录里的 `releases.json`。更新日志里更早的版本也来自 `releases.json`。
 - 手机端有自己的版本号（现在是 0.1.0），所以 `android` 和 `ios` 带各自的 `version`。Android 用 `version_code`（整数，和 `build.gradle.kts` 一致）判断新旧，系统也靠它决定能否覆盖安装；iOS 用 `version`（和 `MARKETING_VERSION` 一致）比较。`min_version_code` / `min_version` 是手机端的最低版本，低于它时措辞更强。
 - 签名：iOS 用 CryptoKit 的 Ed25519 验签；Android 用内置的纯 Kotlin Ed25519 实现（系统的 Ed25519 只支持钥匙串里的私钥，不能校验外部公钥），所有 Android 版本都验签。安装包还要匹配 SHA-256，而且 Android 只允许安装和现有版本同一签名证书的 APK。Android 只从 `dl.lynxce.cn` 下载。
 - 下载地址只接受 `https://dl.lynxce.cn` 和上游的 `https://download.octop.cloud`。
