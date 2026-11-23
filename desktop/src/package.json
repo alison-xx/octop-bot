@@ -28,7 +28,8 @@
     "test": "node --experimental-strip-types --import ./scripts/register-extensionless-ts.mjs --test \"{main,preload,shared,renderer}/**/*.test.ts\" \"scripts/*.test.mjs\"",
     "package": "pnpm run build && electron-builder --config electron-builder.config.ts",
     "package:dir": "pnpm run build && electron-builder --config electron-builder.config.ts --dir",
-    "package:bot:win": "uv run --no-project --managed-python --python 3.12.13 python scripts/package-bot-windows.py"
+    "package:bot:win": "uv run --no-project --managed-python --python 3.12.13 python scripts/package-bot-windows.py",
+    "package:bot:mac": "uv run --no-project --managed-python --python 3.12.13 python scripts/package-bot-mac.py"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",

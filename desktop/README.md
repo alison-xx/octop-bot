@@ -35,6 +35,13 @@ build uses uv to install the locked Python dependencies and the project's wheel.
 Find the installer, ZIP, and directly runnable `win-unpacked/Octop Bot.exe`
 under `desktop/src/release/octop-bot/`. Extract the entire ZIP before launching.
 
+To build the Apple silicon DMG, run `pnpm run package:bot:mac` on an arm64 Mac.
+It signs with the Developer ID Application identity in the keychain, uses the
+hardened runtime, notarizes and staples both the app and the DMG, and verifies
+them with `codesign`, `spctl` and `stapler`. `--unsigned` makes a local trial
+build. Signing, notarization credentials and CI secrets are described in
+`docs/octop-bot-updates.md`.
+
 For Windows development, run
 `powershell -ExecutionPolicy Bypass -File desktop/src/scripts/run-dev.ps1 -Bot`
 from the repository root. This uses a separate development profile and Vite port
