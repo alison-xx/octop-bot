@@ -3,6 +3,8 @@ package io.github.alisonxx.octopbot.net
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
+import io.github.alisonxx.octopbot.model.FileAttachment
+import io.github.alisonxx.octopbot.model.FileCards
 import io.github.alisonxx.octopbot.model.GroupDraft
 import io.github.alisonxx.octopbot.model.GroupGoal
 import io.github.alisonxx.octopbot.model.GroupMessage
@@ -73,11 +75,7 @@ object ServerProtocol {
     }
 
     /** `/api/agents/{id}/workspace/download?path=…`, the link Octop puts in a reply for a file. */
-    fun isWorkspaceDownload(uri: String): Boolean {
-        if (uri.contains("://")) return false
-        val parts = uri.substringBefore('?').trim('/').split('/')
-        return parts.size == 5 && parts[0] == "api" && parts[1] == "agents" && parts[3] == "workspace" && parts[4] == "download"
-    }
+    fun isWorkspaceDownload(uri: String): Boolean = FileCards.isWorkspaceDownload(uri)
 
     /** `POST /api/auth/lynxce/code`: the server tells phone from email itself and texts or emails the owner. */
     fun lynxceCodeBody(target: String, chinese: Boolean) = buildJsonObject {
@@ -163,25 +161,48 @@ object ServerProtocol {
         val pending: HitlRequest? = null,
     )
 
-    fun historyPage(body: JsonElement, toolLabels: Map<String, String> = emptyMap()): HistoryPage {
+    fun historyPage(body: JsonElement, toolLabels: Map<String, String> = emptyMap(), agentId: String? = null): HistoryPage {
         val obj = body.asObject() ?: return HistoryPage(emptyList(), false, 0)
         return HistoryPage(
-            messages = history(obj.arr("messages") ?: JsonArray(emptyList()), toolLabels),
+            messages = history(obj.arr("messages") ?: JsonArray(emptyList()), toolLabels, agentId),
             loading = obj.bool("history_loading") == true,
             retryAfterMs = obj.long("history_retry_after_ms") ?: 800,
             pending = hitlRequest(obj["hitl_pending"], toolLabels),
         )
     }
 
-    /** History rows → chat messages. Tool rows are skipped; consecutive assistant segments merge into one reply. */
-    fun history(rows: JsonArray, toolLabels: Map<String, String> = emptyMap()): List<ChatMessage> {
+    /**
+     * History rows → chat messages. Consecutive assistant segments merge into one reply. Tool rows only
+     * contribute the files that `send_file_to_user` delivered, which join the reply of that turn.
+     */
+    fun history(rows: JsonArray, toolLabels: Map<String, String> = emptyMap(), agentId: String? = null): List<ChatMessage> {
         val out = mutableListOf<ChatMessage>()
+        val sent = mutableListOf<FileAttachment>()
+        // Files from tool rows with no reply after them in their turn go on the last reply (or a reply of their own).
+        fun flushSent() {
+            if (sent.isEmpty()) return
+            val last = out.lastOrNull()
+            if (last?.role == MessageRole.Assistant) {
+                out[out.lastIndex] = last.copy(attachments = FileCards.merge(last.attachments, sent))
+            } else {
+                out += ChatMessage(role = MessageRole.Assistant, text = "", attachments = sent.toList(), createdAt = last?.createdAt ?: System.currentTimeMillis())
+            }
+            sent.clear()
+        }
         for (row in rows.objects()) {
             val role = when (row.str("role")) {
                 "user" -> MessageRole.User
                 "assistant" -> MessageRole.Assistant
+                "tool" -> {
+                    val owner = row.str("agent_id")?.takeIf { it.isNotBlank() } ?: agentId
+                    val merged = FileCards.merge(sent.toList(), sentFiles(row, owner))
+                    sent.clear()
+                    sent += merged
+                    continue
+                }
                 else -> continue
             }
+            if (role == MessageRole.User) flushSent()
             val text = StringBuilder()
             val thinking = StringBuilder()
             val tools = mutableListOf<ToolStep>()
@@ -200,6 +221,7 @@ object ServerProtocol {
                 else -> Unit
             }
             val timestamp = row.double("timestamp")?.let(Times::epochMillis) ?: Times.parseIso(row.str("timestamp"))
+            val files = if (role == MessageRole.Assistant) sent.toList().also { sent.clear() } else emptyList()
             val last = out.lastOrNull()
             if (role == MessageRole.Assistant && last?.role == MessageRole.Assistant) {
                 val separator = if (last.text.isEmpty() || text.isEmpty()) "" else "\n\n"
@@ -207,10 +229,11 @@ object ServerProtocol {
                     text = last.text + separator + text,
                     thinking = last.thinking + thinking,
                     tools = last.tools + tools,
+                    attachments = FileCards.merge(last.attachments, files),
                 )
                 continue
             }
-            if (text.isEmpty() && thinking.isEmpty() && tools.isEmpty() && images.isEmpty()) continue
+            if (text.isEmpty() && thinking.isEmpty() && tools.isEmpty() && images.isEmpty() && files.isEmpty()) continue
             out += ChatMessage(
                 id = row.idString("id") ?: UUID.randomUUID().toString(),
                 role = role,
@@ -218,11 +241,60 @@ object ServerProtocol {
                 thinking = thinking.toString(),
                 images = images,
                 tools = tools,
+                attachments = files,
                 status = if (row.str("status") == "error") MessageStatus.Failed(null) else MessageStatus.Done,
                 createdAt = timestamp ?: System.currentTimeMillis(),
             )
         }
+        flushSent()
         return out
+    }
+
+    private val fileDeliveryTools = setOf("send_file", "send_file_to_user")
+
+    /** Files in a history `role:"tool"` row of `send_file_to_user` (its `output` is a JSON block or a list of them). */
+    fun sentFiles(row: JsonObject, agentId: String?): List<FileAttachment> =
+        (row["content"] as? JsonArray)?.objects().orEmpty().flatMap { block ->
+            if (block.str("type") != "tool_result") return@flatMap emptyList()
+            val name = block.str("name").orEmpty().substringAfterLast('/')
+            if (name !in fileDeliveryTools) return@flatMap emptyList()
+            val output = block.str("output")?.trim().orEmpty()
+            if (output.isEmpty() || output[0] !in "{[") return@flatMap emptyList()
+            when (val parsed = Http.parse(output)) {
+                is JsonObject -> listOfNotNull(sentFile(parsed, agentId))
+                is JsonArray -> parsed.objects().mapNotNull { sentFile(it, agentId) }
+                else -> emptyList()
+            }
+        }
+
+    private fun sentFile(block: JsonObject, agentId: String?): FileAttachment? {
+        val type = block.str("type")
+        if (type != "file" && type != "image") return null
+        val path = block.str("path")?.takeIf { it.isNotBlank() }
+        val mime = block.str("media_type") ?: block.str("mime_type") ?: block.obj("source")?.str("media_type")
+        val preview = (block.str("preview_url") ?: block.obj("source")?.str("url"))?.takeIf { type == "image" && it.startsWith("/api/") }
+        val url = preview ?: path?.let { p -> agentId?.let { workspaceDownloadPath(it, p) } } ?: return null
+        val name = block.str("filename")?.takeIf { it.isNotBlank() }
+            ?: path?.let(FileCards::baseName)?.takeIf { it.isNotEmpty() }
+            ?: return null
+        return FileAttachment(url, name, mime)
+    }
+
+    /** `/api/agents/{id}/workspace/download?path=…` for a workspace (or tool-output) path. */
+    fun workspaceDownloadPath(agentId: String, path: String): String =
+        "/api/agents/" + encode(agentId) + "/workspace/download?path=" + encode(path)
+
+    private fun encode(value: String): String = java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+
+    /** A live `attachment` frame: `{kind, url, filename?, path?, mime_type?}` with a server-relative URL. */
+    fun attachmentFrame(frame: JsonObject): FileAttachment? {
+        val url = frame.str("url")?.takeIf { it.startsWith("/api/") } ?: return null
+        val name = frame.str("filename")?.takeIf { it.isNotBlank() }
+            ?: frame.str("path")?.let(FileCards::baseName)?.takeIf { it.isNotEmpty() }
+            ?: FileCards.queryValue(url, "path")?.let(FileCards::baseName)?.takeIf { it.isNotEmpty() }
+            ?: FileCards.queryValue(url, "source")?.let(FileCards::baseName)?.takeIf { it.isNotEmpty() }
+            ?: return null
+        return FileAttachment(url, name, frame.str("mime_type"))
     }
 
     fun userTurn(threadId: String, text: String, content: JsonElement, model: String?): JsonObject = buildJsonObject {
@@ -392,6 +464,7 @@ object ServerProtocol {
                         toolNames[id]?.let { StreamEvent.Tool(id, it, done = true) }
                     },
                 )
+                "attachment" -> Outcome.Events(listOfNotNull(attachmentFrame(frame)?.let { StreamEvent.Attachment(it) }))
                 // A pause for the user is not a failure: the reply ends normally and the card opens.
                 "hitl_required" -> Outcome.Events(listOfNotNull(hitlRequest(frame["request"], toolLabels)?.let { StreamEvent.Hitl(it) }))
                 "error" -> throw ApiException(ApiException.Kind.Server, 500, frame.str("message"))

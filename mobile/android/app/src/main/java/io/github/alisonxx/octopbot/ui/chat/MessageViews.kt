@@ -79,6 +79,7 @@ import io.github.alisonxx.octopbot.character.BotCharacter
 import io.github.alisonxx.octopbot.model.BotMotion
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
+import io.github.alisonxx.octopbot.model.FileCards
 import io.github.alisonxx.octopbot.model.MessageRole
 import io.github.alisonxx.octopbot.model.MessageStatus
 import io.github.alisonxx.octopbot.model.Timeline
@@ -103,6 +104,8 @@ class MessageActions(
     val retry: (() -> Unit)?,
     /** This message is being read aloud right now. */
     val speaking: Boolean,
+    /** Server mode: file cards under a reply. */
+    val files: AttachmentActions? = null,
 )
 
 @Composable
@@ -284,6 +287,12 @@ private fun AssistantReply(message: ChatMessage, bot: BotProfile, motion: BotMot
                 streaming && message.thinking.isEmpty() -> TypingDots(Modifier.padding(top = 8.dp))
             }
             if (message.images.isNotEmpty()) MessageImages(message.images, 160.dp, actions.openImage)
+            actions.files?.let { fileActions ->
+                val files = remember(message.text, message.attachments) {
+                    FileCards.merge(message.attachments, FileCards.linksIn(message.text))
+                }
+                if (files.isNotEmpty()) AttachmentStrip(files, fileActions, Modifier.padding(top = 2.dp))
+            }
             (message.status as? MessageStatus.Failed)?.let { failed ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(

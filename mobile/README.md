@@ -104,6 +104,14 @@ Grok-style: dark-first, chat-first, one big character.
     "Nov 20 14:05", older with the year. Same in group rooms.
   - *Images.* Tapping an image in a message opens a full-screen viewer (pinch to zoom, double-tap to
     zoom, share, close / swipe down).
+  - *Files* (server mode). Files a Bot sends (`send_file_to_user`) or links to show under the reply as
+    cards, like Grok: a page glyph whose bottom band is colored by type (red PDF, blue Word, green
+    Excel/CSV, orange PowerPoint, purple archives, gray otherwise) with the type on it, the name
+    shortened in the middle with the extension kept, and the size (`HEAD` on the download link).
+    Pictures are the card themselves (rounded 16, at most 320 wide); a PDF shows its first page and a
+    small CSV / text file its first lines (iOS draws thumbnails with Quick Look). Several files scroll
+    sideways. Tap opens the file (iOS Quick Look, Android "Open with"); long-press offers share and
+    save (Files on iOS, Downloads on Android).
   - *Errors.* The chat error banner hides by itself after 4 s or on tap; a microphone failure shown
     in the composer clears after 4 s too.
   - *History sheet.* A search field (titles), conversations grouped into Today / Yesterday / Previous

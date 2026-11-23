@@ -30,7 +30,7 @@ struct APIError: LocalizedError, Equatable {
     static let network = APIError(kind: .network, status: 0, message: nil)
 }
 
-enum HTTPMethod: String { case get = "GET", post = "POST", put = "PUT", patch = "PATCH", delete = "DELETE" }
+enum HTTPMethod: String { case get = "GET", head = "HEAD", post = "POST", put = "PUT", patch = "PATCH", delete = "DELETE" }
 
 /// One multipart form part, in the order the server reads them.
 struct FormPart {

@@ -283,6 +283,36 @@ class ServerBackend(
         return link?.takeIf { it.startsWith("https://") } ?: throw ApiException.badResponse()
     }
 
+    /** A file's size from `HEAD` on its download URL; null when unknown (older servers answer 405). */
+    suspend fun fileSize(uri: String): Long? = runCatching {
+        val request = Http.request(session.baseUrl + uri).head().build()
+        client.newCall(request).await().use { response ->
+            if (response.isSuccessful) response.header("Content-Length")?.toLongOrNull() else null
+        }
+    }.getOrNull()
+
+    /**
+     * Downloads a file a Bot sent ([uri] is server-relative) into [target]. On Octop Bot cloud a workspace file
+     * comes from the object store through a short-lived link; otherwise it is fetched with this session.
+     */
+    suspend fun downloadFile(uri: String, target: java.io.File) {
+        val request = if (isCloud && ServerProtocol.isWorkspaceDownload(uri)) {
+            Http.request(downloadLink(uri)).header("Accept", "*/*").build() to Http.client.withReadTimeout(300)
+        } else {
+            Http.request(session.baseUrl + uri).header("Accept", "*/*").build() to client.withReadTimeout(300)
+        }
+        request.second.newCall(request.first).await().use { response ->
+            if (!response.isSuccessful) {
+                throw ApiException.from(response.code, Http.errorMessage(withContext(Dispatchers.IO) { response.body.string() }))
+            }
+            withContext(Dispatchers.IO) {
+                val partial = java.io.File(target.parentFile, target.name + ".part")
+                partial.outputStream().use { out -> response.body.byteStream().use { it.copyTo(out) } }
+                if (!partial.renameTo(target)) throw ApiException.network()
+            }
+        }
+    }
+
     private fun segment(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 
     private fun agent(bot: BotProfile) = "/api/agents/" + segment(bot.id)
@@ -342,6 +372,7 @@ class ServerBackend(
             val page = ServerProtocol.historyPage(
                 json("GET", agent(bot) + "/threads/${segment(conversation.id)}/history", mapOf("limit" to "50")),
                 toolLabels(),
+                agentId = bot.id,
             )
             if (!page.loading) return Transcript(page.messages, page.pending)
             delay(page.retryAfterMs.coerceIn(300, 3000))

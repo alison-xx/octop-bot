@@ -1,7 +1,6 @@
 package io.github.alisonxx.octopbot.ui
 
 import android.Manifest
-import android.content.Intent
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -37,7 +36,6 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -48,6 +46,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.app.AppViewModel
+import io.github.alisonxx.octopbot.app.AttachmentFiles
 import io.github.alisonxx.octopbot.app.SessionState
 import io.github.alisonxx.octopbot.net.ServerProtocol
 import io.github.alisonxx.octopbot.ui.chat.ChatScreen
@@ -130,9 +129,7 @@ fun OctopBotApp(model: AppViewModel, openBot: MutableStateFlow<String?>) {
                                     object : UriHandler {
                                         override fun openUri(uri: String) {
                                             if (!ServerProtocol.isWorkspaceDownload(uri)) return system.openUri(uri)
-                                            model.openWorkspaceFile(uri) { url ->
-                                                context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
-                                            }
+                                            model.openWorkspaceFile(uri) { file, mime -> AttachmentFiles.openWith(context, file, mime) }
                                         }
                                     }
                                 }
