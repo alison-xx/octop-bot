@@ -212,6 +212,28 @@ def _token(data: Any, name: str) -> str:
     return value
 
 
+def _masked(value: str) -> str | None:
+    value = value.strip()
+    if "@" in value:
+        local, _, domain = value.partition("@")
+        return f"{local[:2]}***@{domain}" if local and domain else None
+    digits = "".join(ch for ch in value if ch.isdigit())
+    return f"{digits[:3]}****{digits[-4:]}" if len(digits) >= 7 else None
+
+
+def display_name(profile: dict[str, Any]) -> str | None:
+    """The account's nickname; otherwise its masked phone or email, never an internal id."""
+    for field_name in ("displayName", "nickname", "name"):
+        value = profile.get(field_name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:64]
+    for field_name in ("phone", "mobile", "email"):
+        value = profile.get(field_name)
+        if isinstance(value, str) and (masked := _masked(value)):
+            return masked
+    return None
+
+
 async def _session_login(path: str, body: dict[str, str]) -> _Grant:
     """Open a Lynxce 'web' session through one of its sign-in endpoints."""
     try:
@@ -227,10 +249,9 @@ async def _session_login(path: str, body: dict[str, str]) -> _Grant:
         or not profile["id"].strip()
     ):
         raise OctopError.localized(ErrorCode.NETWORK_ERROR)
-    name = profile.get("displayName")
     return _Grant(
         profile["id"],
-        name if isinstance(name, str) else None,
+        display_name(profile),
         uuid4().hex,
         _token(data, "accessToken"),
         _token(data, "refreshToken"),
@@ -506,6 +527,7 @@ async def keep_session(services: SharedServices, user_id: int, session: CloudSes
 
 
 _IAP_HEADERS = {"X-Lynxce-Iap-App": "cn.lynxce.octopbot"}
+_MODEL_KEY_CALL = ("POST", "/api/user/personal-api-keys")
 # What cloud mode may do with a tenant's stored Lynxce session, besides request_cloud.
 _TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
     ("POST", "/api/user/personal-api-keys"): {},
@@ -528,7 +550,9 @@ async def tenant_call(
 ) -> Any:
     """Cloud mode: one of a few account operations, as the tenant's stored Lynxce session."""
     extra = _TENANT_CALLS.get((method, path))
-    if not bot_cloud_enabled() or extra is None:
+    # The desktop mints its own chat key with the signed-in session; the rest is cloud only.
+    desktop_key = bot_desktop_enabled() and (method, path) == _MODEL_KEY_CALL
+    if not (bot_cloud_enabled() or desktop_key) or extra is None:
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     async with _lock(services, user_id):
         grant = await asyncio.to_thread(_load, services, user_id)

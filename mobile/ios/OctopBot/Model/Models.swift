@@ -36,6 +36,13 @@ enum MessageStatus: Hashable {
     case done
     case streaming
     case failed(String)
+    /// The turn stopped because the Lynxce wallet ran out of credits; shown as a top-up card.
+    case outOfCredits
+    /// The turn stopped at Lynxce's per-key daily cap (credits left; topping up won't help).
+    case dailyLimit
+
+    /// Stopped by Lynxce billing rather than failed: rendered as a card with "Continue".
+    var isStoppedByLynxce: Bool { self == .outOfCredits || self == .dailyLimit }
 }
 
 struct ToolStep: Hashable, Identifiable {

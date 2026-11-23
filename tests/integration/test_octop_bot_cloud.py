@@ -114,6 +114,7 @@ async def test_each_lynxce_account_gets_its_own_tenant(
             "enabled": True,
             "claimed": False,
             "cloud": True,
+            "legacy_owner": False,
         }
         info = (await client.get(INFO)).json()
         assert info["edition"] == "cloud"

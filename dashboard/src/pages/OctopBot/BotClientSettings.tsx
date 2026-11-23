@@ -52,11 +52,16 @@ import {
   isLocalPreset,
 } from "../Settings/Models/presetUtils";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
-import { LANGUAGES, signOutBotClient, useLanguage } from "./AccountMenu";
 import {
-  accountDisplayName,
-  accountInitials,
-} from "../Chat/utils/accountDisplayName";
+  botAccountName,
+  LANGUAGES,
+  signOutBotClient,
+  useLanguage,
+} from "./AccountMenu";
+import { CreditsPanel } from "./CreditsWidgets";
+import { useLynxceCredits } from "./useLynxceCredits";
+import { useBotServerInfo } from "./useBotServerInfo";
+import { accountInitials } from "../Chat/utils/accountDisplayName";
 import styles from "./index.module.less";
 import settings from "./BotClientSettings.module.less";
 import ModelName from "./ModelName";
@@ -221,6 +226,10 @@ export default function BotClientSettings() {
   const [foldersOpen, setFoldersOpen] = useState(false);
   const web = isBotWebClient();
   const account = useLynxceStatus(!web);
+  const credits = useLynxceCredits();
+  const cloudEdition = useBotServerInfo()?.edition === "cloud";
+  const displayName = botAccountName(user, t("botClient.account.lynxceUser"));
+  const lynxceSignedIn = credits.status !== "none" && credits.status !== "idle";
   const [source, setSource] = useState<ModelSource>(
     location.state?.source === "other"
       ? cloud
@@ -413,12 +422,16 @@ export default function BotClientSettings() {
                 <div className={settings.row}>
                   <span className={settings.who}>
                     <span className={settings.initials}>
-                      {accountInitials(accountDisplayName(user))}
+                      {accountInitials(displayName)}
                     </span>
                     <span>
-                      {accountDisplayName(user)}
+                      {displayName}
                       <small>
-                        {t("botClient.nav.signedInAs")} {user?.username}
+                        {lynxceSignedIn || cloudEdition
+                          ? t("botClient.account.lynxce")
+                          : `${t("botClient.nav.signedInAs")} ${
+                              user?.username ?? ""
+                            }`}
                       </small>
                     </span>
                   </span>
@@ -432,18 +445,41 @@ export default function BotClientSettings() {
                   </Button>
                 </div>
               </div>
-              {!web && (
-                <LynxceAccount
-                  key={user?.username}
-                  owner={user?.username ?? ""}
-                  compact
-                  status={account.status}
-                  statusError={account.error}
-                  onReload={account.reload}
-                  onSaved={refreshSource}
-                  onSwitch={models?.length ? activateOtherSource : undefined}
-                />
+              <CreditsPanel />
+              {!web && credits.status === "none" && (
+                <div className={settings.group}>
+                  <div className={settings.row}>
+                    <span>
+                      {t("botClient.account.signIn")}
+                      <small>{t("botClient.account.signInHint")}</small>
+                    </span>
+                    <Button
+                      type="primary"
+                      onClick={() =>
+                        void signOutBotClient(user?.username, navigate)
+                      }
+                    >
+                      {t("botClient.account.signIn")}
+                    </Button>
+                  </div>
+                </div>
               )}
+            </div>
+          ) : cloudEdition ? (
+            <div className={settings.page}>
+              <h2>{t("botClient.availableModels")}</h2>
+              <div className={settings.group}>
+                <div className={settings.row}>
+                  <span>{t("botClient.account.cloudModels")}</span>
+                </div>
+              </div>
+              <Button type="primary" onClick={returnToChat}>
+                {t(
+                  location.state?.from
+                    ? "common.backToChat"
+                    : "botClient.startChat",
+                )}
+              </Button>
             </div>
           ) : web && (cloud || local) ? (
             <ModelsPage chatOnly onConnectionSaved={refreshBotModels} />

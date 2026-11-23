@@ -42,8 +42,12 @@ enum class MessageRole { User, Assistant, Note }
 sealed interface MessageStatus {
     data object Done : MessageStatus
     data object Streaming : MessageStatus
-    /** [message] is null when the UI should show its generic failure text. */
-    data class Failed(val message: String?) : MessageStatus
+    /**
+     * [message] is null when the UI should show its generic failure text. [credits]: the Lynxce wallet ran out,
+     * so the reply shows the recharge card instead of an error. [dailyLimit]: Lynxce's daily cap for Octop Bot is
+     * used up (credits remain); the card says when it resets.
+     */
+    data class Failed(val message: String?, val credits: Boolean = false, val dailyLimit: Boolean = false) : MessageStatus
 }
 
 data class ToolStep(val id: String, val name: String, val done: Boolean)

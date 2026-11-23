@@ -528,7 +528,80 @@ final class CreditTests: XCTestCase {
         XCTAssertEqual(LynxceBackend.credits(inQuota: ["creditsRemaining": 1280.5, "effectiveCreditsRemaining": 10]), 1280.5)
         XCTAssertNil(LynxceBackend.credits(inQuota: ["balance": 3]))
         XCTAssertEqual(LynxceBackend.formatCredits(12800), "12,800")
-        XCTAssertEqual(LynxceBackend.formatCredits(12.5), "12.5")
+        XCTAssertEqual(LynxceBackend.formatCredits(12.5), "12.50")
+        XCTAssertEqual(LynxceBackend.formatCredits(12), "12")
+        XCTAssertEqual(LynxceBackend.formatCredits(0.29), "0.29")
+        XCTAssertEqual(LynxceBackend.formatCredits(999.99), "999.99")
+        XCTAssertEqual(LynxceBackend.formatCredits(4_454_029.04), "4,454,029")
+        XCTAssertEqual(LynxceBackend.formatCredits(1000.99), "1,000")
+    }
+
+    func testOutOfCreditsIsToldApartFromFailures() {
+        XCTAssertEqual(ServerFrameMapper.error(["type": "error", "message": "x", "error_code": "BOT_CLOUD_CREDITS_REQUIRED"]).kind, .credits)
+        XCTAssertEqual(ServerFrameMapper.error(["type": "error", "message": "x"]).kind, .server)
+        var mapper = ServerFrameMapper()
+        XCTAssertThrowsError(try mapper.map(["type": "error", "error_code": "BOT_CLOUD_CREDITS_REQUIRED"])) { error in
+            XCTAssertEqual((error as? APIError)?.kind, .credits)
+        }
+        XCTAssertEqual(APIError.from(status: 402, message: nil).kind, .credits)
+        XCTAssertEqual(APIError.from(status: 400, message: nil, code: "BOT_CLOUD_CREDITS_REQUIRED").kind, .credits)
+        XCTAssertEqual(HTTP.errorCode(Data(#"{"error":{"code":"BOT_CLOUD_CREDITS_REQUIRED","message":"m"}}"#.utf8)), "BOT_CLOUD_CREDITS_REQUIRED")
+        XCTAssertTrue(LynxceBackend.isCreditError(["code": 402, "message": "no credits"]))
+        XCTAssertFalse(LynxceBackend.isCreditError(["code": "rate_limited"]))
+
+        let rows: [[String: Any]] = [
+            ["role": "user", "content": "go"],
+            ["role": "assistant", "content": [], "status": "error", "error_code": "BOT_CLOUD_CREDITS_REQUIRED"],
+        ]
+        let messages = ServerBackend.history(rows)
+        XCTAssertEqual(messages.count, 2)
+        XCTAssertEqual(messages[1].status, .outOfCredits)
+    }
+
+    func testDailyLimitIsNotOutOfCredits() {
+        XCTAssertEqual(ServerFrameMapper.error(["type": "error", "error_code": "BOT_LYNXCE_DAILY_LIMIT"]).kind, .dailyLimit)
+        XCTAssertEqual(APIError.from(status: 429, message: nil, code: "BOT_LYNXCE_DAILY_LIMIT").kind, .dailyLimit)
+        // Direct Lynxce can send the cap as a 402; it must not become "out of credits".
+        let body = Data(#"{"code":402,"message":"limit","data":{"code":"api_key_credit_limit_reached"}}"#.utf8)
+        XCTAssertThrowsError(try LynxceBackend.unwrap(body, status: 200)) { XCTAssertEqual(($0 as? APIError)?.kind, .dailyLimit) }
+        XCTAssertThrowsError(try LynxceBackend.unwrap(body, status: 402)) { XCTAssertEqual(($0 as? APIError)?.kind, .dailyLimit) }
+        XCTAssertThrowsError(try LynxceBackend.parseChunk(#"{"error":{"code":"api_key_credit_limit_reached","message":"m"}}"#)) {
+            XCTAssertEqual(($0 as? APIError)?.kind, .dailyLimit)
+        }
+        XCTAssertEqual(APIError.from(status: 402, message: nil, code: nil).kind, .credits)
+        let rows: [[String: Any]] = [
+            ["role": "user", "content": "go"],
+            ["role": "assistant", "content": [], "status": "error", "error_code": "BOT_LYNXCE_DAILY_LIMIT"],
+        ]
+        XCTAssertEqual(ServerBackend.history(rows).last?.status, .dailyLimit)
+    }
+
+    func testServerMessageLinksAreTappable() {
+        let message = "灵策积分不足，到 https://admin.lynxce.cn/recharge 充值后就能继续。"
+        let links = LinkedText.links(in: message)
+        XCTAssertEqual(links.map(\.url.absoluteString), ["https://admin.lynxce.cn/recharge"])
+        XCTAssertEqual(String(LinkedText.attributed(message).characters), message)
+        XCTAssertFalse(LinkedText.hasLink("灵策积分不足"))
+    }
+
+    func testUsageSummaryParses() {
+        let usage = ServerBackend.UsageSummary.parse([
+            "total_tokens": 1500, "model_calls": 3,
+            "buckets": [["key": "a1", "label": "Chief", "total_tokens": 1200], ["key": "a2", "label": "", "total_tokens": 300], ["key": "z", "total_tokens": 0]],
+        ])
+        XCTAssertEqual(usage.totalTokens, 1500)
+        XCTAssertEqual(usage.modelCalls, 3)
+        XCTAssertEqual(usage.buckets.map(\.label), ["Chief", "a2"])
+        XCTAssertEqual(LynxceBackend.formatCount(1_234_567), "1,234,567")
+    }
+
+    func testNamesNeverShowInternalIds() {
+        XCTAssertEqual(ServerBackend.displayName(["username": "sso_abc"]), "")
+        XCTAssertEqual(ServerBackend.displayName(["username": "owner", "display_name": "138****5678"]), "138****5678")
+        let server = ServerBackend(session: .init(baseURL: URL(string: "https://bot.lynxce.cn")!, token: "t", displayName: "", cloud: true))
+        XCTAssertEqual(server.accountName, L("account.genericName"))
+        let lynxce = LynxceBackend(grant: .init(accountId: "acc_123", displayName: nil, accessToken: "a", refreshToken: "r"))
+        XCTAssertEqual(lynxce.accountName, L("account.genericName"))
     }
 
     func testOnlyPacksWithAnAppStoreProductAreListed() {

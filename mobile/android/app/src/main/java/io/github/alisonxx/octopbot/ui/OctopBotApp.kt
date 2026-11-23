@@ -57,6 +57,7 @@ import io.github.alisonxx.octopbot.ui.group.GroupRoomScreen
 import io.github.alisonxx.octopbot.ui.home.HomeScreen
 import io.github.alisonxx.octopbot.ui.onboarding.OnboardingScreen
 import io.github.alisonxx.octopbot.ui.onboarding.ServerConnectScreen
+import io.github.alisonxx.octopbot.ui.settings.CreditsScreen
 import io.github.alisonxx.octopbot.ui.settings.ModelPickerScreen
 import io.github.alisonxx.octopbot.ui.settings.SettingsScreen
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
@@ -79,6 +80,7 @@ private object Routes {
     const val GROUP = "group/{group}"
     const val SETTINGS = "settings"
     const val MODELS = "settings/model"
+    const val CREDITS = "settings/credits"
 
     fun chat(bot: String) = "chat/$bot"
     fun editor(bot: String?) = if (bot == null) "editor" else "editor?bot=$bot"
@@ -187,6 +189,11 @@ private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<String?>)
     }
     AskForNotifications(model)
     InstallUpdates(model)
+    // Back from the recharge Custom Tab: show the new balance.
+    LifecycleResumeEffect(model) {
+        model.appResumed()
+        onPauseOrDispose {}
+    }
     NavHost(nav, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
             HomeScreen(
@@ -196,6 +203,7 @@ private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<String?>)
                 onEditBot = { nav.navigate(Routes.editor(it)) },
                 onNewBot = { nav.navigate(Routes.editor(null)) },
                 onSettings = { nav.navigate(Routes.SETTINGS) },
+                onCredits = { nav.navigate(Routes.CREDITS) },
                 onVoice = { nav.navigate(Routes.voice(it)) },
             )
         }
@@ -226,7 +234,11 @@ private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<String?>)
                 model = model,
                 onBack = { nav.back() },
                 onModels = { nav.navigate(Routes.MODELS) },
+                onCredits = { nav.navigate(Routes.CREDITS) },
             )
+        }
+        composable(Routes.CREDITS) {
+            CreditsScreen(model, onBack = { nav.back() })
         }
         composable(Routes.MODELS) {
             ModelPickerScreen(model, onBack = { nav.back() })

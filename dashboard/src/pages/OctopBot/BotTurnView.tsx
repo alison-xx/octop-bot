@@ -7,6 +7,9 @@ import {
   type HitlDecisionHandler,
 } from "../../api/types/hitl";
 import type { ChatMessage } from "../Chat/hooks/useChat";
+import { CreditsRequiredCard } from "./CreditsWidgets";
+import { useLynxceCredits } from "./useLynxceCredits";
+import { classifyChatStreamError } from "../../utils/chatStreamError";
 import MessageBubble from "../Chat/components/MessageBubble";
 import { ToolMediaStrip } from "../Chat/components/ToolMediaStrip";
 import { KnowledgeCitationsStrip } from "../Chat/components/KnowledgeCitationsStrip";
@@ -44,6 +47,11 @@ interface BotTurnViewProps {
  * bubble, questions sit in the flow, and tool steps stay out of sight (the
  * working line at the bottom of the list reports progress instead).
  */
+/** The server's code for a turn that ran out of Lynxce credits. */
+const CREDITS_REQUIRED = "BOT_CLOUD_CREDITS_REQUIRED";
+/** …and for one that hit the account key's daily cap (credits are still there). */
+const DAILY_LIMIT = "BOT_LYNXCE_DAILY_LIMIT";
+
 export default function BotTurnView({
   messages,
   agentId: agentIdProp,
@@ -69,6 +77,22 @@ export default function BotTurnView({
     [full, speakerId],
   );
   const citations = useMemo(() => collectTurnKnowledgeCitations(full), [full]);
+  const credits = useLynxceCredits();
+  // Older servers (and history saved before the code existed) only say it in words.
+  const billed = credits.status === "ready" || credits.status === "loading";
+  const dailyLimit = (message: ChatMessage) => {
+    if (message.errorInfo?.code === DAILY_LIMIT) return true;
+    const text =
+      message.errorInfo?.message || deriveMessageContent(message).textContent;
+    return billed && /credit_limit_reached/.test(text);
+  };
+  const outOfCredits = (message: ChatMessage) =>
+    dailyLimit(message) ||
+    message.errorInfo?.code === CREDITS_REQUIRED ||
+    (billed &&
+      classifyChatStreamError(
+        message.errorInfo?.message || deriveMessageContent(message).textContent,
+      ) === "stream_errors.insufficient_balance");
   const bubble = (message: ChatMessage) => (
     <MessageBubble
       message={message}
@@ -145,7 +169,15 @@ export default function BotTurnView({
         </div>
       ) : null;
     }
-    if (message.status === "error") return bubble(message);
+    if (message.status === "error")
+      return outOfCredits(message) ? (
+        <CreditsRequiredCard
+          kind={dailyLimit(message) ? "limit" : "credits"}
+          onContinue={onRegenerate ? () => onRegenerate(message.id) : undefined}
+        />
+      ) : (
+        bubble(message)
+      );
     return lead(message);
   };
 

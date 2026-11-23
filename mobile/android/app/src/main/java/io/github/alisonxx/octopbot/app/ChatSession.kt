@@ -254,9 +254,13 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
-                status = MessageStatus.Failed((error as? ApiException)?.message)
+                val kind = (error as? ApiException)?.kind
+                val credits = kind == ApiException.Kind.Credits
+                val limit = kind == ApiException.Kind.DailyLimit
+                status = MessageStatus.Failed((error as? ApiException)?.message?.takeUnless { credits || limit }, credits, limit)
                 if (token == run) onFailure()
-                report(error)
+                // Out of credits or over the daily cap: the reply itself shows the card, no snackbar.
+                if (!credits && !limit) report(error)
             } finally {
                 finish(reply.id, status, bot, token)
             }

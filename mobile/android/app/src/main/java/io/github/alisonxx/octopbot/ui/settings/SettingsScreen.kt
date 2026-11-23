@@ -70,6 +70,7 @@ import io.github.alisonxx.octopbot.BuildConfig
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.app.AppLocale
 import io.github.alisonxx.octopbot.app.AppViewModel
+import io.github.alisonxx.octopbot.app.BalanceState
 import io.github.alisonxx.octopbot.app.SessionState
 import io.github.alisonxx.octopbot.character.BotCharacter
 import io.github.alisonxx.octopbot.model.Look
@@ -80,6 +81,11 @@ import io.github.alisonxx.octopbot.store.SpeechRate
 import io.github.alisonxx.octopbot.store.TextSize
 import io.github.alisonxx.octopbot.store.UserSettings
 import io.github.alisonxx.octopbot.ui.common.BackButton
+import io.github.alisonxx.octopbot.ui.common.BalanceText
+import io.github.alisonxx.octopbot.ui.common.LowBalanceColor
+import io.github.alisonxx.octopbot.ui.common.accountName
+import io.github.alisonxx.octopbot.ui.common.credits
+import io.github.alisonxx.octopbot.ui.common.modeLabel
 import io.github.alisonxx.octopbot.ui.common.TopBar
 import io.github.alisonxx.octopbot.ui.common.TopBarTitle
 import io.github.alisonxx.octopbot.ui.common.rememberHaptics
@@ -94,14 +100,16 @@ private const val LYNXCE_URL = "https://www.lynxce.cn"
 
 /** Everything the settings page shows, separate from the ViewModel for previews. */
 data class SettingsState(
+    /** A display name, or "Lynxce user"; never a username or account id. */
     val accountName: String,
-    val balance: String?,
+    /** null without a Lynxce wallet (a self-hosted server). */
+    val balance: BalanceState?,
     val lynxce: Boolean,
     /** A Lynxce wallet to show, recharge and delete: Lynxce mode, or Octop Bot cloud. */
     val wallet: Boolean = lynxce,
-    /** host[:port] on a server; the account card's connection line. */
+    /** "Lynxce cloud", "Lynxce account", or host[:port] of a self-hosted server. */
     val host: String,
-    /** The full server address (tap to copy); null in Lynxce mode. */
+    /** The full address of a self-hosted server (tap to copy); null in Lynxce mode and on Octop Bot cloud. */
     val serverAddress: String?,
     val models: List<ModelOption>,
     val settings: UserSettings,
@@ -130,7 +138,9 @@ class SettingsActions(
     val onSwitchAccount: () -> Unit,
     val onSignOut: () -> Unit,
     val onOpenUrl: (String) -> Unit,
-    val onRecharge: () -> Unit = {},
+    /** Settings → Credits & top-up. */
+    val onCredits: () -> Unit = {},
+    val onRetryBalance: () -> Unit = {},
     val onDeleteAccount: () -> Unit = {},
     val onCheckUpdates: () -> Unit = {},
     val onUpdate: () -> Unit = {},
@@ -139,7 +149,7 @@ class SettingsActions(
 )
 
 @Composable
-fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit) {
+fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit, onCredits: () -> Unit) {
     val session by model.session.collectAsStateWithLifecycle()
     val backend = (session as? SessionState.Ready)?.backend ?: return
     val balance by model.balance.collectAsStateWithLifecycle()
@@ -165,12 +175,12 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
     }
     Settings(
         state = SettingsState(
-            accountName = backend.accountName,
+            accountName = accountName(backend),
             balance = balance,
             lynxce = backend.definesBotsLocally,
             wallet = model.creditAccount != null,
-            host = backend.connectionLabel,
-            serverAddress = (backend as? ServerBackend)?.baseUrl,
+            host = modeLabel(backend),
+            serverAddress = (backend as? ServerBackend)?.takeUnless { it.isCloud }?.baseUrl,
             models = models,
             settings = settings,
             language = AppLocale.tag(),
@@ -207,7 +217,8 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
             onSwitchAccount = model::switchAccount,
             onSignOut = { model.signOut() },
             onOpenUrl = { url -> context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) },
-            onRecharge = { model.recharge { url -> context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) } },
+            onCredits = onCredits,
+            onRetryBalance = model::refreshBalance,
             onDeleteAccount = model::deleteAccount,
             onCheckUpdates = model::checkForUpdates,
             onUpdate = model::startUpdate,
@@ -248,7 +259,7 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
         SpeechRate.Fast to stringResource(R.string.settings_speed_fast),
     )
     val language = languages.firstOrNull { it.first == state.language } ?: languages.first()
-    val connection = if (state.lynxce) stringResource(R.string.settings_lynxce) else state.host
+    val connection = state.host
 
     Column(Modifier.fillMaxSize()) {
         TopBar(leading = { BackButton(actions.onBack) }) { TopBarTitle(stringResource(R.string.settings_title)) }
@@ -259,7 +270,13 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
                 .padding(horizontal = 16.dp)
                 .navigationBarsPadding(),
         ) {
-            AccountCard(state.accountName, connection, state.balance.takeIf { state.wallet })
+            AccountCard(
+                state.accountName,
+                connection,
+                state.balance.takeIf { state.wallet },
+                onBalance = actions.onCredits,
+                onRetry = actions.onRetryBalance,
+            )
 
             Group(stringResource(R.string.settings_general)) {
                 row {
@@ -329,13 +346,17 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
 
             Group(stringResource(R.string.settings_account)) {
                 row { Item(stringResource(R.string.settings_signed_in_as), value = state.accountName) }
+                // A self-hosted server has no Lynxce wallet: no credits row at all.
                 if (state.wallet) {
                     row {
                         Item(
                             stringResource(R.string.settings_recharge),
-                            value = state.balance?.let { stringResource(R.string.settings_balance_chip, it) },
-                            external = true,
-                            onClick = actions.onRecharge,
+                            value = (state.balance as? BalanceState.Value)?.let {
+                                stringResource(R.string.settings_balance_chip, credits(it.credits))
+                            },
+                            valueColor = (state.balance as? BalanceState.Value)?.takeIf { it.low }?.let { LowBalanceColor },
+                            chevron = true,
+                            onClick = actions.onCredits,
                         )
                     }
                 }
@@ -422,7 +443,7 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
 
 /** The account card at the top: Chief, the account name, where it's connected, and the Lynxce balance. */
 @Composable
-private fun AccountCard(name: String, connection: String, balance: String?) {
+private fun AccountCard(name: String, connection: String, balance: BalanceState?, onBalance: () -> Unit, onRetry: () -> Unit) {
     val palette = LocalPalette.current
     Row(
         Modifier
@@ -446,15 +467,25 @@ private fun AccountCard(name: String, connection: String, balance: String?) {
             )
             balance?.let {
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    stringResource(R.string.settings_balance_chip, it),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = palette.text,
-                    modifier = Modifier
+                val failed = it == BalanceState.Failed
+                Row(
+                    Modifier
                         .clip(CircleShape)
+                        .clickable(onClick = if (failed) onRetry else onBalance)
                         .background(palette.raised)
                         .padding(horizontal = 10.dp, vertical = 4.dp),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BalanceText(
+                        it,
+                        style = MaterialTheme.typography.labelMedium,
+                        format = { amount -> stringResource(R.string.settings_balance_chip, amount) },
+                    )
+                    if (failed) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.chat_retry), style = MaterialTheme.typography.labelMedium, color = SettingsLink)
+                    }
+                }
             }
         }
     }
@@ -615,6 +646,7 @@ private fun Item(
     chevron: Boolean = false,
     external: Boolean = false,
     danger: Boolean = false,
+    valueColor: Color? = null,
     onClick: (() -> Unit)? = null,
 ) {
     val palette = LocalPalette.current
@@ -636,7 +668,7 @@ private fun Item(
             Text(
                 it,
                 style = MaterialTheme.typography.bodyLarge,
-                color = palette.secondary,
+                color = valueColor ?: palette.secondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.End,
@@ -778,7 +810,7 @@ private fun SettingsPreview() {
         Settings(
             state = SettingsState(
                 accountName = "Alex",
-                balance = "128.50",
+                balance = BalanceState.Value(128.5),
                 lynxce = true,
                 host = "api.lynxce.cn",
                 serverAddress = null,

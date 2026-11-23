@@ -197,10 +197,19 @@ final class ChatSession {
                 } else if app?.readAloud == true, !text.isEmpty {
                     Speaker.shared.speak(text, backend: backend, id: replyId)
                 }
+                // Each reply spends credits; keep the balance (and the low-balance banner) current.
+                Task { await self.app?.refreshBalance() }
                 await reloadConversations()
             } catch is CancellationError {
                 update(replyId) { $0.status = .done }
                 removeEmptyReply(replyId)
+            } catch let error as APIError where error.kind == .credits {
+                // Out of credits: the reply becomes a top-up card with "Continue" instead of an error.
+                update(replyId) { $0.status = .outOfCredits }
+                Task { await self.app?.refreshBalance() }
+            } catch let error as APIError where error.kind == .dailyLimit {
+                // Credits are left but today's cap is used up: a card that says when it resets.
+                update(replyId) { $0.status = .dailyLimit }
             } catch {
                 let message = error.localizedDescription
                 update(replyId) { $0.status = .failed(message) }

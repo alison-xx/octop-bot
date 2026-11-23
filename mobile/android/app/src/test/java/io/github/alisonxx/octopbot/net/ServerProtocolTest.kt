@@ -245,4 +245,106 @@ class ServerProtocolTest {
         )
         assertEquals(true, ServerProtocol.computerStatus(Http.parse("""{"state":"running","takeover":true}"""))?.takeover)
     }
+
+    @Test
+    fun outOfCreditsKeepsItsCode() {
+        val mapper = ServerProtocol.FrameMapper()
+        val error = try {
+            mapper.map(obj("""{"type":"error","message":"灵策积分不足","error_code":"BOT_CLOUD_CREDITS_REQUIRED"}"""), "t")
+            fail()
+            null
+        } catch (error: ApiException) {
+            error
+        }
+        assertEquals(ApiException.Kind.Credits, error?.kind)
+        assertEquals("灵策积分不足", error?.message)
+        assertEquals(ApiException.Kind.Credits, ServerProtocol.handshakeError(402).kind)
+        assertEquals(ApiException.Kind.Unauthorized, ServerProtocol.handshakeError(401).kind)
+        assertEquals(ApiException.Kind.Network, ServerProtocol.handshakeError(null).kind)
+
+        val envelope = """{"error":{"code":"BOT_CLOUD_CREDITS_REQUIRED","message":"m"}}"""
+        assertEquals(ApiException.Kind.Credits, ApiException.fromBody(409, envelope).kind)
+        assertEquals(ApiException.Kind.Credits, ApiException.fromBody(402, "{}").kind)
+        assertEquals(ApiException.Kind.Rejected, ApiException.fromBody(409, "{}").kind)
+
+        val rows = ServerProtocol.history(
+            Http.parse(
+                """[{"role":"user","content":"hi"},
+                   {"role":"assistant","content":"partial","status":"error","error_code":"BOT_CLOUD_CREDITS_REQUIRED"},
+                   {"role":"user","content":"again"},
+                   {"role":"assistant","content":"x","status":"error"}]""",
+            ).jsonArray,
+        )
+        assertEquals(MessageStatus.Failed(null, credits = true), rows[1].status)
+        assertEquals(MessageStatus.Failed(null, credits = false), rows[3].status)
+    }
+
+    @Test
+    fun cloudCheckoutAcceptsOnlyLynxceRechargeWithAFreshTicket() {
+        val now = java.time.Instant.parse("2026-11-24T00:00:00Z")
+        val ticket = "x." + "a".repeat(43)
+        val good = "https://admin.lynxce.cn/recharge?token=$ticket"
+        fun link(url: String, expires: String = "2026-11-24T00:15:00+00:00") =
+            Http.parse("""{"url":"$url","expires_at":"$expires"}""")
+        assertEquals(good, ServerProtocol.cloudCheckoutUrl(link(good), now))
+        assertEquals(good, ServerProtocol.cloudCheckoutUrl(link(good, "2026-11-24T00:15:00.123456Z"), now))
+        assertNull(ServerProtocol.cloudCheckoutUrl(link("http://admin.lynxce.cn/recharge?token=$ticket"), now))
+        assertNull(ServerProtocol.cloudCheckoutUrl(link("https://admin.lynxce.cn.evil.cn/recharge?token=$ticket"), now))
+        assertNull(ServerProtocol.cloudCheckoutUrl(link("https://u:p@admin.lynxce.cn/recharge?token=$ticket"), now))
+        assertNull(ServerProtocol.cloudCheckoutUrl(link("https://admin.lynxce.cn/recharge/x?token=$ticket"), now))
+        assertNull(ServerProtocol.cloudCheckoutUrl(link("$good&next=evil"), now))
+        assertNull(ServerProtocol.cloudCheckoutUrl(link("$good#frag"), now))
+        assertNull(ServerProtocol.cloudCheckoutUrl(link("https://admin.lynxce.cn/recharge?token=mcrt1.${"a".repeat(43)}"), now))
+        assertNull(ServerProtocol.cloudCheckoutUrl(link("https://admin.lynxce.cn/recharge?token=x.short"), now))
+        assertNull(ServerProtocol.cloudCheckoutUrl(link(good, "2026-11-24T00:17:00Z"), now))
+        assertNull(ServerProtocol.cloudCheckoutUrl(link(good, "2026-11-23T23:59:00Z"), now))
+        assertNull(ServerProtocol.cloudCheckoutUrl(Http.parse("""{"url":"$good"}"""), now))
+    }
+
+    @Test
+    fun usageAndNames() {
+        val usage = ServerProtocol.usage(
+            Http.parse(
+                """{"total_tokens":1500,"model_calls":7,"buckets":[
+                  {"key":"a","label":"Writer","total_tokens":500},
+                  {"key":"b","label":"","total_tokens":1000},
+                  {"key":"c","label":"Idle","total_tokens":0}]}""",
+            ),
+        )!!
+        assertEquals(1500L, usage.totalTokens)
+        assertEquals(7L, usage.modelCalls)
+        assertEquals(listOf("b" to "b", "a" to "Writer"), usage.buckets.map { it.key to it.label })
+
+        assertNull(ServerProtocol.personName("sso_3f9a2c"))
+        assertNull(ServerProtocol.personName("owner"))
+        assertNull(ServerProtocol.personName("local"))
+        assertNull(ServerProtocol.personName(" "))
+        assertEquals("138****5678", ServerProtocol.personName("138****5678"))
+    }
+
+    @Test
+    fun dailyLimitIsNotOutOfCredits() {
+        fun kindOf(block: () -> Unit) = (runCatching(block).exceptionOrNull() as ApiException).kind
+        val mapper = ServerProtocol.FrameMapper()
+        assertEquals(
+            ApiException.Kind.DailyLimit,
+            kindOf { mapper.map(obj("""{"type":"error","message":"m","error_code":"BOT_LYNXCE_DAILY_LIMIT"}"""), "t") },
+        )
+        assertEquals(ApiException.Kind.DailyLimit, ApiException.fromBody(429, """{"error":{"code":"BOT_LYNXCE_DAILY_LIMIT","message":"m"}}""").kind)
+        // Direct Lynxce may send the cap as a 402; it is still not "out of credits".
+        assertEquals(ApiException.Kind.DailyLimit, ApiException.fromBody(402, """{"code":"api_key_credit_limit_reached","message":"m"}""").kind)
+        assertEquals(ApiException.Kind.DailyLimit, kindOf { LynxceProtocol.unwrap(402, """{"code":"api_key_credit_limit_reached"}""") })
+        assertEquals(ApiException.Kind.DailyLimit, kindOf { LynxceProtocol.unwrap(200, """{"code":"api_key_credit_limit_reached"}""") })
+        assertEquals(
+            ApiException.Kind.DailyLimit,
+            kindOf { LynxceProtocol.parseChunk("""{"error":{"code":"api_key_credit_limit_reached","message":"limit"}}""") },
+        )
+        assertEquals(ApiException.Kind.Credits, ApiException.fromBody(402, """{"code":402,"message":"no credits"}""").kind)
+        val rows = ServerProtocol.history(
+            Http.parse(
+                """[{"role":"user","content":"hi"},{"role":"assistant","content":"x","status":"error","error_code":"BOT_LYNXCE_DAILY_LIMIT"}]""",
+            ).jsonArray,
+        )
+        assertEquals(MessageStatus.Failed(null, dailyLimit = true), rows[1].status)
+    }
 }

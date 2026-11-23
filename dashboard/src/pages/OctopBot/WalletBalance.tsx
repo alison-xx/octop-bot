@@ -10,8 +10,10 @@ import {
 import { parseApiError } from "../../utils/apiError";
 import styles from "./LynxceWallet.module.less";
 
-function checkoutUrl(raw: string, expiry: string, source: WalletSource) {
-  if (!(Date.parse(expiry) > Date.now())) return null;
+/** The hosted checkout, only if it is exactly Lynxce's recharge page with a fresh ticket. */
+export function checkoutUrl(raw: string, expiry: string, source: WalletSource) {
+  const left = Date.parse(expiry) - Date.now();
+  if (!(left > 0 && left <= 16 * 60_000)) return null;
   try {
     const url = new URL(raw);
     const params = [...url.searchParams];

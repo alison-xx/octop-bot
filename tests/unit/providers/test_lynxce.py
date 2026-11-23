@@ -141,3 +141,59 @@ def test_lynxce_api_key_preset_is_listed_first_and_openai_compatible():
     # Callers mutate presets (reasoning flags); the module constant stays untouched.
     lynxce["models"].clear()
     assert load_provider_presets()[0]["models"]
+
+
+async def test_desktop_sign_in_chats_through_the_account_key_without_a_browser_grant(
+    accounts, monkeypatch
+):
+    """One Lynxce sign-in on the desktop brings the account's models; sign-out takes them away."""
+    from octop.infra.cloud.bot_cloud import accounts as cloud_accounts
+
+    services, grants = accounts
+    grants.clear()  # no browser (OAuth) grant at all
+    minted: list[str] = []
+
+    async def mint(_services, user_id, _body):
+        minted.append(f"sk-key-{len(minted)}")
+        return {"id": f"key-{user_id}-{len(minted)}", "secret": minted[-1]}
+
+    monkeypatch.setattr(cloud_accounts.lynxce_cloud, "create_model_key", mint)
+    monkeypatch.setattr(
+        lynxce, "_cloud_models", AsyncMock(return_value=[{"id": "deepseek-flash", "name": "D"}])
+    )
+
+    assert await lynxce.adopt_cloud_account(services, 1, "acct-a") is True
+    selected = lynxce.account_selection(services, 1)
+    assert isinstance(selected, lynxce.CloudAccountModel)
+    assert selected.model_id == cloud_accounts.cloud_model_id()
+    assert lynxce.has_cloud_key(services, 1)
+    assert lynxce.pays_with_account_credits(services.settings_repo, services.user_repo, 1)
+
+    # Signing in again with the same account keeps the key and the chosen model.
+    assert await lynxce.select_account_model(services, 1, "deepseek-flash") == "deepseek-flash"
+    assert await lynxce.adopt_cloud_account(services, 1, "acct-a") is False
+    assert minted == ["sk-key-0"]
+
+    # A different Lynxce account never reuses the previous account's key.
+    await lynxce.adopt_cloud_account(services, 1, "acct-b")
+    assert minted == ["sk-key-0", "sk-key-1"]
+    assert cloud_accounts.load_model_key(services, 1).secret == "sk-key-1"
+
+    lynxce.release_cloud_account(services, 1)
+    assert not lynxce.has_cloud_key(services, 1)
+    assert lynxce.account_selection(services, 1) is None
+    assert not lynxce.pays_with_account_credits(services.settings_repo, services.user_repo, 1)
+
+
+async def test_desktop_sign_in_keeps_a_model_the_user_already_chose(accounts, monkeypatch):
+    from octop.infra.cloud.bot_cloud import accounts as cloud_accounts
+
+    services, _grants = accounts
+    monkeypatch.setattr(
+        cloud_accounts.lynxce_cloud,
+        "create_model_key",
+        AsyncMock(return_value={"id": "k", "secret": "sk-x"}),
+    )
+    assert await lynxce.select_account_model(services, 1, "chat") == "chat"
+    assert await lynxce.adopt_cloud_account(services, 1, "acct-a") is False
+    assert lynxce.account_selection(services, 1).model_id == "chat"

@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { Dropdown, type MenuProps } from "antd";
-import { Blocks, BookOpen, Cloud, LogOut, Settings2 } from "lucide-react";
+import {
+  Blocks,
+  BookOpen,
+  Cloud,
+  Coins,
+  LogIn,
+  LogOut,
+  Settings2,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   useLocation,
@@ -21,25 +29,39 @@ import {
   BOT_GUIDE,
   BOT_SETTINGS,
 } from "../../utils/botClientRoute";
-import {
-  accountDisplayName,
-  accountInitials,
-} from "../Chat/utils/accountDisplayName";
+import { accountInitials } from "../Chat/utils/accountDisplayName";
 import { ProfileAvatar } from "../Admin/Users/ProfileAvatar";
 import { botCloudApi } from "../../api/modules/botCloud";
 import lynxceLogo from "../../assets/providers/lynxce.png";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
 import styles from "./accountMenu.module.less";
+import { CreditsAmount } from "./CreditsWidgets";
+import { resetCredits, useLynxceCredits } from "./useLynxceCredits";
 
 export async function signOutBotClient(
   username: string | undefined,
   navigate: NavigateFunction,
 ) {
   if (username === "local") holdDesktopLocalAutoLogin();
+  resetCredits();
   await authApi.logout();
   clearAuthToken();
   await applyGuestLocale();
   navigate("/login", { replace: true });
+}
+
+/** A person's name for the Bot client: never an internal id such as ``sso_1a2b…``. */
+export function botAccountName(
+  user:
+    | { display_name?: string | null; username?: string | null }
+    | null
+    | undefined,
+  fallback: string,
+): string {
+  const named = user?.display_name?.trim();
+  if (named) return named;
+  const username = user?.username?.trim() ?? "";
+  return /^sso_[0-9a-f]+$/i.test(username) ? fallback : username;
 }
 
 export const LANGUAGES = [
@@ -78,6 +100,7 @@ export default function AccountMenu({
   // the local account ("local"), never a team or other borrowed name.
   const [lynxceName, setLynxceName] = useState<string | null>(null);
   const [lynxceAvatar, setLynxceAvatar] = useState<string | null>(null);
+  const [lynxceAccount, setLynxceAccount] = useState<string | null>(null);
   const desktop = isBotOnlyDesktop();
   useEffect(() => {
     if (!desktop) return;
@@ -86,6 +109,7 @@ export default function AccountMenu({
       (a) => {
         if (!current) return;
         setLynxceName(a.connected ? a.display_name || a.account_id : null);
+        setLynxceAccount(a.connected ? a.account_id : null);
         setLynxceAvatar((a.connected && a.avatar_url) || null);
       },
       () => current && setLynxceName(null),
@@ -97,12 +121,14 @@ export default function AccountMenu({
   const lynxce = desktop ? Boolean(lynxceName) : true;
   const name = desktop
     ? lynxceName || user?.username || ""
-    : accountDisplayName(user);
+    : botAccountName(user, t("botClient.account.lynxceUser"));
   const source = t(
     lynxce ? "botClient.account.lynxce" : "botClient.account.local",
   );
   const from = { state: { from: location.pathname } };
   const web = isBotWebClient();
+  const credits = useLynxceCredits();
+  const billed = credits.status !== "none" && credits.status !== "idle";
   const entry = (label: string, hint: string) => (
     <span className={styles.entry}>
       {label}
@@ -130,6 +156,19 @@ export default function AccountMenu({
       ),
       onClick: () => navigate(BOT_CAPABILITIES, from),
     },
+    ...(billed
+      ? [
+          {
+            key: "credits",
+            icon: <Coins size={16} />,
+            label: entry(t("botCredits.menu"), t("botCredits.menuHint")),
+            onClick: () =>
+              navigate(BOT_SETTINGS, {
+                state: { from: location.pathname, tab: "account" },
+              }),
+          },
+        ]
+      : []),
     ...(isBotOnlyDesktop()
       ? [
           {
@@ -152,12 +191,33 @@ export default function AccountMenu({
           },
         ]
       : []),
-    {
-      key: "logout",
-      icon: <LogOut size={16} />,
-      label: t("auth.logout"),
-      onClick: () => void signOutBotClient(user?.username, navigate),
-    },
+    // Desktop has two ways in, Lynxce or this computer; both leave through the start page.
+    desktop && !lynxce
+      ? {
+          key: "lynxce",
+          icon: <LogIn size={16} />,
+          label: entry(
+            t("botClient.menu.lynxceSignIn"),
+            t("botClient.menu.lynxceSignInHint"),
+          ),
+          onClick: () => void signOutBotClient(user?.username, navigate),
+        }
+      : {
+          key: "logout",
+          icon: <LogOut size={16} />,
+          label: t(desktop ? "botClient.menu.lynxceSignOut" : "auth.logout"),
+          onClick: async () => {
+            if (desktop && lynxceAccount) {
+              try {
+                await botCloudApi.logout(lynxceAccount);
+              } catch {
+                message.error(t("octopBot.failed"));
+                return;
+              }
+            }
+            await signOutBotClient(user?.username, navigate);
+          },
+        },
   ];
   const avatar =
     desktop && lynxce && lynxceAvatar ? (
@@ -206,7 +266,9 @@ export default function AccountMenu({
           {!compact && (
             <span className={styles.who}>
               <span className={styles.name}>{name}</span>
-              <small>{source}</small>
+              <small>
+                {credits.wallet ? <CreditsAmount credits={credits} /> : source}
+              </small>
             </span>
           )}
         </button>

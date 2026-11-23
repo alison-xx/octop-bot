@@ -1370,13 +1370,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Your Lynxce balance is used up. Top it up and try again."
+            "value": "You're out of Lynxce credits. Top up to continue."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "灵策账户余额不足，请充值后再试。"
+            "value": "灵策积分不足，充值后就能继续。"
           }
         }
       }
@@ -2501,22 +2501,6 @@
         }
       }
     },
-    "server.mfa": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Authenticator code"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "验证器动态码"
-          }
-        }
-      }
-    },
     "server.next": {
       "localizations": {
         "en": {
@@ -2533,22 +2517,6 @@
         }
       }
     },
-    "server.signIn.local": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sign in with the password you set for this server"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "使用为这台服务器设置的密码登录"
-          }
-        }
-      }
-    },
     "server.signIn.lynxce": {
       "localizations": {
         "en": {
@@ -2561,22 +2529,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "使用拥有这台服务器的灵策账号登录"
-          }
-        }
-      }
-    },
-    "server.signIn.password": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sign in to this Octop server"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "登录这台 Octop 服务器"
           }
         }
       }
@@ -2609,22 +2561,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "这台服务器还没有主人，第一个登录的账号会成为它的主人。"
-          }
-        }
-      }
-    },
-    "server.username": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Username"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "用户名"
           }
         }
       }
@@ -2737,22 +2673,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "余额"
-          }
-        }
-      }
-    },
-    "settings.balance.chip %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Balance %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "余额 %@"
           }
         }
       }
@@ -3930,13 +3850,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "You'll be signed out on every device and can't sign in again. Your data is erased after a 7-day cooling-off period; contact Lynxce support within that time to restore the account."
+            "value": "You'll be signed out on every device and can't sign in again. Your data is erased after a cooling-off period; contact Lynxce support within that time to restore the account."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "账号会立即在所有设备上退出，且无法再登录。7 天冷静期后数据将被删除，冷静期内可联系灵策客服恢复。"
+            "value": "账号会立即在所有设备上退出，且无法再登录。冷静期结束后数据将被删除，冷静期内可联系灵策客服恢复。"
           }
         }
       }
@@ -4129,6 +4049,518 @@
           "stringUnit": {
             "state": "translated",
             "value": "交还给 Bot"
+          }
+        }
+      }
+    },
+    "server.unsupported": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This server can't sign in with a Lynxce account. Ask its admin to update Octop Bot."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台服务器还不支持灵策智算登录，请让管理员升级 Octop Bot。"
+          }
+        }
+      }
+    },
+    "server.legacyPassword": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Old local password (only this once)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原来的本地登录密码（只需这一次）"
+          }
+        }
+      }
+    },
+    "server.legacy.footer": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This server used a local password. Enter it once with your first Lynxce sign-in; after that only your Lynxce account is needed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台服务器以前用本地密码登录。第一次用灵策账号登录时再输入一次原密码，之后只用灵策账号。"
+          }
+        }
+      }
+    },
+    "account.genericName": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lynxce user"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "灵策用户"
+          }
+        }
+      }
+    },
+    "account.mode.lynxce": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lynxce account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "灵策智算账号"
+          }
+        }
+      }
+    },
+    "account.connection.lynxce": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lynxce"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "灵策智算"
+          }
+        }
+      }
+    },
+    "account.deleted": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your account has been deleted. Contact Lynxce support during the cooling-off period to restore it."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账号已注销。冷静期内可联系灵策客服恢复。"
+          }
+        }
+      }
+    },
+    "account.deleted.days %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your account has been deleted. Contact Lynxce support within %lld days to restore it."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账号已注销。%lld 天冷静期内可联系灵策客服恢复。"
+          }
+        }
+      }
+    },
+    "credits.balance.line %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Balance %@ credits"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "余额 %@ 积分"
+          }
+        }
+      }
+    },
+    "credits.unit": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "credits"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "积分"
+          }
+        }
+      }
+    },
+    "credits.recharge": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top up"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "充值"
+          }
+        }
+      }
+    },
+    "credits.continue": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continue"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "继续"
+          }
+        }
+      }
+    },
+    "credits.low": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're running low on credits. Top up to keep going."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "积分快用完了，充值后可以继续使用。"
+          }
+        }
+      }
+    },
+    "credits.low.banner %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Running low on credits: %@ left"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "积分快用完了，余额 %@ 积分"
+          }
+        }
+      }
+    },
+    "credits.out.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Out of Lynxce credits"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "灵策积分不足"
+          }
+        }
+      }
+    },
+    "credits.out.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This didn't finish. Top up your credits, then press Continue to pick up where it stopped."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这次没能跑完。充值积分后，点「继续」就接着做。"
+          }
+        }
+      }
+    },
+    "credits.elsewhere": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top up on lynxce.cn or in Octop Bot on desktop."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在灵策官网或桌面端充值"
+          }
+        }
+      }
+    },
+    "credits.selfHosted": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This server is self-hosted, so nothing is billed through this app. Model costs depend on the providers set up on the server."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台服务器由你自行部署，本 App 不收取任何费用；模型费用取决于服务器上配置的服务商。"
+          }
+        }
+      }
+    },
+    "usage.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usage"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量"
+          }
+        }
+      }
+    },
+    "usage.last30": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 30 days"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "近 30 天用量"
+          }
+        }
+      }
+    },
+    "usage.tokens": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total tokens"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token 总量"
+          }
+        }
+      }
+    },
+    "usage.calls": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model calls"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型调用次数"
+          }
+        }
+      }
+    },
+    "usage.byBot": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Bot"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按 Bot"
+          }
+        }
+      }
+    },
+    "usage.byModel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By model"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按模型"
+          }
+        }
+      }
+    },
+    "usage.empty": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No usage yet"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有用量"
+          }
+        }
+      }
+    },
+    "usage.failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load usage."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量加载失败"
+          }
+        }
+      }
+    },
+    "onboarding.cloudUnreachable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't reach Lynxce Cloud, so this sign-in goes straight to your Lynxce account and Bots stay on this phone."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时连不上灵策云端，这次将直接登录灵策智算账号，Bot 只保存在这台手机上。"
+          }
+        }
+      }
+    },
+    "onboarding.cloudRetry": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try Lynxce Cloud again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新连接灵策云端"
+          }
+        }
+      }
+    },
+    "credits.limit.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daily limit reached"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今天的额度用完了"
+          }
+        }
+      }
+    },
+    "credits.limit.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lynxce caps Octop Bot's daily usage to prevent runaway spending, and today's cap is used up. It resets at 00:00 UTC; press Continue then to pick up where it stopped."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为防止意外消耗，灵策给 Octop Bot 设了每日用量上限，今天已经用完。北京时间早上 8 点自动恢复，到时点「继续」就接着做。"
+          }
+        }
+      }
+    },
+    "credits.limit.raise": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Need it now? Raise the limit in your Lynxce account centre:"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "急用的话，可以在灵策账户中心调高上限："
+          }
+        }
+      }
+    },
+    "error.dailyLimit": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today's Lynxce usage cap for Octop Bot is used up. It resets at 00:00 UTC."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今天灵策给 Octop Bot 的用量上限已经用完，北京时间早上 8 点自动恢复。"
           }
         }
       }

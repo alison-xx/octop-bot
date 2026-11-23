@@ -43,6 +43,8 @@ class Hosted:
         assert request.headers["Authorization"] == "Bearer access"
         if path.endswith("/capabilities"):
             return reply({"enabled": True, "supportedModelIds": [MODEL], "defaultModelId": MODEL})
+        if path == "/api/user/personal-api-keys":  # desktop sign-in mints its chat key
+            return reply({"id": "key-1", "secret": "sk-desktop-test"})
         assert path.startswith("/api/user/web-chat-sessions/")
         if request.method == "GET":
             sid = path.split("/")[-1]

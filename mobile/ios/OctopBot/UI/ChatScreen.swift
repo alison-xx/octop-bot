@@ -14,6 +14,9 @@ struct ChatScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
+            if model.showsLowBalanceBanner {
+                LowBalanceBanner().transition(.move(edge: .top).combined(with: .opacity))
+            }
             ConversationView(chat: chat)
             if let pause = chat.pause, !chat.isStreaming {
                 HitlCard(chat: chat, pause: pause)
@@ -23,6 +26,7 @@ struct ChatScreen: View {
         }
         .animation(.snappy, value: chat.pause)
         .animation(.snappy, value: chat.isStreaming)
+        .animation(.snappy, value: model.showsLowBalanceBanner)
         .background(Palette.background.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .tint(chat.bot.accent)
@@ -182,7 +186,8 @@ struct ConversationView: View {
         }
         .animation(.snappy, value: chat.error)
         .task(id: chat.error) {
-            guard chat.error != nil else { return }
+            // A message with a link stays until closed, so the link can be tapped.
+            guard let error = chat.error, !LinkedText.hasLink(error) else { return }
             try? await Task.sleep(for: .seconds(4))
             withAnimation { chat.error = nil }
         }
@@ -227,26 +232,77 @@ private struct QueuedRow: View {
     }
 }
 
-/// A short error at the top of a timeline; tap to dismiss.
+/// A short error at the top of a timeline; tap to dismiss. A server message with a link (e.g. the
+/// Lynxce recharge page) keeps the link tappable and gets a close button instead.
 struct ErrorBanner: View {
     var text: String
     var dismiss: () -> Void
 
     var body: some View {
-        Button(action: dismiss) {
-            Label(text, systemImage: "exclamationmark.circle.fill")
-                .font(.footnote)
-                .lineLimit(2)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(.regularMaterial, in: Capsule())
-                .overlay(Capsule().stroke(.red.opacity(0.35), lineWidth: 0.5))
-                .foregroundStyle(Palette.text)
+        let linked = LinkedText.hasLink(text)
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.circle.fill")
+            LinkedText(text: text).lineLimit(linked ? 3 : 2)
+            if linked {
+                Button(action: dismiss) {
+                    Image(systemName: "xmark").font(.caption.weight(.semibold)).foregroundStyle(Palette.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("common.close"))
+            }
         }
-        .buttonStyle(.plain)
+        .font(.footnote)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().stroke(.red.opacity(0.35), lineWidth: 0.5))
+        .foregroundStyle(Palette.text)
+        .contentShape(Capsule())
+        .onTapGesture { if !linked { dismiss() } }
         .padding(.top, 8)
         .padding(.horizontal, 16)
         .transition(.move(edge: .top).combined(with: .opacity))
+    }
+}
+
+/// Text whose URLs are tappable and open in an in-app Safari sheet.
+struct LinkedText: View {
+    var text: String
+    @State private var opened: URL?
+
+    var body: some View {
+        Text(Self.attributed(text))
+            .environment(\.openURL, OpenURLAction { url in
+                opened = url
+                return .handled
+            })
+            .sheet(item: $opened) { SafariView(url: $0).ignoresSafeArea() }
+    }
+
+    static func links(in text: String) -> [(range: Range<String.Index>, url: URL)] {
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return [] }
+        return detector.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { match in
+            guard let url = match.url, ["http", "https"].contains(url.scheme ?? ""),
+                  let range = Range(match.range, in: text) else { return nil }
+            return (range, url)
+        }
+    }
+
+    static func hasLink(_ text: String) -> Bool { !links(in: text).isEmpty }
+
+    static func attributed(_ text: String) -> AttributedString {
+        var out = AttributedString()
+        var cursor = text.startIndex
+        for link in links(in: text) {
+            out += AttributedString(text[cursor..<link.range.lowerBound])
+            var piece = AttributedString(text[link.range])
+            piece.link = link.url
+            piece.underlineStyle = .single
+            out += piece
+            cursor = link.range.upperBound
+        }
+        out += AttributedString(text[cursor...])
+        return out
     }
 }
 
@@ -389,9 +445,16 @@ struct MessageRow: View {
                 } else if message.status == .streaming && message.thinking.isEmpty && message.tools.isEmpty {
                     TypingDots()
                 }
-                if case .failed(let reason) = message.status {
+                if message.status.isStoppedByLynxce {
+                    // Not an error: top up (or wait for the daily reset), then "Continue" re-runs the turn like retry does.
+                    OutOfCreditsCard(
+                        reason: message.status == .dailyLimit ? .dailyLimit : .outOfCredits,
+                        canContinue: isLast && !chat.isStreaming
+                    ) { chat.retry() }
+                } else if case .failed(let reason) = message.status {
                     HStack(spacing: 10) {
-                        Label(reason, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.red)
+                        Label { LinkedText(text: reason) } icon: { Image(systemName: "exclamationmark.triangle") }
+                            .font(.footnote).foregroundStyle(.red)
                         if isLast { Button("chat.retry") { chat.retry() }.font(.footnote.weight(.semibold)) }
                     }
                 } else if message.status == .done && !message.text.isEmpty {
@@ -406,7 +469,7 @@ struct MessageRow: View {
                 Speaker.shared.speak(message.text, backend: model.backend, id: message.id)
             }
             ShareLink(item: message.text) { Label("common.share", systemImage: "square.and.arrow.up") }
-            if isLast && message.status != .streaming {
+            if isLast && message.status != .streaming && !message.status.isStoppedByLynxce {
                 Button("chat.retry", systemImage: "arrow.clockwise") { chat.retry() }
             }
         }

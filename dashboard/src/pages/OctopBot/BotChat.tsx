@@ -38,6 +38,7 @@ import ShareConversationDialog from "../Chat/components/ShareConversationDialog"
 import { publicShareAvailable } from "../Chat/utils/publicShareHost";
 import styles from "./index.module.less";
 import ReferenceDialog from "./ReferenceDialog";
+import { LowCreditsBanner } from "./CreditsWidgets";
 import GroupMemory from "./GroupMemory";
 import BotComputerSettings from "./BotComputerSettings";
 import AppearanceModal from "./AppearancePicker";
@@ -403,6 +404,7 @@ export default function BotChat({
               </Space>
             </header>
           )}
+          <LowCreditsBanner />
           <div className={styles.chat}>
             <ChatRouteContext.Provider value={host}>
               <ChatPage />

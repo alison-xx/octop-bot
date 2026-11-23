@@ -9,8 +9,12 @@ import io.github.alisonxx.octopbot.model.GroupSummary
 import io.github.alisonxx.octopbot.model.HitlTexts
 import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.model.ModelOption
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import io.github.alisonxx.octopbot.net.ApiException
 import io.github.alisonxx.octopbot.net.ChatBackend
+import io.github.alisonxx.octopbot.net.CheckoutRefused
 import io.github.alisonxx.octopbot.net.CreditAccount
 import io.github.alisonxx.octopbot.net.LynxceBackend
 import io.github.alisonxx.octopbot.net.LynxceProtocol
@@ -27,13 +31,16 @@ import io.github.alisonxx.octopbot.store.UserSettings
 import io.github.alisonxx.octopbot.update.UpdateState
 import io.github.alisonxx.octopbot.voice.Speaker
 import io.github.alisonxx.octopbot.voice.VoiceInput
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -49,6 +56,24 @@ sealed interface SessionState {
     data class SignedOut(val notice: String? = null, val reopenServer: Boolean = false) : SessionState
     data class Ready(val backend: ChatBackend) : SessionState
 }
+
+/** The Lynxce wallet balance as the UI shows it. */
+sealed interface BalanceState {
+    data object Loading : BalanceState
+    /** Couldn't read it: the UI shows "—" and a retry. */
+    data object Failed : BalanceState
+    data class Value(val credits: Double) : BalanceState {
+        val low: Boolean get() = credits < LynxceProtocol.LOW_BALANCE
+    }
+}
+
+/** Token use over the last 30 days on an Octop server (Settings → Credits). */
+data class UsageState(
+    val loading: Boolean = true,
+    val failed: Boolean = false,
+    val byBot: ServerProtocol.UsageSummary? = null,
+    val byModel: ServerProtocol.UsageSummary? = null,
+)
 
 /** App-wide state for the single activity: the signed-in backend, the Bot directory and every Bot's chat. */
 class AppViewModel(application: Application) : AndroidViewModel(application), ChatHost {
@@ -71,8 +96,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     val replying: StateFlow<Set<String>> = _replying
     private val _models = MutableStateFlow<List<ModelOption>>(emptyList())
     val models: StateFlow<List<ModelOption>> = _models
-    private val _balance = MutableStateFlow<String?>(null)
-    val balance: StateFlow<String?> = _balance
+    private val _balance = MutableStateFlow<BalanceState?>(null)
+    /** null when the account has no Lynxce wallet (a self-hosted server). */
+    val balance: StateFlow<BalanceState?> = _balance
+    private var balanceJob: Job? = null
+    private val _walletKey = MutableStateFlow<String?>(null)
+    /** The low balance the chat banner warns about, or null (enough credits, or the banner was closed). */
+    val lowBalance: StateFlow<Double?> =
+        combine(_balance, _walletKey, store.lowBalanceDismissed) { balance, wallet, dismissed ->
+            (balance as? BalanceState.Value)?.takeIf { it.low && wallet != null && wallet !in dismissed }?.credits
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    private val _usage = MutableStateFlow<UsageState?>(null)
+    /** Usage on an Octop server; null in direct-Lynxce mode, which has no Octop server to ask. */
+    val usage: StateFlow<UsageState?> = _usage
+    private val _creditsRefreshing = MutableStateFlow(false)
+    val creditsRefreshing: StateFlow<Boolean> = _creditsRefreshing
+    private val _recharging = MutableStateFlow(false)
+    /** A recharge link is being fetched; the button ignores further taps. */
+    val recharging: StateFlow<Boolean> = _recharging
+    /** The recharge page was opened; coming back refreshes the balance. */
+    private var rechargeOpened = false
+    /** The app comes back to the foreground: the balance may have changed on the website or another device. */
+    private val foreground = LifecycleEventObserver { _, event ->
+        if (event == Lifecycle.Event.ON_START && session.value is SessionState.Ready) refreshBalance()
+    }
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing
     private val _directoryError = MutableStateFlow<String?>(null)
@@ -125,6 +172,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
             }
         }
         viewModelScope.launch { settings.collect { speaker.rate = it.speechRate.rate } }
+        ProcessLifecycleOwner.get().lifecycle.addObserver(foreground)
     }
 
     // Session
@@ -184,6 +232,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     private suspend fun enter(backend: ChatBackend) {
         chats.clear()
+        clearWallet()
         _replying.value = emptySet()
         _directoryError.value = null
         val cached = store.directory()
@@ -193,7 +242,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         _session.value = SessionState.Ready(backend)
         refreshDirectory()
         _models.value = if (backend.definesBotsLocally) runCatching { backend.models() }.getOrDefault(emptyList()) else emptyList()
-        _balance.value = creditAccount?.balance()
+        refreshBalance()
+    }
+
+    private fun clearWallet() {
+        balanceJob?.cancel()
+        balanceJob = null
+        _balance.value = null
+        _walletKey.value = null
+        _usage.value = null
+        rechargeOpened = false
     }
 
     fun signOut(notice: String? = null, reopenServer: Boolean = false) {
@@ -201,7 +259,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         stopReading()
         voiceInput.cancel()
         chats.clear()
-        val reopen = reopenServer && backend is ServerBackend
+        clearWallet()
+        // Octop Bot cloud is a Lynxce sign-in, not a server the user typed: it goes back to the sign-in screen.
+        val reopen = reopenServer && backend is ServerBackend && !backend.isCloud
         if (!reopen) _session.value = SessionState.SignedOut(notice)
         viewModelScope.launch {
             if (reopen) {
@@ -214,9 +274,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         }
     }
 
-    /** Sign out and return to the first screen; from a server, straight to the server form. */
+    /** Sign out and return to the first screen; from a self-hosted server, straight to the server form. */
     fun switchAccount() {
-        signOut(reopenServer = (session.value as? SessionState.Ready)?.backend is ServerBackend)
+        val backend = (session.value as? SessionState.Ready)?.backend
+        signOut(reopenServer = backend is ServerBackend && !backend.isCloud)
     }
 
     // Directory
@@ -244,9 +305,78 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         }
     }
 
+    /** Re-read the Lynxce balance (foreground, after a reply, back from recharge). Keeps the value shown meanwhile. */
     fun refreshBalance() {
-        val backend = (session.value as? SessionState.Ready)?.backend ?: return
-        viewModelScope.launch { _balance.value = backend.balance() }
+        val account = creditAccount
+        if (account == null) {
+            _balance.value = null
+            return
+        }
+        if (balanceJob?.isActive == true) return
+        balanceJob = viewModelScope.launch { loadBalance(account) }
+    }
+
+    private suspend fun loadBalance(account: CreditAccount) {
+        if (_balance.value !is BalanceState.Value) _balance.value = BalanceState.Loading
+        val result = runCatching { account.balance() }
+        (result.exceptionOrNull() as? CancellationException)?.let { throw it }
+        if (creditAccount !== account) return
+        result.onSuccess { credits ->
+            _balance.value = BalanceState.Value(credits)
+            val wallet = account.walletKey
+            _walletKey.value = wallet
+            // Back to 100 or more: the next low balance warns again.
+            if (wallet != null && credits >= LynxceProtocol.LOW_BALANCE) store.setLowBalanceDismissed(wallet, false)
+        }.onFailure { error ->
+            // Signed out elsewhere: the session ends (and the wallet with it).
+            if (error is ApiException && error.kind == ApiException.Kind.Unauthorized) failed(error) else _balance.value = BalanceState.Failed
+        }
+    }
+
+    /** Settings → Credits, and its pull-to-refresh: the balance and, on an Octop server, the last 30 days of usage. */
+    fun refreshCredits() {
+        val account = creditAccount ?: return
+        if (_creditsRefreshing.value) return
+        val server = (session.value as? SessionState.Ready)?.backend as? ServerBackend
+        _creditsRefreshing.value = true
+        viewModelScope.launch {
+            balanceJob?.cancel()
+            val balance = async { loadBalance(account) }
+            if (server != null) {
+                _usage.value = (_usage.value ?: UsageState()).copy(loading = true, failed = false)
+                val byBot = async { runCatching { server.usage("by_agent") } }
+                val byModel = async { runCatching { server.usage("by_model") } }
+                val bots = byBot.await()
+                val models = byModel.await()
+                if (creditAccount === account) {
+                    _usage.value = UsageState(
+                        loading = false,
+                        failed = bots.isFailure || models.isFailure,
+                        byBot = bots.getOrNull(),
+                        byModel = models.getOrNull(),
+                    )
+                }
+            } else {
+                _usage.value = null
+            }
+            balance.await()
+            _creditsRefreshing.value = false
+        }
+    }
+
+    /** The chat banner's close: hidden for this wallet until the balance is back to 100 or more. */
+    fun dismissLowBalance() {
+        val wallet = _walletKey.value ?: return
+        viewModelScope.launch { store.setLowBalanceDismissed(wallet, true) }
+    }
+
+    /** The activity resumed; back from the recharge page, the new balance shows. */
+    fun appResumed() {
+        if (!rechargeOpened) return
+        rechargeOpened = false
+        balanceJob?.cancel()
+        balanceJob = null
+        refreshBalance()
     }
 
     /** A file a Bot linked to: Octop Bot cloud hands out a short-lived object-store link. */
@@ -263,14 +393,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         }
     }
 
-    /** Open Lynxce's recharge page signed in as this account (a 15-minute ticket, as on the desktop). */
+    /**
+     * Open Lynxce's recharge page signed in as this account (a 15-minute ticket, as on the desktop). Taps while
+     * the link is being fetched are ignored.
+     */
     fun recharge(open: (String) -> Unit) {
         val account = creditAccount ?: return
+        if (_recharging.value) return
+        _recharging.value = true
         viewModelScope.launch {
             runCatching { account.checkoutUrl() }
-                .onSuccess(open)
-                .onFailure { notice(resources.describe(it)) }
+                .onSuccess {
+                    rechargeOpened = true
+                    open(it)
+                }
+                .onFailure { notice(rechargeFailure(it)) }
+            _recharging.value = false
         }
+    }
+
+    private fun rechargeFailure(error: Throwable): String = when {
+        error is CheckoutRefused -> resources.getString(R.string.recharge_link_refused)
+        error is ApiException && error.kind == ApiException.Kind.Unauthorized -> resources.describe(error)
+        error is ApiException && error.kind == ApiException.Kind.Network -> resources.describe(error)
+        error is ApiException && (error.kind == ApiException.Kind.Credits || error.kind == ApiException.Kind.DailyLimit) ->
+            resources.describe(error)
+        error is ApiException && !error.message.isNullOrBlank() -> error.message.orEmpty()
+        else -> resources.getString(R.string.recharge_unavailable)
     }
 
     /** Settings → Delete account: Lynxce starts its cooling-off period, then this phone signs out. */
@@ -416,13 +565,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     override fun replyEnded(bot: BotProfile, messageId: String, text: String?) {
         _replying.update { it - bot.id }
+        // Every finished reply (even a failed one) may have spent credits.
+        if (creditAccount != null) refreshBalance()
         if (text == null) return
         val onScreen = chatOnScreen == bot.id
         viewModelScope.launch {
             store.updatePreviews { Previews.replyFinished(it, bot.id, text, System.currentTimeMillis(), onScreen) }
             val settings = settings.first()
             if (settings.notifications) app.notifier.replyFinished(bot.id, bot.name, text)
-            if (creditAccount != null) refreshBalance()
             // Voice mode reads its own replies.
             if (settings.readAloud && voiceBotId != bot.id && app.notifier.isInForeground) readAloud(messageId, text)
         }
@@ -470,6 +620,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     }
 
     override fun onCleared() {
+        ProcessLifecycleOwner.get().lifecycle.removeObserver(foreground)
         speaker.release()
         voiceInput.cancel()
     }

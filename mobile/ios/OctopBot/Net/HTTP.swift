@@ -2,24 +2,41 @@ import Foundation
 
 /// A user-facing failure from Lynxce or an Octop server.
 struct APIError: LocalizedError, Equatable {
-    enum Kind: Equatable { case unauthorized, credits, rejected, network, server }
+    enum Kind: Equatable { case unauthorized, credits, dailyLimit, rejected, network, server }
     var kind: Kind
     var status: Int
     var message: String?
 
     var errorDescription: String? {
-        if let message, !message.isEmpty { return message }
+        // The server's credits text links to Lynxce's web checkout, which App Store builds don't show.
+        if kind != .credits, let message, !message.isEmpty { return message }
         switch kind {
         case .unauthorized: return L("error.unauthorized")
         case .credits: return L("error.credits")
+        case .dailyLimit: return L("error.dailyLimit")
         case .rejected: return L("error.rejected %lld", status)
         case .network: return L("error.network")
         case .server: return L("error.server %lld", status)
         }
     }
 
-    static func from(status: Int, message: String?) -> APIError {
-        switch status {
+    /// Octop's error code when a turn billed to the Lynxce wallet runs out of credits.
+    static let creditsRequired = "BOT_CLOUD_CREDITS_REQUIRED"
+
+    /// Octop's error code when the wallet still has credits but Lynxce's per-key daily cap is used up.
+    static let dailyLimit = "BOT_LYNXCE_DAILY_LIMIT"
+
+    /// Daily cap (Octop's code, or Lynxce's `api_key_credit_limit_reached`); topping up does not help.
+    static func isDailyLimit(_ code: String?) -> Bool {
+        guard let code else { return false }
+        return code == dailyLimit || code.lowercased().contains("credit_limit_reached")
+    }
+
+    static func from(status: Int, message: String?, code: String? = nil) -> APIError {
+        // Checked first: Lynxce can send the daily cap as a 402 too.
+        if isDailyLimit(code) { return APIError(kind: .dailyLimit, status: 429, message: message) }
+        if code == creditsRequired { return APIError(kind: .credits, status: 402, message: message) }
+        return switch status {
         case 401: APIError(kind: .unauthorized, status: status, message: message)
         case 402: APIError(kind: .credits, status: status, message: message)
         case 400..<500: APIError(kind: .rejected, status: status, message: message)
@@ -124,6 +141,17 @@ enum HTTP {
         if let error = object["error"] as? String { return error }
         if let detail = object["detail"] as? String { return detail }
         return object["message"] as? String
+    }
+
+    /// The error code in either envelope: Octop `{error:{code}}` / `{error_code}`, or Lynxce's string code.
+    static func errorCode(_ data: Data) -> String? {
+        let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let code = ((object?["error"] as? [String: Any])?["code"] as? String)
+            ?? (object?["error_code"] as? String) ?? (object?["errorCode"] as? String) ?? (object?["code"] as? String)
+        if code != nil { return code }
+        // Lynxce's daily-cap marker may sit deeper in its body; it is distinctive enough to find anywhere.
+        return String(decoding: data.prefix(16_384), as: UTF8.self).contains("credit_limit_reached")
+            ? "api_key_credit_limit_reached" : nil
     }
 }
 

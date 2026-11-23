@@ -146,6 +146,94 @@ def _key(user_id: int) -> str:
     return f"octop_bot:lynxce:model:{user_id}"
 
 
+# Desktop: the signed-in Lynxce account's own personal API key, minted at sign-in (no browser
+# authorization). The selection stores this marker instead of an OAuth connection id.
+CLOUD_CONNECTION = "cloud"
+
+
+def _cloud_key_secret(services: SharedServices, user_id: int) -> str | None:
+    from octop.infra.cloud.bot_cloud.accounts import load_model_key  # noqa: PLC0415
+
+    key = load_model_key(services, user_id)
+    return key.secret if key else None
+
+
+def has_cloud_key(services: SharedServices, user_id: int) -> bool:
+    """Desktop: whether a Lynxce sign-in left a model key for this user's chats."""
+    return bot_desktop_enabled() and _cloud_key_secret(services, user_id) is not None
+
+
+async def _cloud_models(services: SharedServices, user_id: int) -> list[dict[str, str]]:
+    secret = await asyncio.to_thread(_cloud_key_secret, services, user_id)
+    if secret is None:
+        raise _auth_required()
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
+            reply = await client.get(
+                GATEWAY_URL + "/models", headers={"Authorization": f"Bearer {secret}"}
+            )
+        reply.raise_for_status()
+        return lynxce_chat_models(reply.json())
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in (401, 403):
+            raise _auth_required() from None
+        raise OctopError.localized(ErrorCode.INTERNAL_ERROR, status=502) from None
+    except (httpx.RequestError, ValueError):
+        raise OctopError.localized(ErrorCode.INTERNAL_ERROR, status=502) from None
+
+
+def _key_owner(user_id: int) -> str:
+    return f"octop_bot:lynxce:key_owner:{user_id}"
+
+
+async def adopt_cloud_account(services: SharedServices, user_id: int, account_id: str) -> bool:
+    """Desktop sign-in: chat through this Lynxce account unless a model is already chosen.
+
+    A key minted for a different Lynxce account is dropped first. Returns whether the
+    workspace model changed.
+    """
+    from octop.infra.cloud.bot_cloud.accounts import (  # noqa: PLC0415
+        cloud_model_id,
+        ensure_model_key,
+        forget_model_key,
+    )
+
+    owner = await asyncio.to_thread(services.settings_repo.get, _key_owner(user_id))
+    switched = owner != account_id
+    if switched:
+        await asyncio.to_thread(forget_model_key, services, user_id)
+    await ensure_model_key(services, user_id)
+    await asyncio.to_thread(services.settings_repo.set, _key_owner(user_id), account_id)
+    key = _key(user_id)
+    previous = await asyncio.to_thread(services.settings_repo.get_or_insert, key, "{}")
+    try:
+        data = json.loads(previous) if previous else {}
+    except ValueError:
+        data = {}
+    keep = isinstance(data, dict) and data.get("model")
+    if keep and not (switched and data.get("connection") == CLOUD_CONNECTION):
+        return False
+    saved = json.dumps(
+        {"connection": CLOUD_CONNECTION, "model": cloud_model_id(), "revision": uuid4().hex}
+    )
+    return await asyncio.to_thread(services.settings_repo.replace_if_current, key, previous, saved)
+
+
+def release_cloud_account(services: SharedServices, user_id: int) -> None:
+    """Desktop sign-out: forget the account's model key and stop using it."""
+    from octop.infra.cloud.bot_cloud.accounts import forget_model_key  # noqa: PLC0415
+
+    forget_model_key(services, user_id)
+    services.settings_repo.delete(_key_owner(user_id))
+    raw = services.settings_repo.get(_key(user_id))
+    try:
+        data = json.loads(raw) if isinstance(raw, str) and raw else {}
+    except ValueError:
+        data = {}
+    if isinstance(data, dict) and data.get("connection") == CLOUD_CONNECTION:
+        clear_account_model(services, user_id)
+
+
 def _connection(services: SharedServices, user_id: int) -> str:
     from octop.infra.auth.lynxce import connection_id
 
@@ -204,6 +292,8 @@ async def _models(services: SharedServices, user_id: int, grant: str) -> list[di
 
 
 async def list_account_models(services: SharedServices, user_id: int) -> list[dict[str, str]]:
+    if await asyncio.to_thread(has_cloud_key, services, user_id):
+        return await _cloud_models(services, user_id)
     grant = await asyncio.to_thread(_connection, services, user_id)
     models = await _models(services, user_id, grant)
     if grant != await asyncio.to_thread(_connection, services, user_id):
@@ -213,12 +303,15 @@ async def list_account_models(services: SharedServices, user_id: int) -> list[di
 
 async def select_account_model(services: SharedServices, user_id: int, model_id: str) -> str:
     key = _key(user_id)
-    grant = await asyncio.to_thread(_connection, services, user_id)
+    cloud = await asyncio.to_thread(has_cloud_key, services, user_id)
+    grant = CLOUD_CONNECTION if cloud else await asyncio.to_thread(_connection, services, user_id)
     previous = await asyncio.to_thread(services.settings_repo.get_or_insert, key, "{}")
-    models = await _models(services, user_id, grant)
+    models = (
+        await _cloud_models(services, user_id) if cloud else await _models(services, user_id, grant)
+    )
     if not any(row["id"] == model_id for row in models):
         raise OctopError.localized(ErrorCode.NOT_FOUND)
-    if grant != await asyncio.to_thread(_connection, services, user_id):
+    if not cloud and grant != await asyncio.to_thread(_connection, services, user_id):
         raise _auth_required()
     saved = json.dumps({"connection": grant, "model": model_id, "revision": uuid4().hex})
     if not await asyncio.to_thread(services.settings_repo.replace_if_current, key, previous, saved):
@@ -237,6 +330,10 @@ def account_selection(services: SharedServices, user_id: int) -> AccountModel | 
     data = json.loads(raw)
     if not data.get("model"):
         return None
+    if data.get("connection") == CLOUD_CONNECTION:
+        if _cloud_key_secret(services, user_id) is None:
+            raise _auth_required()
+        return CloudAccountModel(user_id, CLOUD_CONNECTION, data["model"])
     if _connection(services, user_id) != data["connection"]:
         raise _auth_required()
     return AccountModel(user_id, data["connection"], data["model"])
@@ -253,6 +350,21 @@ def _cloud_selection(services: SharedServices, user_id: int) -> AccountModel | N
     chosen = json.loads(raw).get("model") if isinstance(raw, str) and raw else None
     model = chosen if isinstance(chosen, str) and chosen else cloud_model_id()
     return CloudAccountModel(user_id, "cloud", model)
+
+
+def pays_with_account_credits(settings_repo: Any, user_repo: Any, user_id: int) -> bool:
+    """Whether this user's chats are billed to their own Lynxce wallet (credits, not a key)."""
+    if bot_cloud_enabled():
+        user = user_repo.get(user_id)
+        return user is not None and str(user.role) != "admin"
+    if not bot_desktop_enabled() or settings_repo is None:
+        return False
+    raw = settings_repo.get(_key(user_id))
+    try:
+        data = json.loads(raw) if isinstance(raw, str) and raw else {}
+    except ValueError:
+        return False
+    return isinstance(data, dict) and bool(data.get("model"))
 
 
 def selected_account_model(services: SharedServices, user_id: int) -> str | None:

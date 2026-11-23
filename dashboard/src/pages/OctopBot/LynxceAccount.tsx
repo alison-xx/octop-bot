@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Spin } from "antd";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import {
   lynxceBotApi,
   type LynxceAttempt,
@@ -13,6 +14,9 @@ import WalletBalance from "./WalletBalance";
 import LynxceRegistration from "./LynxceRegistration";
 import styles from "./BotClientSettings.module.less";
 import ModelSelect from "./ModelSelect";
+import { signOutBotClient } from "./AccountMenu";
+import { CreditsAmount, useRecharge } from "./CreditsWidgets";
+import { useLynxceCredits } from "./useLynxceCredits";
 
 function externalUrl(value: string) {
   try {
@@ -60,6 +64,11 @@ export default function LynxceAccount({
   onSwitch?: () => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const credits = useLynxceCredits();
+  const { recharge, opening } = useRecharge();
+  // Signed in to Lynxce on the start page: models and wallet come with that account.
+  const viaAccount = credits.wallet?.source === "cloud";
   const key = "octop-bot:lynxce-login:" + owner;
   const [attempt, setAttempt] = useState<LynxceAttempt | null>(() =>
     savedAttempt(key),
@@ -208,7 +217,7 @@ export default function LynxceAccount({
     });
   const loginButton = (
     <Button
-      type={status?.connected ? "link" : "primary"}
+      type="link"
       loading={busy === "login"}
       disabled={!!busy}
       onClick={() => void login()}
@@ -220,7 +229,20 @@ export default function LynxceAccount({
       )}
     </Button>
   );
-  const wallet = (
+  const wallet = viaAccount ? (
+    <div className={styles.accountActions}>
+      <CreditsAmount credits={credits} />
+      <Button
+        size="small"
+        type="link"
+        icon={<ExternalLink size={13} />}
+        loading={opening}
+        onClick={() => void recharge()}
+      >
+        {t("botCredits.recharge")}
+      </Button>
+    </div>
+  ) : (
     <WalletBalance
       source="model"
       onAuthorize={login}
@@ -284,7 +306,13 @@ export default function LynxceAccount({
         !statusError && <Spin />
       ) : !status.connected ? (
         <>
-          <p>{t("botClient.lynxce.hint")}</p>
+          <p>{t("botClient.account.signInHint")}</p>
+          <Button
+            type="primary"
+            onClick={() => void signOutBotClient(owner, navigate)}
+          >
+            {t("botClient.account.signIn")}
+          </Button>
           {loginButton}
         </>
       ) : compact ? (
@@ -356,20 +384,22 @@ export default function LynxceAccount({
             </>
           )}
           <div className={styles.accountActions}>
-            {loginButton}
-            <Button
-              type="link"
-              disabled={!!busy}
-              loading={busy === "logout"}
-              onClick={() =>
-                void run("logout", async () => {
-                  await lynxceBotApi.logout();
-                  onSaved();
-                })
-              }
-            >
-              {t("botClient.lynxce.logout")}
-            </Button>
+            {!viaAccount && loginButton}
+            {!viaAccount && (
+              <Button
+                type="link"
+                disabled={!!busy}
+                loading={busy === "logout"}
+                onClick={() =>
+                  void run("logout", async () => {
+                    await lynxceBotApi.logout();
+                    onSaved();
+                  })
+                }
+              >
+                {t("botClient.lynxce.logout")}
+              </Button>
+            )}
           </div>
         </>
       )}

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Input, Spin } from "antd";
+import { Alert, Input, Spin } from "antd";
 import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { authApi, isMfaChallenge } from "../../api/modules/auth";
+import { authApi } from "../../api/modules/auth";
 import { setAuthToken } from "../../api/request";
 import { BOT_HOME } from "../../utils/botClientRoute";
 import { apiErrorMessage } from "../../utils/apiError";
@@ -11,14 +11,18 @@ import { BotCharacter, octopCharacter } from "./BotCharacter";
 import LynxceSignInForm from "./LynxceSignInForm";
 import intro from "./BotClientSetup.module.less";
 
-type Mode = "loading" | "lynxce" | "local";
+type Mode = "loading" | "lynxce" | "unavailable";
 
-/** Bot web build sign-in: the bound Lynxce account, or the local owner's password. */
+/**
+ * Bot web build sign-in: Lynxce accounts only. An instance set up earlier with a local
+ * password asks for that password once, to bind the Lynxce account to its owner.
+ */
 export default function BotLogin() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("loading");
-  const [password, setPassword] = useState("");
+  const [legacyPassword, setLegacyPassword] = useState("");
+  const [legacy, setLegacy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   // Octop Bot cloud: every Lynxce account signs in to an account of its own.
@@ -33,13 +37,10 @@ export default function BotLogin() {
           return;
         }
         setCloud(lynxce.cloud === true);
-        setMode(
-          lynxce.enabled && (lynxce.claimed || lynxce.cloud)
-            ? "lynxce"
-            : "local",
-        );
+        setLegacy(lynxce.legacy_owner === true);
+        setMode(lynxce.enabled ? "lynxce" : "unavailable");
       })
-      .catch(() => mounted && setMode("local"));
+      .catch(() => mounted && setMode("unavailable"));
     return () => {
       mounted = false;
     };
@@ -54,26 +55,6 @@ export default function BotLogin() {
     setError("");
     try {
       setAuthToken((await attempt()).access_token);
-      navigate(BOT_HOME, { replace: true });
-    } catch (e) {
-      setError(apiErrorMessage(e, t("octopBot.failed"), t));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const submit = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      const result = await authApi.login("local", password);
-      if (isMfaChallenge(result)) {
-        // The Bot client has no MFA step; an owner who enabled it elsewhere
-        // must sign in through the full Octop dashboard.
-        throw new Error(t("octopBot.failed"));
-      }
-      setAuthToken(result.access_token);
       navigate(BOT_HOME, { replace: true });
     } catch (e) {
       setError(apiErrorMessage(e, t("octopBot.failed"), t));
@@ -111,15 +92,30 @@ export default function BotLogin() {
               <p>
                 {t(
                   mode !== "lynxce"
-                    ? "botOnboarding.loginLocalBody"
+                    ? "botOnboarding.loginUnavailable"
                     : cloud
                     ? "botOnboarding.loginCloudBody"
+                    : legacy
+                    ? "botOnboarding.loginLegacyBody"
                     : "botOnboarding.loginLynxceBody",
                 )}
               </p>
               {error && <Alert type="error" message={error} showIcon />}
-              {mode === "lynxce" ? (
+              {mode === "lynxce" && (
                 <div className={intro.webForms}>
+                  {legacy && (
+                    <div className={intro.form}>
+                      <label htmlFor="bot-login-legacy">
+                        {t("botOnboarding.legacyPassword")}
+                      </label>
+                      <Input.Password
+                        id="bot-login-legacy"
+                        autoComplete="current-password"
+                        value={legacyPassword}
+                        onChange={(e) => setLegacyPassword(e.target.value)}
+                      />
+                    </div>
+                  )}
                   <LynxceSignInForm
                     idPrefix="bot-login"
                     autoFocus
@@ -136,12 +132,22 @@ export default function BotLogin() {
                     }
                     onCode={(target, code) =>
                       lynxceSignIn(() =>
-                        authApi.lynxceCodeLogin(target, code, locale),
+                        authApi.lynxceCodeLogin(
+                          target,
+                          code,
+                          locale,
+                          legacyPassword,
+                        ),
                       )
                     }
                     onPassword={(account, password) =>
                       lynxceSignIn(() =>
-                        authApi.lynxceLogin(account, password, locale),
+                        authApi.lynxceLogin(
+                          account,
+                          password,
+                          locale,
+                          legacyPassword,
+                        ),
                       )
                     }
                     onError={(e) =>
@@ -150,36 +156,6 @@ export default function BotLogin() {
                     onClearError={() => setError("")}
                   />
                 </div>
-              ) : (
-                <form
-                  className={`${intro.form} ${intro.webForms}`}
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void submit();
-                  }}
-                >
-                  <label htmlFor="bot-login-password">
-                    {t("botOnboarding.password")}
-                  </label>
-                  <Input.Password
-                    id="bot-login-password"
-                    autoComplete="current-password"
-                    autoFocus
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                  <Button
-                    type="primary"
-                    size="large"
-                    htmlType="submit"
-                    loading={busy}
-                    disabled={!password}
-                  >
-                    {t("botOnboarding.loginTitle")}
-                    <ArrowRight size={16} aria-hidden="true" />
-                  </Button>
-                </form>
               )}
             </>
           )}
