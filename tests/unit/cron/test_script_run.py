@@ -277,3 +277,21 @@ async def test_sandbox_missing_file_does_not_execute() -> None:
         )
     assert exc.value.code == "unreadable"
     assert sandbox.commands == []
+
+
+@pytest.mark.asyncio
+async def test_no_host_run_without_a_sandbox(tmp_path: Path) -> None:
+    """A cloud tenant's script never runs on the server itself."""
+    marker = tmp_path / "ran"
+    with pytest.raises(ScriptRunError) as caught:
+        await run_cron_script(
+            lang="python",
+            source="inline",
+            body=f"open({str(marker)!r}, 'w').close()",
+            path=None,
+            workspace=_Workspace(tmp_path),
+            backend_spec={"type": "filesystem"},
+            host=False,
+        )
+    assert caught.value.code == "needs_cloud_computer"
+    assert not marker.exists()

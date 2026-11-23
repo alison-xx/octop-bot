@@ -421,6 +421,30 @@ async def test_script_missing_interpreter_is_localized(monkeypatch: pytest.Monke
 
 
 @pytest.mark.asyncio
+async def test_cloud_tenant_script_needs_a_cloud_computer(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    async def _run(**kwargs: object) -> ScriptRunResult:
+        seen.update(kwargs)
+        raise ScriptRunError("needs_cloud_computer")
+
+    monkeypatch.setattr("octop.infra.cron.delivery.run_cron_script", _run)
+    service, gateway = _script_service()
+    service._agent_manager.host_files_allowed = MagicMock(return_value=False)
+    with pytest.raises(RuntimeError, match="云电脑"):
+        await service.deliver(
+            _command(
+                task_type="script",
+                prompt="print(1)",
+                script_lang="python",
+                script_source="inline",
+            )
+        )
+    assert seen["host"] is False
+    gateway.push_session_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_agent_hitl_does_not_push() -> None:
     session = _session(channel_type=ThreadRegistry.CHANNEL_DASHBOARD)
 

@@ -14,6 +14,7 @@ from octop.infra.gateway.media.backend_files import (
     dashboard_media_url,
     ensure_workspace_media_path,
     extract_workspace_rel,
+    read_file_url_bytes,
     resolve_preview_payload,
 )
 
@@ -117,3 +118,30 @@ async def test_ensure_workspace_media_host_fallback_when_abs_denied() -> None:
         assert rel is not None
         assert rel.startswith("outbound/")
         assert await workspace.adownload_bytes(rel) == b"\x89PNG\r\n"
+
+
+@pytest.mark.asyncio
+async def test_cloud_tenant_media_never_reads_host_files() -> None:
+    """Temp and the browser screenshot dir are shared by every account on a cloud server."""
+    with tempfile.TemporaryDirectory() as ws, tempfile.TemporaryDirectory() as other:
+        foreign = Path(other) / "someone-elses.png"
+        foreign.write_bytes(b"\x89PNG\r\n")
+        workspace = _workspace(ws, virtual_mode=True)
+        _deny_host_absolute_downloads(workspace)
+        await workspace.aupload_bytes("outbound/own.png", b"own")
+
+        source = foreign.as_uri()
+        assert await resolve_preview_payload(source=source, workspace=workspace) is not None
+        assert await read_file_url_bytes(workspace, source) == b"\x89PNG\r\n"
+
+        assert (
+            await resolve_preview_payload(source=source, workspace=workspace, host_files=False)
+            is None
+        )
+        assert await read_file_url_bytes(workspace, source, host_files=False) is None
+        assert await ensure_workspace_media_path(workspace, source, host_files=False) is None
+        # The agent's own workspace files still preview.
+        own = await resolve_preview_payload(
+            source="outbound/own.png", workspace=workspace, host_files=False
+        )
+        assert own is not None and own[0] == b"own"

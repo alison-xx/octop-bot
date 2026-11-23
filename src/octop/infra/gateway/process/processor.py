@@ -1411,6 +1411,7 @@ class GlobalProcessor:
         stream_ok = False
         failure_saved = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
+        host_files = self._agent_manager.host_files_allowed(agent_id)
         usage_tracker = UsageTracker()
         # Align with IM stream_project: only push tool_call ids opened this
         # turn, then dedupe intra-turn replays and identical path/URL frames.
@@ -1475,6 +1476,7 @@ class GlobalProcessor:
                             chunk,
                             agent_id=agent_id,
                             workspace=harness_workspace,
+                            host_files=host_files,
                         )
                         async for att in iter_dashboard_attachment_frames(
                             chunk,
@@ -1483,6 +1485,7 @@ class GlobalProcessor:
                             live_tool_call_ids=live_tool_call_ids,
                             emitted_media_ids=emitted_media_ids,
                             emitted_attachment_keys=emitted_attachment_keys,
+                            host_files=host_files,
                         ):
                             yield _maybe_stamp_team_host(att, agent_id, team_host)
                     else:
@@ -2085,7 +2088,7 @@ class GlobalProcessor:
             clean_generated_title,
             clip_title_source,
         )
-        from octop.infra.text_assist import run_text_assist  # noqa: PLC0415
+        from octop.infra.text_assist import assist_models, run_text_assist  # noqa: PLC0415
         from octop.infra.utils.locale import resolve_user_locale  # noqa: PLC0415
 
         fallback = clip_thread_title(source)
@@ -2095,12 +2098,14 @@ class GlobalProcessor:
         title = source
         try:
             locale = resolve_user_locale(user_repo=self._user_repo, user_id=user_id)
-            generated = await run_text_assist(
-                models=self._agent_manager.host_models,
-                kind="chat.thread_title",
-                text=clip_title_source(source),
-                locale=locale,
-            )
+            async with assist_models(self._agent_manager, user_id) as (models, model):
+                generated = await run_text_assist(
+                    models=models,
+                    kind="chat.thread_title",
+                    text=clip_title_source(source),
+                    locale=locale,
+                    default_model=model,
+                )
             cleaned = clean_generated_title(generated)
             if cleaned:
                 title = cleaned
