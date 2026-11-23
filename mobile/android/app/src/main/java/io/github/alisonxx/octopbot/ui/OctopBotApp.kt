@@ -52,6 +52,7 @@ import io.github.alisonxx.octopbot.app.SessionState
 import io.github.alisonxx.octopbot.net.ServerProtocol
 import io.github.alisonxx.octopbot.ui.chat.ChatScreen
 import io.github.alisonxx.octopbot.ui.common.ProvideUiPrefs
+import io.github.alisonxx.octopbot.ui.editor.BotActivityScreen
 import io.github.alisonxx.octopbot.ui.editor.BotEditorScreen
 import io.github.alisonxx.octopbot.ui.group.GroupRoomScreen
 import io.github.alisonxx.octopbot.ui.home.HomeScreen
@@ -75,6 +76,7 @@ private object Routes {
     const val HOME = "home"
     const val CHAT = "chat/{bot}"
     const val EDITOR = "editor?bot={bot}"
+    const val ACTIVITY = "activity/{bot}"
     const val VOICE = "voice/{bot}"
     const val GROUP = "group/{group}"
     const val SETTINGS = "settings"
@@ -82,6 +84,7 @@ private object Routes {
 
     fun chat(bot: String) = "chat/$bot"
     fun editor(bot: String?) = if (bot == null) "editor" else "editor?bot=$bot"
+    fun activity(bot: String) = "activity/$bot"
     fun voice(bot: String) = "voice/$bot"
     fun group(group: String) = "group/$group"
 }
@@ -213,7 +216,15 @@ private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<String?>)
             Routes.EDITOR,
             listOf(navArgument("bot") { type = NavType.StringType; nullable = true; defaultValue = null }),
         ) { entry ->
-            BotEditorScreen(model, entry.arguments?.getString("bot"), onDone = { nav.back() })
+            BotEditorScreen(
+                model,
+                entry.arguments?.getString("bot"),
+                onDone = { nav.back() },
+                onActivity = { nav.navigate(Routes.activity(it)) },
+            )
+        }
+        composable(Routes.ACTIVITY, listOf(navArgument("bot") { type = NavType.StringType })) { entry ->
+            BotActivityScreen(model, entry.arguments?.getString("bot").orEmpty(), onBack = { nav.back() })
         }
         composable(Routes.VOICE, listOf(navArgument("bot") { type = NavType.StringType })) { entry ->
             VoiceScreen(model, entry.arguments?.getString("bot").orEmpty(), onClose = { nav.back() })

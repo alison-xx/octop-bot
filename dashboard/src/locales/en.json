@@ -8808,5 +8808,18 @@
     "pasted": "Pasted this Mac's clipboard at the cloud computer's cursor.",
     "copyBlocked": "Copied on the cloud computer; this browser would not let the page write your clipboard. Use \"Get the cloud computer's clipboard\".",
     "macShortcuts": "On a Mac, ⌘C / ⌘V copy and paste between this Mac and the cloud computer; other ⌘ shortcuts work like Ctrl."
+  },
+  "botProfile": {
+    "activity": "Activity",
+    "library": "Library",
+    "upcoming": "Upcoming",
+    "noUpcoming": "No scheduled tasks yet. Ask this Bot to do something on a schedule.",
+    "showMore": "Show more",
+    "toggle": "Run {{name}} on schedule",
+    "noFiles": "Files this Bot makes for you will show up here.",
+    "today": "Today",
+    "week": "This week",
+    "older": "Older",
+    "download": "Download {{name}}"
   }
 }

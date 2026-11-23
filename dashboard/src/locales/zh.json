@@ -8808,5 +8808,18 @@
     "pasted": "已把这台 Mac 的剪贴板粘贴到云电脑光标处。",
     "copyBlocked": "云电脑里已复制，但浏览器不允许网页写你的剪贴板，请点「取回云电脑剪贴板」。",
     "macShortcuts": "Mac 上 ⌘C / ⌘V 在这台 Mac 和云电脑之间复制粘贴，其他 ⌘ 快捷键按 Ctrl 处理。"
+  },
+  "botProfile": {
+    "activity": "动态",
+    "library": "资料库",
+    "upcoming": "即将运行",
+    "noUpcoming": "还没有定时任务。可以让这个 Bot 按时帮你做事。",
+    "showMore": "显示更多",
+    "toggle": "按计划运行 {{name}}",
+    "noFiles": "这个 Bot 为你生成的文件会显示在这里。",
+    "today": "今天",
+    "week": "本周",
+    "older": "更早",
+    "download": "下载 {{name}}"
   }
 }

@@ -52,6 +52,14 @@ def assert_removable_bot(repos: RepoBundle, row: AgentRow) -> None:
             )
 
 
+def require_own_bot(services: SharedServices, user_id: int, agent_id: str) -> AgentRow:
+    """My own Bot (not a team), or 404 so other people's Bots stay invisible."""
+    row = services.agent_repo.get(agent_id)
+    if row is None or row.user_id != user_id or row.kind == "team":
+        raise OctopError.localized(ErrorCode.AGENT_NOT_FOUND)
+    return row
+
+
 def bot_card(
     row: AgentRow, chief_id: str, settings: SettingsRepo, cached: dict[str, str] | None = None
 ) -> dict[str, Any]:

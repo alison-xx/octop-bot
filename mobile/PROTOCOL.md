@@ -135,6 +135,18 @@ This is not a failure: finish the reply normally and show a card.
 - `GET|PUT /{gid}/memory` `{text}`, `GET /{gid}/goal` → `{title, criteria, status, stages}` | null
 - Poll messages + drafts every 2.5 s while drafts exist or right after sending, else every 10 s.
 
+**Bot profile** (Activity / Library, reached from the Bot editor).
+- `GET /api/octop-bot/bots/{id}/upcoming` → `{timezone, jobs:[{id, name, enabled, trigger, schedule, next_run_at, can_toggle}]}`,
+  already sorted (enabled by next run, then enabled without a clock time, then paused). `schedule` is one
+  localized line in the server timezone ("工作日 8:50", "Every 15 min, 8:00 – 18:45"). Show the first 5, then
+  "Show more". The switch is `PATCH /api/agents/{id}/cron/{job id}` `{enabled}` (disabled when `can_toggle` is false),
+  then reload.
+- `GET /api/octop-bot/bots/{id}/library` → `{files:[{name, path, size, mime, created_at, thread_id, period, url}]}`,
+  newest first; group by `period` (`today` / `week` = the last seven days / `older`). `url` is a
+  `/api/agents/{id}/workspace/download?path=…` link: fetch it with the session, or on Octop Bot cloud trade it for a
+  signed link (`…/download-link`, above).
+- Both answer 404 for a Bot that is not the signed-in user's.
+
 **Voice.** `GET /api/voice/active` → `{stt, tts}`. If `stt` is set: `POST /api/voice/stt` multipart
 `audio` (file) + `language` (`zh-CN`/`en-US`) → `{text}`. If `tts` is set: `POST /api/voice/tts`
 `{text}` → audio bytes. Otherwise use on-device speech recognition and synthesis.

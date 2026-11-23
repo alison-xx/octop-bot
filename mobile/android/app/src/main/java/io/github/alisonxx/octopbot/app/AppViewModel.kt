@@ -159,6 +159,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         }
     }
 
+    /** Signed in to a server (self-hosted or Octop Bot cloud). */
+    val server: ServerBackend?
+        get() = (session.value as? SessionState.Ready)?.backend as? ServerBackend
+
     /** Signed in to Octop Bot cloud. */
     val cloudServer: ServerBackend?
         get() = ((session.value as? SessionState.Ready)?.backend as? ServerBackend)?.takeIf { it.isCloud }

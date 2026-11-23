@@ -294,4 +294,15 @@
     <string name="computer_view">查看画面</string>
     <string name="computer_take_over">接管</string>
     <string name="computer_hand_back">交还</string>
+    <string name="profile_entry">动态与资料库</string>
+    <string name="profile_activity">动态</string>
+    <string name="profile_library">资料库</string>
+    <string name="profile_upcoming">即将运行</string>
+    <string name="profile_no_upcoming">还没有定时任务。可以让这个 Bot 按时帮你做事。</string>
+    <string name="profile_show_more">显示更多</string>
+    <string name="profile_toggle">按计划运行 %1$s</string>
+    <string name="profile_no_files">这个 Bot 为你生成的文件会显示在这里。</string>
+    <string name="profile_today">今天</string>
+    <string name="profile_week">本周</string>
+    <string name="profile_older">更早</string>
 </resources>

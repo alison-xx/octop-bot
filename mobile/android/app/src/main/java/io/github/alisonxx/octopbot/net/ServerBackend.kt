@@ -283,6 +283,35 @@ class ServerBackend(
         return link?.takeIf { it.startsWith("https://") } ?: throw ApiException.badResponse()
     }
 
+    // Bot profile: upcoming scheduled tasks and the files a Bot made
+
+    suspend fun upcoming(botId: String): List<BotActivity.UpcomingJob> =
+        BotActivity.upcoming(json("GET", "/api/octop-bot/bots/" + segment(botId) + "/upcoming"))
+
+    suspend fun library(botId: String): List<BotActivity.LibraryFile> =
+        BotActivity.library(json("GET", "/api/octop-bot/bots/" + segment(botId) + "/library"))
+
+    suspend fun setCronEnabled(botId: String, jobId: String, enabled: Boolean) {
+        json("PATCH", "/api/agents/" + segment(botId) + "/cron/" + segment(jobId), body = Http.body(buildJsonObject {
+            put("enabled", enabled)
+        }))
+    }
+
+    /** A file's bytes: from a signed object-store link on Octop Bot cloud, otherwise with this session. */
+    suspend fun fileBytes(uri: String): ByteArray {
+        if (!isCloud) {
+            val parsed = (session.baseUrl + uri).toHttpUrl()
+            val query = (0 until parsed.querySize).associate { parsed.queryParameterName(it) to parsed.queryParameterValue(it).orEmpty() }
+            return raw("GET", parsed.encodedPath, query, http = slowClient)
+        }
+        val request = Http.request(downloadLink(uri)).build()
+        // The signed link carries its own authorization; never send this server's token to the store.
+        return Http.client.withReadTimeout(900).newCall(request).await().use { response ->
+            if (!response.isSuccessful) throw ApiException.from(response.code, null)
+            withContext(Dispatchers.IO) { response.body.bytes() }
+        }
+    }
+
     private fun segment(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 
     private fun agent(bot: BotProfile) = "/api/agents/" + segment(bot.id)

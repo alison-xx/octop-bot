@@ -26,6 +26,7 @@
 		5E31F9FF32F06FBE952A0A9F /* octop-mascot.webp in Resources */ = {isa = PBXBuildFile; fileRef = 7B4198C3433D9E46B368560D /* octop-mascot.webp */; };
 		60F09A2E479DE5872452964A /* FileOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = E35158BD983E0060775BA507 /* FileOpener.swift */; };
 		670A22CF3CD26D0459F1C862 /* GroupRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3673E4497A330EC42D8B0AE4 /* GroupRoomView.swift */; };
+		68D94E409C7E175F0E3D12BA /* BotActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC7AAD0BB828292F63AA7E0 /* BotActivityView.swift */; };
 		701243634B93B3D55795922A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CF6F0F3501DAF6D838B0A354 /* LaunchScreen.storyboard */; };
 		7D0158402BB9F1236A22B6A9 /* CreditsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60FE975D80457770F2B56FE7 /* CreditsView.swift */; };
 		8330BE0127CCDC3E8975B833 /* Characters.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27E10E2BDC532D8A8733A20 /* Characters.swift */; };
@@ -89,6 +90,7 @@
 		9D571B602D444EEE48A8962B /* soft-characters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "soft-characters.json"; sourceTree = "<group>"; };
 		A4E82E7227484F22CB6A5433 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		A58EF3F0541F5BFE3F7F8B17 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		AEC7AAD0BB828292F63AA7E0 /* BotActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotActivityView.swift; sourceTree = "<group>"; };
 		B0B4725C78C81A15A4357C17 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		B376C8BCAD0157318169A260 /* OctopBotTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OctopBotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2022CECD87289127591F30D /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
@@ -210,6 +212,7 @@
 		D9AAC1975601BF7EBEE50A14 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				AEC7AAD0BB828292F63AA7E0 /* BotActivityView.swift */,
 				FB0D4BB60CF5FB920280CF55 /* ChatScreen.swift */,
 				687A510E1D53E5F2DED96BFF /* CloudComputerSection.swift */,
 				60FE975D80457770F2B56FE7 /* CreditsView.swift */,
@@ -359,6 +362,7 @@
 			files = (
 				F9AAC368DBB70E5F7E9FA7D7 /* AppModel.swift in Sources */,
 				50D8356BA21790C2FFF46F1D /* AppUpdater.swift in Sources */,
+				68D94E409C7E175F0E3D12BA /* BotActivityView.swift in Sources */,
 				23EE84C97894827ED6A8E595 /* CharacterView.swift in Sources */,
 				8330BE0127CCDC3E8975B833 /* Characters.swift in Sources */,
 				94F0BEE560698A2E757BFE90 /* ChatScreen.swift in Sources */,
