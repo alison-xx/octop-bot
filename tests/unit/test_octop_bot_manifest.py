@@ -44,7 +44,8 @@ def test_asset_keys_follow_package_names() -> None:
     assert mod.asset_key("Octop-Bot-1.0.4b1-mac-arm64.dmg") == "mac_arm"
     assert mod.asset_key("Octop-Bot-1.0.4b1-mac-x64.dmg") == "mac_intel"
     assert mod.asset_key("octop-bot-1.0.4b1.apk") == "android"
-    assert mod.asset_key("Octop-Bot-1.0.4b1-x64.zip") is None
+    assert mod.asset_key("Octop-Bot-1.0.4b1-x64.zip") == "win_x64_zip"
+    assert mod.asset_key("Octop-Bot-1.0.4b1-mac-arm64.zip") is None
 
 
 def test_changelog_notes_take_one_section() -> None:
