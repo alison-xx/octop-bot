@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from octop.infra.cloud.computers import driver as ags
+from octop.infra.cloud.computers import driver as driver_module
 from octop.infra.cloud.computers import manager as computers
 from octop.infra.cloud.computers.backend import CloudComputer
 from octop.infra.cloud.computers.driver import WORKSPACE, AgsConfig, State, state_of
@@ -55,6 +56,8 @@ class Driver:
         self.broken: set[str] = set()
         self.clipboard = ""
 
+        self.listed: list[driver_module.Instance] = []
+
     def start(self, *, spec: str, labels: Mapping[str, str]) -> str:
         if self.fail_start:
             raise RuntimeError("no capacity")
@@ -79,6 +82,9 @@ class Driver:
         if instance_id in self.broken:
             raise RuntimeError("provider error")
         return self.states.get(instance_id, "gone")
+
+    def instances(self) -> list[driver_module.Instance]:
+        return self.listed
 
     def run(self, instance_id: str, command: str, timeout: int) -> tuple[int, str]:
         assert self.states[instance_id] == "running"
@@ -105,6 +111,7 @@ class Billing:
         self.reserved: list[int] = []
         self.settled: list[tuple[str, int]] = []
         self.broke = False
+        self.settle_down = False
 
     def reserve(self, record: Any, minutes: int) -> computers.Reservation:
         if self.broke:
@@ -113,6 +120,8 @@ class Billing:
         return computers.Reservation(f"r{len(self.reserved)}", minutes)
 
     def settle(self, record: Any, reservation: computers.Reservation, used: int) -> None:
+        if self.settle_down:
+            raise RuntimeError("Lynxce unavailable")
         self.settled.append((reservation.id, used))
 
 
@@ -337,12 +346,27 @@ def test_a_taken_over_computer_turns_the_bot_away_and_stays_awake(setup: Any) ->
     manager.set_takeover("bot1", 7, True)
     blocked = computer.execute("rm -rf /tmp/x")
     assert blocked.exit_code == 1 and "taken over" in blocked.output
-    clock.now += computers.IDLE_PAUSE_SECONDS * 2
-    manager.touch("bot1", 7)  # keeps paying in the meantime
-    manager.tick()
+    # Files the Bot writes onto the computer wait too.
+    assert computer.upload_files([("/notes.md", b"x")])[0].error == blocked.output
+    for _ in range(int(computers.IDLE_PAUSE_SECONDS * 2 / 30)):
+        clock.now += 30
+        manager.viewing("bot1", 7)  # the open screen's heartbeat
+        manager.tick()
     assert ("pause", "ins-1") not in driver.calls
     manager.set_takeover("bot1", 7, False)
     assert computer.execute("ls").exit_code == 0
+
+
+def test_a_takeover_no_one_watches_goes_back_to_the_bot(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1")
+    computer.execute("ls")
+    manager.set_takeover("bot1", 7, True)  # e.g. a phone took over, then left the page
+    clock.now += computers.VIEWER_GRACE_SECONDS + 1
+    assert not manager.taken_over("bot1", 7)
+    assert computer.execute("ls").exit_code == 0
+    manager.tick()
+    assert manager.record("bot1", 7).takeover is False
 
 
 def test_a_watched_screen_keeps_the_computer_running(setup: Any) -> None:
@@ -408,3 +432,148 @@ def test_pasting_sends_text_as_base64_and_presses_the_paste_shortcut(
     monkeypatch.setattr(driver, "_execute", lambda i, s: "")
     with pytest.raises(RuntimeError):
         driver.paste_text("ins", "你好")
+
+
+# -- review fixes (PR #22) -------------------------------------------------------------------
+
+
+@pytest.fixture
+def store(tmp_path: Any) -> Any:
+    from deepagents.backends.filesystem import FilesystemBackend
+
+    backend = FilesystemBackend(root_dir=str(tmp_path), virtual_mode=True)
+    backend.upload_files(
+        [
+            ("/SOUL.md", b"# Soul"),
+            ("/.octop/.bootstrapped", b"1"),
+            ("/notes/plan.md", b"old plan"),
+            ("/inbound/photo.png", b"png"),
+        ]
+    )
+    return backend
+
+
+def test_reading_the_bots_context_never_starts_its_computer(setup: Any, store: Any) -> None:
+    manager, driver, billing, clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1", store=store)
+    assert "Soul" in str(computer.read("/SOUL.md").file_data)
+    assert computer.download_files(["/.octop/.bootstrapped"])[0].content == b"1"
+    assert {e["path"] for e in computer.ls("/").entries} >= {"/SOUL.md", "/notes/"}
+    computer.write("/MEMORY.md", "remember this")
+    computer.upload_files([("/inbound/doc.pdf", b"pdf")])
+    assert driver.calls == [] and billing.reserved == []
+    assert store.download_files(["/MEMORY.md"])[0].content == b"remember this"
+
+
+def test_a_bots_first_computer_gets_its_existing_files_once(setup: Any, store: Any) -> None:
+    manager, driver, billing, clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1", store=store)
+    computer.execute("ls")
+    assert driver.files == {f"{WORKSPACE}/notes/plan.md": b"old plan"}
+    assert manager.record("bot1", 7).seeded
+    # A later fresh computer (the old one was reclaimed) is not filled with stale copies.
+    driver.states["ins-1"] = "gone"
+    driver.files.clear()
+    manager.tick()
+    computer.execute("ls")
+    assert driver.calls[-1] == ("start", "bot1") and driver.files == {}
+
+
+def test_deleting_follows_the_path_mapping(setup: Any, store: Any) -> None:
+    manager, driver, billing, clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1", store=store)
+    computer.delete("/SOUL.md")
+    assert store.download_files(["/SOUL.md"])[0].content is None
+    assert driver.calls == []
+    ran: list[str] = []
+    driver.run = lambda instance, command, timeout: ran.append(command) or (0, "")  # type: ignore[method-assign]
+    computer.delete("/notes/plan.md")
+    assert any(f"{WORKSPACE}/notes/plan.md" in c for c in ran)
+    assert not any("rm -rf /notes" in c or "'/notes/plan.md'" in c for c in ran)
+    assert computer.delete("/").error
+
+
+def test_a_start_that_fails_leaves_a_trace_and_orphans_are_stopped(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    driver.fail_start = True
+    with pytest.raises(RuntimeError):
+        CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    assert manager.record("bot1", 7).starting_at is None
+    mine = manager.server_id()
+    old = clock.now - computers.ORPHAN_AGE_SECONDS - 1
+    driver.listed = [
+        driver_module.Instance("lost", "running", {"octop-server": mine}, old),
+        driver_module.Instance("young", "running", {"octop-server": mine}, clock.now),
+        driver_module.Instance("other-server", "running", {"octop-server": "x"}, old),
+    ]
+    clock.now += computers.ORPHAN_SCAN_SECONDS
+    manager.tick()
+    assert ("stop", "lost") in driver.calls
+    assert ("stop", "young") not in driver.calls
+    assert ("stop", "other-server") not in driver.calls
+
+
+def test_failed_settles_are_kept_and_retried(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    clock.now += 120
+    billing.settle_down = True
+    manager.pause("bot1", 7)
+    assert billing.settled == []
+    assert [u.used_seconds for u in manager.record("bot1", 7).unsettled] == [120]
+    billing.settle_down = False
+    manager.tick()
+    assert billing.settled == [("r1", 120)]
+    assert manager.record("bot1", 7).unsettled == []
+
+
+def test_running_past_the_reservations_is_billed(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    clock.now += 8 * 60  # the reaper never ran: 3 minutes past the paid chunk
+    manager.pause("bot1", 7)
+    assert billing.reserved == [5, 3]
+    assert billing.settled == [("r1", 300), ("r2", 180)]
+
+
+def test_releasing_an_instance_aws_already_reclaimed_does_not_retry_forever(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    driver.states["ins-1"] = "gone"
+    manager._services.agent_repo.deleted.add("bot1")
+    manager.tick()
+    assert ("stop", "ins-1") not in driver.calls
+    assert manager._services.settings_repo.with_prefix("octop_bot:computer:") == {}
+
+
+def test_the_shown_start_time_survives_settling_chunks(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    started = manager.record("bot1", 7).started_at
+    for _ in range(3):
+        clock.now += 4 * 60 + 30
+        manager.touch("bot1", 7)
+        manager.tick()
+    record = manager.record("bot1", 7)
+    assert record.started_at == started and record.running_since != started
+
+
+def test_close_stops_the_reaper(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(computers, "REAP_INTERVAL_SECONDS", 0.01)
+    manager = computers.ComputerManager(Services(), Driver(), billing=Billing())  # type: ignore[arg-type]
+    manager._start_reaper()
+    assert manager._reaper is not None and manager._reaper.is_alive()
+    manager.close()
+    assert not manager._reaper.is_alive()
+
+
+def test_compute_billing_carries_the_cloud_server_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.auth import lynxce_cloud
+
+    settle = "/api/billing/octop-bot/compute/settle"
+    monkeypatch.delenv("OCTOP_BOT_COMPUTE_SERVICE_KEY", raising=False)
+    assert lynxce_cloud._service_headers(settle) == {}
+    monkeypatch.setenv("OCTOP_BOT_COMPUTE_SERVICE_KEY", "k" * 32)
+    assert lynxce_cloud._service_headers(settle) == {"X-Octop-Service-Key": "k" * 32}
+    # Only compute billing: other tenant calls never carry the server's key.
+    assert lynxce_cloud._service_headers("/api/user/personal-api-keys") == {}

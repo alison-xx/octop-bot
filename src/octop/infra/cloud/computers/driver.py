@@ -70,6 +70,14 @@ for code in reversed(codes):
 State = Literal["running", "paused", "starting", "gone"]
 
 
+@dataclass(frozen=True)
+class Instance:
+    instance_id: str
+    state: State
+    labels: Mapping[str, str]
+    created_at: float
+
+
 class ComputerDriver(Protocol):
     """What the computer manager needs from a sandbox provider (sync; call off the event loop)."""
 
@@ -78,6 +86,7 @@ class ComputerDriver(Protocol):
     def pause(self, instance_id: str) -> None: ...
     def stop(self, instance_id: str) -> None: ...
     def state(self, instance_id: str) -> State: ...
+    def instances(self) -> list[Instance]: ...
     def run(self, instance_id: str, command: str, timeout: int) -> tuple[int, str]: ...
     def write(self, instance_id: str, path: str, data: bytes) -> None: ...
     def read(self, instance_id: str, path: str) -> bytes | None: ...
@@ -119,6 +128,16 @@ class AgsConfig:
 _RUNNING = {"RUNNING"}
 _STARTING = {"STARTING", "RESUMING", "PENDING"}
 _PAUSED = {"PAUSED", "PAUSING"}
+
+
+def _timestamp(value: str | None) -> float:
+    """AGS ISO-8601 time → Unix time; unknown counts as brand new (never reaped by age)."""
+    from datetime import datetime  # noqa: PLC0415
+
+    try:
+        return datetime.fromisoformat(str(value)).timestamp()
+    except ValueError:
+        return time.time()
 
 
 def state_of(status: str | None) -> State:
@@ -195,6 +214,28 @@ class AgsDriver:
         request.InstanceIds = [instance_id]
         found = self._api().DescribeSandboxInstances(request).InstanceSet or []
         return state_of(found[0].Status) if found else "gone"
+
+    def instances(self) -> list[Instance]:
+        """Every instance in this AGS account and region (for cleaning up lost starts)."""
+        found: list[Instance] = []
+        offset = 0
+        while True:
+            request = self._models().DescribeSandboxInstanceListRequest()
+            request.Offset, request.Limit = offset, 100
+            page = self._api().DescribeSandboxInstanceList(request).InstanceSet or []
+            for item in page:
+                labels = {m.Name: m.Value for m in (item.Metadata or []) if m.Name}
+                found.append(
+                    Instance(
+                        instance_id=str(item.InstanceId),
+                        state=state_of(item.Status),
+                        labels=labels,
+                        created_at=_timestamp(item.CreateTime),
+                    )
+                )
+            if len(page) < 100:
+                return found
+            offset += 100
 
     # -- data plane: the desktop's HTTP server ---------------------------------
 

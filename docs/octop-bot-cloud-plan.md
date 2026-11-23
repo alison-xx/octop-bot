@@ -364,6 +364,9 @@ P1 的实际做法与上文设计有三处不同，以本节为准：
 - 开机、暂停、恢复走腾讯云 AGS 云 API。命令和文件走沙箱桌面自带的 HTTP 服务：`https://5000-<实例>.<region>.tencentags.com` 的 `/execute`、`/setup/upload`、`/file`，请求头 `X-Access-Token` 用 `AcquireSandboxInstanceToken` 返回的 `Token`（`TrafficToken` 会被拒，返回 401）。OSWorld 类型的沙箱不提供 AGS 的 E2B 兼容数据面（报 310508），所以不用 `e2b` SDK。
 - 实测（2026-11-24，广州，OSWorld 4C8G）：沙箱里一律以 `user` 身份运行，没有免密 sudo，所以 Bot 的工作区放在 `/home/user/workspace`，Agent 看到的 `/` 就是这个目录，路径映射照搬 octop-harness 的 Docker 沙箱。`/execute` 单次请求 120 秒就会被杀掉，所以命令一律后台脱离运行（`setsid`），每次请求最多等 90 秒再取结果，长命令可以跑到 Agent 给的超时为止，超时就杀掉整个进程组。开机加第一条命令约 3 秒，暂停约 15 秒，恢复约 5 秒，暂停后文件都在。
 - 这一层先放在 Octop Bot（`infra/cloud/computers/`）。等 octop-harness 有了通用的远程沙箱后端再迁过去。
+- 哪些文件放哪：Bot 的上下文（SOUL、AGENTS、MEMORY、USER 等人设文件，`.octop/` 系统文件，`memory/`、`skills/`，聊天附件 `inbound/`）继续放在 P1 的对象存储里。harness 每次启动、每开一个新对话都要读它们，读这些文件不会开机、不会扣费。只有真正在电脑上干活才开机：执行命令，或者读写上述路径以外的文件。列工作区根目录时，电脑没开就只列对象存储里的内容。
+- 已有 Bot 第一次有云电脑时，把它在对象存储里的其他文件（不含上下文）复制到云电脑的工作区，只复制这一次。
+- 计费可靠性：开新实例前先在记录里写「启动中」；实例都打上 `octop-server`（每台 Octop 服务器一个固定 id）标签，回收线程每 10 分钟查一次，本服务器开出来、超过 15 分钟、又没有记录对应的实例（启动超时、进程中途崩溃留下的），直接停掉。结算失败的预留不丢，留给回收线程重试。实际运行超过已预留时长的部分（回收线程迟到、进程宕机），暂停时补一笔预留再结算。界面上的「已运行 N 分钟」用单独记的开机时间，不随结算往后推。服务关闭时先停回收线程，再关数据库。
 - 客户端：桌面网页版、iOS、Android 的 Bot 资料里有「云电脑」卡片，显示未开机、运行中或已暂停，以及本次运行时长，可以立即暂停（`GET /api/octop-bot/computers/{agent_id}`、`POST …/pause`）。
 
 | 变量 | 说明 |
@@ -373,6 +376,7 @@ P1 的实际做法与上文设计有三处不同，以本节为准：
 | `OCTOP_AGS_DOMAIN` | 默认 `<region>.tencentags.com` |
 | `OCTOP_AGS_TOOL` / `OCTOP_AGS_TOOL_PRO` | 标准、专业规格对应的沙箱工具名，在 AGS 控制台用 `osworld` 类型创建，选常驻 |
 | `OCTOP_AGS_TIMEOUT` | 只用于限时工具：实例最长运行时长，例如 `6h`。常驻工具不填，由空闲回收负责暂停 |
+| `OCTOP_BOT_COMPUTE_SERVICE_KEY` | 和灵策共享的云电脑扣费服务密钥（至少 32 位），只放在云 Octop 服务端。预扣和结算都要带 `X-Octop-Service-Key`，防止租户拿自己的令牌把运行中的电脑自报 0 秒退款。灵策后台「系统配置 → 云端与 AI 引擎 → 云电脑单价（Octop Bot）→ 云 Octop 服务密钥」填同一个值；没配置时灵策返回 503 |
 
 ## 12.3 P3 实现说明：实时画面和接管（2026-11-24）
 

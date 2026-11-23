@@ -67,13 +67,15 @@ def _owned(server: Any, user: User, agent_id: str) -> Any:
 def _status(manager: Any, agent_id: str, user_id: int) -> ComputerStatus:
     record = manager.record(agent_id, user_id)
     if record.instance_id is None:
-        return ComputerStatus(state="none", spec=record.spec, takeover=record.takeover)
+        return ComputerStatus(
+            state="none", spec=record.spec, takeover=record.controlled(time.time())
+        )
     return ComputerStatus(
         state="running" if record.running else "paused",
         spec=record.spec,
-        running_since=record.running_since,
+        running_since=record.started_at or record.running_since,
         paid_until=record.paid_until if record.running else None,
-        takeover=record.takeover,
+        takeover=record.controlled(time.time()),
     )
 
 
