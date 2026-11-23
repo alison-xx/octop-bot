@@ -4,7 +4,9 @@ import SwiftUI
 struct HomeView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var path = NavigationPath()
+    @State private var selection: Route?
     @State private var showSettings = false
     @State private var editing: BotProfile?
     @State private var creating = false
@@ -18,112 +20,27 @@ struct HomeView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            List {
-                if let release = AppUpdater.shared.bannerRelease {
-                    UpdateBanner(release: release)
-                        .listRowBackground(Palette.background)
-                        .listRowSeparator(.hidden)
-                }
-                if let error = model.loadError, !model.bots.isEmpty {
-                    Label(error, systemImage: "wifi.exclamationmark")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
-                        .listRowBackground(Color.orange.opacity(0.12))
-                        .onTapGesture { Task { await model.refresh() } }
-                }
-                Section {
-                    ForEach(shownBots) { bot in
-                        NavigationLink(value: Route.bot(bot.id)) { BotRow(bot: bot) }
-                            .listRowBackground(Palette.background)
-                            .listRowSeparatorTint(Palette.hairline)
-                            .contextMenu { menu(for: bot) }
-                            .swipeActions(edge: .trailing) {
-                                if bot.isLocal {
-                                    Button("common.delete", systemImage: "trash", role: .destructive) { model.deleteLocalBot(bot) }
-                                }
-                                if model.canEdit(bot) {
-                                    Button("bot.edit", systemImage: "paintpalette") { editing = bot }.tint(bot.accent)
-                                }
-                            }
-                            .swipeActions(edge: .leading) {
-                                Button("voice.title", systemImage: "waveform") { voiceBot = bot }.tint(.indigo)
-                            }
-                            .accessibilityIdentifier("bot-\(bot.name)")
-                    }
-                    if shownBots.isEmpty && !query.isEmpty {
-                        Text("home.noMatch").font(.subheadline).foregroundStyle(Palette.secondary)
-                            .listRowBackground(Palette.background)
-                    }
-                } header: {
-                    if !model.groups.isEmpty || model.server != nil { Text("home.bots") }
-                }
-                if model.server != nil && (query.isEmpty || !shownGroups.isEmpty) {
-                    Section("groups.title") {
-                        ForEach(shownGroups) { group in
-                            NavigationLink(value: Route.group(group)) { GroupRow(group: group) }
-                                .listRowBackground(Palette.background)
-                                .listRowSeparatorTint(Palette.hairline)
-                        }
-                        if model.groups.isEmpty {
-                            Text("groups.empty").font(.subheadline).foregroundStyle(Palette.secondary)
-                                .listRowBackground(Palette.background)
+        Group {
+            if sizeClass == .regular {
+                // Wide screens (iPad, an unfolded iPhone Duo) keep the directory beside the conversation.
+                NavigationSplitView {
+                    directory(selection: $selection)
+                        .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 420)
+                } detail: {
+                    NavigationStack {
+                        if let selection {
+                            destination(selection).id(selection)
+                        } else {
+                            ContentUnavailableView("home.pick", systemImage: "bubble.left.and.bubble.right")
+                                .background(Palette.background.ignoresSafeArea())
                         }
                     }
                 }
-            }
-            .animation(.snappy, value: shownBots.map(\.id))
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(Palette.background.ignoresSafeArea())
-            .refreshable { await model.refresh() }
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: Text("home.search"))
-            .overlay {
-                if model.bots.isEmpty {
-                    if model.isLoading {
-                        ProgressView()
-                    } else if let error = model.loadError {
-                        ContentUnavailableView {
-                            Label("home.offline", systemImage: "wifi.exclamationmark")
-                        } description: {
-                            Text(error)
-                        } actions: {
-                            Button("common.retry") { Task { await model.refresh() } }
-                        }
-                    }
-                }
-            }
-            .overlay(alignment: .bottomTrailing) { voiceButton }
-            .navigationTitle("Octop Bot")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { showSettings = true } label: { Image(systemName: "person.crop.circle") }
-                        .accessibilityIdentifier("openSettings")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if model.server != nil {
-                        Menu {
-                            Button("bot.new", systemImage: "person.badge.plus") { creating = true }
-                            Button("groups.new", systemImage: "person.3") { creatingGroup = true }
-                        } label: { Image(systemName: "plus") }
-                            .accessibilityIdentifier("newMenu")
-                    } else {
-                        Button { creating = true } label: { Image(systemName: "plus") }
-                            .accessibilityLabel(Text("bot.new"))
-                            .accessibilityIdentifier("newBot")
-                    }
-                }
-            }
-            .navigationDestination(for: Route.self) { route in
-                switch route {
-                case .bot(let id):
-                    if let bot = model.bots.first(where: { $0.id == id }) {
-                        ChatScreen(chat: model.session(for: bot))
-                    } else {
-                        ProgressView()
-                    }
-                case .group(let group):
-                    GroupRoomView(group: group)
+                .navigationSplitViewStyle(.balanced)
+            } else {
+                NavigationStack(path: $path) {
+                    directory(selection: nil)
+                        .navigationDestination(for: Route.self) { destination($0) }
                 }
             }
         }
@@ -133,6 +50,10 @@ struct HomeView: View {
                 Task { await model.refresh() }
                 AppUpdater.shared.checkIfDue()
             }
+        }
+        // A deleted Bot closes its conversation in the side-by-side layout.
+        .onChange(of: model.bots.map(\.id)) { _, ids in
+            if case .bot(let id)? = selection, !ids.contains(id) { selection = nil }
         }
         .task {
             // A quiet update check shortly after launch; never in the way of the first screen.
@@ -152,6 +73,123 @@ struct HomeView: View {
         }
         .sheet(isPresented: $creatingGroup) { GroupCreator() }
         .fullScreenCover(item: $voiceBot) { bot in VoiceModeView(chat: model.session(for: bot)) }
+    }
+
+    private func directory(selection: Binding<Route?>?) -> some View {
+        List(selection: selection) {
+            if let release = AppUpdater.shared.bannerRelease {
+                UpdateBanner(release: release)
+                    .listRowBackground(Palette.background)
+                    .listRowSeparator(.hidden)
+            }
+            if let error = model.loadError, !model.bots.isEmpty {
+                Label(error, systemImage: "wifi.exclamationmark")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .listRowBackground(Color.orange.opacity(0.12))
+                    .onTapGesture { Task { await model.refresh() } }
+            }
+            Section {
+                ForEach(shownBots) { bot in
+                    NavigationLink(value: Route.bot(bot.id)) { BotRow(bot: bot) }
+                        .listRowBackground(rowBackground(.bot(bot.id), selection))
+                        .listRowSeparatorTint(Palette.hairline)
+                        .contextMenu { menu(for: bot) }
+                        .swipeActions(edge: .trailing) {
+                            if bot.isLocal {
+                                Button("common.delete", systemImage: "trash", role: .destructive) { model.deleteLocalBot(bot) }
+                            }
+                            if model.canEdit(bot) {
+                                Button("bot.edit", systemImage: "paintpalette") { editing = bot }.tint(bot.accent)
+                            }
+                        }
+                        .swipeActions(edge: .leading) {
+                            Button("voice.title", systemImage: "waveform") { voiceBot = bot }.tint(.indigo)
+                        }
+                        .accessibilityIdentifier("bot-\(bot.name)")
+                }
+                if shownBots.isEmpty && !query.isEmpty {
+                    Text("home.noMatch").font(.subheadline).foregroundStyle(Palette.secondary)
+                        .listRowBackground(Palette.background)
+                }
+            } header: {
+                if !model.groups.isEmpty || model.server != nil { Text("home.bots") }
+            }
+            if model.server != nil && (query.isEmpty || !shownGroups.isEmpty) {
+                Section("groups.title") {
+                    ForEach(shownGroups) { group in
+                        NavigationLink(value: Route.group(group)) { GroupRow(group: group) }
+                            .listRowBackground(rowBackground(.group(group), selection))
+                            .listRowSeparatorTint(Palette.hairline)
+                    }
+                    if model.groups.isEmpty {
+                        Text("groups.empty").font(.subheadline).foregroundStyle(Palette.secondary)
+                            .listRowBackground(Palette.background)
+                    }
+                }
+            }
+        }
+        .animation(.snappy, value: shownBots.map(\.id))
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Palette.background.ignoresSafeArea())
+        .refreshable { await model.refresh() }
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: Text("home.search"))
+        .overlay {
+            if model.bots.isEmpty {
+                if model.isLoading {
+                    ProgressView()
+                } else if let error = model.loadError {
+                    ContentUnavailableView {
+                        Label("home.offline", systemImage: "wifi.exclamationmark")
+                    } description: {
+                        Text(error)
+                    } actions: {
+                        Button("common.retry") { Task { await model.refresh() } }
+                    }
+                }
+            }
+        }
+        .overlay(alignment: .bottomTrailing) { voiceButton }
+        .navigationTitle("Octop Bot")
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { showSettings = true } label: { Image(systemName: "person.crop.circle") }
+                    .accessibilityIdentifier("openSettings")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                if model.server != nil {
+                    Menu {
+                        Button("bot.new", systemImage: "person.badge.plus") { creating = true }
+                        Button("groups.new", systemImage: "person.3") { creatingGroup = true }
+                    } label: { Image(systemName: "plus") }
+                        .accessibilityIdentifier("newMenu")
+                } else {
+                    Button { creating = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel(Text("bot.new"))
+                        .accessibilityIdentifier("newBot")
+                }
+            }
+        }
+    }
+
+    /// The open conversation stands out in the side-by-side directory.
+    private func rowBackground(_ route: Route, _ selection: Binding<Route?>?) -> Color {
+        selection?.wrappedValue == route ? Palette.surface : Palette.background
+    }
+
+    @ViewBuilder
+    private func destination(_ route: Route) -> some View {
+        switch route {
+        case .bot(let id):
+            if let bot = model.bots.first(where: { $0.id == id }) {
+                ChatScreen(chat: model.session(for: bot))
+            } else {
+                ProgressView()
+            }
+        case .group(let group):
+            GroupRoomView(group: group)
+        }
     }
 
     private var shownBots: [BotProfile] {

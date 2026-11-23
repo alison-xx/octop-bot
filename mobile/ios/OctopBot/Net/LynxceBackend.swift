@@ -353,7 +353,7 @@ final class LynxceBackend: ChatBackend {
         _ = try? await call(.post, "/api/user/push-devices", json: [
             "platform": "ios",
             "token": token,
-            "bundleId": Bundle.main.bundleIdentifier ?? "io.github.alisonxx.octopbot",
+            "bundleId": Bundle.main.bundleIdentifier ?? "cn.lynxce.octopbot",
             "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0",
             "deviceName": UIDevice.current.model,
         ])
