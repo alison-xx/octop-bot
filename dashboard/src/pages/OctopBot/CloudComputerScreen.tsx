@@ -47,6 +47,8 @@ export default function CloudComputerScreen({
   >(null);
   const [phase, setPhase] = useState<Phase>("connecting");
   const [note, setNote] = useState("");
+  // Read when the client is created: takeover may land while noVNC is still loading.
+  const interactiveRef = useRef(interactive);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +58,7 @@ export default function CloudComputerScreen({
         wsProtocols: ["binary"],
       });
       client.scaleViewport = true;
-      client.viewOnly = !interactive;
+      client.viewOnly = !interactiveRef.current;
       client.addEventListener("connect", () => setPhase("connected"));
       client.addEventListener("disconnect", () => setPhase("closed"));
       rfb.current = client;
@@ -67,10 +69,10 @@ export default function CloudComputerScreen({
       rfb.current = null;
     };
     // A new ticket means a new connection; interactivity changes in place below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsPath]);
 
   useEffect(() => {
+    interactiveRef.current = interactive;
     if (rfb.current) rfb.current.viewOnly = !interactive;
   }, [interactive]);
 
