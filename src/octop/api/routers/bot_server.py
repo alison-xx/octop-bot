@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server
+from octop.infra.cloud.computers.manager import current_manager
 from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled, bot_web_enabled
 from octop.infra.setup.self_update import get_local_version
 
@@ -72,6 +73,7 @@ async def server_info(response: Response, server: Any = Depends(get_server)) -> 
         sign_in=sign_in,
         capabilities=ServerCapabilities(
             wallet=edition in ("desktop", "cloud"),
+            cloud_computer=edition == "cloud" and current_manager() is not None,
             file_store="object" if edition == "cloud" else "local",
         ),
     )
