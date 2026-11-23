@@ -1,4 +1,4 @@
-import mascot from "../../../../dashboard/src/assets/avatars/octop-mascot.webp";
+import mascot from "./assets/orb-bubble.png";
 import "./orb.css";
 
 const button = document.querySelector("button")!;

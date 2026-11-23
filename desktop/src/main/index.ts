@@ -11,11 +11,13 @@ import {
   screen,
   shell,
   Tray,
+  type MenuItemConstructorOptions,
   type NativeImage,
   type WebContents,
 } from "electron";
+import { randomUUID } from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
-import { constants as fsConstants, existsSync, mkdirSync, promises as fs, readFileSync } from "node:fs";
+import { constants as fsConstants, existsSync, mkdirSync, promises as fs, readFileSync, writeFileSync } from "node:fs";
 import { type as osType, release as osRelease } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -28,6 +30,7 @@ import {
   type IssuedSession,
   type PlatformInfo,
   type UpdateCheckResult,
+  type BotUpdateStatus,
   type WorkbuddyLoginResult,
 } from "../shared/ipc-contract";
 import { resolveAppVersion } from "./app-version";
@@ -49,7 +52,7 @@ import {
   type LocalRuntime,
 } from "./supervisor/runtime-extractor";
 import { compareVersions } from "./supervisor/version";
-import { sha256File } from "./supervisor/sha256";
+import { digestsEqual, sha256File } from "./supervisor/sha256";
 import { buildSidecarEnv } from "./supervisor/process-tree";
 import { SidecarSupervisor } from "./supervisor/sidecar";
 import { contentTypeFor, isExternalLink, resolveDashboardFile, resolveStaticPath } from "./protocol/static-handler";
@@ -64,7 +67,16 @@ import {
   type SelectedRelease,
 } from "./update/update-coordinator";
 import { downloadToFile } from "./update/download";
-import { installUpdate, type InstallOutcome, type InstallerKind } from "./update/installer";
+import { installUpdate, planInstall, type InstallOutcome, type InstallerKind } from "./update/installer";
+import {
+  BOT_FEED_URL,
+  botDownloadManifest,
+  minimumSupported,
+  releaseNotes,
+  verifyBotManifest,
+  type BotManifest,
+} from "./update/bot-feed";
+import { BotUpdater } from "./update/bot-updater";
 import {
   dashboardDevOrigin,
   readDashboardDev,
@@ -161,6 +173,9 @@ let trayIcon: NativeImage | null = null;
 // Set once the Dashboard has opened, so a later Dock click can open it again.
 let dashboardOrigin: string | null = null;
 let botOrb: BotOrb | null = null;
+// Octop Bot background updates (packaged Bot builds only) and the last verified manifest.
+let botUpdater: BotUpdater | null = null;
+let botManifest: BotManifest | null = null;
 // Current loopback port of the sidecar. Read per request (not captured), so a
 // restart after a failed install can hand the proxy a new port.
 let backendPort = 0;
@@ -317,12 +332,44 @@ function registerProtocol(staticRootDir: string): void {
 
 async function fetchUpdateManifest(): Promise<{ manifest: DownloadManifest; stableOnly: boolean }> {
   const settings = settingsStore.load();
+  if (botOnly) {
+    // Octop Bot has its own signed manifest; the upstream catalog lists another product.
+    const [body, signature] = await Promise.all([fetchText(BOT_FEED_URL), fetchText(`${BOT_FEED_URL}.sig`)]);
+    const verified = verifyBotManifest(body, signature);
+    botManifest = verified;
+    return { manifest: botDownloadManifest(verified, updateInstallId()), stableOnly: settings.stableOnly };
+  }
   const res = await net.fetch(UPDATE_ENDPOINT, { cache: "no-store" });
   if (!res.ok) throw new Error(`downloads endpoint returned ${res.status}`);
   return {
     manifest: manifestFromDownloadsResponse(await res.json()),
     stableOnly: settings.stableOnly,
   };
+}
+
+async function fetchText(url: string): Promise<string> {
+  const res = await net.fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`${url} returned ${res.status}`);
+  return res.text();
+}
+
+/** Random per-install id: keeps this install in the same staged-rollout bucket. */
+function updateInstallId(): string {
+  const file = join(app.getPath("userData"), "update-state.json");
+  try {
+    const saved: unknown = JSON.parse(readFileSync(file, "utf8"));
+    const id = (saved as { installId?: unknown } | null)?.installId;
+    if (typeof id === "string" && id.length >= 8) return id;
+  } catch {
+    // First run or unreadable: start a new id below.
+  }
+  const id = randomUUID();
+  try {
+    writeFileSync(file, JSON.stringify({ installId: id }));
+  } catch (err) {
+    desktopLog().warn(`could not save update install id: ${errorMessageOf(err)}`);
+  }
+  return id;
 }
 
 async function resolveSelectedRelease(): Promise<SelectedRelease | null> {
@@ -379,8 +426,10 @@ async function handOffToInstaller(kind: InstallerKind, path: string): Promise<vo
   if (kind === "appimage") await fs.chmod(path, 0o755);
   if (process.platform === "win32" && (kind === "exe" || kind === "msi")) {
     // NSIS/MSI must replace the running shell: start the installer detached and
-    // let this process exit right after (§6.3 step 3).
-    spawn(path, [], { detached: true, stdio: "ignore" }).unref();
+    // let this process exit right after (§6.3 step 3). The Bot's NSIS package
+    // installs silently over the current install and starts the app again.
+    const args = botOnly && kind === "exe" ? ["/S", "--updated", "--force-run"] : [];
+    spawn(path, args, { detached: true, stdio: "ignore" }).unref();
     return;
   }
   const failure = await shell.openPath(path);
@@ -394,9 +443,23 @@ async function restartBackend(win: BrowserWindow | null): Promise<void> {
   if (ready) win?.webContents.reload();
 }
 
+/** A package is trusted when it matches the digest from the signed manifest. */
+async function verifyPackage(selected: SelectedRelease, path: string): Promise<boolean> {
+  const expected = selected.asset.sha256;
+  // Bot packages always carry a digest; upstream assets never do (§6.1).
+  if (!expected) return !botOnly;
+  return digestsEqual(await sha256File(path), expected);
+}
+
+/** Where background downloads wait; separate from the install staging dir it clears. */
+function botReadyDir(): string {
+  return join(app.getPath("temp"), "octop-bot-update-ready");
+}
+
 async function runShellUpdate(
   win: BrowserWindow | null,
   selected: SelectedRelease,
+  prefetched?: string,
 ): Promise<InstallOutcome> {
   updateInFlight = true;
   try {
@@ -407,6 +470,8 @@ async function runShellUpdate(
     await fs.mkdir(dir, { recursive: true });
     return await installUpdate(selected, {
       download: async (plan) => {
+        // A package downloaded in the background is used as is (verified again below).
+        if (prefetched && existsSync(prefetched)) return prefetched;
         const dest = join(dir, plan.filename);
         await downloadToFile(plan.url, dest, net.fetch, {
           onProgress: (received, total) => {
@@ -415,9 +480,10 @@ async function runShellUpdate(
         });
         return dest;
       },
-      // §6.1 assets carry no digest; the URL is already pinned to https on
-      // download.octop.cloud by isValidAssetUrl() before it reaches this point.
-      verify: async () => true,
+      // Upstream §6.1 assets carry no digest; their URL is already pinned to https
+      // on an allowed host by isValidAssetUrl(). Bot packages must match the
+      // SHA-256 in the signed manifest.
+      verify: (path) => verifyPackage(selected, path),
       stopSidecar: async () => {
         // §6.3 step 1 — refuse new API admissions, then ask Python to exit.
         apiAdmissionClosed = true;
@@ -433,6 +499,212 @@ async function runShellUpdate(
     win?.setProgressBar(-1);
     updateInFlight = false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Octop Bot background updates: check, download and verify quietly, then offer
+// "restart to update" in a notification, the tray and the app menu. Never
+// blocks the user; a release below `min_supported` only gets stronger wording.
+
+function chineseUi(): boolean {
+  return app.getLocale().toLowerCase().startsWith("zh");
+}
+
+function appWindow(): BrowserWindow | null {
+  return BrowserWindow.getAllWindows().find((w) => w !== botOrb?.window && !w.isDestroyed()) ?? null;
+}
+
+/** The background download for this release, when one is waiting. */
+function readyPackageFor(selected: SelectedRelease): string | undefined {
+  const state = botUpdater?.current;
+  return state?.kind === "ready" && state.release.tag === selected.tag ? state.path : undefined;
+}
+
+/** True when the installed version is older than the manifest's `min_supported`. */
+function belowMinimumSupported(): boolean {
+  const floor = botManifest ? minimumSupported(botManifest) : null;
+  if (!floor) return false;
+  try {
+    return compareVersions(appVersion, floor) < 0;
+  } catch {
+    return false;
+  }
+}
+
+function startBotUpdater(): void {
+  if (!botOnly || !app.isPackaged || botUpdater) return;
+  botUpdater = new BotUpdater({
+    select: resolveSelectedRelease,
+    download: async (release) => {
+      const dir = botReadyDir();
+      await fs.rm(dir, { recursive: true, force: true });
+      await fs.mkdir(dir, { recursive: true });
+      const dest = join(dir, planInstall(release).filename);
+      await downloadToFile(release.asset.url, dest, net.fetch);
+      return dest;
+    },
+    verify: (release, path) => verifyPackage(release, path),
+    notifyReady: notifyBotUpdateReady,
+    autoDownload: () => settingsStore.load().autoDownloadUpdates,
+    notifyAvailable: notifyBotUpdateAvailable,
+    onChange: () => {
+      refreshUpdateMenus();
+      broadcastBotUpdateStatus();
+    },
+    log: (message) => desktopLog().info(message),
+    setTimer: (run, ms) => setTimeout(run, ms),
+    clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  });
+  botUpdater.start();
+}
+
+function notifyBotUpdateReady(release: SelectedRelease): void {
+  if (!Notification.isSupported()) return;
+  const zh = chineseUi();
+  const urgent = belowMinimumSupported();
+  const notice = new Notification({
+    title: zh ? `Octop Bot ${release.tag} 已准备好` : `Octop Bot ${release.tag} is ready`,
+    body: urgent
+      ? zh
+        ? "当前版本已停止支持，点击重启完成更新。"
+        : "This version is no longer supported. Click to restart and update."
+      : zh
+      ? "点击重启更新。"
+      : "Click to restart and update.",
+  });
+  notice.on("click", () => void applyBotUpdate());
+  notice.show();
+}
+
+/** Auto-download is off: say a release is out; clicking downloads and installs it. */
+function notifyBotUpdateAvailable(release: SelectedRelease): void {
+  if (!Notification.isSupported()) return;
+  const zh = chineseUi();
+  const urgent = belowMinimumSupported();
+  const notice = new Notification({
+    title: zh ? `Octop Bot ${release.tag} 可以更新了` : `Octop Bot ${release.tag} is available`,
+    body: urgent
+      ? zh
+        ? "当前版本已停止支持，点击下载并更新。"
+        : "This version is no longer supported. Click to download and update."
+      : zh
+      ? "点击下载并更新。"
+      : "Click to download and update.",
+  });
+  notice.on("click", () => void applyBotUpdate());
+  notice.show();
+}
+
+/** The update state for the settings page. */
+function botUpdateStatus(): BotUpdateStatus {
+  const state = botUpdater?.current ?? { kind: "idle" as const };
+  const release = "release" in state ? state.release : null;
+  return {
+    kind: state.kind,
+    currentVersion: appVersion,
+    version: release?.tag ?? null,
+    notes: release && botManifest ? releaseNotes(botManifest, release.tag, chineseUi()) || null : null,
+    urgent: release !== null && belowMinimumSupported(),
+    error: state.kind === "error" ? state.message : null,
+  };
+}
+
+function broadcastBotUpdateStatus(): void {
+  const status = botUpdateStatus();
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win === botOrb?.window || win.isDestroyed()) continue;
+    win.webContents.send(IPC_CHANNELS.botUpdateChanged, status);
+  }
+}
+
+/** Install the waiting (or a freshly downloaded) release: stop Python, hand off, quit. */
+async function applyBotUpdate(): Promise<void> {
+  if (updateInFlight) return;
+  const win = appWindow();
+  const zh = chineseUi();
+  let selected: SelectedRelease | null;
+  try {
+    const state = botUpdater?.current;
+    selected = state?.kind === "ready" ? state.release : await resolveSelectedRelease();
+  } catch (err) {
+    await showShellError(win, zh ? "检查更新失败" : "Update check failed", errorMessageOf(err));
+    return;
+  }
+  if (!selected) {
+    await showShellMessage(win, zh ? "已是最新版本" : "Up to date", `${zh ? "当前版本" : "Current version"} ${appVersion}`);
+    return;
+  }
+  const outcome = await runShellUpdate(win, selected, readyPackageFor(selected));
+  if (!outcome.ok) {
+    await showShellError(win, zh ? "更新失败" : "Update failed", outcome.message);
+    return;
+  }
+  app.quit();
+}
+
+/** "Check for Updates…": check now, then offer the release with its notes. */
+async function checkBotUpdatesNow(): Promise<void> {
+  const win = appWindow();
+  const zh = chineseUi();
+  let tag: string | null = null;
+  let failure: string | null = null;
+  if (botUpdater) {
+    const state = await botUpdater.check();
+    if (state.kind === "ready") tag = state.release.tag;
+    else if (state.kind === "error") failure = state.message;
+  } else {
+    try {
+      tag = (await resolveSelectedRelease())?.tag ?? null;
+    } catch (err) {
+      failure = errorMessageOf(err);
+    }
+  }
+  if (failure) {
+    await showShellError(win, zh ? "检查更新失败" : "Update check failed", failure);
+    return;
+  }
+  if (!tag) {
+    await showShellMessage(win, zh ? "已是最新版本" : "Up to date", `${zh ? "当前版本" : "Current version"} ${appVersion}`);
+    return;
+  }
+  const notes = botManifest ? releaseNotes(botManifest, tag, zh) : "";
+  const urgent = belowMinimumSupported()
+    ? zh
+      ? "当前版本已停止支持，建议现在更新。\n\n"
+      : "This version is no longer supported; please update now.\n\n"
+    : "";
+  const clipped = notes.length > 1200 ? `${notes.slice(0, 1200)}…` : notes;
+  const options = {
+    type: "info" as const,
+    buttons: zh ? ["重启并更新", "稍后"] : ["Restart and Update", "Later"],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+    message: zh ? `Octop Bot ${tag} 可以更新了` : `Octop Bot ${tag} is available`,
+    detail: `${urgent}${zh ? "当前版本" : "Current version"} ${appVersion}${clipped ? `\n\n${clipped}` : ""}`,
+  };
+  const { response } = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+  if (response === 0) await applyBotUpdate();
+}
+
+/** Menu entries for the update state: "Restart to update to X" or "Check for Updates…". */
+function updateMenuItems(): MenuItemConstructorOptions[] {
+  if (!botOnly) return [];
+  const zh = chineseUi();
+  const state = botUpdater?.current;
+  if (state?.kind === "ready") {
+    return [{ label: zh ? `重启以更新到 ${state.release.tag}` : `Restart to Update to ${state.release.tag}`, click: () => void applyBotUpdate() }];
+  }
+  if (state?.kind === "available") {
+    return [{ label: zh ? `下载并更新到 ${state.release.tag}` : `Download and Update to ${state.release.tag}`, click: () => void applyBotUpdate() }];
+  }
+  const busy = state?.kind === "checking" || state?.kind === "downloading";
+  return [{ label: zh ? "检查更新…" : "Check for Updates…", enabled: !busy, click: () => void checkBotUpdatesNow() }];
+}
+
+function refreshUpdateMenus(): void {
+  installAppMenu(appVersion);
+  if (process.platform === "linux" && tray && !tray.isDestroyed()) tray.setContextMenu(trayMenu());
 }
 
 function registerIpcHandlers(): void {
@@ -490,7 +762,28 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.clientSettingsSet, (_e, patch: Partial<ClientSettings>) => {
     const saved = settingsStore.save(patch);
     closeBehavior = saved.closeBehavior;
+    // A changed channel or turning auto-download on takes effect right away.
+    if (botUpdater && patch && ("stableOnly" in patch || "autoDownloadUpdates" in patch)) void botUpdater.check();
     return saved;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.botUpdateState, (): BotUpdateStatus => botUpdateStatus());
+  ipcMain.handle(IPC_CHANNELS.botUpdateCheck, async (): Promise<BotUpdateStatus> => {
+    if (!botOnly) return botUpdateStatus();
+    if (botUpdater) {
+      await botUpdater.check();
+      return botUpdateStatus();
+    }
+    // Unpackaged dev build: no background updater, report the check only.
+    try {
+      const release = await resolveSelectedRelease();
+      return { ...botUpdateStatus(), kind: release ? "available" : "idle", version: release?.tag ?? null };
+    } catch (err) {
+      return { ...botUpdateStatus(), kind: "error", error: errorMessageOf(err) };
+    }
+  });
+  ipcMain.handle(IPC_CHANNELS.botUpdateApply, async (): Promise<void> => {
+    if (botOnly) await applyBotUpdate();
   });
 
   // Synchronous on purpose: the renderer builds WebSocket URLs inside render
@@ -501,16 +794,6 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.checkForUpdates, async (): Promise<UpdateCheckResult> => {
-    if (botOnly) {
-      return {
-        status: "error",
-        currentVersion: appVersion,
-        latestVersion: null,
-        error: app.getLocale().toLowerCase().startsWith("zh")
-          ? "请使用 Octop Bot 独立安装包更新。"
-          : "Use the Octop Bot installer to update this app.",
-      };
-    }
     try {
       const { manifest, stableOnly } = await fetchUpdateManifest();
       const platform = platformAssetKey(process.platform, process.arch);
@@ -540,7 +823,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.installUpdate, async (event) => {
     // The page already confirmed. Ignore every argument and re-select the
     // release here, so the renderer cannot name a package URL (§6.2).
-    if (botOnly || updateInFlight) return;
+    if (updateInFlight) return;
     const win = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getAllWindows()[0] ?? null;
 
     let selected: SelectedRelease | null;
@@ -555,7 +838,7 @@ function registerIpcHandlers(): void {
       return;
     }
 
-    const outcome = await runShellUpdate(win, selected);
+    const outcome = await runShellUpdate(win, selected, readyPackageFor(selected));
     if (!outcome.ok) {
       await showShellError(win, "升级失败", outcome.message);
       return;
@@ -865,6 +1148,7 @@ function installAppMenu(version: string): void {
               accelerator: "Cmd+,",
               click: openBotSettings,
             },
+            ...updateMenuItems(),
             { type: "separator" },
             { role: "services" },
             { type: "separator" },
@@ -958,6 +1242,17 @@ function repoRootWithGit(start: string): string | null {
   return null;
 }
 
+function trayMenu(): Menu {
+  const labels = trayMenuLabels(app.getLocale(), botOnly);
+  return Menu.buildFromTemplate([
+    { label: labels.show, click: () => revealAppWindow() },
+    ...(botOnly ? [{ label: app.getLocale().startsWith("zh") ? "显示桌面悬浮球" : "Show floating button", click: () => botOrb?.show(true) }] : []),
+    ...updateMenuItems(),
+    { type: "separator" },
+    { label: labels.quit, click: () => app.quit() },
+  ]);
+}
+
 /** Notification-area icon. Left click and "show" open the window; "quit" exits. */
 async function installSystemTray(): Promise<void> {
   if (tray || !shouldInstallSystemTray(process.platform)) return;
@@ -979,20 +1274,14 @@ async function installSystemTray(): Promise<void> {
   trayIcon = process.platform === "linux" ? icon.resize({ width: 24, height: 24 }) : icon;
   const created = new Tray(trayIcon);
   created.setToolTip(productName);
-  const labels = trayMenuLabels(app.getLocale(), botOnly);
-  const menu = Menu.buildFromTemplate([
-    { label: labels.show, click: () => revealAppWindow() },
-    ...(botOnly ? [{ label: app.getLocale().startsWith("zh") ? "显示桌面悬浮球" : "Show floating button", click: () => botOrb?.show(true) }] : []),
-    { type: "separator" },
-    { label: labels.quit, click: () => app.quit() },
-  ]);
   // Left click opens the window. The menu stays on right click so a left
   // click is not swallowed by the context menu on Windows. Linux panels open
   // the menu from the icon, so the same menu has to be the context menu.
   created.on("click", () => revealAppWindow());
   created.on("double-click", () => revealAppWindow());
-  if (process.platform === "linux") created.setContextMenu(menu);
-  else created.on("right-click", () => created.popUpContextMenu(menu));
+  // Built on each open so the update entry shows the current state.
+  if (process.platform === "linux") created.setContextMenu(trayMenu());
+  else created.on("right-click", () => created.popUpContextMenu(trayMenu()));
   tray = created;
   desktopLog().info("tray icon ready");
 }
@@ -1218,6 +1507,7 @@ async function boot(): Promise<void> {
   // flash the user sees when "正在准备本地服务" finishes.
   const appOrigin = dashboardDev ? windowOrigin : PACKAGED_APP_ORIGIN;
   if (botOnly) botOrb = new BotOrb(runBotShortcut);
+  startBotUpdater();
   continueInEarlyWindow(early, appOrigin);
 }
 
@@ -1238,6 +1528,7 @@ app.on("activate", () => {
 
 app.on("before-quit", (event) => {
   if (quitting) return;
+  botUpdater?.stop();
   destroySystemTray();
   const sidecar = supervisor;
   const relay = wsRelay;

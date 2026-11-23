@@ -346,6 +346,25 @@
     "account": {
       "local": "Local account",
       "lynxce": "Lynxce account"
+    },
+    "update": {
+      "title": "About & updates",
+      "current": "Version {{version}}",
+      "upToDate": "Up to date",
+      "checking": "Checking for updates…",
+      "available": "Version {{version}} is available",
+      "availableUrgent": "This version is no longer supported. Update to {{version}}",
+      "downloading": "Downloading {{version}}…",
+      "ready": "{{version}} is downloaded. Restart to update",
+      "readyUrgent": "This version is no longer supported. {{version}} is downloaded; restart to update",
+      "failed": "Could not check for updates. Will try again later",
+      "check": "Check for updates",
+      "download": "Download and update",
+      "restart": "Restart and update",
+      "autoDownload": "Download updates automatically",
+      "autoDownloadHint": "Get new versions in the background and ask to restart when ready",
+      "beta": "Receive beta versions",
+      "betaHint": "Try new features early; may be less stable"
     }
   },
   "octopBot": {

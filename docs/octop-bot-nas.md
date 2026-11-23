@@ -19,7 +19,7 @@ docker compose up --build -d
 
 访问 `http://<主机IP>:8090`，用灵策智算账号登录，或设置登录密码后自己配置模型。端口已占用时，可在仓库根目录的 `.env` 中设置 `OCTOP_BOT_PORT=9090`，再执行 `docker compose up -d`。
 
-Compose 将数据库、模型配置、Bot 工作区和附件都写入 `bot-data` 卷。停用可执行 `docker compose down`。更新时在同一目录检出新版，重新执行 `docker compose up --build -d`。备份时先停止服务，再备份整个卷。
+Compose 将数据库、模型配置、Bot 工作区和附件都写入 `bot-data` 卷。停用可执行 `docker compose down`。更新时在同一目录检出新版，重新执行 `docker compose up --build -d`。备份时先停止服务，再备份整个卷。有新版本时，网页版的「检查更新」会显示版本号、对应的镜像和升级步骤；网页版不会自行从 PyPI 升级。发版与更新机制见 [Octop Bot 更新机制与发版](octop-bot-updates.md)。
 
 ## 飞牛应用中心
 

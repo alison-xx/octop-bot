@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Chief octopus centred in the 66 dp safe zone of the 108 dp adaptive icon. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="68dp"
+        android:height="55dp"
+        android:gravity="center"
+        android:drawable="@drawable/octop_mascot" />
+</layer-list>

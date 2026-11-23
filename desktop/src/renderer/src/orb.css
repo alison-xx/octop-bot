@@ -13,18 +13,16 @@ body {
   display: grid;
   place-items: center;
 }
+/* The bubble art is the ball itself: no plate, border or ring around it. */
 button {
-  width: 54px;
-  height: 54px;
-  padding: 5px;
+  width: 52px;
+  height: 52px;
+  padding: 0;
   display: grid;
   place-items: center;
+  border: 0;
   border-radius: 50%;
-  border: 1px solid #e5d5cf;
-  background: radial-gradient(circle at 40% 26%, #fff 25%, #fff0e9 88%);
-  box-shadow:
-    0 2px 4px #442b252e,
-    inset 0 0 0 2px #ffffffb3;
+  background: transparent;
   user-select: none;
   touch-action: none;
   cursor: grab;
@@ -41,24 +39,30 @@ img {
   height: 100%;
   object-fit: contain;
   pointer-events: none;
+  filter: drop-shadow(0 2px 3px #3d1f1a40);
+  transition:
+    transform 160ms ease-out,
+    filter 160ms ease-out;
+}
+button[data-dragging] img {
+  transform: scale(1.05);
+  filter: drop-shadow(0 3px 5px #3d1f1a4d);
 }
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
   button:hover:not([data-dragging]) img {
-    animation: greet 380ms ease-out;
+    animation: greet 420ms ease-out;
   }
   @keyframes greet {
-    30% {
-      transform: translateY(-2px) rotate(-9deg);
+    35% {
+      transform: translateY(-3px) scale(1.04);
     }
-    65% {
-      transform: translateY(-1px) rotate(5deg);
+    70% {
+      transform: translateY(0) scale(0.98);
     }
   }
 }
 @media (prefers-color-scheme: dark) {
-  button {
-    background: radial-gradient(circle at 40% 26%, #443832, #2c2523);
-    border-color: #74605a;
-    box-shadow: 0 2px 4px #0005;
+  img {
+    filter: drop-shadow(0 2px 4px #0008);
   }
 }
