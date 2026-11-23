@@ -44,6 +44,10 @@ test("probing accepts new and old Octop servers only", async () => {
   assert.deepEqual(await probeServer("https://new.example.com", reply({ "/api/octop-bot/server-info": { product: "octop-bot" } })), { ok: true });
   assert.deepEqual(await probeServer("https://old.example.com", reply({ "/api/setup/status": { setup_required: false } })), { ok: true });
   assert.deepEqual(await probeServer("https://blog.example.com", reply({})), { ok: false, reason: "not-octop" });
+  assert.deepEqual(await probeServer("https://api.example.com", reply({ "/api/setup/status": { status: "ok" } })), {
+    ok: false,
+    reason: "not-octop",
+  });
   const offline = async () => {
     throw new Error("ECONNREFUSED");
   };

@@ -469,8 +469,12 @@ async def enrich_tool_result_with_backend(
     *,
     agent_id: str,
     workspace: BackendWorkspace,
+    host_files: bool = True,
 ) -> dict[str, Any]:
-    """Import external ``file://`` media into workspace and set ``preview_url``."""
+    """Import external ``file://`` media into workspace and set ``preview_url``.
+
+    ``host_files=False`` (a cloud tenant's agent) never reads the server's own disk.
+    """
     messages = chunk.get("messages")
     if not isinstance(messages, list):
         return chunk
@@ -490,6 +494,7 @@ async def enrich_tool_result_with_backend(
                     content,
                     agent_id=agent_id,
                     workspace=workspace,
+                    host_files=host_files,
                 )
                 if plain_enriched != content:
                     if isinstance(message, dict):
@@ -504,7 +509,9 @@ async def enrich_tool_result_with_backend(
 
         enriched = await _amap_content_blocks(
             content,
-            lambda block: _enrich_block_with_backend(block, agent_id=agent_id, workspace=workspace),
+            lambda block: _enrich_block_with_backend(
+                block, agent_id=agent_id, workspace=workspace, host_files=host_files
+            ),
         )
         if enriched is content:
             out_messages.append(message)
@@ -551,7 +558,7 @@ def _file_block_path(block: dict[str, Any], raw_url: str) -> str | None:
 
 
 async def _enrich_block_with_backend(
-    block: Any, *, agent_id: str, workspace: BackendWorkspace
+    block: Any, *, agent_id: str, workspace: BackendWorkspace, host_files: bool = True
 ) -> Any:
     if not isinstance(block, dict) or block.get("type") not in _MEDIA_BLOCK_TYPES:
         return block
@@ -581,6 +588,7 @@ async def _enrich_block_with_backend(
         raw_url,
         filename=filename,
         mime=mime,
+        host_files=host_files,
     )
     return _block_with_preview_url(block, url)
 
@@ -601,6 +609,7 @@ async def enrich_tool_output_string(
     *,
     agent_id: str,
     workspace: BackendWorkspace | None,
+    host_files: bool = True,
 ) -> str:
     """Rewrite ``file://`` media in a tool-result JSON string to workspace download URLs."""
     if not output.strip():
@@ -612,12 +621,15 @@ async def enrich_tool_output_string(
             output,
             agent_id=agent_id,
             workspace=workspace,
+            host_files=host_files,
         )
 
     if workspace is not None:
         enriched = await _amap_content_blocks(
             output,
-            lambda block: _enrich_block_with_backend(block, agent_id=agent_id, workspace=workspace),
+            lambda block: _enrich_block_with_backend(
+                block, agent_id=agent_id, workspace=workspace, host_files=host_files
+            ),
         )
     else:
         enriched = enrich_tool_message_content(output, agent_id=agent_id)
@@ -664,6 +676,7 @@ async def _enrich_plain_text_tool_media(
     *,
     agent_id: str,
     workspace: BackendWorkspace | None,
+    host_files: bool = True,
 ) -> str:
     """When tool output is plain text with a screenshot path, append an image block."""
     stripped = output.strip()
@@ -682,6 +695,7 @@ async def _enrich_plain_text_tool_media(
             file_url,
             filename=Path(raw_path).name,
             mime=mime,
+            host_files=host_files,
         )
     else:
         preview = dashboard_media_url(agent_id, file_url, mime) or media_preview_url(
@@ -733,6 +747,7 @@ async def iter_dashboard_attachment_frames(
     live_tool_call_ids: set[str],
     emitted_media_ids: set[str],
     emitted_attachment_keys: set[str],
+    host_files: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield pushable dashboard attachments for this turn.
 
@@ -749,6 +764,7 @@ async def iter_dashboard_attachment_frames(
         chunk_for_media,
         agent_id=agent_id,
         workspace=workspace,
+        host_files=host_files,
     ):
         key = attachment_frame_dedup_key(frame)
         if key is not None:
@@ -763,6 +779,7 @@ async def attachment_frames_from_tool_result(
     *,
     agent_id: str,
     workspace: BackendWorkspace,
+    host_files: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield dashboard WS attachment frames with workspace download URLs.
 
@@ -788,6 +805,7 @@ async def attachment_frames_from_tool_result(
                         raw_url,
                         filename=filename,
                         mime=mime,
+                        host_files=host_files,
                     )
 
             btype = str(block.get("type") or "file")
@@ -799,7 +817,9 @@ async def attachment_frames_from_tool_result(
                     preview_url = workspace_download_url(agent_id, file_path)
 
             if not preview_url:
-                attachment = await _attachment_frame_from_bytes(block, workspace=workspace)
+                attachment = await _attachment_frame_from_bytes(
+                    block, workspace=workspace, host_files=host_files
+                )
                 if attachment:
                     yield attachment
                 continue
@@ -835,10 +855,10 @@ async def attachment_frames_from_tool_result(
 
 
 async def _attachment_frame_from_bytes(
-    block: dict[str, Any], *, workspace: BackendWorkspace
+    block: dict[str, Any], *, workspace: BackendWorkspace, host_files: bool = True
 ) -> dict[str, Any] | None:
     """Fallback: inline base64 when workspace import is impossible."""
-    data = await read_media_block_bytes(block, workspace=workspace)
+    data = await read_media_block_bytes(block, workspace=workspace, host_files=host_files)
     if data is None:
         return None
     raw_bytes, block_mime = data
@@ -859,6 +879,7 @@ async def read_media_block_bytes(
     block: dict[str, Any],
     *,
     workspace: BackendWorkspace,
+    host_files: bool = True,
 ) -> tuple[bytes, str] | None:
     raw_source = block.get("source")
     source = raw_source if isinstance(raw_source, dict) else {}
@@ -877,7 +898,9 @@ async def read_media_block_bytes(
     if not raw_url.startswith("file://"):
         return None
 
-    data = await read_file_url_bytes(workspace, raw_url, filename=filename, mime=mime)
+    data = await read_file_url_bytes(
+        workspace, raw_url, filename=filename, mime=mime, host_files=host_files
+    )
     if data is None:
         return None
     guessed = mime or mimetypes.guess_type(filename or raw_url)[0] or "application/octet-stream"
@@ -888,6 +911,7 @@ async def block_to_content_part(
     block: dict[str, Any],
     *,
     workspace: BackendWorkspace,
+    host_files: bool = True,
 ) -> ContentPart | None:
     btype = block.get("type")
     if btype not in _MEDIA_BLOCK_TYPES:
@@ -912,7 +936,9 @@ async def block_to_content_part(
             return None
         data_field = payload
     elif raw_url.startswith("file://"):
-        file_bytes = await read_file_url_bytes(workspace, raw_url, filename=filename, mime=mime)
+        file_bytes = await read_file_url_bytes(
+            workspace, raw_url, filename=filename, mime=mime, host_files=host_files
+        )
         if file_bytes is None:
             return None
         data_field = base64.b64encode(file_bytes).decode("ascii")
@@ -972,8 +998,12 @@ async def media_events_from_tool_result(
     chunk: dict[str, Any],
     *,
     workspace: BackendWorkspace,
+    host_files: bool = True,
 ) -> AsyncIterator[MessageEvent]:
-    """Yield IM media events from allowlisted delivery-tool results only."""
+    """Yield IM media events from allowlisted delivery-tool results only.
+
+    ``host_files=False`` (a cloud tenant's agent) never reads the server's own disk.
+    """
     messages = chunk.get("messages") or []
     if not isinstance(messages, list):
         return
@@ -984,7 +1014,9 @@ async def media_events_from_tool_result(
             continue
         for block in iter_media_blocks(extract_message_content(message)):
             try:
-                part = await block_to_content_part(block, workspace=workspace)
+                part = await block_to_content_part(
+                    block, workspace=workspace, host_files=host_files
+                )
             except (FileNotFoundError, OSError, ValueError) as exc:
                 logger.warning("tool_result media block: file missing: %s", exc)
                 continue

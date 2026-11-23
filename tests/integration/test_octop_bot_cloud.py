@@ -1,5 +1,6 @@
 """Octop Bot cloud (OCTOP_BOT_CLOUD): every Lynxce account gets its own account and model key."""
 
+import asyncio
 import json
 from collections import Counter
 from pathlib import Path
@@ -24,12 +25,18 @@ class Upstream:
     def __init__(self) -> None:
         self.counts: Counter[str] = Counter()
         self.keys: list[dict[str, Any]] = []
+        self.revoked: set[str] = set()
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         assert req.url.host == "api.lynxce.cn" and req.url.scheme == "https"
-        assert req.headers["X-Lynxce-Client"] == "web"
         path = req.url.path
         self.counts[path] += 1
+        if path == "/api/v1/models":  # the open gateway, called with a personal API key
+            secret = req.headers["Authorization"].removeprefix("Bearer ")
+            if secret in self.revoked:
+                return httpx.Response(401, json={"error": {"message": "invalid key"}})
+            return httpx.Response(200, json={"object": "list", "data": []})
+        assert req.headers["X-Lynxce-Client"] == "web"
         if path == "/api/auth/phone-login":
             payload = json.loads(req.content)
             if payload["code"] != "123456":
@@ -342,3 +349,127 @@ async def test_screen_tickets_are_owner_only_and_single_use(
         assert one_time in bot_computers._tickets
         bot_computers._tickets.pop(one_time)
         assert one_time not in bot_computers._tickets
+
+
+async def test_a_revoked_model_key_is_replaced_at_the_next_sign_in(
+    tmp_octop_home: Path, upstream: Upstream
+) -> None:
+    async with octop_client(tmp_octop_home) as (client, srv):
+        uid = (await _sign_in(client, "13800000020"))["user"]["id"]
+        assert accounts.load_model_key(srv.services, uid).secret == "sk-test-1"
+        # Still valid: signing in again keeps it.
+        await _sign_in(client, "13800000020")
+        assert len(upstream.keys) == 1
+        # Revoked in the Lynxce account centre: the next sign-in issues a new one.
+        upstream.revoked.add("sk-test-1")
+        await _sign_in(client, "13800000020")
+        assert accounts.load_model_key(srv.services, uid).secret == "sk-test-2"
+        assert len(upstream.keys) == 2
+
+
+async def test_racing_first_sign_ins_mint_one_model_key(
+    tmp_octop_home: Path, upstream: Upstream
+) -> None:
+    async with octop_client(tmp_octop_home) as (client, srv):
+        uid = (await _sign_in(client, "13800000021"))["user"]["id"]
+        accounts.forget_model_key(srv.services, uid)
+        keys = await asyncio.gather(
+            accounts.ensure_model_key(srv.services, uid),
+            accounts.ensure_model_key(srv.services, uid),
+        )
+        assert keys[0] == keys[1]
+        assert len(upstream.keys) == 2  # the sign-in's key and one replacement
+
+
+async def test_tenants_one_shot_calls_use_their_own_key_and_not_the_servers_voice(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.api.routers import text_assist as text_assist_router
+    from octop.infra.users.identity import Role
+
+    seen: dict[str, Any] = {}
+
+    async def _fake_assist(**kwargs: Any) -> str:
+        access = kwargs["models"].get(kwargs["default_model"])
+        seen["model"] = access.model_ref
+        seen["base_url"] = access.chat_model.openai_api_base
+        return "polished"
+
+    monkeypatch.setattr(text_assist_router, "run_text_assist", _fake_assist)
+    async with octop_client(tmp_octop_home) as (client, srv):
+        signed = await _sign_in(client, "13800000022")
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        res = await client.post(
+            "/api/text/assist",
+            headers=auth,
+            json={"kind": "chat.prompt", "text": "hi", "default_model": "openai/gpt-4o"},
+        )
+        assert res.status_code == 200, res.text
+        # Whatever model the client asks for, a tenant's call runs on their own Lynxce key.
+        assert seen["model"] == f"lynxce/{accounts.DEFAULT_MODEL}"
+        assert seen["base_url"] == GATEWAY_URL
+
+        registry = srv.app_runtime.agent_registry
+        admin = await srv.user_manager.create(
+            username="operator", password="Operator-pass1!", role=Role.ADMIN
+        )
+        assert registry.cloud_tenant_model(admin.id) is None
+
+        tts = await client.post("/api/voice/tts", headers=auth, json={"text": "hi"})
+        assert tts.status_code == 403
+        stt = await client.post(
+            "/api/voice/stt", headers=auth, files={"audio": ("a.webm", b"x", "audio/webm")}
+        )
+        assert stt.status_code == 403
+
+
+async def test_host_files_are_closed_to_tenant_agents_only(
+    tmp_octop_home: Path, upstream: Upstream
+) -> None:
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.users.identity import Role
+
+    async with octop_client(tmp_octop_home) as (client, srv):
+        registry = srv.app_runtime.agent_registry
+        uid = (await _sign_in(client, "13800000023"))["user"]["id"]
+        tenant_bot = await registry.create(
+            AgentCreateSpec(user_id=uid, name="Tenant"), defer_bootstrap=True
+        )
+        admin = await srv.user_manager.create(
+            username="operator", password="Operator-pass1!", role=Role.ADMIN
+        )
+        operator_bot = await registry.create(
+            AgentCreateSpec(user_id=admin.id, name="Ops"), defer_bootstrap=True
+        )
+        assert registry.host_files_allowed(tenant_bot.agent_id) is False
+        assert registry.host_files_allowed(operator_bot.agent_id) is True
+
+
+async def test_disabled_tenants_and_cancelled_deletions(
+    tmp_octop_home: Path, upstream: Upstream
+) -> None:
+    async with octop_client(tmp_octop_home) as (client, srv):
+        users = srv.user_manager
+        # Deleted, then the deletion is cancelled at Lynxce: signing in again restores the account.
+        signed = await _sign_in(client, "13800000024")
+        uid = signed["user"]["id"]
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        assert (await client.post("/api/octop-bot/account/delete", headers=auth)).status_code == 200
+        assert srv.services.user_repo.get(uid).disabled
+        back = await _sign_in(client, "13800000024")
+        assert back["user"]["id"] == uid
+        assert not srv.services.user_repo.get(uid).disabled
+        assert users.disabled_reason(uid) is None
+        assert accounts.load_model_key(srv.services, uid) is not None
+
+        # Disabled by the operator (even after a deletion request): stays out, and the Lynxce
+        # session opened by the attempt is closed again.
+        await users.disable(
+            srv.services.user_repo.get(uid).username, reason=accounts.DELETION_PENDING
+        )
+        await users.disable(srv.services.user_repo.get(uid).username)
+        logouts = upstream.counts["/api/auth/logout"]
+        refused = await client.post(CODE_LOGIN, json={"target": "13800000024", "code": "123456"})
+        assert refused.status_code == 403
+        assert srv.services.user_repo.get(uid).disabled
+        assert upstream.counts["/api/auth/logout"] == logouts + 1

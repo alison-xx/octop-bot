@@ -837,7 +837,8 @@
       "interpreter_missing": "No {runtime} interpreter is available, so the script did not run.",
       "timeout": "The script ran longer than {seconds} seconds.",
       "failed": "Script failed (exit {code}): {detail}",
-      "unreadable": "Could not read workspace script {path}."
+      "unreadable": "Could not read workspace script {path}.",
+      "needs_cloud_computer": "This Bot has no cloud computer yet, so the script cannot run."
     }
   },
   "agents": {

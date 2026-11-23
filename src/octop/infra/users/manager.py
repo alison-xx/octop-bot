@@ -40,6 +40,7 @@ from octop.infra.utils.locale import normalize_locale
 
 logger = logging.getLogger(__name__)
 _USERNAME_ALLOWED = re.compile(r"[^a-zA-Z0-9_.-]")
+_DISABLED_REASON_KEY = "users.disabled_reason.{}"
 _MAX_USERNAME_LENGTH = 64
 
 
@@ -763,20 +764,32 @@ class UserManager:
         merged = merge_onboarding_completed_json(row.preferences_json, completed)
         self._services.user_repo.set_preferences_json(row.id, merged)
 
-    async def disable(self, username: str) -> None:
+    async def disable(self, username: str, *, reason: str | None = None) -> None:
+        """Disable the account. ``reason`` records why (see :meth:`disabled_reason`); an
+        operator's disable passes none, which replaces any reason recorded earlier."""
         row = self._services.user_repo.get_by_username(username)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "user not found")
         async with self._lock:
             self._users.pop(username, None)
         self._services.user_repo.set_disabled(row.id, True)
+        key = _DISABLED_REASON_KEY.format(row.id)
+        if reason:
+            self._services.settings_repo.set(key, reason)
+        else:
+            self._services.settings_repo.delete(key)
         self._services.audit_repo.write(actor=ACTOR_ADMIN, action="user.disable", target=username)
+
+    def disabled_reason(self, user_id: int) -> str | None:
+        """Why a disabled account was disabled, when that was not the operator's own call."""
+        return self._services.settings_repo.get(_DISABLED_REASON_KEY.format(user_id))
 
     async def enable(self, username: str) -> None:
         row = self._services.user_repo.get_by_username(username)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "user not found")
         self._services.user_repo.set_disabled(row.id, False)
+        self._services.settings_repo.delete(_DISABLED_REASON_KEY.format(row.id))
         user = User(
             id=row.id,
             username=row.username,
