@@ -74,16 +74,24 @@ class LynxceBackend(
             }
         }
 
-        suspend fun signIn(account: String, password: String, store: AppStore, localBots: LocalBots): LynxceBackend {
-            val data = call("POST", "/api/auth/password-login", null, emptyMap(), Http.body(LynxceProtocol.loginBody(account, password)))
-            val body = data.asObject() ?: throw ApiException.badResponse()
-            val user = body.obj("user")
-            val grant = LynxceGrant(
-                accountId = user?.idString("id") ?: throw ApiException.badResponse(),
-                displayName = user.str("displayName")?.takeIf { it.isNotBlank() },
-                accessToken = body.str("accessToken") ?: throw ApiException.badResponse(),
-                refreshToken = body.str("refreshToken") ?: throw ApiException.badResponse(),
-            )
+        suspend fun signIn(account: String, password: String, store: AppStore, localBots: LocalBots): LynxceBackend =
+            enter(call("POST", "/api/auth/password-login", null, emptyMap(), Http.body(LynxceProtocol.loginBody(account, password))), store, localBots)
+
+        /** Send a sign-in code by SMS or email. The response's dev code is ignored on purpose. */
+        suspend fun requestCode(target: LynxceProtocol.Target) {
+            val body = LynxceProtocol.codeRequestBody(target, Http.isChinese())
+            call("POST", LynxceProtocol.codeRequestPath(target), null, emptyMap(), Http.body(body))
+        }
+
+        /** Sign in (or sign up: Lynxce creates new accounts automatically) with a 6-digit code. */
+        suspend fun signIn(target: LynxceProtocol.Target, code: String, store: AppStore, localBots: LocalBots): LynxceBackend {
+            require(LynxceProtocol.isValidCode(code))
+            val body = LynxceProtocol.codeLoginBody(target, code)
+            return enter(call("POST", LynxceProtocol.codeLoginPath(target), null, emptyMap(), Http.body(body)), store, localBots)
+        }
+
+        private suspend fun enter(data: JsonElement, store: AppStore, localBots: LocalBots): LynxceBackend {
+            val grant = LynxceProtocol.grant(data)
             store.setLynxceGrant(grant)
             return LynxceBackend(grant, store, localBots)
         }

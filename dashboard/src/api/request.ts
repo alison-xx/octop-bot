@@ -144,7 +144,13 @@ function handleSetupRequired(): void {
 
 /** Wizard endpoints stay reachable while lockdown is active. */
 function isSetupApiPath(path: string): boolean {
-  return path === "/setup/status" || path.startsWith("/setup/");
+  // Mirrors the server's setup lockdown allow-list: the Bot web build's first
+  // Lynxce sign-in is what closes setup.
+  return (
+    path === "/setup/status" ||
+    path.startsWith("/setup/") ||
+    path.startsWith("/auth/lynxce/")
+  );
 }
 
 /**

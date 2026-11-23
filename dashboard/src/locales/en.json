@@ -190,6 +190,23 @@
       "description": "Choose a starting point to bring a draft into Chief’s chat. Edit it to fit your task and send it when you’re ready."
     }
   },
+  "lynxceSignIn": {
+    "target": "Phone or email",
+    "targetPlaceholder": "Your phone number or email",
+    "account": "Lynxce account",
+    "accountPlaceholder": "Phone, email or username",
+    "code": "Code",
+    "codePlaceholder": "6-digit code",
+    "send": "Get code",
+    "resend": "Resend",
+    "resendIn": "Resend in {{seconds}}s",
+    "sentPhone": "Code sent by text message. It is valid for a few minutes.",
+    "sentEmail": "Code sent by email. Check spam if it does not arrive.",
+    "newAccountHint": "No Lynxce account yet? Signing in creates one; no password needed.",
+    "password": "Password",
+    "usePassword": "Use a password instead",
+    "useCode": "Use a code instead"
+  },
   "botOnboarding": {
     "chiefName": "Chief",
     "desktopBody": "Chief is your octopus assistant. It builds a Bot team and splits up the work. Connect a chat model to start — no local account needed.",
@@ -698,6 +715,9 @@
   "apiErrors": {
     "BOT_CLOUD_ACCOUNT_REQUIRED": "Sign in to Lynxce Cloud. If you switched accounts, reopen this action.",
     "LYNXCE_OWNER_MISMATCH": "This Octop Bot is bound to a different Lynxce account. Sign in with the account used the first time.",
+    "LYNXCE_CODE_INVALID": "The code is wrong or has expired. Request a new one.",
+    "LYNXCE_CODE_TARGET_INVALID": "Enter a valid phone number or email.",
+    "LYNXCE_CODE_THROTTLED": "Codes were requested too often. Try again in a moment.",
     "BOT_CLOUD_REQUEST_REJECTED": "Lynxce Cloud could not complete this action.",
     "BOT_CLOUD_CREDITS_REQUIRED": "This Lynxce Cloud account has insufficient credits.",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "Authorize Lynxce checkout to recharge this account. Your existing chat connection stays active.",

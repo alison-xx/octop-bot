@@ -427,6 +427,28 @@ export const authApi = {
     return toLoginResult(raw) as LoginResponse;
   },
 
+  /** Bot web build: ask Lynxce to text or email a one-time sign-in code. */
+  lynxceSendCode: (target: string, locale?: string) =>
+    request<{ channel: "phone" | "email" }>("/auth/lynxce/code", {
+      method: "POST",
+      body: JSON.stringify({ target, locale }),
+    }),
+
+  /** Bot web build: sign in with a Lynxce one-time code (no password needed). */
+  lynxceCodeLogin: async (
+    target: string,
+    code: string,
+    locale?: string,
+  ): Promise<LoginResponse> => {
+    const raw = await request<RawLoginResponse>("/auth/lynxce/code-login", {
+      method: "POST",
+      body: JSON.stringify({ target, code, locale }),
+    });
+    invalidateAuthStatusCache();
+    clearSetupRequired();
+    return toLoginResult(raw) as LoginResponse;
+  },
+
   /** Return whether the configured OIDC provider can accept logins. */
   getOidcStatus: () => request<OidcStatus>("/auth/oidc/status"),
 

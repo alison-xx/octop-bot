@@ -53,6 +53,8 @@ _JWT_EXEMPT_EXACT = (
     "/api/auth/login",
     # Bot web build: a verified Lynxce account is the credential (router-gated).
     "/api/auth/lynxce/login",
+    "/api/auth/lynxce/code",
+    "/api/auth/lynxce/code-login",
     "/api/auth/lynxce/status",
     # Desktop shells renew an expired session here; the device token is the
     # credential and the router enforces shell-flag + loopback + digest match.

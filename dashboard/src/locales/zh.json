@@ -190,6 +190,23 @@
       "description": "选一个起点，把草稿带到 Chief 的输入框。可以按自己的需求改写，准备好后再发送。"
     }
   },
+  "lynxceSignIn": {
+    "target": "手机号或邮箱",
+    "targetPlaceholder": "输入手机号或邮箱",
+    "account": "灵策账号",
+    "accountPlaceholder": "手机号、邮箱或用户名",
+    "code": "验证码",
+    "codePlaceholder": "6 位验证码",
+    "send": "获取验证码",
+    "resend": "重新发送",
+    "resendIn": "{{seconds}} 秒后重发",
+    "sentPhone": "验证码已发送到手机，几分钟内有效。",
+    "sentEmail": "验证码已发送到邮箱，没收到请看看垃圾邮件。",
+    "newAccountHint": "没有灵策账号也可以直接登录，会自动注册，不用设密码。",
+    "password": "密码",
+    "usePassword": "用密码登录",
+    "useCode": "用验证码登录"
+  },
   "botOnboarding": {
     "chiefName": "Chief",
     "desktopBody": "Chief 是你的八爪鱼助手，可以帮你组建 Bot 团队、分工协作。连接一个聊天模型就能开始，不需要注册本机账号。",
@@ -698,6 +715,9 @@
   "apiErrors": {
     "BOT_CLOUD_ACCOUNT_REQUIRED": "请登录灵策云账号。切换账号后，请重新打开此操作。",
     "LYNXCE_OWNER_MISMATCH": "这台 Octop Bot 已绑定其他灵策账号。请使用首次登录时的灵策账号。",
+    "LYNXCE_CODE_INVALID": "验证码错误或已过期，请重新获取。",
+    "LYNXCE_CODE_TARGET_INVALID": "请输入正确的手机号或邮箱。",
+    "LYNXCE_CODE_THROTTLED": "验证码发送太频繁，请稍后再试。",
     "BOT_CLOUD_REQUEST_REJECTED": "灵策云未能执行此操作。",
     "BOT_CLOUD_CREDITS_REQUIRED": "当前灵策云账号的可用积分不足。",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "请补充授权灵策充值。当前聊天连接可继续使用。",

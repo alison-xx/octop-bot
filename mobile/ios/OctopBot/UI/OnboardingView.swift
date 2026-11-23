@@ -5,6 +5,8 @@ struct OnboardingView: View {
     @Environment(AppModel.self) private var model
     @State private var account = ""
     @State private var password = ""
+    @State private var entry = CodeEntry()
+    @State private var usePassword = false
     @State private var busy = false
     @State private var error: String?
     @State private var showServer = false
@@ -70,6 +72,11 @@ struct OnboardingView: View {
         }
     }
 
+    private var target: LynxceBackend.CodeTarget? { LynxceBackend.CodeTarget(account) }
+    private var canSignIn: Bool {
+        usePassword ? !account.isEmpty && password.count >= 8 : target != nil && entry.isComplete
+    }
+
     private var form: some View {
         VStack(spacing: 12) {
             Text("onboarding.lynxce")
@@ -81,21 +88,34 @@ struct OnboardingView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .focused($focus, equals: .account)
-                .submitLabel(.next)
-                .onSubmit { focus = .password }
+                .submitLabel(usePassword ? .next : .send)
+                .onSubmit { if usePassword { focus = .password } else { sendCode() } }
+                .onChange(of: account) {
+                    entry.reset()
+                    error = nil
+                }
                 .fieldStyle()
                 .accessibilityIdentifier("account")
-            SecureField("onboarding.password", text: $password)
-                .textContentType(.password)
-                .focused($focus, equals: .password)
-                .submitLabel(.go)
-                .onSubmit(signIn)
-                .fieldStyle()
-                .accessibilityIdentifier("password")
+            if usePassword {
+                SecureField("onboarding.password", text: $password)
+                    .textContentType(.password)
+                    .focused($focus, equals: .password)
+                    .submitLabel(.go)
+                    .onSubmit(signIn)
+                    .fieldStyle()
+                    .accessibilityIdentifier("password")
+            } else {
+                CodeEntryRow(entry: entry, canSend: entry.canSend(to: account), send: sendCode, complete: signIn)
+            }
             if let error {
                 Text(error)
                     .font(.footnote)
                     .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if entry.sent && !usePassword {
+                Text(entry.sentNote(for: account))
+                    .font(.footnote)
+                    .foregroundStyle(Palette.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             Button(action: signIn) {
@@ -108,27 +128,67 @@ struct OnboardingView: View {
                 .background(Palette.text, in: Capsule())
                 .foregroundStyle(Palette.background)
             }
-            .disabled(busy || account.isEmpty || password.count < 8)
-            .opacity(account.isEmpty || password.count < 8 ? 0.5 : 1)
+            .disabled(busy || !canSignIn)
+            .opacity(canSignIn ? 1 : 0.5)
             .accessibilityIdentifier("signIn")
-            Link("onboarding.register", destination: URL(string: "https://www.lynxce.cn")!)
-                .font(.footnote)
-                .foregroundStyle(Palette.secondary)
+            Button(usePassword ? "onboarding.useCode" : "onboarding.usePassword") {
+                usePassword.toggle()
+                error = nil
+                focus = nil
+            }
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(Palette.text)
+            .padding(.top, 2)
+            .accessibilityIdentifier("loginMode")
+            if usePassword {
+                Link("onboarding.register", destination: URL(string: "https://www.lynxce.cn")!)
+                    .font(.footnote)
+                    .foregroundStyle(Palette.secondary)
+            } else {
+                Text("onboarding.codeHint")
+                    .font(.footnote)
+                    .foregroundStyle(Palette.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+    }
+
+    private func sendCode() {
+        guard entry.canSend(to: account), let target else { return }
+        error = nil
+        Task {
+            if let failure = await entry.send({ try await LynxceBackend.requestCode(target: target) }) {
+                error = LynxceBackend.codeMessage(for: failure)
+            }
         }
     }
 
     private func signIn() {
-        guard !busy, !account.isEmpty, password.count >= 8 else { return }
+        guard !busy, canSignIn else { return }
         busy = true
         error = nil
         Task {
             defer { busy = false }
             do {
-                let backend = try await LynxceBackend.signIn(account: account.trimmingCharacters(in: .whitespaces), password: password)
-                password = ""
+                let backend: LynxceBackend
+                if usePassword {
+                    backend = try await LynxceBackend.signIn(account: account.trimmingCharacters(in: .whitespaces), password: password)
+                    password = ""
+                } else {
+                    guard let target else { return }
+                    backend = try await LynxceBackend.signIn(target: target, code: entry.code)
+                    entry.code = ""
+                    entry.reset()
+                }
                 await model.use(backend)
             } catch {
-                self.error = error.localizedDescription
+                if usePassword {
+                    self.error = error.localizedDescription
+                } else {
+                    self.error = LynxceBackend.codeMessage(for: error)
+                    // A rejected code is spent; clear it so a new one can be typed or autofilled.
+                    if (error as? APIError)?.status == 401 { entry.code = "" }
+                }
             }
         }
     }
@@ -149,8 +209,21 @@ struct ServerConnectView: View {
     @State private var password = ""
     @State private var mfaToken: String?
     @State private var code = ""
+    /// Lynxce owners sign in with a code unless they switch to their password.
+    @State private var entry = CodeEntry()
+    @State private var lynxcePassword = false
     @State private var busy = false
     @State private var error: String?
+
+    private var lynxceCode: Bool {
+        if case .lynxce = probe { !lynxcePassword } else { false }
+    }
+
+    private var ready: Bool {
+        guard !address.isEmpty else { return false }
+        guard probe != nil else { return true }
+        return lynxceCode ? LynxceBackend.CodeTarget(account) != nil && entry.isComplete : !password.isEmpty
+    }
 
     var body: some View {
         NavigationStack {
@@ -161,7 +234,7 @@ struct ServerConnectView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .onChange(of: address) {
-                            if address != probedAddress { probe = nil; mfaToken = nil }
+                            if address != probedAddress { probe = nil; mfaToken = nil; entry.reset() }
                         }
                         .onSubmit(next)
                         .focused($addressFocused)
@@ -180,6 +253,7 @@ struct ServerConnectView: View {
                                 .keyboardType(.emailAddress)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
+                                .onChange(of: account) { entry.reset() }
                         case .password:
                             TextField("server.username", text: $username)
                                 .textContentType(.username)
@@ -188,15 +262,27 @@ struct ServerConnectView: View {
                         case .localPassword:
                             EmptyView()
                         }
-                        SecureField("onboarding.password", text: $password)
-                            .textContentType(.password)
-                            .onSubmit(next)
-                            .focused($passwordFocused)
-                            .accessibilityIdentifier("serverPassword")
+                        if lynxceCode {
+                            CodeEntryRow(entry: entry, canSend: entry.canSend(to: account), boxed: false, send: sendCode, complete: next)
+                        } else {
+                            SecureField("onboarding.password", text: $password)
+                                .textContentType(.password)
+                                .onSubmit(next)
+                                .focused($passwordFocused)
+                                .accessibilityIdentifier("serverPassword")
+                        }
                         if mfaToken != nil {
                             TextField("server.mfa", text: $code)
                                 .keyboardType(.numberPad)
                                 .textContentType(.oneTimeCode)
+                        }
+                        if case .lynxce = probe {
+                            Button(lynxcePassword ? "onboarding.useCode" : "onboarding.usePassword") {
+                                lynxcePassword.toggle()
+                                error = nil
+                            }
+                            .foregroundStyle(Palette.text)
+                            .accessibilityIdentifier("serverLoginMode")
                         }
                     } header: {
                         switch probe {
@@ -205,7 +291,10 @@ struct ServerConnectView: View {
                         case .password: Text("server.signIn.password")
                         }
                     } footer: {
-                        if probe == .lynxce(claimed: false) { Text("server.unclaimed") }
+                        VStack(alignment: .leading, spacing: 6) {
+                            if lynxceCode && entry.sent { Text(entry.sentNote(for: account)) }
+                            if probe == .lynxce(claimed: false) { Text("server.unclaimed") }
+                        }
                     }
                 }
                 if let error {
@@ -222,14 +311,26 @@ struct ServerConnectView: View {
                         ProgressView()
                     } else {
                         Button(probe == nil ? "server.next" : "onboarding.signIn", action: next)
-                            .disabled(address.isEmpty || (probe != nil && password.isEmpty))
+                            .disabled(!ready)
                     }
                 }
             }
         }
     }
 
+    private func sendCode() {
+        guard let url = ServerBackend.normalize(address), entry.canSend(to: account) else { return }
+        error = nil
+        Task {
+            if let failure = await entry.send({ try await ServerBackend.sendLynxceCode(url, target: account) }) {
+                error = failure.localizedDescription
+            }
+        }
+    }
+
     private func next() {
+        guard !busy else { return }
+        if probe != nil && !ready { return }
         busy = true
         error = nil
         Task {
@@ -254,6 +355,10 @@ struct ServerConnectView: View {
                 let backend: ServerBackend
                 if let mfaToken {
                     backend = try await ServerBackend.verifyMFA(url, token: mfaToken, code: code)
+                } else if lynxceCode {
+                    backend = try await ServerBackend.signInWithLynxceCode(url, target: account, code: entry.code)
+                    entry.code = ""
+                    entry.reset()
                 } else if case .lynxce = probe {
                     backend = try await ServerBackend.signInWithLynxce(url, account: account, password: password)
                 } else {
@@ -268,9 +373,123 @@ struct ServerConnectView: View {
                 await model.use(backend)
                 dismiss()
             } catch {
+                // The server already localizes its messages; a rejected code is cleared for a new one.
                 self.error = error.localizedDescription
+                if lynxceCode && (error as? APIError)?.status == 401 { entry.code = "" }
             }
         }
+    }
+}
+
+/// The code half of a Lynxce code sign-in, shared by the Lynxce and server sign-in forms:
+/// the typed code, the request in flight and the 60 s resend countdown.
+@Observable
+final class CodeEntry {
+    var code = ""
+    private(set) var sending = false
+    private(set) var sent = false
+    /// Seconds until another code may be requested.
+    private(set) var countdown = 0
+    /// Bumped on each successful send so the code field can take focus.
+    private(set) var sends = 0
+    private var timer: Task<Void, Never>?
+
+    var isComplete: Bool { LynxceBackend.isCode(code) }
+
+    func canSend(to account: String) -> Bool {
+        !sending && countdown == 0 && LynxceBackend.CodeTarget(account) != nil
+    }
+
+    func sentNote(for account: String) -> LocalizedStringKey {
+        LynxceBackend.CodeTarget(account)?.isEmail == true ? "onboarding.codeSent.email" : "onboarding.codeSent.phone"
+    }
+
+    /// A new phone number, email or server gets its own code right away.
+    func reset() {
+        timer?.cancel()
+        countdown = 0
+        sent = false
+    }
+
+    /// Run the send request and start the countdown when it succeeds. Returns the failure, if any.
+    func send(_ request: () async throws -> Void) async -> Error? {
+        sending = true
+        defer { sending = false }
+        do {
+            try await request()
+        } catch {
+            return error
+        }
+        sent = true
+        sends += 1
+        timer?.cancel()
+        countdown = 60
+        timer = Task { [weak self] in
+            while let self, self.countdown > 0 {
+                try? await Task.sleep(for: .seconds(1))
+                if Task.isCancelled { return }
+                self.countdown -= 1
+            }
+        }
+        return nil
+    }
+}
+
+/// Numeric code field (SMS autofill, submits at 6 digits) beside a send / countdown / resend button.
+/// `boxed` draws the onboarding card style; without it the row sits in a `Form`.
+struct CodeEntryRow: View {
+    @Bindable var entry: CodeEntry
+    var canSend: Bool
+    var boxed = true
+    var send: () -> Void
+    var complete: () -> Void
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            field
+            Button(action: send) {
+                Group {
+                    if entry.sending {
+                        ProgressView()
+                    } else if entry.countdown > 0 {
+                        Text(L("onboarding.resendIn %lld", entry.countdown)).monospacedDigit()
+                    } else {
+                        Text(entry.sent ? "onboarding.resendCode" : "onboarding.sendCode")
+                    }
+                }
+                .font(.subheadline.weight(.medium))
+                .lineLimit(1)
+                .frame(minWidth: 92, maxHeight: boxed ? .infinity : nil, alignment: boxed ? .center : .trailing)
+                .padding(.horizontal, boxed ? 14 : 0)
+                .background(boxed ? Palette.surface : .clear, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .foregroundStyle(canSend ? Palette.text : Palette.secondary)
+            }
+            .buttonStyle(.borderless)
+            .disabled(!canSend)
+            .accessibilityIdentifier("sendCode")
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        // In a Form the separator would otherwise start at the button's text.
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+    }
+
+    @ViewBuilder private var field: some View {
+        let input = TextField("onboarding.code", text: $entry.code)
+            .keyboardType(.numberPad)
+            .textContentType(.oneTimeCode)
+            .focused($focused)
+            .onChange(of: entry.code) { _, value in
+                let digits = String(value.filter { $0.isASCII && $0.isNumber }.prefix(6))
+                if digits != value {
+                    entry.code = digits
+                } else if digits.count == 6 {
+                    complete()
+                }
+            }
+            .onChange(of: entry.sends) { focused = true }
+            .accessibilityIdentifier("code")
+        if boxed { input.fieldStyle() } else { input }
     }
 }
 

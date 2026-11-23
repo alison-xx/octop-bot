@@ -156,12 +156,15 @@ describe("standalone onboarding", () => {
       token: "lynxce-session",
     } as never);
     openSetup();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "lynxceSignIn.usePassword" }),
+    );
     await userEvent.type(
-      await screen.findByLabelText("botOnboarding.account"),
+      screen.getByLabelText("lynxceSignIn.account"),
       " alice@example.invalid ",
     );
     await userEvent.type(
-      screen.getByLabelText("botOnboarding.password"),
+      screen.getByLabelText("lynxceSignIn.password"),
       "lynxce-pass{Enter}",
     );
     expect(

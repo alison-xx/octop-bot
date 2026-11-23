@@ -1,0 +1,43 @@
+.form {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  text-align: start;
+  label {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  small {
+    color: var(--fn-text-secondary);
+    line-height: 1.55;
+  }
+  > :global(.ant-btn-primary) {
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+}
+.codeRow {
+  display: flex;
+  gap: 8px;
+  :global(.ant-input) {
+    flex: 1;
+    min-width: 0;
+    letter-spacing: 2px;
+    font-variant-numeric: tabular-nums;
+  }
+}
+.send {
+  flex: none;
+  min-width: 104px;
+  font-variant-numeric: tabular-nums;
+}
+.switch {
+  justify-self: center;
+  color: var(--fn-text-secondary);
+  &:hover {
+    color: var(--fn-text);
+  }
+}

@@ -33,7 +33,68 @@ final class LynxceBackend: ChatBackend {
     }
 
     static func signIn(account: String, password: String) async throws -> LynxceBackend {
-        let data = try await call(.post, "/api/auth/password-login", json: ["account": account, "password": password])
+        try signedIn(try await call(.post, "/api/auth/password-login", json: ["account": account, "password": password]))
+    }
+
+    /// Where a verification code goes: an email when the text has "@", otherwise a phone number
+    /// (Lynxce normalizes China numbers itself, so it is sent as typed).
+    enum CodeTarget: Equatable {
+        case phone(String)
+        case email(String)
+
+        init?(_ text: String) {
+            let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { return nil }
+            self = value.contains("@") ? .email(value) : .phone(value)
+        }
+
+        var isEmail: Bool { if case .email = self { true } else { false } }
+
+        /// The code request; email codes are written in the app's language.
+        func codeRequest(chinese: Bool) -> (path: String, body: [String: String]) {
+            switch self {
+            case .phone(let phone): ("/api/auth/phone-code", ["phone": phone])
+            case .email(let email): ("/api/auth/email-code", ["email": email, "locale": chinese ? "zh-CN" : "en"])
+            }
+        }
+
+        func loginRequest(code: String) -> (path: String, body: [String: String]) {
+            switch self {
+            case .phone(let phone): ("/api/auth/phone-login", ["phone": phone, "code": code])
+            case .email(let email): ("/api/auth/email-login", ["email": email, "code": code])
+            }
+        }
+    }
+
+    static func isCode(_ text: String) -> Bool {
+        text.count == 6 && text.allSatisfy { $0.isASCII && $0.isNumber }
+    }
+
+    /// Send a sign-in code. The response's `devCode` is deliberately never read.
+    static func requestCode(target: CodeTarget) async throws {
+        let request = target.codeRequest(chinese: Preferences.shared.language.isChinese)
+        _ = try await call(.post, request.path, json: request.body)
+    }
+
+    /// Sign in with a code; Lynxce creates the account when it is new, so no password is needed.
+    static func signIn(target: CodeTarget, code: String) async throws -> LynxceBackend {
+        guard isCode(code) else { throw APIError(kind: .rejected, status: 400, message: L("error.codeFormat")) }
+        let request = target.loginRequest(code: code)
+        return try signedIn(try await call(.post, request.path, json: request.body))
+    }
+
+    /// Friendly text for a failed code send or code sign-in.
+    static func codeMessage(for error: Error) -> String {
+        guard let error = error as? APIError else { return error.localizedDescription }
+        switch error.status {
+        case 401: return L("error.codeInvalid")
+        case 429: return L("error.tooFrequent")
+        default: return error.localizedDescription
+        }
+    }
+
+    /// Store the grant a login returns (`{accessToken, refreshToken, user}`) and start a backend with it.
+    private static func signedIn(_ data: Any) throws -> LynxceBackend {
         guard
             let body = data as? [String: Any],
             let user = body["user"] as? [String: Any],

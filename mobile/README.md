@@ -5,7 +5,7 @@ They share no code, only this design and the wire contract in [PROTOCOL.md](PROT
 
 ## Two ways to connect
 
-1. **Lynxce account (default).** Sign in with a 灵策智算 phone/email and password and start chatting —
+1. **Lynxce account (default).** Sign in with a 灵策智算 phone/email and a code or password and start chatting —
    no server needed. Replies stream from the Lynxce model gateway; conversations sync to the account
    and show up in the desktop Bot's cloud conversations too. Bots are defined on the phone (Chief plus
    built-in roles, and your own with a persona, shape and color).

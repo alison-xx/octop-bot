@@ -8,6 +8,7 @@ import { setAuthToken } from "../../api/request";
 import { BOT_HOME } from "../../utils/botClientRoute";
 import { apiErrorMessage } from "../../utils/apiError";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
+import LynxceSignInForm from "./LynxceSignInForm";
 import intro from "./BotClientSetup.module.less";
 
 type Mode = "loading" | "lynxce" | "local";
@@ -17,7 +18,6 @@ export default function BotLogin() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("loading");
-  const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -38,27 +38,35 @@ export default function BotLogin() {
     };
   }, [navigate]);
 
+  const locale = i18n.language.startsWith("zh") ? "zh" : "en";
+  const lynxceSignIn = async (
+    attempt: () => Promise<{ access_token: string }>,
+  ) => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      setAuthToken((await attempt()).access_token);
+      navigate(BOT_HOME, { replace: true });
+    } catch (e) {
+      setError(apiErrorMessage(e, t("octopBot.failed"), t));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submit = async () => {
     if (busy) return;
     setBusy(true);
     setError("");
     try {
-      if (mode === "lynxce") {
-        const session = await authApi.lynxceLogin(
-          account.trim(),
-          password,
-          i18n.language.startsWith("zh") ? "zh" : "en",
-        );
-        setAuthToken(session.access_token);
-      } else {
-        const result = await authApi.login("local", password);
-        if (isMfaChallenge(result)) {
-          // The Bot client has no MFA step; an owner who enabled it elsewhere
-          // must sign in through the full Octop dashboard.
-          throw new Error(t("octopBot.failed"));
-        }
-        setAuthToken(result.access_token);
+      const result = await authApi.login("local", password);
+      if (isMfaChallenge(result)) {
+        // The Bot client has no MFA step; an owner who enabled it elsewhere
+        // must sign in through the full Octop dashboard.
+        throw new Error(t("octopBot.failed"));
       }
+      setAuthToken(result.access_token);
       navigate(BOT_HOME, { replace: true });
     } catch (e) {
       setError(apiErrorMessage(e, t("octopBot.failed"), t));
@@ -101,54 +109,69 @@ export default function BotLogin() {
                 )}
               </p>
               {error && <Alert type="error" message={error} showIcon />}
-              <form
-                className={`${intro.form} ${intro.webForms}`}
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void submit();
-                }}
-              >
-                {mode === "lynxce" && (
-                  <>
-                    <label htmlFor="bot-login-account">
-                      {t("botOnboarding.account")}
-                    </label>
-                    <Input
-                      id="bot-login-account"
-                      autoComplete="username"
-                      autoFocus
-                      required
-                      value={account}
-                      onChange={(e) => setAccount(e.target.value)}
-                      placeholder={t("botOnboarding.accountPlaceholder")}
-                    />
-                  </>
-                )}
-                <label htmlFor="bot-login-password">
-                  {t("botOnboarding.password")}
-                </label>
-                <Input.Password
-                  id="bot-login-password"
-                  autoComplete="current-password"
-                  autoFocus={mode === "local"}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                {mode === "lynxce" && (
-                  <small>{t("botOnboarding.lynxceHint")}</small>
-                )}
-                <Button
-                  type="primary"
-                  size="large"
-                  htmlType="submit"
-                  loading={busy}
-                  disabled={!password || (mode === "lynxce" && !account.trim())}
+              {mode === "lynxce" ? (
+                <div className={intro.webForms}>
+                  <LynxceSignInForm
+                    idPrefix="bot-login"
+                    autoFocus
+                    busy={busy}
+                    submitLabel={
+                      <>
+                        {t("botOnboarding.loginTitle")}
+                        <ArrowRight size={16} aria-hidden="true" />
+                      </>
+                    }
+                    passwordHint={t("botOnboarding.lynxceHint")}
+                    sendCode={async (target) =>
+                      (await authApi.lynxceSendCode(target, locale)).channel
+                    }
+                    onCode={(target, code) =>
+                      lynxceSignIn(() =>
+                        authApi.lynxceCodeLogin(target, code, locale),
+                      )
+                    }
+                    onPassword={(account, password) =>
+                      lynxceSignIn(() =>
+                        authApi.lynxceLogin(account, password, locale),
+                      )
+                    }
+                    onError={(e) =>
+                      setError(apiErrorMessage(e, t("octopBot.failed"), t))
+                    }
+                    onClearError={() => setError("")}
+                  />
+                </div>
+              ) : (
+                <form
+                  className={`${intro.form} ${intro.webForms}`}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void submit();
+                  }}
                 >
-                  {t("botOnboarding.loginTitle")}
-                  <ArrowRight size={16} aria-hidden="true" />
-                </Button>
-              </form>
+                  <label htmlFor="bot-login-password">
+                    {t("botOnboarding.password")}
+                  </label>
+                  <Input.Password
+                    id="bot-login-password"
+                    autoComplete="current-password"
+                    autoFocus
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <Button
+                    type="primary"
+                    size="large"
+                    htmlType="submit"
+                    loading={busy}
+                    disabled={!password}
+                  >
+                    {t("botOnboarding.loginTitle")}
+                    <ArrowRight size={16} aria-hidden="true" />
+                  </Button>
+                </form>
+              )}
             </>
           )}
         </section>

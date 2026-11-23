@@ -7,7 +7,7 @@ import re
 from collections.abc import Coroutine, Mapping
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 import httpx
@@ -241,13 +241,76 @@ async def _password_login(account: str, password: str) -> _Grant:
     )
 
 
+_EMAIL = re.compile(r"[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{1,63}")
+_PHONE = re.compile(r"\+?[0-9][0-9 -]{5,30}")
+_CODE = re.compile(r"[0-9]{6}")
+
+
+CodeChannel = Literal["phone", "email"]
+
+
+def code_target(target: str) -> tuple[CodeChannel, str]:
+    """Classify a Lynxce sign-in target as ``("email", …)`` or ``("phone", …)``.
+
+    Lynxce normalizes phone numbers itself; this only rejects input it would refuse.
+    """
+    target = target.strip()
+    if "@" in target:
+        if _EMAIL.fullmatch(target):
+            return "email", target
+    elif _PHONE.fullmatch(target):
+        return "phone", target
+    raise OctopError.localized(ErrorCode.LYNXCE_CODE_TARGET_INVALID, status=422)
+
+
+async def request_login_code(target: str, locale: str | None = None) -> CodeChannel:
+    """Ask Lynxce to text or email a one-time sign-in code. Returns ``"phone"`` or ``"email"``.
+
+    New Lynxce users are created on first code sign-in and need no password.
+    """
+    kind, value = code_target(target)
+    body: dict[str, str] = {kind: value}
+    if kind == "email":
+        body["locale"] = "en" if (locale or "").lower().startswith("en") else "zh-CN"
+    try:
+        await _send("POST", f"/api/auth/{kind}-code", json=body)
+    except _UpstreamFailure as exc:
+        if exc.status == 429:
+            raise OctopError.localized(ErrorCode.LYNXCE_CODE_THROTTLED, status=429) from None
+        if exc.status in {400, 422}:
+            raise OctopError.localized(ErrorCode.LYNXCE_CODE_TARGET_INVALID, status=422) from None
+        raise _rejected(exc.status) from None
+    return kind
+
+
+async def _code_login(target: str, code: str) -> _Grant:
+    kind, value = code_target(target)
+    code = code.strip()
+    if not _CODE.fullmatch(code):
+        raise OctopError.localized(ErrorCode.LYNXCE_CODE_INVALID, status=401)
+    try:
+        return await _session_login(f"/api/auth/{kind}-login", {kind: value, "code": code})
+    except OctopError as exc:
+        if exc.code is ErrorCode.AUTH_FAILED:
+            raise OctopError.localized(ErrorCode.LYNXCE_CODE_INVALID, status=401) from None
+        raise
+
+
 async def verify_account(account: str, password: str) -> CloudAccountStatus:
     """Prove ownership of a Lynxce account without keeping its session.
 
     Used as the sign-in identity of the Bot web build. The upstream session opened
     by the check is closed right away; only the stable account id is returned.
     """
-    grant = await _password_login(account, password)
+    return await _verified(await _password_login(account, password))
+
+
+async def verify_account_code(target: str, code: str) -> CloudAccountStatus:
+    """Same as :func:`verify_account`, proved with a one-time code instead of a password."""
+    return await _verified(await _code_login(target, code))
+
+
+async def _verified(grant: _Grant) -> CloudAccountStatus:
     with suppress(_UpstreamFailure):
         await _send("POST", "/api/auth/logout", bearer=grant.access_token, json={})
     return grant.status()
@@ -260,6 +323,18 @@ async def login_cloud(
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     async with _lock(services, user_id):
         grant = await _password_login(account, password)
+        await _finish(asyncio.to_thread(_save, services, user_id, grant))
+        return grant.status()
+
+
+async def login_cloud_code(
+    services: SharedServices, user_id: int, target: str, code: str
+) -> CloudAccountStatus:
+    """Sign in with a one-time code texted or emailed by Lynxce (works for password-less accounts)."""
+    if not bot_desktop_enabled():
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
+    async with _lock(services, user_id):
+        grant = await _code_login(target, code)
         await _finish(asyncio.to_thread(_save, services, user_id, grant))
         return grant.status()
 

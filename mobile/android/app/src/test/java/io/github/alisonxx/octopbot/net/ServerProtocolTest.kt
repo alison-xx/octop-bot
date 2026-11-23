@@ -193,4 +193,28 @@ class ServerProtocolTest {
         assertEquals(VoiceSupport(stt = true, tts = false), ServerProtocol.voiceSupport(Http.parse("""{"stt":"whisper","tts":null}""")))
         assertEquals(VoiceSupport(stt = false, tts = false), ServerProtocol.voiceSupport(Http.parse("{}")))
     }
+
+    @Test
+    fun lynxceOwnerCodeBodies() {
+        assertEquals(
+            """{"target":"13800138000","locale":"zh"}""",
+            ServerProtocol.lynxceCodeBody(" 13800138000 ", chinese = true).toString(),
+        )
+        assertEquals("""{"target":"a@b.cn","locale":"en"}""", ServerProtocol.lynxceCodeBody("a@b.cn", chinese = false).toString())
+        assertEquals(
+            """{"target":"a@b.cn","code":"012345","locale":"zh"}""",
+            ServerProtocol.lynxceCodeLoginBody(" a@b.cn", "012345", chinese = true).toString(),
+        )
+    }
+
+    @Test
+    fun lynxceOwnerCodeErrorsKeepServerMessage() {
+        // Octop's envelope: the localized message is what the app shows.
+        val text = """{"error":{"code":"LYNXCE_CODE_INVALID","message":"验证码错误或已过期"}}"""
+        val error = ApiException.from(401, Http.errorMessage(text))
+        assertEquals("验证码错误或已过期", error.message)
+        assertEquals(LynxceProtocol.CodeFailure.InvalidCode, LynxceProtocol.codeFailure(error))
+        assertEquals(LynxceProtocol.CodeFailure.TooFrequent, LynxceProtocol.codeFailure(ApiException.from(429, null)))
+        assertNull(LynxceProtocol.codeFailure(ApiException.from(403, "owner mismatch")))
+    }
 }

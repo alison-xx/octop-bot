@@ -14,7 +14,9 @@ JSON responses are wrapped: `{"code": 0, "data": …}`. `code != 0` or a non-2xx
 
 | Purpose | Request | `data` |
 |---|---|---|
-| Sign in | `POST /api/auth/password-login` `{account, password}` (account = phone or email) | `{accessToken, refreshToken, user:{id, displayName?}}` |
+| Send sign-in code | `POST /api/auth/phone-code` `{phone}` (as typed, trimmed) or `POST /api/auth/email-code` `{email, locale:"zh-CN"\|"en"}`; email when the input has `@` | `{isRegister, devCode?}` — never show or log `devCode`. 400 `validation_error` (show `message`), 429 too many sends |
+| Sign in with code (default) | `POST /api/auth/phone-login` `{phone, code}` or `POST /api/auth/email-login` `{email, code}`; code = 6 digits; new accounts are created | same as password sign-in; 401 `sms_code_invalid`/`sms_code_expired`/`email_code_invalid` → "code wrong or expired" |
+| Sign in with password | `POST /api/auth/password-login` `{account, password}` (account = phone or email) | `{accessToken, refreshToken, user:{id, displayName?}}` |
 | Refresh (on any 401, once) | `POST /api/auth/refresh` `{refreshToken}` | `{accessToken, refreshToken?}` |
 | Sign out | `POST /api/auth/logout` `{}` | — |
 | Balance | `GET /api/user/quota` | object; show the first numeric of `balance`/`credits`/`remaining`/`points` |
@@ -58,7 +60,9 @@ Base URL typed by the user (e.g. `https://nas.local:8080`). Errors are
 |---|---|---|
 | Probe | `GET /api/setup/status` | `{setup_required, lynxce_login, local_account, …}` |
 | Lynxce identity state | `GET /api/auth/lynxce/status` | `{enabled, claimed}` |
-| Sign in with Lynxce (web build) | `POST /api/auth/lynxce/login` `{account, password, locale}` | `{access_token, expires_in, user}`; 403 `LYNXCE_OWNER_MISMATCH` if another account owns the server |
+| Send Lynxce sign-in code (web build) | `POST /api/auth/lynxce/code` `{target, locale?}` (target = phone or email) | `{channel:"phone"\|"email"}`; 422 `LYNXCE_CODE_TARGET_INVALID`, 429 `LYNXCE_CODE_THROTTLED` (5 sends / 10 min per IP, plus Lynxce's own limit) |
+| Sign in with Lynxce code (web build, default) | `POST /api/auth/lynxce/code-login` `{target, code, locale?}` | same as `/lynxce/login`; 401 `LYNXCE_CODE_INVALID`, 403 `LYNXCE_OWNER_MISMATCH` |
+| Sign in with Lynxce password (web build) | `POST /api/auth/lynxce/login` `{account, password, locale}` | `{access_token, expires_in, user}`; 403 `LYNXCE_OWNER_MISMATCH` if another account owns the server |
 | Sign in with password | `POST /api/auth/login` `{username, password}` (Bot web build: username `local`) | same; `{mfa_required, mfa_token, methods}` → `POST /api/auth/mfa/verify {mfa_token, method:"totp", code}` |
 | Me | `GET /api/auth/me` | `{id, username, display_name, …}` |
 
