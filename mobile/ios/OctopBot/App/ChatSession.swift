@@ -228,6 +228,10 @@ final class ChatSession {
                     message.tools.append(ToolStep(id: toolId, name: name, done: done))
                 }
             }
+        case .attachment(let file):
+            update(id) { message in
+                if !message.attachments.contains(where: { $0.url == file.url }) { message.attachments.append(file) }
+            }
         case .pause(let pause):
             self.pause = pause
         case .done:
@@ -241,7 +245,7 @@ final class ChatSession {
     }
 
     private func removeEmptyReply(_ id: String) {
-        messages.removeAll { $0.id == id && $0.text.isEmpty && $0.tools.isEmpty && $0.thinking.isEmpty }
+        messages.removeAll { $0.id == id && $0.text.isEmpty && $0.tools.isEmpty && $0.thinking.isEmpty && $0.attachments.isEmpty }
     }
 
     func stop() {

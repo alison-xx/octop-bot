@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -79,6 +80,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.app.AppViewModel
+import io.github.alisonxx.octopbot.app.AttachmentFiles
 import io.github.alisonxx.octopbot.app.ChatState
 import io.github.alisonxx.octopbot.app.SessionState
 import io.github.alisonxx.octopbot.character.BotCharacter
@@ -86,6 +88,7 @@ import io.github.alisonxx.octopbot.media.Photos
 import io.github.alisonxx.octopbot.model.BotMotion
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
+import io.github.alisonxx.octopbot.model.FileAttachment
 import io.github.alisonxx.octopbot.model.ImageAttachment
 import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.model.MessageRole
@@ -93,6 +96,7 @@ import io.github.alisonxx.octopbot.model.MessageStatus
 import io.github.alisonxx.octopbot.model.Timeline
 import io.github.alisonxx.octopbot.model.ToolStep
 import io.github.alisonxx.octopbot.net.ChatBackend
+import io.github.alisonxx.octopbot.net.ServerBackend
 import io.github.alisonxx.octopbot.ui.common.BackButton
 import io.github.alisonxx.octopbot.ui.common.BottomFade
 import io.github.alisonxx.octopbot.ui.common.TopBar
@@ -160,6 +164,33 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
         if (saved && target != null) addPhotos(listOf(target.toUri()))
     }
 
+    // Android 8–9 have no app-writable Downloads collection: "Save to…" asks where instead.
+    var savingFile by remember { mutableStateOf<FileAttachment?>(null) }
+    val saveTo = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { target ->
+        val file = savingFile
+        savingFile = null
+        if (file != null && target != null) model.copyAttachment(file, target)
+    }
+    // Files Bots send live on their server (server mode only).
+    val fileActions = remember(backend) {
+        if (backend !is ServerBackend) return@remember null
+        AttachmentActions(
+            size = model::attachmentSize,
+            previewFile = model::attachmentPreviewFile,
+            open = { file -> model.withAttachment(file) { AttachmentFiles.openWith(context, it, AttachmentFiles.mimeOf(file)) } },
+            openImage = { file -> model.withAttachment(file) { viewing = Uri.fromFile(it).toString() } },
+            share = { file -> model.withAttachment(file) { AttachmentFiles.share(context, it, AttachmentFiles.mimeOf(file)) } },
+            save = { file ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    model.saveAttachment(file)
+                } else {
+                    savingFile = file
+                    saveTo.launch(file.name)
+                }
+            },
+        )
+    }
+
     OctopTheme(accent = accentOf(bot.look)) {
         ChatContent(
             bot = bot,
@@ -223,6 +254,7 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
                     openImage = { viewing = it },
                     retry = if (isLastReply && message.role == MessageRole.Assistant) chat::retry else null,
                     speaking = speakingMessage == message.id,
+                    files = fileActions,
                 )
             },
         )

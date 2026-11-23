@@ -5,4 +5,6 @@
     <cache-path name="shared" path="shared/" />
     <!-- Downloaded app updates, opened by the system installer. -->
     <cache-path name="updates" path="updates/" />
+    <!-- Files Bots sent, opened with or shared to other apps. -->
+    <cache-path name="attachments" path="attachments/" />
 </paths>

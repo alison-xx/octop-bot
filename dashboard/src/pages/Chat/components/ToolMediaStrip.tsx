@@ -15,10 +15,12 @@ function RefreshableImage({
   url,
   filename,
   idx,
+  large,
 }: {
   url: string;
   filename?: string;
   idx: number;
+  large?: boolean;
 }) {
   const { t } = useTranslation();
   const { src, loadState } = useAuthImageSrc(url, filename);
@@ -39,7 +41,7 @@ function RefreshableImage({
     <Image
       src={src}
       alt={filename || `image-${idx}`}
-      className={styles.toolMediaImage}
+      className={large ? styles.toolMediaImageLarge : styles.toolMediaImage}
     />
   );
 }
@@ -109,11 +111,14 @@ export function ToolMediaStrip({
   videos,
   files = [],
   agentId,
+  rich,
 }: {
   images: ToolMediaItem[];
   videos: ToolMediaItem[];
   files?: Array<{ url: string; filename?: string }>;
   agentId?: string | null;
+  /** Octop Bot: larger images and file cards with a visual preview. */
+  rich?: boolean;
 }) {
   if (images.length === 0 && videos.length === 0 && files.length === 0) {
     return null;
@@ -130,6 +135,7 @@ export function ToolMediaStrip({
                 url={img.url}
                 filename={img.filename}
                 idx={idx}
+                large={rich}
               />
             ))}
           </Image.PreviewGroup>
@@ -146,6 +152,7 @@ export function ToolMediaStrip({
               url={file.url}
               filename={file.filename}
               agentId={agentId}
+              rich={rich}
             />
           ))}
         </div>

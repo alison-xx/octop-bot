@@ -190,6 +190,7 @@ export default function BotTurnView({
           videos={media.videos}
           files={media.files}
           agentId={speakerId}
+          rich
         />
       )}
       {created.length > 0 && <BotCreationEvents items={created} />}

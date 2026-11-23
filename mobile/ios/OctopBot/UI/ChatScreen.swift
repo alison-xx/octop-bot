@@ -389,6 +389,10 @@ struct MessageRow: View {
                 } else if message.status == .streaming && message.thinking.isEmpty && message.tools.isEmpty {
                     TypingDots()
                 }
+                let files = message.fileCards
+                if !files.isEmpty {
+                    AttachmentStrip(files: files)
+                }
                 if case .failed(let reason) = message.status {
                     HStack(spacing: 10) {
                         Label(reason, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.red)
