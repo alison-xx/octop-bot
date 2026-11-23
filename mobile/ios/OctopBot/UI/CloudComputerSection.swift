@@ -146,18 +146,26 @@ extension ServerBackend {
         try .parse(try await json(.post, computerPath(agentId) + "/takeover", json: ["active": active]))
     }
 
-    /// The server's screen page for this computer, with a one-time ticket.
+    /// The server's screen page for this computer, with a one-time ticket and the screen session
+    /// that lets the page type Chinese and sync the clipboard while the user has taken over.
     func screenURL(_ agentId: String, control: Bool) async throws -> URL {
         let body = try await json(.post, computerPath(agentId) + "/screen") as? [String: Any]
         guard let wsPath = body?["ws_path"] as? String, let ticket = URLComponents(string: wsPath)?
             .queryItems?.first(where: { $0.name == "ticket" })?.value
         else { throw APIError(kind: .server, status: 502, message: nil) }
-        return Self.screenPage(base: session.baseURL, agentId: agentId, ticket: ticket, control: control)
+        return Self.screenPage(
+            base: session.baseURL, agentId: agentId, ticket: ticket,
+            screenSession: body?["session"] as? String, control: control)
     }
 
-    nonisolated static func screenPage(base: URL, agentId: String, ticket: String, control: Bool) -> URL {
+    nonisolated static func screenPage(
+        base: URL, agentId: String, ticket: String, screenSession: String?, control: Bool
+    ) -> URL {
         var components = URLComponents(url: base.appending(path: "/octop-bot/screen/\(agentId)"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [URLQueryItem(name: "ticket", value: ticket), URLQueryItem(name: "control", value: control ? "1" : "0")]
+        var items = [URLQueryItem(name: "ticket", value: ticket)]
+        if let screenSession { items.append(URLQueryItem(name: "session", value: screenSession)) }
+        items.append(URLQueryItem(name: "control", value: control ? "1" : "0"))
+        components.queryItems = items
         return components.url!
     }
 }

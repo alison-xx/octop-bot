@@ -311,8 +311,31 @@ async def test_screen_tickets_are_owner_only_and_single_use(
         ).status_code == 404
         ticket = (await client.post(path + "/screen", headers=mine)).json()
         assert ticket["ws_path"].startswith(path + "/screen/ws?ticket=")
+
+        # Typing and the clipboard go through the screen session, with no sign-in (the
+        # phone apps' screen page has none), and only while the user has taken over.
+        pasted: list[str] = []
+        monkeypatch.setattr(
+            computers.AgsDriver, "paste_text", lambda self, i, text: pasted.append(text)
+        )
+        monkeypatch.setattr(computers.AgsDriver, "read_clipboard", lambda self, i: "剪贴板")
+        manager = computers.computer_manager(srv.services)
+        assert manager is not None
+        record = manager.record(row.agent_id, alice["user"]["id"])
+        record.running, record.instance_id = True, "ins-1"
+        manager._save(record)
+        typing = f"/api/octop-bot/screen-sessions/{ticket['session']}"
+        refused = await client.post(typing + "/type", json={"text": "你好"})
+        assert refused.status_code == 409
+        assert refused.json()["error"]["code"] == "BOT_COMPUTER_NOT_TAKEN_OVER"
+
         taken = await client.post(path + "/takeover", headers=mine, json={"active": True})
         assert taken.json()["takeover"] is True
+        assert (await client.post(typing + "/type", json={"text": "你好"})).status_code == 204
+        assert pasted == ["你好"]
+        assert (await client.get(typing + "/clipboard")).json() == {"text": "剪贴板"}
+        forged = "/api/octop-bot/screen-sessions/forged/clipboard"
+        assert (await client.get(forged)).status_code == 404
         from octop.api.routers import bot_computers
 
         one_time = ticket["ws_path"].split("ticket=", 1)[1]

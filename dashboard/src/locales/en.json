@@ -721,6 +721,7 @@
     "LYNXCE_CODE_THROTTLED": "Codes were requested too often. Try again in a moment.",
     "BOT_CLOUD_REQUEST_REJECTED": "Lynxce Cloud could not complete this action.",
     "BOT_CLOUD_CREDITS_REQUIRED": "This Lynxce Cloud account has insufficient credits.",
+    "BOT_COMPUTER_NOT_TAKEN_OVER": "Take over the cloud computer before typing into it or reading its clipboard.",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "Authorize Lynxce checkout to recharge this account. Your existing chat connection stays active.",
     "BOT_LAYOUT_CHANGED": "The sidebar changed. Refresh it and try again.",
     "AUTH_FAILED": "Authentication failed.",
@@ -8795,6 +8796,17 @@
     "viewHint": "View only. Take over to sign in or pass a check yourself.",
     "controlHint": "You're using this computer; the Bot waits until you hand it back.",
     "screenConnecting": "Connecting to the screen…",
-    "screenClosed": "The screen disconnected. Close and open it again."
+    "screenClosed": "The screen disconnected. Close and open it again.",
+    "inputPlaceholder": "Type or paste here, in any language; Enter sends it to the cloud computer.",
+    "typeIn": "Type into the cloud computer",
+    "fetchClipboard": "Get the cloud computer's clipboard",
+    "typed": "Typed at the cloud computer's cursor; it is on its clipboard too.",
+    "clipboardCopied": "Copied to this device's clipboard.",
+    "clipboardShown": "It's in the box above, selected. Copy it from there.",
+    "clipboardEmpty": "The cloud computer's clipboard has no text.",
+    "inputFailed": "Couldn't reach the cloud computer.",
+    "pasted": "Pasted this Mac's clipboard at the cloud computer's cursor.",
+    "copyBlocked": "Copied on the cloud computer; this browser would not let the page write your clipboard. Use \"Get the cloud computer's clipboard\".",
+    "macShortcuts": "On a Mac, ⌘C / ⌘V copy and paste between this Mac and the cloud computer; other ⌘ shortcuts work like Ctrl."
   }
 }

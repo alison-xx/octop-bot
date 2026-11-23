@@ -269,8 +269,10 @@ class ServerBackend(
 
     /** The screen page for a Bot's computer, with a fresh one-time ticket. */
     suspend fun screenUrl(botId: String, control: Boolean): String {
-        val wsPath = json("POST", "/api/octop-bot/computers/" + segment(botId) + "/screen").asObject()?.str("ws_path")
-        return wsPath?.let { ServerProtocol.screenPage(baseUrl, botId, it, control) } ?: throw ApiException.badResponse()
+        val ticket = json("POST", "/api/octop-bot/computers/" + segment(botId) + "/screen").asObject()
+        val wsPath = ticket?.str("ws_path")
+        return wsPath?.let { ServerProtocol.screenPage(baseUrl, botId, it, ticket?.str("session"), control) }
+            ?: throw ApiException.badResponse()
     }
 
     /** Octop Bot cloud: a short-lived object-store link for a file a Bot linked to. */

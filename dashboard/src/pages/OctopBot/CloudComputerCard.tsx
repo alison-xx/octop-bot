@@ -17,6 +17,8 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
   const [busy, setBusy] = useState(false);
   // One-time WebSocket path for the open screen; null while the screen is closed.
   const [screen, setScreen] = useState<string | null>(null);
+  // Screen session for typing and the clipboard while it is open.
+  const [session, setSession] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -53,7 +55,9 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
   const openScreen = async () => {
     setBusy(true);
     try {
-      setScreen((await botCloudComputerApi.openScreen(botId)).ws_path);
+      const ticket = await botCloudComputerApi.openScreen(botId);
+      setSession(ticket.session);
+      setScreen(ticket.ws_path);
       setStatus(await botCloudComputerApi.status(botId));
     } catch (e) {
       setError(apiErrorMessage(e, t("cloudComputer.unavailable"), t));
@@ -143,6 +147,7 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
           <CloudComputerScreen
             wsPath={screen}
             interactive={status?.takeover === true}
+            session={session}
           />
         )}
       </Modal>

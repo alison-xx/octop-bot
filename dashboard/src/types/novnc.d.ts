@@ -11,5 +11,6 @@ declare module "@novnc/novnc" {
     resizeSession: boolean;
     background: string;
     disconnect(): void;
+    sendKey(keysym: number, code: string | null, down?: boolean): void;
   }
 }

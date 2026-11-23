@@ -589,8 +589,12 @@ final class ComputerTests: XCTestCase {
 @MainActor
 final class ScreenTests: XCTestCase {
     func testScreenPageCarriesTheTicketAndControl() {
-        let url = ServerBackend.screenPage(base: URL(string: "https://bot.lynxce.cn")!, agentId: "AbC123", ticket: "t-1", control: true)
-        XCTAssertEqual(url.absoluteString, "https://bot.lynxce.cn/octop-bot/screen/AbC123?ticket=t-1&control=1")
+        let url = ServerBackend.screenPage(
+            base: URL(string: "https://bot.lynxce.cn")!, agentId: "AbC123", ticket: "t-1", screenSession: "s-1", control: true)
+        XCTAssertEqual(url.absoluteString, "https://bot.lynxce.cn/octop-bot/screen/AbC123?ticket=t-1&session=s-1&control=1")
+        let older = ServerBackend.screenPage(
+            base: URL(string: "https://bot.lynxce.cn")!, agentId: "AbC123", ticket: "t-1", screenSession: nil, control: false)
+        XCTAssertEqual(older.absoluteString, "https://bot.lynxce.cn/octop-bot/screen/AbC123?ticket=t-1&control=0")
         let status = try? ServerBackend.ComputerStatus.parse(["state": "running", "takeover": true])
         XCTAssertEqual(status?.takeover, true)
     }

@@ -3,16 +3,17 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { botCloudComputerApi } from "../../api/modules/botCloudComputer";
 import CloudComputerCard from "./CloudComputerCard";
-import { screenSocketUrl } from "./CloudComputerScreen";
 
 vi.mock("./CloudComputerScreen", () => ({
   default: ({
     wsPath,
     interactive,
+    session,
   }: {
     wsPath: string;
     interactive: boolean;
-  }) => <div data-testid="screen">{`${wsPath}|${interactive}`}</div>,
+    session?: string;
+  }) => <div data-testid="screen">{`${wsPath}|${interactive}|${session}`}</div>,
   screenSocketUrl: (path: string, origin: string) =>
     new URL(path, origin).toString().replace(/^http/, "ws"),
 }));
@@ -77,6 +78,7 @@ describe("Octop Bot cloud computer card", () => {
     vi.spyOn(botCloudComputerApi, "openScreen").mockResolvedValue({
       ws_path: "/api/octop-bot/computers/bot-1/screen/ws?ticket=t1",
       expires_in: 60,
+      session: "s1",
     });
     const takeover = vi
       .spyOn(botCloudComputerApi, "takeover")
@@ -86,13 +88,14 @@ describe("Octop Bot cloud computer card", () => {
       await screen.findByRole("button", { name: "cloudComputer.view" }),
     );
     expect(await screen.findByTestId("screen")).toHaveTextContent(
-      "/api/octop-bot/computers/bot-1/screen/ws?ticket=t1|false",
+      "/api/octop-bot/computers/bot-1/screen/ws?ticket=t1|false|s1",
     );
     await userEvent.click(
       screen.getByRole("button", { name: "cloudComputer.takeOver" }),
     );
     expect(takeover).toHaveBeenCalledWith("bot-1", true);
-    expect(await screen.findByTestId("screen")).toHaveTextContent("|true");
+    // Taken over: the screen gets control, and its session for IME text and the clipboard.
+    expect(await screen.findByTestId("screen")).toHaveTextContent("|true|s1");
   });
 
   it("explains when the computer starts before it has run", async () => {

@@ -20,10 +20,18 @@ from octop.infra.users.identity import User
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/computers")
+# Typing and the clipboard of an open screen: the session token in the path is the credential
+# (the phone apps' screen page has no sign-in), so this prefix skips the JWT middleware.
+session_router = APIRouter(prefix="/screen-sessions")
 
 SCREEN_TICKET_SECONDS = 60
+# A screen session lives while its screen is open (the relay refreshes it) and a little after.
+SCREEN_SESSION_IDLE_SECONDS = 120
+MAX_PASTE_CHARS = 20_000
 # One-time tickets for the screen WebSocket: ticket -> (agent_id, user_id, expires_at).
 _tickets: dict[str, tuple[str, int, float]] = {}
+# Screen sessions: session -> (agent_id, user_id, expires_at).
+_sessions: dict[str, tuple[str, int, float]] = {}
 
 
 class ComputerStatus(BaseModel):
@@ -110,6 +118,10 @@ async def takeover(
 class ScreenTicket(BaseModel):
     ws_path: str = Field(description="WebSocket path (VNC over WebSocket), ticket included.")
     expires_in: int = Field(description="Seconds the one-time ticket stays valid.")
+    session: str = Field(
+        description="Screen session for typing and the clipboard "
+        "(/api/octop-bot/screen-sessions/{session}/…); valid while the screen is open."
+    )
 
 
 @router.post(
@@ -127,12 +139,75 @@ async def open_screen(
     now = time.time()
     for stale in [t for t, (_, _, until) in _tickets.items() if until < now]:
         _tickets.pop(stale, None)
-    ticket = secrets.token_urlsafe(32)
+    for stale in [s for s, (_, _, until) in _sessions.items() if until < now]:
+        _sessions.pop(stale, None)
+    ticket, session = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     _tickets[ticket] = (agent_id, user.id, now + SCREEN_TICKET_SECONDS)
+    _sessions[session] = (agent_id, user.id, now + SCREEN_SESSION_IDLE_SECONDS)
     return ScreenTicket(
         ws_path=f"/api/octop-bot/computers/{agent_id}/screen/ws?ticket={ticket}",
         expires_in=SCREEN_TICKET_SECONDS,
+        session=session,
     )
+
+
+def _refresh_sessions(agent_id: str, user_id: int) -> None:
+    until = time.time() + SCREEN_SESSION_IDLE_SECONDS
+    for key, (agent, user, _) in list(_sessions.items()):
+        if agent == agent_id and user == user_id:
+            _sessions[key] = (agent, user, until)
+
+
+def _session(session: str) -> tuple[str, int]:
+    claim = _sessions.get(session)
+    if claim is None or claim[2] < time.time():
+        _sessions.pop(session, None)
+        raise OctopError.localized(ErrorCode.NOT_FOUND)
+    _refresh_sessions(claim[0], claim[1])
+    return claim[0], claim[1]
+
+
+def _session_manager(server: Any) -> Any:
+    manager = computer_manager(server.services) if bot_cloud_enabled() else None
+    if manager is None:
+        raise OctopError.localized(ErrorCode.NOT_FOUND)
+    return manager
+
+
+class PasteRequest(BaseModel):
+    text: str = Field(
+        min_length=1, max_length=MAX_PASTE_CHARS, description="Text to type, in any language."
+    )
+
+
+@session_router.post(
+    "/{session}/type",
+    summary="Type text into a taken-over cloud computer",
+    description="Puts the text on the desktop's clipboard and pastes it at the cursor, so "
+    "Chinese and other IME input work (VNC keys cannot carry them). Needs takeover. The screen "
+    "session in the path is the credential.",
+    status_code=204,
+)
+async def type_text(session: str, body: PasteRequest, server: Any = Depends(get_server)) -> None:
+    agent_id, user_id = _session(session)
+    manager = _session_manager(server)
+    await asyncio.to_thread(manager.paste_text, agent_id, user_id, body.text)
+
+
+class Clipboard(BaseModel):
+    text: str = Field(description="The desktop's clipboard text; empty when it holds no text.")
+
+
+@session_router.get(
+    "/{session}/clipboard",
+    summary="Read a taken-over cloud computer's clipboard",
+    description="Needs takeover. The screen session in the path is the credential.",
+    response_model=Clipboard,
+)
+async def read_clipboard(session: str, server: Any = Depends(get_server)) -> Clipboard:
+    agent_id, user_id = _session(session)
+    manager = _session_manager(server)
+    return Clipboard(text=await asyncio.to_thread(manager.read_clipboard, agent_id, user_id))
 
 
 @router.websocket("/{agent_id}/screen/ws")
@@ -176,6 +251,7 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
             async def keep_alive() -> None:
                 while True:
                     await asyncio.sleep(30)
+                    _refresh_sessions(agent_id, user_id)
                     await asyncio.to_thread(manager.viewing, agent_id, user_id)
 
             tasks = [asyncio.create_task(job()) for job in (down, up, keep_alive)]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Mapping
 from typing import Any
 
@@ -52,6 +53,7 @@ class Driver:
         self.files: dict[str, bytes] = {}
         self.fail_start = False
         self.broken: set[str] = set()
+        self.clipboard = ""
 
     def start(self, *, spec: str, labels: Mapping[str, str]) -> str:
         if self.fail_start:
@@ -90,6 +92,12 @@ class Driver:
 
     def screen(self, instance_id: str) -> tuple[str, dict[str, str]]:
         return f"wss://6080-{instance_id}.test/websockify", {"X-Access-Token": "t"}
+
+    def paste_text(self, instance_id: str, text: str) -> None:
+        self.clipboard = text
+
+    def read_clipboard(self, instance_id: str) -> str:
+        return self.clipboard
 
 
 class Billing:
@@ -369,3 +377,34 @@ def test_the_screen_starts_the_vnc_bridge_once(monkeypatch: pytest.MonkeyPatch) 
     listening[0] = "up"
     driver.screen("ins")
     assert uploads == [ags._BRIDGE]  # already running: nothing uploaded or started
+
+
+def test_typing_and_the_clipboard_need_takeover(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    with pytest.raises(OctopError) as refused:
+        manager.paste_text("bot1", 7, "你好")
+    assert refused.value.code == ErrorCode.BOT_COMPUTER_NOT_TAKEN_OVER
+    manager.set_takeover("bot1", 7, True)
+    manager.paste_text("bot1", 7, "你好，云电脑")
+    assert manager.read_clipboard("bot1", 7) == "你好，云电脑"
+
+
+def test_pasting_sends_text_as_base64_and_presses_the_paste_shortcut(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = AgsConfig.from_env(
+        {"OCTOP_AGS_SECRET_ID": "id", "OCTOP_AGS_SECRET_KEY": "key", "OCTOP_AGS_TOOL": "t"}
+    )
+    assert config is not None
+    driver = ags.AgsDriver(config)
+    scripts: list[str] = []
+    monkeypatch.setattr(driver, "_execute", lambda i, s: scripts.append(s) or "pasted\n")
+    driver.paste_text("ins", "你好'; rm -rf ~")
+    encoded = base64.b64encode("你好'; rm -rf ~".encode()).decode()
+    assert f"printf %s {encoded} | base64 -d | xclip -selection clipboard -i" in scripts[0]
+    assert "rm -rf" not in scripts[0] and "xtest.fake_input" in scripts[0]
+    # The clipboard is read back before the paste key is pressed; a miss is an error.
+    monkeypatch.setattr(driver, "_execute", lambda i, s: "")
+    with pytest.raises(RuntimeError):
+        driver.paste_text("ins", "你好")

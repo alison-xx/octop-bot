@@ -435,6 +435,7 @@
     "LYNXCE_CODE_THROTTLED": "Codes were requested too often. Try again in a moment.",
     "BOT_CLOUD_REQUEST_REJECTED": "Lynxce Cloud could not complete this action.",
     "BOT_CLOUD_CREDITS_REQUIRED": "This Lynxce Cloud account has insufficient credits.",
+    "BOT_COMPUTER_NOT_TAKEN_OVER": "Take over the cloud computer before typing into it or reading its clipboard.",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "Authorize Lynxce checkout to recharge this account. Your existing chat connection stays active.",
     "BOT_LAYOUT_CHANGED": "The sidebar changed. Refresh it and try again.",
     "AUTH_FAILED": "Authentication failed.",

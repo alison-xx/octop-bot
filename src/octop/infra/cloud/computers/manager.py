@@ -369,6 +369,22 @@ class ComputerManager:
     def taken_over(self, agent_id: str, user_id: int) -> bool:
         return self.record(agent_id, user_id).takeover
 
+    def _controlled(self, agent_id: str, user_id: int) -> str:
+        """The instance the user has taken over; typing and the clipboard need takeover."""
+        record = self.record(agent_id, user_id)
+        if not (record.takeover and record.running and record.instance_id):
+            raise OctopError.localized(ErrorCode.BOT_COMPUTER_NOT_TAKEN_OVER)
+        return record.instance_id
+
+    def paste_text(self, agent_id: str, user_id: int, text: str) -> None:
+        self._driver.paste_text(self._controlled(agent_id, user_id), text)
+        self.viewing(agent_id, user_id)
+
+    def read_clipboard(self, agent_id: str, user_id: int) -> str:
+        text = self._driver.read_clipboard(self._controlled(agent_id, user_id))
+        self.viewing(agent_id, user_id)
+        return text
+
     # Work
 
     def run(self, agent_id: str, user_id: int, command: str, timeout: int) -> tuple[int, str]:

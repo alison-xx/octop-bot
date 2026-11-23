@@ -240,8 +240,16 @@ class ServerProtocolTest {
     @Test
     fun screenPageCarriesTheTicket() {
         assertEquals(
-            "https://bot.lynxce.cn/octop-bot/screen/AbC123?ticket=t-1&control=1",
-            ServerProtocol.screenPage("https://bot.lynxce.cn", "AbC123", "/api/octop-bot/computers/AbC123/screen/ws?ticket=t-1", control = true),
+            "https://bot.lynxce.cn/octop-bot/screen/AbC123?ticket=t-1&session=s-1&control=1",
+            ServerProtocol.screenPage(
+                "https://bot.lynxce.cn", "AbC123", "/api/octop-bot/computers/AbC123/screen/ws?ticket=t-1", "s-1", control = true,
+            ),
+        )
+        assertEquals(
+            "https://bot.lynxce.cn/octop-bot/screen/AbC123?ticket=t-1&control=0",
+            ServerProtocol.screenPage(
+                "https://bot.lynxce.cn", "AbC123", "/api/octop-bot/computers/AbC123/screen/ws?ticket=t-1", null, control = false,
+            ),
         )
         assertEquals(true, ServerProtocol.computerStatus(Http.parse("""{"state":"running","takeover":true}"""))?.takeover)
     }

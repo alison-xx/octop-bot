@@ -24,6 +24,25 @@
   font-size: 14px;
 }
 
+.inputBar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.inputActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.inputNote {
+  font-size: 13px;
+  opacity: 0.75;
+}
+
 .page {
   display: flex;
   flex-direction: column;
@@ -37,10 +56,23 @@
 
   // As wide as the window allows while the whole 16:9 frame and its hint stay in view.
   .frame,
+  .inputBar,
   > p {
     align-self: center;
     width: min(100%, calc((100vh - 64px) * 16 / 9));
     width: min(100%, calc((100dvh - 64px) * 16 / 9));
+  }
+
+  // Leave room for the input bar under the screen as well.
+  &.typing .frame,
+  &.typing .inputBar,
+  &.typing > p {
+    width: min(100%, calc((100vh - 180px) * 16 / 9));
+    width: min(100%, calc((100dvh - 180px) * 16 / 9));
+  }
+
+  .inputBar {
+    margin-top: 0;
   }
 
   p {

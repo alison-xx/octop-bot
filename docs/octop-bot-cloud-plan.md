@@ -379,6 +379,8 @@ P1 的实际做法与上文设计有三处不同，以本节为准：
 - 画面：OSWorld 桌面自带 x11vnc，监听沙箱里的 5900 端口，不设密码，但 AGS 只转发 5000、8080、9222 这几个端口。第一次打开画面时，云 Octop 把 `vnc_bridge.py`（只用标准库的 WebSocket 转 VNC 小程序）上传到 `/home/user/.octop/`，在 8080 启动，暂停恢复后进程还在。浏览器拿 noVNC 连云 Octop 的 `/api/octop-bot/computers/{agent_id}/screen/ws`，再由云 Octop 带上实例 `Token` 连 `wss://8080-<实例>.<region>.tencentags.com/websockify`。令牌只在服务端，浏览器只拿到 60 秒有效、一次性的票据（`POST …/screen` 签发）。
 - 接管：`POST …/takeover {active}`。接管期间 Bot 在这台电脑上的命令都会被拒，并提示它等用户交还；电脑不会因为空闲被暂停。有人在看画面时（每 30 秒报一次到），也不会因为空闲被暂停。关闭画面就自动交还。
 - 客户端：网页版在云电脑卡片里弹出画面，可以接管和交还；iOS、Android 打开同一个画面页面（`/octop-bot/screen/:agentId`）。
+- 中文输入和剪贴板：VNC 按键带不了中文，RFB 剪贴板也只支持 Latin-1，所以不走 VNC。接管后画面下方有输入框，用本机自己的输入法打字或粘贴，回车由云 Octop 把文字放进云电脑剪贴板（`xclip`），再用 XTest 按粘贴键（终端用 Ctrl+Shift+V）。镜像里没有 xdotool。「取回云电脑剪贴板」读出云电脑剪贴板里的文字，复制到本机剪贴板；浏览器不允许写剪贴板时，放进输入框并选中。打开画面时除了一次性票据，还会签发一个画面会话（`session`），接口是 `POST /api/octop-bot/screen-sessions/{session}/type` 和 `GET …/clipboard`，凭会话访问，不需要登录（手机的画面页没有登录态）；画面打开期间一直有效，关闭后 2 分钟失效，而且只在接管期间可用。
+- Mac 快捷键：接管时 ⌘+按键在云电脑上按 Ctrl+按键处理；单按 ⌘ 不发送（noVNC 默认把 ⌘ 当 Alt，Ubuntu 单按 Super 又会打开概览）。有画面会话时，⌘V 把这台 Mac 剪贴板的内容输入到云电脑光标处（走上面的输入接口，中文也行），⌘C / ⌘X 在云电脑复制后把它的剪贴板取回这台 Mac。
 
 
 

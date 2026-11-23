@@ -721,6 +721,7 @@
     "LYNXCE_CODE_THROTTLED": "验证码发送太频繁，请稍后再试。",
     "BOT_CLOUD_REQUEST_REJECTED": "灵策云未能执行此操作。",
     "BOT_CLOUD_CREDITS_REQUIRED": "当前灵策云账号的可用积分不足。",
+    "BOT_COMPUTER_NOT_TAKEN_OVER": "请先接管云电脑，再输入文字或读取它的剪贴板。",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "请补充授权灵策充值。当前聊天连接可继续使用。",
     "BOT_LAYOUT_CHANGED": "侧栏布局已更新，请刷新后再试。",
     "AUTH_FAILED": "认证失败。",
@@ -8795,6 +8796,17 @@
     "viewHint": "只能查看。需要你登录或过验证时点「接管」。",
     "controlHint": "你正在操作这台电脑，Bot 会等你交还后再继续。",
     "screenConnecting": "正在连接画面…",
-    "screenClosed": "画面已断开，关闭后重新打开即可。"
+    "screenClosed": "画面已断开，关闭后重新打开即可。",
+    "inputPlaceholder": "在这里打字或粘贴，中文也可以，回车发送到云电脑",
+    "typeIn": "输入到云电脑",
+    "fetchClipboard": "取回云电脑剪贴板",
+    "typed": "已输入到云电脑光标处，云电脑的剪贴板里也有一份。",
+    "clipboardCopied": "已复制到这台设备的剪贴板。",
+    "clipboardShown": "已放进上面的输入框并选中，从那里复制即可。",
+    "clipboardEmpty": "云电脑的剪贴板里没有文字。",
+    "inputFailed": "没能连上云电脑。",
+    "pasted": "已把这台 Mac 的剪贴板粘贴到云电脑光标处。",
+    "copyBlocked": "云电脑里已复制，但浏览器不允许网页写你的剪贴板，请点「取回云电脑剪贴板」。",
+    "macShortcuts": "Mac 上 ⌘C / ⌘V 在这台 Mac 和云电脑之间复制粘贴，其他 ⌘ 快捷键按 Ctrl 处理。"
   }
 }
