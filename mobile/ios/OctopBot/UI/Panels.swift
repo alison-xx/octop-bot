@@ -246,6 +246,7 @@ struct SettingsView: View {
     @State private var cleared = false
     @State private var copied = false
     @State private var notifications: UNAuthorizationStatus = .notDetermined
+    @State private var stars = GitHubStars.shared
 
     private var version: String {
         let info = Bundle.main.infoDictionary ?? [:]
@@ -278,6 +279,7 @@ struct SettingsView: View {
                         Text("settings.textSize.large").tag(TextSize.large)
                     } label: { row("settings.textSize", "textformat.size", .teal) }
                     Toggle(isOn: $preferences.haptics) { row("settings.haptics", "hand.tap", .pink) }
+                        .tint(.green)
                 }
                 .onChange(of: preferences.language) {
                     // Built-in Bot names and personas are localized.
@@ -295,7 +297,9 @@ struct SettingsView: View {
                         }
                     }
                     Toggle(isOn: $preferences.expandThinking) { row("settings.expandThinking", "sparkles", .orange) }
+                        .tint(.green)
                     Toggle(isOn: $model.readAloud) { row("settings.readAloud", "speaker.wave.2", .green) }
+                        .tint(.green)
                     Picker(selection: $preferences.speechSpeed) {
                         Text("settings.speed.slow").tag(SpeechSpeed.slow)
                         Text("settings.speed.normal").tag(SpeechSpeed.normal)
@@ -309,6 +313,7 @@ struct SettingsView: View {
 
                 Section {
                     Toggle(isOn: $model.notifyOnReply) { row("settings.notify", "bell.badge", .red) }
+                        .tint(.green)
                         .disabled(notifications == .denied)
                 } header: {
                     Text("settings.notifications")
@@ -320,6 +325,7 @@ struct SettingsView: View {
                                 if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                             }
                             .font(.footnote.weight(.semibold))
+                            .tint(.blue)
                         }
                     }
                 }
@@ -367,7 +373,8 @@ struct SettingsView: View {
 
                 Section("settings.about") {
                     LabeledContent { Text(verbatim: version) } label: { row("settings.version", "info.circle", .gray) }
-                    link("settings.github", "chevron.left.forwardslash.chevron.right", .gray, "https://github.com/alison-xx/octop-bot")
+                    repoLink(GitHubStars.bot)
+                    repoLink(GitHubStars.octop)
                     link("settings.feedback", "exclamationmark.bubble", .orange, "https://github.com/alison-xx/octop-bot/issues/new")
                     link("settings.lynxceSite", "globe.asia.australia", .blue, "https://www.lynxce.cn")
                 }
@@ -378,7 +385,8 @@ struct SettingsView: View {
                         .accessibilityIdentifier("signOut")
                 }
             }
-            .tint(Characters.ink("rose"))
+            // Chosen values read as quiet grey; switches use the system green.
+            .tint(Palette.secondary)
             // The navigation bar caches its title; rebuild it when the language changes.
             .id(preferences.language)
             .navigationTitle("settings.title")
@@ -426,8 +434,8 @@ struct SettingsView: View {
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(Characters.ink("rose").opacity(0.15), in: Capsule())
-                        .foregroundStyle(Characters.ink("rose"))
+                        .background(Palette.raised, in: Capsule())
+                        .foregroundStyle(Palette.text)
                 }
             }
             Spacer(minLength: 0)
@@ -441,6 +449,35 @@ struct SettingsView: View {
         } icon: {
             SettingsIcon(symbol: symbol, color: color)
         }
+    }
+
+    /// A GitHub project with its star count, like the website's header.
+    private func repoLink(_ repo: GitHubStars.Repo) -> some View {
+        Link(destination: repo.url) {
+            HStack(spacing: 12) {
+                Label {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: repo.name).foregroundStyle(Palette.text)
+                        Text(verbatim: repo.path).font(.caption).foregroundStyle(Palette.secondary)
+                    }
+                } icon: {
+                    SettingsIcon(symbol: "chevron.left.forwardslash.chevron.right", color: Color(white: 0.2))
+                }
+                Spacer()
+                HStack(spacing: 3) {
+                    Image(systemName: "star.fill").font(.caption2)
+                    Text(verbatim: GitHubStars.format(stars.count(repo))).monospacedDigit()
+                }
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Palette.text)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Palette.raised, in: Capsule())
+                Image(systemName: "arrow.up.right").font(.footnote.weight(.semibold)).foregroundStyle(Palette.secondary)
+            }
+        }
+        .accessibilityLabel(Text(verbatim: "\(repo.name), \(repo.path), \(GitHubStars.format(stars.count(repo))) stars"))
+        .task { await stars.refresh(repo) }
     }
 
     private func link(_ title: LocalizedStringKey, _ symbol: String, _ color: Color, _ url: String) -> some View {
@@ -500,9 +537,62 @@ private struct ModelPicker: View {
                 }
                 Spacer()
                 if model.selectedModel == id {
-                    Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Characters.ink("rose"))
+                    Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Palette.text)
                 }
             }
         }
+    }
+}
+
+/// GitHub star counts for the About section, cached like the website: the last
+/// number shows at once, a fresh one is fetched at most every 6 hours, and a
+/// built-in number covers the first launch and offline use.
+@Observable
+final class GitHubStars {
+    struct Repo {
+        var name: String
+        var path: String
+        var fallback: Int
+        var url: URL { URL(string: "https://github.com/\(path)")! }
+    }
+
+    static let bot = Repo(name: "Octop Bot", path: "alison-xx/octop-bot", fallback: 6)
+    static let octop = Repo(name: "Octop", path: "TencentCloud/Octop", fallback: 12_400)
+    static let shared = GitHubStars()
+    private static let maxAge: TimeInterval = 6 * 3600
+
+    private var counts: [String: Int] = [:]
+
+    func count(_ repo: Repo) -> Int {
+        counts[repo.path] ?? cached(repo)?.count ?? repo.fallback
+    }
+
+    /// `1234` → "1.23k", `12400` → "12.4k", like the website.
+    static func format(_ n: Int) -> String {
+        guard n >= 1000 else { return String(n) }
+        var text = String(format: n >= 10_000 ? "%.1f" : "%.2f", Double(n) / 1000)
+        while text.hasSuffix("0") { text.removeLast() }
+        if text.hasSuffix(".") { text.removeLast() }
+        return text + "k"
+    }
+
+    private func key(_ repo: Repo) -> String { "github.stars.\(repo.path)" }
+
+    private func cached(_ repo: Repo) -> (count: Int, at: Date)? {
+        guard let entry = UserDefaults.standard.dictionary(forKey: key(repo)),
+              let count = entry["n"] as? Int, let at = entry["at"] as? Double else { return nil }
+        return (count, Date(timeIntervalSince1970: at))
+    }
+
+    func refresh(_ repo: Repo) async {
+        if let cached = cached(repo), Date().timeIntervalSince(cached.at) < Self.maxAge { return }
+        var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(repo.path)")!, timeoutInterval: 5)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let count = body["stargazers_count"] as? Int else { return }
+        counts[repo.path] = count
+        UserDefaults.standard.set(["n": count, "at": Date().timeIntervalSince1970], forKey: key(repo))
     }
 }

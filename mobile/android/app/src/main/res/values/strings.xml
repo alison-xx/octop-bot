@@ -194,7 +194,6 @@
     <string name="settings_notify">Notify when a reply finishes</string>
     <string name="settings_about">About</string>
     <string name="settings_version">Version</string>
-    <string name="settings_github">Project page on GitHub</string>
     <string name="settings_sign_out">Sign out</string>
     <string name="settings_sign_out_confirm">Sign out of Octop Bot on this phone?</string>
 

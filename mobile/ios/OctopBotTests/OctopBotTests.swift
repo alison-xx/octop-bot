@@ -384,3 +384,15 @@ final class SoftCharacterTests: XCTestCase {
         XCTAssertNotEqual(Characters.ink("black", dark: true), Characters.ink("black", dark: false))
     }
 }
+
+@MainActor
+final class StarsTests: XCTestCase {
+    func testStarCountsReadLikeTheWebsite() {
+        XCTAssertEqual(GitHubStars.format(6), "6")
+        XCTAssertEqual(GitHubStars.format(999), "999")
+        XCTAssertEqual(GitHubStars.format(1000), "1k")
+        XCTAssertEqual(GitHubStars.format(1234), "1.23k")
+        XCTAssertEqual(GitHubStars.format(12_400), "12.4k")
+        XCTAssertEqual(GitHubStars.format(12_000), "12k")
+    }
+}

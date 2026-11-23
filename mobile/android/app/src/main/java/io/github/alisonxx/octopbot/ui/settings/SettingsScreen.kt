@@ -1,5 +1,8 @@
 package io.github.alisonxx.octopbot.ui.settings
 
+import io.github.alisonxx.octopbot.net.GitHubStars
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material.icons.rounded.Star
 import android.Manifest
 import android.content.ClipData
 import android.content.Context
@@ -35,6 +38,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -81,7 +86,6 @@ import io.github.alisonxx.octopbot.ui.theme.LocalPalette
 import io.github.alisonxx.octopbot.ui.theme.OctopTheme
 import kotlinx.coroutines.launch
 
-private const val PROJECT_URL = "https://github.com/alison-xx/octop-bot"
 private const val ISSUE_URL = "https://github.com/alison-xx/octop-bot/issues/new"
 private const val LYNXCE_URL = "https://www.lynxce.cn"
 
@@ -285,7 +289,7 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
                         Column {
                             FooterText(stringResource(R.string.settings_notify_blocked))
                             TextButton(onClick = actions.onOpenNotificationSettings, modifier = Modifier.padding(start = 4.dp)) {
-                                Text(stringResource(R.string.settings_open_system_settings))
+                                Text(stringResource(R.string.settings_open_system_settings), color = SettingsLink)
                             }
                         }
                     }
@@ -316,7 +320,8 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
 
             Group(stringResource(R.string.settings_about)) {
                 row { Item(stringResource(R.string.settings_version), value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})") }
-                row { Item(stringResource(R.string.settings_github), external = true) { actions.onOpenUrl(PROJECT_URL) } }
+                row { RepoItem(GitHubStars.bot) { actions.onOpenUrl(GitHubStars.bot.url) } }
+                row { RepoItem(GitHubStars.octop) { actions.onOpenUrl(GitHubStars.octop.url) } }
                 row { Item(stringResource(R.string.settings_report), external = true) { actions.onOpenUrl(ISSUE_URL) } }
                 row { Item(stringResource(R.string.settings_lynxce_site), external = true) { actions.onOpenUrl(LYNXCE_URL) } }
             }
@@ -440,6 +445,34 @@ private fun FooterText(text: String) {
     )
 }
 
+/** A GitHub project with its star count, like the website's header. */
+@Composable
+private fun RepoItem(repo: GitHubStars.Repo, onClick: () -> Unit) {
+    val palette = LocalPalette.current
+    val context = LocalContext.current
+    var stars by remember(repo.path) { mutableIntStateOf(GitHubStars.cached(context, repo)) }
+    LaunchedEffect(repo.path) { GitHubStars.refresh(context, repo)?.let { stars = it } }
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(repo.name, style = MaterialTheme.typography.bodyLarge, color = palette.text)
+            Text(repo.path, style = MaterialTheme.typography.bodySmall, color = palette.secondary)
+        }
+        Row(
+            Modifier.clip(CircleShape).background(palette.raised).padding(horizontal = 8.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.Star, contentDescription = null, tint = palette.text, modifier = Modifier.size(13.dp))
+            Spacer(Modifier.width(3.dp))
+            Text(GitHubStars.format(stars), style = MaterialTheme.typography.labelMedium, color = palette.text)
+        }
+        Spacer(Modifier.width(8.dp))
+        Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null, tint = palette.secondary, modifier = Modifier.size(18.dp))
+    }
+}
+
 @Composable
 private fun Item(
     title: String,
@@ -487,7 +520,16 @@ private fun Toggle(title: String, checked: Boolean, onChange: (Boolean) -> Unit)
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            // Settings stay neutral: a system green switch, not the brand pink.
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = SettingsGreen,
+                checkedBorderColor = SettingsGreen,
+            ),
+        )
     }
 }
 
@@ -517,7 +559,7 @@ private fun ChoiceRow(name: String, selected: Boolean, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(name, style = MaterialTheme.typography.bodyLarge, color = LocalPalette.current.text, modifier = Modifier.weight(1f))
-        if (selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        if (selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = LocalPalette.current.text)
     }
 }
 
@@ -581,7 +623,7 @@ fun ModelPicker(models: List<ModelOption>, selected: String?, onBack: () -> Unit
                             modifier = Modifier.weight(1f),
                         )
                         if (option?.id == selected) {
-                            Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Rounded.Check, contentDescription = null, tint = palette.text)
                         } else {
                             Spacer(Modifier.size(24.dp))
                         }
@@ -627,3 +669,7 @@ private fun ModelPickerPreview() {
         )
     }
 }
+
+/** iOS-style system green for switches and blue for links, so settings never wear the brand pink. */
+private val SettingsGreen = Color(0xFF34C759)
+private val SettingsLink = Color(0xFF0A84FF)
