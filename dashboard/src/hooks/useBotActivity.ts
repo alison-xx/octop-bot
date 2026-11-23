@@ -230,7 +230,9 @@ export function useBotActivity({
   const apply = useCallback(
     (snapshot: BotActivitySnapshot) => {
       const first = countsRef.current === null;
-      const open = openRef.current;
+      // A conversation left open in a minimized or unfocused window is not
+      // being read: its replies count and notify until the window is back.
+      const open = windowInBackground() ? null : openRef.current;
       const seen = advanceSeen(snapshot, seenRef.current, open, first);
       seenRef.current = seen;
       writeJson(SEEN_KEY, seen);
@@ -262,7 +264,7 @@ export function useBotActivity({
       setRecent((prev) => (sameRecord(prev, times) ? prev : times));
       setGroupPreview((prev) => (sameRecord(prev, lines) ? prev : lines));
       const parsed = open ? parseTarget(open) : null;
-      if (parsed && !document.hidden) {
+      if (parsed) {
         if (parsed.kind === "group") {
           const group = snapshot.groups.find((g) => g.group_id === parsed.id);
           if (group && group.unread_count > 0) {
