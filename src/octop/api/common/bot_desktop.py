@@ -6,7 +6,7 @@ from fastapi import Depends, Request
 
 from octop.api.deps import current_user, get_server
 from octop.infra.db.services import SharedServices
-from octop.infra.desktop import bot_desktop_enabled
+from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 from octop.infra.users.identity import User
@@ -25,5 +25,16 @@ def _desktop_services(
     return server.services
 
 
+def _account_services(
+    request: Request, server: Annotated[OctopServer, Depends(get_server)]
+) -> SharedServices:
+    """The signed-in user's own Lynxce wallet: the desktop shell, or any tenant in cloud mode."""
+    if bot_cloud_enabled():
+        assert server.services is not None
+        return server.services
+    return _desktop_services(request, server)
+
+
 Services = Annotated[SharedServices, Depends(_desktop_services)]
+AccountServices = Annotated[SharedServices, Depends(_account_services)]
 Owner = Annotated[User, Depends(current_user)]

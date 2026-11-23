@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import mimetypes
 import re
 from pathlib import Path
 from typing import Any, Literal
@@ -10,7 +12,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from octop_harness.backends.utils import BackendOperationNotSupportedError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.content_disposition import content_disposition
@@ -26,6 +28,8 @@ from octop.api.deps import current_user, get_server
 from octop.infra.backend.mention_index import collect_mention_paths
 from octop.infra.backend.tree_listing import dedupe_tree_rows
 from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
+from octop.infra.cloud.bot_cloud import files as cloud_files
+from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.backend_files import (
     backend_workspace_path,
@@ -66,6 +70,9 @@ def _assert_workspace_mutable(path: str) -> str:
 
 def _guard_workspace_read(io_path: str, workspace: Path) -> None:
     """Allow this workspace, temp, and non-home tool outputs. Deny the control plane."""
+    if is_host_absolute_path(io_path) and bot_cloud_enabled():
+        # Cloud mode: workspaces live in the object store; the server's own disk is off limits.
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
     if is_host_absolute_path(io_path):
         if not is_allowed_host_download_abs_path(io_path, workspace=workspace):
             raise OctopError(ErrorCode.FORBIDDEN, "host path not allowed")
@@ -391,6 +398,47 @@ async def download_file(
         media_type="application/octet-stream",
         headers={"Content-Disposition": content_disposition(fname)},
     )
+
+
+class DownloadLink(BaseModel):
+    url: str = Field(description="Signed object-store URL that saves the file under its name.")
+    expires_in: int = Field(description="Seconds the URL stays valid.")
+
+
+@router.post(
+    "/agents/{agent_id}/workspace/download-link",
+    summary="Get a signed download link for a workspace file (Octop Bot cloud)",
+    response_model=DownloadLink,
+)
+async def download_link(
+    agent_id: str,
+    path: str,
+    from_workspace: bool = Query(default=False, description=_FROM_WORKSPACE_DESC),
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> DownloadLink:
+    """Cloud mode only: copy the file out of the agent's workspace into the object store and
+    return a short-lived link, so the download comes straight from the store (or its CDN)."""
+    if not bot_cloud_enabled():
+        raise OctopError.localized(ErrorCode.NOT_FOUND)
+    ws = await require_agent_workspace(agent_id, user=user, as_user=None, server=server)
+    io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    _guard_workspace_read(io_path, ws.workspace_dir)
+    try:
+        file_blob = await ws.adownload_bytes(io_path)
+    except PermissionError as exc:
+        raise OctopError(ErrorCode.NOT_FOUND, f"cannot download {path!r}") from exc
+    if file_blob is None:
+        raise OctopError(ErrorCode.NOT_FOUND, f"cannot download {path!r}") from None
+    fname = io_path.rsplit("/", 1)[-1] or "download.bin"
+    url = await asyncio.to_thread(
+        cloud_files.publish_download,
+        user.id,
+        fname,
+        file_blob,
+        mimetypes.guess_type(fname)[0],
+    )
+    return DownloadLink(url=url, expires_in=cloud_files.DOWNLOAD_TTL_SECONDS)
 
 
 @router.get("/agents/{agent_id}/workspace/doc")

@@ -114,6 +114,11 @@ enum Haptics {
         guard Preferences.shared.haptics else { return }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
+
+    static func error() {
+        guard Preferences.shared.haptics else { return }
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+    }
 }
 
 /// Switches the strings `Bundle.main` returns without restarting the app.

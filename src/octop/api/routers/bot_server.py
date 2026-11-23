@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server
-from octop.infra.desktop import bot_desktop_enabled, bot_web_enabled
+from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled, bot_web_enabled
 from octop.infra.setup.self_update import get_local_version
 
 router = APIRouter()
@@ -21,16 +21,19 @@ class ServerCapabilities(BaseModel):
     cloud_computer: bool = Field(
         default=False, description="Each Bot can run on its own cloud computer."
     )
-    file_store: Literal["local"] = Field(
-        default="local", description="Where attachments and Bot outputs are kept."
+    file_store: Literal["local", "object"] = Field(
+        default="local",
+        description="Where attachments and Bot outputs are kept: this server's disk, or an object "
+        "store that hands out signed download links.",
     )
 
 
 class ServerInfo(BaseModel):
     product: Literal["octop-bot"] = "octop-bot"
     version: str
-    edition: Literal["desktop", "web", "server"] = Field(
+    edition: Literal["desktop", "web", "cloud", "server"] = Field(
         description="desktop: the Octop Bot app's local service; web: the Bot web/NAS build; "
+        "cloud: Octop Bot cloud, where every Lynxce account gets its own account; "
         "server: a plain Octop server."
     )
     setup_required: bool = Field(description="No account exists yet; the first sign-in sets it up.")
@@ -48,17 +51,27 @@ class ServerInfo(BaseModel):
 async def server_info(response: Response, server: Any = Depends(get_server)) -> ServerInfo:
     """Public: lets a client that was given this address check it before showing a sign-in form."""
     response.headers["Cache-Control"] = "no-store"
-    if bot_desktop_enabled():
-        edition: Literal["desktop", "web", "server"] = "desktop"
+    if bot_cloud_enabled():
+        edition: Literal["desktop", "web", "cloud", "server"] = "cloud"
+    elif bot_desktop_enabled():
+        edition = "desktop"
     elif bot_web_enabled():
         edition = "web"
     else:
         edition = "server"
     users = server.user_manager.count() if server.user_manager is not None else 0
+    sign_in: list[Literal["lynxce", "password"]] = {
+        "cloud": ["lynxce"],
+        "web": ["lynxce", "password"],
+    }.get(edition, ["password"])  # type: ignore[assignment]
     return ServerInfo(
         version=get_local_version(),
         edition=edition,
-        setup_required=users == 0,
-        sign_in=["lynxce", "password"] if edition == "web" else ["password"],
-        capabilities=ServerCapabilities(wallet=edition == "desktop"),
+        # A cloud server is set up by its operator; tenants never see the wizard.
+        setup_required=users == 0 and edition != "cloud",
+        sign_in=sign_in,
+        capabilities=ServerCapabilities(
+            wallet=edition in ("desktop", "cloud"),
+            file_store="object" if edition == "cloud" else "local",
+        ),
     )

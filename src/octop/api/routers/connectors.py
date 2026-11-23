@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, model_validator
 
+from octop.api.common.bot_cloud import no_cloud_tenant
 from octop.api.common.public_base import resolve_public_base
 from octop.api.deps import current_user, get_server, require_permission
 from octop.i18n import tr
@@ -716,6 +717,7 @@ async def get_custom_mcp(
 async def put_custom_mcp(
     body: CustomMcpPutBody,
     user: Any = Depends(require_permission("connector_custom")),
+    _host: Any = Depends(no_cloud_tenant),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Replace the user's custom MCP servers document and reload agents."""

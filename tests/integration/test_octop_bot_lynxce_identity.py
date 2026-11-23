@@ -63,7 +63,11 @@ async def test_first_lynxce_sign_in_claims_a_fresh_instance(
         setup = (await client.get("/api/setup/status")).json()
         assert setup["lynxce_login"] is True
         assert setup["wizard_password_required"] is False
-        assert (await client.get(STATUS)).json() == {"enabled": True, "claimed": False}
+        assert (await client.get(STATUS)).json() == {
+            "enabled": True,
+            "claimed": False,
+            "cloud": False,
+        }
 
         res = await client.post(LOGIN, json={"account": "alice", "password": "test-password"})
         assert res.status_code == 200, res.text
@@ -83,7 +87,11 @@ async def test_first_lynxce_sign_in_claims_a_fresh_instance(
 
         me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert me.status_code == 200
-        assert (await client.get(STATUS)).json() == {"enabled": True, "claimed": True}
+        assert (await client.get(STATUS)).json() == {
+            "enabled": True,
+            "claimed": True,
+            "cloud": False,
+        }
 
         again = await client.post(LOGIN, json={"account": "alice", "password": "test-password"})
         assert again.status_code == 200

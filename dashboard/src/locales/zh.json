@@ -222,6 +222,7 @@
     "localHint": "以后在其他设备打开 Octop Bot 时，用这个密码登录。登录后再连接你的模型服务。",
     "localSubmit": "创建并配置模型",
     "loginTitle": "登录 Octop Bot",
+    "loginCloudBody": "用灵策账号登录 Octop Bot 云端。第一次登录会自动开通，Bot 和对话都保存在云端，换设备也能接着用。",
     "loginLynxceBody": "使用首次绑定这台 Octop Bot 的灵策智算账号登录。",
     "loginLocalBody": "输入首次使用时设置的登录密码。"
   },

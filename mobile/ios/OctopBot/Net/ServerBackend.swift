@@ -6,7 +6,13 @@ final class ServerBackend: ChatBackend {
         var baseURL: URL
         var token: String
         var displayName: String
+        /// Octop Bot cloud (bot.lynxce.cn): signed in with Lynxce, which it keeps for the wallet.
+        var cloud: Bool?
     }
+
+    /// Octop Bot cloud, run by Lynxce.
+    static let lynxceCloud = URL(string: "https://bot.lynxce.cn")!
+    var isCloud: Bool { session.cloud == true }
 
     private static let sessionKey = "server.session"
     private(set) var session: Session
@@ -66,6 +72,8 @@ final class ServerBackend: ChatBackend {
         guard status["lynxce_login"] as? Bool == true else { return .password }
         let setupRequired = status["setup_required"] as? Bool ?? false
         let identity = try? await anonymous(base, .get, "/api/auth/lynxce/status")
+        // Octop Bot cloud: every Lynxce account signs in to its own account, nothing to claim.
+        if identity?["cloud"] as? Bool == true { return .lynxce(claimed: true) }
         let claimed = identity?["claimed"] as? Bool ?? false
         return setupRequired || claimed ? .lynxce(claimed: claimed) : .localPassword
     }
@@ -80,6 +88,21 @@ final class ServerBackend: ChatBackend {
             "account": account, "password": password, "locale": Preferences.shared.language.isChinese ? "zh" : "en",
         ])
         return try finish(base, body)
+    }
+
+    /// Is Octop Bot cloud up? Until it is, a Lynxce sign-in talks to Lynxce directly.
+    static func lynxceCloudAvailable() async -> Bool {
+        var request = URLRequest(url: lynxceCloud.appending(path: "/api/octop-bot/server-info"))
+        request.timeoutInterval = 4
+        guard let (data, response) = try? await HTTP.session.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return false }
+        return isCloudInfo(info)
+    }
+
+    static func isCloudInfo(_ info: [String: Any]) -> Bool {
+        info["product"] as? String == "octop-bot" && info["edition"] as? String == "cloud"
     }
 
     /// Body for `/api/auth/lynxce/code` (no code) and `/api/auth/lynxce/code-login`; the server tells
@@ -120,7 +143,8 @@ final class ServerBackend: ChatBackend {
         guard let token = body["access_token"] as? String else { throw APIError(kind: .server, status: 502, message: nil) }
         let user = body["user"] as? [String: Any]
         let name = (user?["display_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? user?["username"] as? String ?? "Octop"
-        let session = Session(baseURL: base, token: token, displayName: name)
+        // Octop Bot cloud says so in its sign-in response; it then also serves the Lynxce wallet.
+        let session = Session(baseURL: base, token: token, displayName: name, cloud: body["cloud"] as? Bool == true ? true : nil)
         Keychain.setCodable(session, for: sessionKey)
         return ServerBackend(session: session)
     }

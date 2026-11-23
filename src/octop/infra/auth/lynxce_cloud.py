@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from octop.infra.crypto.fernet import decrypt_json, encrypt_json
 from octop.infra.db.services import SharedServices
-from octop.infra.desktop import bot_desktop_enabled
+from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
 from octop.infra.errors import ErrorCode, OctopError
 
 _ORIGIN = "https://api.lynxce.cn"
@@ -65,6 +65,11 @@ class _Grant:
         )
 
 
+def _enabled() -> bool:
+    """The desktop app keeps a Lynxce session per local user; so does cloud mode, per tenant."""
+    return bot_desktop_enabled() or bot_cloud_enabled()
+
+
 def _key(user_id: int) -> str:
     return f"lynxce.cloud.user.{user_id}"
 
@@ -90,7 +95,7 @@ def _save(services: SharedServices, user_id: int, grant: _Grant) -> None:
 
 def cloud_status(services: SharedServices, user_id: int) -> CloudAccountStatus:
     """Read the locally saved identity without contacting the cloud."""
-    grant = _load(services, user_id) if bot_desktop_enabled() else None
+    grant = _load(services, user_id) if _enabled() else None
     return grant.status() if grant else CloudAccountStatus()
 
 
@@ -103,7 +108,7 @@ def _avatar(profile: dict[str, Any]) -> str:
 
 async def cloud_account(services: SharedServices, user_id: int) -> CloudAccountStatus:
     """The saved identity; a login saved before avatars were kept reads its avatar once."""
-    grant = await asyncio.to_thread(_load, services, user_id) if bot_desktop_enabled() else None
+    grant = await asyncio.to_thread(_load, services, user_id) if _enabled() else None
     if grant is None or grant.avatar_url is not None:
         return grant.status() if grant else CloudAccountStatus()
     async with _lock(services, user_id):
@@ -164,16 +169,17 @@ async def _send(
     bearer: str | None = None,
     json: dict[str, Any] | None = None,
     params: Mapping[str, str | int] | None = None,
+    headers: Mapping[str, str] | None = None,
 ) -> Any:
     # 'web' is Lynxce's supported multi-session channel. Exchanging a desktop auth code
     # would revoke the user's existing Lynxce desktop session and its API keys.
-    headers = {"Accept": "application/json", "X-Lynxce-Client": "web"}
+    sent = {**(headers or {}), "Accept": "application/json", "X-Lynxce-Client": "web"}
     if bearer:
-        headers["Authorization"] = f"Bearer {bearer}"
+        sent["Authorization"] = f"Bearer {bearer}"
     try:
         async with _client() as client:
             response = await client.request(
-                method, _ORIGIN + path, headers=headers, json=json, params=params
+                method, _ORIGIN + path, headers=sent, json=json, params=params
             )
     except httpx.HTTPError:
         raise _UpstreamFailure(502) from None
@@ -319,7 +325,7 @@ async def _verified(grant: _Grant) -> CloudAccountStatus:
 async def login_cloud(
     services: SharedServices, user_id: int, account: str, password: str
 ) -> CloudAccountStatus:
-    if not bot_desktop_enabled():
+    if not _enabled():
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     async with _lock(services, user_id):
         grant = await _password_login(account, password)
@@ -331,7 +337,7 @@ async def login_cloud_code(
     services: SharedServices, user_id: int, target: str, code: str
 ) -> CloudAccountStatus:
     """Sign in with a one-time code texted or emailed by Lynxce (works for password-less accounts)."""
-    if not bot_desktop_enabled():
+    if not _enabled():
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     async with _lock(services, user_id):
         grant = await _code_login(target, code)
@@ -347,7 +353,7 @@ async def login_cloud_workbuddy(
     The desktop shell captures the code from Lynxce's landing page before that page
     can spend it. The account is the Lynxce account bound to the WorkBuddy identity.
     """
-    if not bot_desktop_enabled():
+    if not _enabled():
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     if not _HANDOFF.fullmatch(handoff_code):
         raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
@@ -360,7 +366,7 @@ async def login_cloud_workbuddy(
 async def logout_cloud(
     services: SharedServices, user_id: int, *, expected_account_id: str | None = None
 ) -> CloudAccountStatus:
-    if not bot_desktop_enabled():
+    if not _enabled():
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     initial = await asyncio.to_thread(_load, services, user_id)
     if initial is None:
@@ -443,7 +449,7 @@ async def request_cloud(
 ) -> Any:
     """Invoke one supported end-user operation as the account that initiated this request."""
     if (
-        not bot_desktop_enabled()
+        not _enabled()
         or not _allowed(method, path, params or {})
         or (method == "GET" and json is not None)
         or (path == CHECKOUT_PATH and (json is not None or not expected_account_id))
@@ -473,3 +479,76 @@ async def request_cloud(
                 await _finish(asyncio.to_thread(services.secret_repo.delete, _key(user_id)))
                 raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED) from None
             raise _rejected(exc.status) from None
+
+
+# Cloud mode (OCTOP_BOT_CLOUD): signing in to the server *is* signing in to Lynxce, and the
+# session is kept for the wallet, recharge and the tenant's model key.
+
+CloudSession = _Grant
+
+
+async def open_password_session(account: str, password: str) -> CloudSession:
+    return await _password_login(account, password)
+
+
+async def open_code_session(target: str, code: str) -> CloudSession:
+    return await _code_login(target, code)
+
+
+async def keep_session(services: SharedServices, user_id: int, session: CloudSession) -> None:
+    """Store a fresh sign-in for this tenant, replacing (and closing) the previous one."""
+    async with _lock(services, user_id):
+        previous = await asyncio.to_thread(_load, services, user_id)
+        await _finish(asyncio.to_thread(_save, services, user_id, session))
+    if previous is not None and previous.binding != session.binding:
+        with suppress(_UpstreamFailure):
+            await _send("POST", "/api/auth/logout", bearer=previous.access_token, json={})
+
+
+_IAP_HEADERS = {"X-Lynxce-Iap-App": "cn.lynxce.octopbot"}
+# What cloud mode may do with a tenant's stored Lynxce session, besides request_cloud.
+_TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
+    ("POST", "/api/user/personal-api-keys"): {},
+    ("POST", "/api/user/account/deletion-request"): {},
+    ("GET", "/api/billing/app/recharge-packages"): _IAP_HEADERS,
+    ("POST", "/api/billing/apple/purchase-intents"): _IAP_HEADERS,
+    ("POST", "/api/billing/apple/transactions"): _IAP_HEADERS,
+}
+
+
+async def tenant_call(
+    services: SharedServices,
+    user_id: int,
+    method: str,
+    path: str,
+    json: dict[str, Any] | None = None,
+) -> Any:
+    """Cloud mode: one of a few account operations, as the tenant's stored Lynxce session."""
+    extra = _TENANT_CALLS.get((method, path))
+    if not bot_cloud_enabled() or extra is None:
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
+    async with _lock(services, user_id):
+        grant = await asyncio.to_thread(_load, services, user_id)
+        if grant is None:
+            raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
+        try:
+            return await _send(method, path, bearer=grant.access_token, json=json, headers=extra)
+        except _UpstreamFailure as exc:
+            if exc.status != 401:
+                raise _rejected(exc.status) from None
+            grant = await _refresh(services, user_id, grant)
+            try:
+                return await _send(
+                    method, path, bearer=grant.access_token, json=json, headers=extra
+                )
+            except _UpstreamFailure as again:
+                raise _rejected(again.status) from None
+
+
+async def create_model_key(services: SharedServices, user_id: int, body: dict[str, Any]) -> Any:
+    """Mint a Lynxce personal API key for this tenant with its stored session."""
+    return await tenant_call(services, user_id, "POST", "/api/user/personal-api-keys", body)
+
+
+def forget_session(services: SharedServices, user_id: int) -> None:
+    services.secret_repo.delete(_key(user_id))

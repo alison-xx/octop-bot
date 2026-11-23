@@ -59,6 +59,12 @@ final class AppModel {
     }
 
     var isLynxce: Bool { backend is LynxceBackend }
+    /// The Lynxce wallet: direct with Lynxce, or kept by Octop Bot cloud.
+    var creditAccount: CreditAccount? {
+        if let lynxce = backend as? LynxceBackend { return lynxce }
+        if let server, server.isCloud { return server }
+        return nil
+    }
     var server: ServerBackend? { backend as? ServerBackend }
     var lastBot: BotProfile? { bots.first { $0.id == lastBotId } ?? bots.first { $0.isChief } ?? bots.first }
 
@@ -103,9 +109,9 @@ final class AppModel {
         phase = .ready
         await first.value
         if let pushToken { await backend.registerPush(token: pushToken) }
-        if backend is LynxceBackend {
+        if creditAccount != nil {
             CreditStore.shared.start(
-                account: { [weak self] in self?.backend as? LynxceBackend },
+                account: { [weak self] in self?.creditAccount },
                 credited: { [weak self] in await self?.refreshBalance() }
             )
             await CreditStore.shared.flush()
@@ -113,8 +119,8 @@ final class AppModel {
     }
 
     func refreshBalance() async {
-        guard let lynxce = backend as? LynxceBackend else { return }
-        if let fresh = await lynxce.balance() { balance = fresh }
+        guard let account = creditAccount else { return }
+        if let fresh = await account.balance() { balance = fresh }
     }
 
     func refresh() async {
@@ -235,8 +241,8 @@ final class AppModel {
     /// Settings → Delete account: Lynxce starts its cooling-off period, then this phone signs out.
     /// Returns the cooling-off days to tell the user.
     func deleteAccount() async throws -> Int {
-        guard let lynxce = backend as? LynxceBackend else { return 0 }
-        let days = try await lynxce.requestDeletion()
+        guard let account = creditAccount else { return 0 }
+        let days = try await account.requestDeletion()
         LocalBots.shared.deleteAll()
         await signOut()
         return days

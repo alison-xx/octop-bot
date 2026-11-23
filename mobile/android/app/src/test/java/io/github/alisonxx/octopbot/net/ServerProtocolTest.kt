@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -216,5 +217,14 @@ class ServerProtocolTest {
         assertEquals(LynxceProtocol.CodeFailure.InvalidCode, LynxceProtocol.codeFailure(error))
         assertEquals(LynxceProtocol.CodeFailure.TooFrequent, LynxceProtocol.codeFailure(ApiException.from(429, null)))
         assertNull(LynxceProtocol.codeFailure(ApiException.from(403, "owner mismatch")))
+    }
+
+    @Test
+    fun cloudIsRecognisedAndItsFileLinksIntercepted() {
+        assertTrue(ServerProtocol.isCloudInfo(Http.parse("""{"product":"octop-bot","edition":"cloud"}""")))
+        assertFalse(ServerProtocol.isCloudInfo(Http.parse("""{"product":"octop-bot","edition":"web"}""")))
+        assertTrue(ServerProtocol.isWorkspaceDownload("/api/agents/AbC123/workspace/download?path=outbound/a.pdf"))
+        assertFalse(ServerProtocol.isWorkspaceDownload("https://example.com/api/agents/A/workspace/download?path=x"))
+        assertFalse(ServerProtocol.isWorkspaceDownload("/api/agents/A/workspace/tree"))
     }
 }

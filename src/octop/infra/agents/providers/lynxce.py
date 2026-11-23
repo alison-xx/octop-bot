@@ -11,13 +11,15 @@ from uuid import uuid4
 import httpx
 from octop_harness.config import HarnessAgentConfig, ModelConfig, ProviderConfig
 
-from octop.infra.desktop import bot_desktop_enabled
+from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
 from octop.infra.errors import ErrorCode, OctopError
 
 if TYPE_CHECKING:
     from octop.infra.db.services import SharedServices
 
 BASE_URL = "https://center.lynxce.cn/api/v1"
+# Lynxce's open gateway, which takes personal API keys (cloud mode).
+GATEWAY_URL = "https://api.lynxce.cn/api/v1"
 
 
 def lynxce_chat_models(catalog: object) -> list[dict[str, str]]:
@@ -102,6 +104,33 @@ class AccountModel:
                 "octop_auto_route": False,
             },
         }
+
+
+@dataclass(frozen=True)
+class CloudAccountModel(AccountModel):
+    """Cloud mode: the tenant's own Lynxce personal API key, read on every request."""
+
+    def provider(self, services: SharedServices | None) -> ProviderConfig:
+        async def key_for_request() -> str:
+            from octop.infra.cloud.bot_cloud.accounts import load_model_key  # noqa: PLC0415
+
+            key = (
+                await asyncio.to_thread(load_model_key, services, self.user_id)
+                if services is not None
+                else None
+            )
+            if key is None:
+                raise _auth_required()
+            return key.secret
+
+        return ProviderConfig(
+            id="lynxce",
+            name="Lynxce",
+            protocol="openai",
+            base_url=GATEWAY_URL,
+            api_key=cast("str", key_for_request),
+            models=[ModelConfig(id=self.model_id, name=self.model_id)],
+        )
 
 
 def _auth_required() -> OctopError:
@@ -198,6 +227,8 @@ async def select_account_model(services: SharedServices, user_id: int, model_id:
 
 
 def account_selection(services: SharedServices, user_id: int) -> AccountModel | None:
+    if bot_cloud_enabled():
+        return _cloud_selection(services, user_id)
     if not bot_desktop_enabled():
         return None
     raw = services.settings_repo.get(_key(user_id))
@@ -209,6 +240,19 @@ def account_selection(services: SharedServices, user_id: int) -> AccountModel | 
     if _connection(services, user_id) != data["connection"]:
         raise _auth_required()
     return AccountModel(user_id, data["connection"], data["model"])
+
+
+def _cloud_selection(services: SharedServices, user_id: int) -> AccountModel | None:
+    """Every tenant chats through their own key; admins keep the server's shared providers."""
+    from octop.infra.cloud.bot_cloud.accounts import cloud_model_id  # noqa: PLC0415
+
+    user = services.user_repo.get(user_id)
+    if user is None or str(user.role) == "admin":
+        return None
+    raw = services.settings_repo.get(_key(user_id))
+    chosen = json.loads(raw).get("model") if isinstance(raw, str) and raw else None
+    model = chosen if isinstance(chosen, str) and chosen else cloud_model_id()
+    return CloudAccountModel(user_id, "cloud", model)
 
 
 def selected_account_model(services: SharedServices, user_id: int) -> str | None:

@@ -11,9 +11,11 @@ import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.model.ModelOption
 import io.github.alisonxx.octopbot.net.ApiException
 import io.github.alisonxx.octopbot.net.ChatBackend
+import io.github.alisonxx.octopbot.net.CreditAccount
 import io.github.alisonxx.octopbot.net.LynxceBackend
 import io.github.alisonxx.octopbot.net.LynxceProtocol
 import io.github.alisonxx.octopbot.net.ServerBackend
+import io.github.alisonxx.octopbot.net.ServerProtocol
 import androidx.appcompat.app.AppCompatDelegate
 import io.github.alisonxx.octopbot.store.Appearance
 import io.github.alisonxx.octopbot.store.BotPreview
@@ -127,15 +129,43 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     // Session
 
+    /** Octop Bot cloud answered: Lynxce sign-in lands there. Until it is up, it goes to Lynxce directly. */
+    private var cloudAvailable: Boolean? = null
+
+    private suspend fun useCloud(): Boolean =
+        cloudAvailable ?: ServerBackend.lynxceCloudAvailable().also { cloudAvailable = it }
+
     suspend fun signInLynxce(account: String, password: String) {
-        enter(LynxceBackend.signIn(account, password, store, app.localBots))
+        if (useCloud()) {
+            enter(ServerBackend.signInWithLynxce(ServerProtocol.LYNXCE_CLOUD, account, password, store))
+        } else {
+            enter(LynxceBackend.signIn(account, password, store, app.localBots))
+        }
     }
 
-    suspend fun requestLynxceCode(target: LynxceProtocol.Target) = LynxceBackend.requestCode(target)
+    suspend fun requestLynxceCode(target: LynxceProtocol.Target) {
+        if (useCloud()) {
+            ServerBackend.requestLynxceCode(ServerProtocol.LYNXCE_CLOUD, target.value)
+        } else {
+            LynxceBackend.requestCode(target)
+        }
+    }
 
     suspend fun signInLynxceCode(target: LynxceProtocol.Target, code: String) {
-        enter(LynxceBackend.signIn(target, code, store, app.localBots))
+        if (useCloud()) {
+            enter(ServerBackend.signInWithLynxceCode(ServerProtocol.LYNXCE_CLOUD, target.value, code, store))
+        } else {
+            enter(LynxceBackend.signIn(target, code, store, app.localBots))
+        }
     }
+
+    /** The Lynxce wallet: direct with Lynxce, or kept by Octop Bot cloud. */
+    val creditAccount: CreditAccount?
+        get() = when (val backend = (session.value as? SessionState.Ready)?.backend) {
+            is LynxceBackend -> backend
+            is ServerBackend -> backend.takeIf { it.isCloud }
+            else -> null
+        }
 
     /** Called after the server form finished signing in. Replaces whatever account was active. */
     fun useServer(backend: ServerBackend) {
@@ -158,13 +188,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         _lastBotId.value = store.lastBot()
         _session.value = SessionState.Ready(backend)
         refreshDirectory()
-        if (backend.definesBotsLocally) {
-            _models.value = runCatching { backend.models() }.getOrDefault(emptyList())
-            _balance.value = backend.balance()
-        } else {
-            _models.value = emptyList()
-            _balance.value = null
-        }
+        _models.value = if (backend.definesBotsLocally) runCatching { backend.models() }.getOrDefault(emptyList()) else emptyList()
+        _balance.value = creditAccount?.balance()
     }
 
     fun signOut(notice: String? = null, reopenServer: Boolean = false) {
@@ -220,11 +245,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         viewModelScope.launch { _balance.value = backend.balance() }
     }
 
+    /** A file a Bot linked to: Octop Bot cloud hands out a short-lived object-store link. */
+    fun openWorkspaceFile(uri: String, open: (String) -> Unit) {
+        val server = (session.value as? SessionState.Ready)?.backend as? ServerBackend
+        if (server == null || !server.isCloud) {
+            notice(resources.getString(R.string.file_open_unsupported))
+            return
+        }
+        viewModelScope.launch {
+            runCatching { server.downloadLink(uri) }
+                .onSuccess(open)
+                .onFailure { notice(resources.describe(it)) }
+        }
+    }
+
     /** Open Lynxce's recharge page signed in as this account (a 15-minute ticket, as on the desktop). */
     fun recharge(open: (String) -> Unit) {
-        val backend = (session.value as? SessionState.Ready)?.backend as? LynxceBackend ?: return
+        val account = creditAccount ?: return
         viewModelScope.launch {
-            runCatching { backend.checkoutUrl() }
+            runCatching { account.checkoutUrl() }
                 .onSuccess(open)
                 .onFailure { notice(resources.describe(it)) }
         }
@@ -232,9 +271,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     /** Settings → Delete account: Lynxce starts its cooling-off period, then this phone signs out. */
     fun deleteAccount() {
-        val backend = (session.value as? SessionState.Ready)?.backend as? LynxceBackend ?: return
+        val account = creditAccount ?: return
         viewModelScope.launch {
-            runCatching { backend.requestDeletion() }
+            runCatching { account.requestDeletion() }
                 .onSuccess {
                     store.setCustomBots(emptyList())
                     signOut(notice = resources.getString(R.string.settings_delete_account_done))
@@ -379,7 +418,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
             store.updatePreviews { Previews.replyFinished(it, bot.id, text, System.currentTimeMillis(), onScreen) }
             val settings = settings.first()
             if (settings.notifications) app.notifier.replyFinished(bot.id, bot.name, text)
-            if (backend.definesBotsLocally) refreshBalance()
+            if (creditAccount != null) refreshBalance()
             // Voice mode reads its own replies.
             if (settings.readAloud && voiceBotId != bot.id && app.notifier.isInForeground) readAloud(messageId, text)
         }

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from octop.api.deps import get_server, require_database, resolve_user_from_token, sign_token
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import make_probe_provider_row, probe_provider_row
-from octop.infra.desktop import bot_web_enabled, desktop_shell_enabled
+from octop.infra.desktop import bot_cloud_enabled, bot_web_enabled, desktop_shell_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.setup import password_file as _wizard
 from octop.infra.setup.wizard_tokens import RateLimited
@@ -333,7 +333,7 @@ async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
         "setup_required": setup_required,
         "local_account": local_account,
         # Bot web build: sign in with a Lynxce account (see /api/auth/lynxce/*).
-        "lynxce_login": bot_web_enabled(),
+        "lynxce_login": bot_web_enabled() or bot_cloud_enabled(),
         "wizard_password_required": password_required,
         "wizard_password_exists": (
             password_required

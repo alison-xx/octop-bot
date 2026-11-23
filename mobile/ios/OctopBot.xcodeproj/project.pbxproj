@@ -24,6 +24,7 @@
 		4BACAF514D63D9CBB1311E3D /* CreditStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BFCE63FDD2FE3C02C5B5158 /* CreditStore.swift */; };
 		50D8356BA21790C2FFF46F1D /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2022CECD87289127591F30D /* AppUpdater.swift */; };
 		5E31F9FF32F06FBE952A0A9F /* octop-mascot.webp in Resources */ = {isa = PBXBuildFile; fileRef = 7B4198C3433D9E46B368560D /* octop-mascot.webp */; };
+		60F09A2E479DE5872452964A /* FileOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = E35158BD983E0060775BA507 /* FileOpener.swift */; };
 		670A22CF3CD26D0459F1C862 /* GroupRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3673E4497A330EC42D8B0AE4 /* GroupRoomView.swift */; };
 		701243634B93B3D55795922A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CF6F0F3501DAF6D838B0A354 /* LaunchScreen.storyboard */; };
 		7D0158402BB9F1236A22B6A9 /* CreditsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60FE975D80457770F2B56FE7 /* CreditsView.swift */; };
@@ -40,6 +41,7 @@
 		C771D8F5FBC1CCEA9E472EE8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7F42D68AD0EF0EE042F76EBF /* Assets.xcassets */; };
 		D0594327B5388BA21151650A /* LaunchSplash@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 6F77470F5AE016E9DEF759F6 /* LaunchSplash@2x.png */; };
 		D79859D85ACC51E337C24629 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8FC5EE7F64E7D3DE6CC62A4 /* OnboardingView.swift */; };
+		DB504ED3D1733302B3F10D9E /* CreditAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5466325A942736154E927DB0 /* CreditAccount.swift */; };
 		DEC5AC974DAE214BF6C67D43 /* Hitl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44AA9D2522DD5EC8E5320048 /* Hitl.swift */; };
 		DEC9A2364E12C86351B28398 /* LaunchSplash@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 7D05B2CADB1735B180DD738F /* LaunchSplash@1x.png */; };
 		E4D12A2503C63875BFFB19EA /* LynxceBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */; };
@@ -71,6 +73,7 @@
 		45C5942C9895849A32C673AB /* Panels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels.swift; sourceTree = "<group>"; };
 		485730F843527F6DB74B2288 /* LaunchSplash@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LaunchSplash@3x.png"; sourceTree = "<group>"; };
 		4B26B5219B243FA949E1B4CC /* MarkdownText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownText.swift; sourceTree = "<group>"; };
+		5466325A942736154E927DB0 /* CreditAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditAccount.swift; sourceTree = "<group>"; };
 		5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LynxceBackend.swift; sourceTree = "<group>"; };
 		60FE975D80457770F2B56FE7 /* CreditsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditsView.swift; sourceTree = "<group>"; };
 		64A1DD83356759A7465B69ED /* HitlCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitlCard.swift; sourceTree = "<group>"; };
@@ -94,6 +97,7 @@
 		CF6F0F3501DAF6D838B0A354 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		DCAE45B5468F79305E620A83 /* OctopBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OctopBotApp.swift; sourceTree = "<group>"; };
 		DFA4F9D2603084616EA20193 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		E35158BD983E0060775BA507 /* FileOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOpener.swift; sourceTree = "<group>"; };
 		E47EB786F0FC7601BFB45245 /* ImageViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewer.swift; sourceTree = "<group>"; };
 		ED1E4C98857F2A9A92FA53F6 /* HTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTP.swift; sourceTree = "<group>"; };
 		F27E10E2BDC532D8A8733A20 /* Characters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Characters.swift; sourceTree = "<group>"; };
@@ -114,6 +118,8 @@
 		2BF4BBBE23349A38E92F1B15 /* Net */ = {
 			isa = PBXGroup;
 			children = (
+				5466325A942736154E927DB0 /* CreditAccount.swift */,
+				E35158BD983E0060775BA507 /* FileOpener.swift */,
 				ED1E4C98857F2A9A92FA53F6 /* HTTP.swift */,
 				5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */,
 				853AB250E633AC85F64B4B8E /* ServerBackend.swift */,
@@ -354,8 +360,10 @@
 				8330BE0127CCDC3E8975B833 /* Characters.swift in Sources */,
 				94F0BEE560698A2E757BFE90 /* ChatScreen.swift in Sources */,
 				ABC1C4B78D4E12D40A46D64A /* ChatSession.swift in Sources */,
+				DB504ED3D1733302B3F10D9E /* CreditAccount.swift in Sources */,
 				4BACAF514D63D9CBB1311E3D /* CreditStore.swift in Sources */,
 				7D0158402BB9F1236A22B6A9 /* CreditsView.swift in Sources */,
+				60F09A2E479DE5872452964A /* FileOpener.swift in Sources */,
 				670A22CF3CD26D0459F1C862 /* GroupRoomView.swift in Sources */,
 				41B9ABBCAFF713FEA04C284C /* HTTP.swift in Sources */,
 				DEC5AC974DAE214BF6C67D43 /* Hitl.swift in Sources */,

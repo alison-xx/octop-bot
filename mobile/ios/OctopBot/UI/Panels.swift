@@ -350,7 +350,7 @@ struct SettingsView: View {
                     LabeledContent { Text(model.backend?.accountName ?? "") } label: {
                         row("settings.signedInAs", "person", .blue)
                     }
-                    if model.isLynxce {
+                    if model.creditAccount != nil {
                         NavigationLink {
                             CreditsView()
                         } label: {
@@ -412,7 +412,7 @@ struct SettingsView: View {
                         .accessibilityIdentifier("signOut")
                 }
 
-                if model.isLynxce {
+                if model.creditAccount != nil {
                     Section {
                         Button(role: .destructive) { confirmDelete = true } label: {
                             HStack {

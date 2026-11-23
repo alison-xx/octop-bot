@@ -35,6 +35,21 @@ import java.util.UUID
 
 /** Pure Octop server wire mapping (no I/O), shared by [ServerBackend] and unit tests. */
 object ServerProtocol {
+    /** Octop Bot cloud, run by Lynxce. */
+    const val LYNXCE_CLOUD = "https://bot.lynxce.cn"
+
+    fun isCloudInfo(info: JsonElement): Boolean {
+        val obj = info.asObject() ?: return false
+        return obj.str("product") == "octop-bot" && obj.str("edition") == "cloud"
+    }
+
+    /** `/api/agents/{id}/workspace/download?path=…`, the link Octop puts in a reply for a file. */
+    fun isWorkspaceDownload(uri: String): Boolean {
+        if (uri.contains("://")) return false
+        val parts = uri.substringBefore('?').trim('/').split('/')
+        return parts.size == 5 && parts[0] == "api" && parts[1] == "agents" && parts[3] == "workspace" && parts[4] == "download"
+    }
+
     /** `POST /api/auth/lynxce/code`: the server tells phone from email itself and texts or emails the owner. */
     fun lynxceCodeBody(target: String, chinese: Boolean) = buildJsonObject {
         put("target", target.trim())

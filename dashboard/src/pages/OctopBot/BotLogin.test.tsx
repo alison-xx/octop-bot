@@ -53,6 +53,19 @@ beforeEach(() => {
 afterEach(() => setAuthToken(null));
 
 describe("Bot web sign-in", () => {
+  it("offers Lynxce sign-in to everyone on Octop Bot cloud", async () => {
+    vi.spyOn(authApi, "getLynxceIdentityStatus").mockResolvedValue({
+      enabled: true,
+      claimed: false,
+      cloud: true,
+    });
+    open();
+    expect(
+      await screen.findByText("botOnboarding.loginCloudBody"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("botOnboarding.loginLocalBody")).toBeNull();
+  });
+
   it("signs the bound owner in with their Lynxce account", async () => {
     vi.spyOn(authApi, "getLynxceIdentityStatus").mockResolvedValue({
       enabled: true,

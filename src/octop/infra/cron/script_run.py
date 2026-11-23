@@ -129,6 +129,11 @@ async def run_cron_script(
             body=body,
             path=path,
         )
+    from octop.infra.desktop import bot_cloud_enabled  # noqa: PLC0415
+
+    if bot_cloud_enabled():
+        # Cloud mode never runs a tenant's script on the shared host.
+        return ScriptRunResult(exit_code=126, stdout="", stderr="scripts need a cloud computer")
     cwd = _host_cwd(workspace, backend_spec)
     return await _run_on_host(
         workspace,

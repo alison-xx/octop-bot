@@ -338,6 +338,31 @@ App 内消耗的积分属于数字商品。App Store 规则 3.1.1 要求这类�
 
 P2 开工前先做一周技术验证：用 AGS 的 `osworld` 类型跑通「创建 → 执行命令 → Chrome CDP → 暂停 → 恢复 → 快照」，同时测出实际启动时间、恢复时间和每小时成本。
 
+## 12.1 P1 实现说明（2026-11-24）
+
+P1 的实际做法与上文设计有三处不同，以本节为准：
+
+- **模型计费用用户自己的个人 API Key，不用服务间代扣。** 用户在云 Octop 用灵策验证码或密码登录时，服务端用这次登录态在灵策签发一个名为「Octop Bot 云端」的个人 API Key（仅含对话能力），加密保存。该用户 Bot 的对话走灵策开放网关 `https://api.lynxce.cn/api/v1`，积分从用户自己的钱包扣。用户能在灵策个人中心看到这个 Key，可以调整每日额度或吊销。灵策后端不用改。
+- **云 Octop 会保存用户的灵策登录态**（加密存放），用于读余额和申请充值票据。§4.2 里"不保存刷新令牌"的写法不再适用。
+- **云电脑接入之前，Bot 不能运行命令。** 每个租户的 Bot 工作区固定在对象存储前缀 `users/<uid>/agents/<agent_id>/`（harness 的 S3 后端），用户无法改动。宿主机目录浏览、宿主机路径下载、定时脚本、自定义 MCP 对租户关闭。用户下载文件时，服务端把原文件复制到 `downloads/<uid>/` 并签发 10 分钟有效的链接（`POST /api/agents/{id}/workspace/download-link`）。
+
+登录接口沿用网页版的 `/api/auth/lynxce/code`、`/code-login`、`/login`。云模式下，每个灵策账号对应一个普通账户（`user_sso_identities`，身份源 kind=`lynxce`），不再认领实例。`/api/auth/lynxce/status` 会多返回一个 `cloud: true`，`/api/octop-bot/server-info` 返回 `edition: "cloud"`。
+
+### 部署所需环境变量
+
+| 变量 | 说明 |
+|---|---|
+| `OCTOP_BOT_CLOUD=1` | 开启云模式 |
+| `OCTOP_BOT_WEB=1` | 同时开启 Bot 网页版界面（桌面端「灵策云」和浏览器访问用的就是它） |
+| `OCTOP_FILE_STORE_BUCKET` / `_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | 对象存储桶与子账号密钥（任意 S3 兼容服务：腾讯云 COS、阿里云 OSS、MinIO） |
+| `OCTOP_FILE_STORE_ENDPOINT` / `_REGION` | 例如 `cos.ap-guangzhou.myqcloud.com` / `ap-guangzhou`；OSS 填 `oss-cn-hangzhou.aliyuncs.com` |
+| `OCTOP_FILE_STORE_ADDRESSING` | 默认 `virtual`（COS、OSS 必须）；MinIO 填 `path` |
+| `OCTOP_FILE_STORE_PREFIX` | 可选，所有对象的公共前缀，例如 `prod` |
+| `OCTOP_BOT_CLOUD_MODEL` | 默认模型，未设置时用 `deepseek-flash` |
+| `OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT` | 新签发 Key 的每日积分上限；不设置则用灵策默认值，`none` 表示不设上限 |
+
+存储桶需要配一条生命周期规则：`downloads/` 前缀 1 到 2 天后过期。管理员账户（运营方）不受租户限制，继续使用服务器的共享模型配置。
+
 ## 13. 合规提醒
 
 - 大陆的 `bot.lynxce.cn`、`files.lynxce.cn` 都要做 ICP 备案和公安备案。沙箱端口不对公网开放，统一由控制面代理。

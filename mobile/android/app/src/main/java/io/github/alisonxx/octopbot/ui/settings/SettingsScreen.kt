@@ -97,6 +97,8 @@ data class SettingsState(
     val accountName: String,
     val balance: String?,
     val lynxce: Boolean,
+    /** A Lynxce wallet to show, recharge and delete: Lynxce mode, or Octop Bot cloud. */
+    val wallet: Boolean = lynxce,
     /** host[:port] on a server; the account card's connection line. */
     val host: String,
     /** The full server address (tap to copy); null in Lynxce mode. */
@@ -166,6 +168,7 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
             accountName = backend.accountName,
             balance = balance,
             lynxce = backend.definesBotsLocally,
+            wallet = model.creditAccount != null,
             host = backend.connectionLabel,
             serverAddress = (backend as? ServerBackend)?.baseUrl,
             models = models,
@@ -256,7 +259,7 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
                 .padding(horizontal = 16.dp)
                 .navigationBarsPadding(),
         ) {
-            AccountCard(state.accountName, connection, state.balance.takeIf { state.lynxce })
+            AccountCard(state.accountName, connection, state.balance.takeIf { state.wallet })
 
             Group(stringResource(R.string.settings_general)) {
                 row {
@@ -326,7 +329,7 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
 
             Group(stringResource(R.string.settings_account)) {
                 row { Item(stringResource(R.string.settings_signed_in_as), value = state.accountName) }
-                if (state.lynxce) {
+                if (state.wallet) {
                     row {
                         Item(
                             stringResource(R.string.settings_recharge),
@@ -348,7 +351,7 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
                 row { Item(stringResource(R.string.settings_sign_out), danger = true) { confirmSignOut = true } }
             }
 
-            if (state.lynxce) {
+            if (state.wallet) {
                 Group(null, footer = { FooterText(stringResource(R.string.settings_delete_account_footer)) }) {
                     row { Item(stringResource(R.string.settings_delete_account), danger = true) { confirmDelete = true } }
                 }

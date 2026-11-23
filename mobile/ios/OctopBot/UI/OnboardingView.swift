@@ -10,6 +10,9 @@ struct OnboardingView: View {
     @State private var busy = false
     @State private var error: String?
     @State private var showServer = false
+    /// Octop Bot cloud answered: a Lynxce sign-in lands there (Bots, groups and schedules in the
+    /// cloud). Until it is up, Lynxce sign-in talks to Lynxce directly.
+    @State private var cloud: Bool?
     @FocusState private var focus: Field?
 
     enum Field { case account, password }
@@ -73,6 +76,13 @@ struct OnboardingView: View {
     }
 
     private var target: LynxceBackend.CodeTarget? { LynxceBackend.CodeTarget(account) }
+
+    private func useCloud() async -> Bool {
+        if let cloud { return cloud }
+        let available = await ServerBackend.lynxceCloudAvailable()
+        cloud = available
+        return available
+    }
     private var canSignIn: Bool {
         usePassword ? !account.isEmpty && password.count >= 8 : target != nil && entry.isComplete
     }
@@ -168,7 +178,15 @@ struct OnboardingView: View {
         guard entry.canSend(to: account), let target else { return }
         error = nil
         Task {
-            if let failure = await entry.send({ try await LynxceBackend.requestCode(target: target) }) {
+            let cloud = await useCloud()
+            let account = account
+            if let failure = await entry.send({
+                if cloud {
+                    try await ServerBackend.sendLynxceCode(ServerBackend.lynxceCloud, target: account)
+                } else {
+                    try await LynxceBackend.requestCode(target: target)
+                }
+            }) {
                 error = LynxceBackend.codeMessage(for: failure)
             }
         }
@@ -181,13 +199,19 @@ struct OnboardingView: View {
         Task {
             defer { busy = false }
             do {
-                let backend: LynxceBackend
+                let backend: ChatBackend
+                let cloud = await useCloud()
+                let trimmed = account.trimmingCharacters(in: .whitespaces)
                 if usePassword {
-                    backend = try await LynxceBackend.signIn(account: account.trimmingCharacters(in: .whitespaces), password: password)
+                    backend = cloud
+                        ? try await ServerBackend.signInWithLynxce(ServerBackend.lynxceCloud, account: trimmed, password: password)
+                        : try await LynxceBackend.signIn(account: trimmed, password: password)
                     password = ""
                 } else {
                     guard let target else { return }
-                    backend = try await LynxceBackend.signIn(target: target, code: entry.code)
+                    backend = cloud
+                        ? try await ServerBackend.signInWithLynxceCode(ServerBackend.lynxceCloud, target: trimmed, code: entry.code)
+                        : try await LynxceBackend.signIn(target: target, code: entry.code)
                     entry.code = ""
                     entry.reset()
                 }

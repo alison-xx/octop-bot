@@ -45,7 +45,7 @@ import java.util.concurrent.ConcurrentHashMap
 class ServerBackend(
     session: ServerSession,
     private val store: AppStore,
-) : ChatBackend {
+) : ChatBackend, CreditAccount {
     @Volatile private var session = session
     private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sockets = ConcurrentHashMap<String, WebSocket>()
@@ -58,6 +58,8 @@ class ServerBackend(
     override val accountName get() = session.displayName
     /** The full server address, e.g. `http://10.0.2.2:18790`. */
     val baseUrl: String get() = session.baseUrl
+    /** Octop Bot cloud: Lynxce sign-in, and the server keeps the Lynxce wallet. */
+    val isCloud: Boolean get() = session.cloud
     /** host, plus the port when it isn't the scheme's default (e.g. `10.0.2.2:18790`). */
     override val connectionLabel: String
         get() = session.baseUrl.toHttpUrl().let { url ->
@@ -123,7 +125,10 @@ class ServerBackend(
             val status = anonymous(base, "GET", "/api/setup/status")
             if (status.bool("lynxce_login") != true) return SignInMode.Password
             val setupRequired = status.bool("setup_required") == true
-            val claimed = runCatching { anonymous(base, "GET", "/api/auth/lynxce/status").bool("claimed") }.getOrNull() == true
+            val identity = runCatching { anonymous(base, "GET", "/api/auth/lynxce/status") }.getOrNull()
+            // Octop Bot cloud: every Lynxce account signs in to its own account, nothing to claim.
+            if (identity?.bool("cloud") == true) return SignInMode.Lynxce(claimed = true)
+            val claimed = identity?.bool("claimed") == true
             return if (setupRequired || claimed) SignInMode.Lynxce(claimed) else SignInMode.LocalPassword
         }
 
@@ -168,11 +173,21 @@ class ServerBackend(
             return finish(base, body, store)
         }
 
+        /** Is Octop Bot cloud up? Until it is, a Lynxce sign-in talks to Lynxce directly. */
+        suspend fun lynxceCloudAvailable(): Boolean = runCatching {
+            val request = Http.request(ServerProtocol.LYNXCE_CLOUD + "/api/octop-bot/server-info").get().build()
+            Http.client.withReadTimeout(4).newCall(request).await().use { response ->
+                response.isSuccessful &&
+                    ServerProtocol.isCloudInfo(Http.parse(withContext(Dispatchers.IO) { response.body.string() }))
+            }
+        }.getOrDefault(false)
+
         private suspend fun finish(base: String, body: JsonObject, store: AppStore): ServerBackend {
             val token = body.str("access_token") ?: throw ApiException.badResponse()
             val user = body.obj("user")
             val name = user?.str("display_name")?.takeIf { it.isNotBlank() } ?: user?.str("username") ?: "Octop"
-            val session = ServerSession(base, token, name)
+            // Octop Bot cloud says so in its sign-in response.
+            val session = ServerSession(base, token, name, cloud = body.bool("cloud") == true)
             store.setServerSession(session)
             return ServerBackend(session, store)
         }
@@ -209,6 +224,43 @@ class ServerBackend(
         body: RequestBody? = null,
         http: OkHttpClient = client,
     ): JsonElement = Http.parse(raw(method, path, query, body, http).decodeToString())
+
+    // Lynxce wallet (Octop Bot cloud only)
+
+    @Volatile private var walletAccount: String? = null
+
+    override suspend fun balance(): String? {
+        if (!isCloud) return null
+        return runCatching {
+            val wallet = json("GET", "/api/octop-bot/wallet", mapOf("source" to "cloud")).asObject()
+            walletAccount = wallet?.str("account_id")
+            wallet?.double("credits")?.let(LynxceProtocol::formatCredits)
+        }.getOrNull()
+    }
+
+    override suspend fun checkoutUrl(): String {
+        if (!isCloud) throw ApiException.badResponse()
+        val account = walletAccount ?: balance().let { walletAccount } ?: throw ApiException.badResponse()
+        val link = json("POST", "/api/octop-bot/wallet/recharge", body = Http.body(buildJsonObject {
+            put("source", "cloud")
+            put("expected_account_id", account)
+        })).asObject()
+        // The server checked the ticket; only ever open Lynxce's own recharge page.
+        return link?.str("url")?.takeIf { it.startsWith(LynxceProtocol.CHECKOUT_PORTAL) } ?: throw ApiException.badResponse()
+    }
+
+    override suspend fun requestDeletion() {
+        if (!isCloud) throw ApiException.badResponse()
+        json("POST", "/api/octop-bot/account/delete")
+    }
+
+    /** Octop Bot cloud: a short-lived object-store link for a file a Bot linked to. */
+    suspend fun downloadLink(uri: String): String {
+        val parsed = (session.baseUrl + uri).toHttpUrl()
+        val query = (0 until parsed.querySize).associate { parsed.queryParameterName(it) to parsed.queryParameterValue(it).orEmpty() }
+        val link = json("POST", parsed.encodedPath + "-link", query).asObject()?.str("url")
+        return link?.takeIf { it.startsWith("https://") } ?: throw ApiException.badResponse()
+    }
 
     private fun segment(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field, StringConstraints
 
 from octop.api.deps import current_user, get_server
+from octop.api.routers.bot_account import router as account_router
 from octop.api.routers.bot_avatar_library import router as avatar_library_router
 from octop.api.routers.bot_cloud_account import router as cloud_account_router
 from octop.api.routers.bot_cloud_import import router as cloud_import_router
@@ -40,6 +41,7 @@ from octop.infra.users.identity import User
 
 router = APIRouter(prefix="/octop-bot")
 router.include_router(server_router)
+router.include_router(account_router)
 router.include_router(avatar_library_router)
 router.include_router(cloud_account_router)
 router.include_router(cloud_import_router)

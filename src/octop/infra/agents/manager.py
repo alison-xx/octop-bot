@@ -900,6 +900,11 @@ class AgentManager:
                 if not isinstance(raw_workspace, str) or not raw_workspace.strip():
                     config["workspace_dir"] = managed_default_workspace(agent_id)
                 require_managed_fields(config)
+            if spec.user_id is not None and self._cloud_tenant(spec.user_id):
+                # Cloud mode: a tenant's agent keeps its files in the object store, never on the host.
+                from octop.infra.cloud.bot_cloud import files as cloud_files  # noqa: PLC0415
+
+                config["backend"] = cloud_files.agent_backend(spec.user_id, agent_id)
             if spec.user_id is not None:
                 if kind != "team":
                     assert_agent_quota_available(
@@ -1152,6 +1157,11 @@ class AgentManager:
             out.pop("system_files_path", None)
         if pin_workspace_dir and "workspace_dir" in current_raw:
             out["workspace_dir"] = current_raw["workspace_dir"]
+        if row is not None and row.user_id is not None and self._cloud_tenant(row.user_id):
+            from octop.infra.cloud.bot_cloud import files as cloud_files  # noqa: PLC0415
+
+            # Whatever an edit sends, a cloud tenant's agent stays on its object-store prefix.
+            out["backend"] = cloud_files.agent_backend(row.user_id, agent_id)
         return out
 
     async def update(self, agent_id: str, **kwargs: Any) -> AgentRow:
@@ -3592,6 +3602,12 @@ class AgentManager:
                     f"skill package {package_id!r} not found",
                 )
         return normalized_ids
+
+    def _cloud_tenant(self, user_id: int | None) -> bool:
+        """A non-admin account on a cloud-mode server (``OCTOP_BOT_CLOUD``)."""
+        from octop.infra.desktop import bot_cloud_enabled  # noqa: PLC0415
+
+        return user_id is not None and bot_cloud_enabled() and not self._user_is_admin(user_id)
 
     def _user_is_admin(self, user_id: int | None) -> bool:
         if user_id is None:

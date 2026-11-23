@@ -27,14 +27,14 @@ final class CreditStore {
     private(set) var offers: [Offer] = []
     private(set) var buying: String?
 
-    /// The signed-in Lynxce account; nil while signed out or connected to a self-hosted server.
-    private var account: () -> LynxceBackend? = { nil }
+    /// The signed-in Lynxce wallet; nil while signed out or on a server without one.
+    private var account: () -> CreditAccount? = { nil }
     /// Called after Lynxce credits a purchase, so the balance on screen catches up.
     private var credited: () async -> Void = {}
     private var updates: Task<Void, Never>?
 
     /// Start listening for transactions that finish outside a purchase sheet (Ask to Buy, retries).
-    func start(account: @escaping () -> LynxceBackend?, credited: @escaping () async -> Void) {
+    func start(account: @escaping () -> CreditAccount?, credited: @escaping () async -> Void) {
         self.account = account
         self.credited = credited
         guard updates == nil else { return }

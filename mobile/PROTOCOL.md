@@ -139,5 +139,16 @@ This is not a failure: finish the reply normally and show a card.
 `audio` (file) + `language` (`zh-CN`/`en-US`) → `{text}`. If `tts` is set: `POST /api/voice/tts`
 `{text}` → audio bytes. Otherwise use on-device speech recognition and synthesis.
 
+**Octop Bot cloud** (`https://bot.lynxce.cn`, `edition:"cloud"` in server-info; `cloud:true` in `/api/auth/lynxce/status` and in the sign-in response). Every Lynxce account signs in with `/api/auth/lynxce/code` + `/code-login` (or `/login`) and gets its own account; probe it as `.lynxce(claimed: true)`. A phone's "Lynxce account" sign-in goes here when server-info answers `cloud`, otherwise straight to Lynxce (section A). The server keeps the Lynxce session, so the wallet goes through it:
+
+| Purpose | Request | Response |
+|---|---|---|
+| Balance | `GET /api/octop-bot/wallet?source=cloud` | `{credits, account_id}` |
+| Recharge (Android) | `POST /api/octop-bot/wallet/recharge` `{source:"cloud", expected_account_id}` | `{url, expires_at}`; open only `https://admin.lynxce.cn/recharge?token=…` |
+| Credit packs (iOS) | `GET /api/octop-bot/wallet/packs` | Lynxce's recharge-packages body (section A) |
+| Buy a pack (iOS) | `POST /api/octop-bot/wallet/apple/intent` `{package_id}` → StoreKit → `POST /api/octop-bot/wallet/apple/transaction` `{signed_transaction}` | Lynxce's `{productId, appAccountToken}` / transaction result |
+| Delete account | `POST /api/octop-bot/account/delete` | `{cooling_days}`; the account is disabled on the server too |
+| Open a file a Bot linked to | `POST /api/agents/{id}/workspace/download-link?path=…` (same query as the `…/workspace/download` link in the reply) | `{url, expires_in}`: a signed object-store URL, opened in the system browser |
+
 **Not available to phones** (desktop-shell + loopback only): `/api/octop-bot/lynxce/*`, `/wallet`,
 `/cloud/*`, `/api/auth/device/*`, Bot computer control.

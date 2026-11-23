@@ -23,6 +23,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from octop.api.common.bot_cloud import no_cloud_tenant
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.workspace.dir import default_workspace_parent_dir
 from octop.infra.errors import ErrorCode, OctopError
@@ -46,7 +47,8 @@ from octop.infra.utils.host_dirs import (
     running_in_container,
 )
 
-router = APIRouter()
+# Host directories: closed to cloud tenants, whose agents live in the object store.
+router = APIRouter(dependencies=[Depends(no_cloud_tenant)])
 
 
 def _user_workspace_root(server: Any, user: User) -> str | None:

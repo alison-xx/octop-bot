@@ -222,6 +222,7 @@
     "localHint": "Use this password when you open Octop Bot from another device. You'll connect your model service next.",
     "localSubmit": "Create and set up model",
     "loginTitle": "Sign in to Octop Bot",
+    "loginCloudBody": "Sign in to Octop Bot Cloud with your Lynxce account. Your first sign-in sets it up; Bots and chats stay in the cloud, on every device.",
     "loginLynxceBody": "Sign in with the Lynxce account this Octop Bot was first bound to.",
     "loginLocalBody": "Enter the sign-in password you chose the first time."
   },

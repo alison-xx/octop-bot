@@ -551,3 +551,26 @@ final class CreditTests: XCTestCase {
         XCTAssertFalse(CreditStore.isCreditPack("cn.lynxce.octopbot"))
     }
 }
+
+@MainActor
+final class CloudTests: XCTestCase {
+    func testCloudIsRecognisedFromServerInfo() {
+        XCTAssertTrue(ServerBackend.isCloudInfo(["product": "octop-bot", "edition": "cloud"]))
+        XCTAssertFalse(ServerBackend.isCloudInfo(["product": "octop-bot", "edition": "web"]))
+        XCTAssertFalse(ServerBackend.isCloudInfo(["edition": "cloud"]))
+    }
+
+    func testOnlyWorkspaceDownloadsAreOpenedWithTheSession() {
+        XCTAssertTrue(ServerBackend.isWorkspaceDownload(URL(string: "/api/agents/AbC123/workspace/download?path=outbound/a.pdf")!))
+        XCTAssertFalse(ServerBackend.isWorkspaceDownload(URL(string: "https://example.com/api/agents/A/workspace/download?path=x")!))
+        XCTAssertFalse(ServerBackend.isWorkspaceDownload(URL(string: "/api/agents/A/workspace/tree")!))
+    }
+
+    func testIntentsParseFromEitherRoute() throws {
+        let token = UUID()
+        let intent = try LynxceBackend.intent(from: ["productId": "cn.lynxce.octopbot.credits.1000", "appAccountToken": token.uuidString])
+        XCTAssertEqual(intent.productId, "cn.lynxce.octopbot.credits.1000")
+        XCTAssertEqual(intent.accountToken, token)
+        XCTAssertThrowsError(try LynxceBackend.intent(from: ["productId": "x"]))
+    }
+}

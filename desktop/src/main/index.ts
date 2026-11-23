@@ -40,7 +40,7 @@ import { DeviceCredentialStore } from "./session/device-credential";
 import { DeviceSessionClient } from "./session/device-session";
 import { safeStorageCipher, warnIfKeychainUnavailable } from "./session/safe-storage-cipher";
 import { ClientSettingsStore, defaultClientSettingsPath } from "./storage/client-settings";
-import { defaultServerChoicePath, ServerChoiceStore } from "./server/server-choice";
+import { defaultServerChoicePath, LYNXCE_CLOUD_ORIGIN, ServerChoiceStore } from "./server/server-choice";
 import { readLoginShellEnv, resolveOctopHome } from "./supervisor/shell-env";
 import { reserveRandomPort } from "./supervisor/random-port";
 import {
@@ -1272,7 +1272,13 @@ function serverMenuItems(): MenuItemConstructorOptions[] {
           checked: current === null,
           click: () => serverPicker?.switchTo(null),
         },
-        ...recent.map((origin): MenuItemConstructorOptions => ({
+        {
+          label: zh ? "灵策云" : "Lynxce Cloud",
+          type: "radio",
+          checked: current === LYNXCE_CLOUD_ORIGIN,
+          click: () => serverPicker?.switchTo(LYNXCE_CLOUD_ORIGIN),
+        },
+        ...recent.filter((origin) => origin !== LYNXCE_CLOUD_ORIGIN).map((origin): MenuItemConstructorOptions => ({
           label: new URL(origin).host,
           type: "radio",
           checked: current === origin,

@@ -65,6 +65,16 @@ def bot_web_enabled() -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def bot_cloud_enabled() -> bool:
+    """Lynxce-operated multi-tenant Octop Bot (``OCTOP_BOT_CLOUD=1``, e.g. bot.lynxce.cn).
+
+    Anyone with a Lynxce account signs in and gets their own non-admin account. Agents keep
+    their files in the shared object store and never touch the host.
+    """
+    raw = (os.environ.get("OCTOP_BOT_CLOUD") or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 def shell_owned_env_key(key: str) -> bool:
     """Return true when ``key`` is pinned by the desktop shell for this process."""
     if key in SHELL_OWNED_ENV_KEYS:

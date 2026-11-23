@@ -301,4 +301,5 @@
     <string name="settings_delete_account_message">You\'ll be signed out on every device and can\'t sign in again. Your data is erased after a 7-day cooling-off period; contact Lynxce support within that time to restore the account.</string>
     <string name="settings_delete_account_done">Account deletion requested. You have been signed out.</string>
     <string name="onboarding_agreement"><![CDATA[By continuing you agree to the <a href="https://admin.lynxce.cn/legal/app/user-agreement">Lynxce User Agreement</a> and the <a href="https://octop-bot.lynxce.cn/privacy.html">Privacy Policy</a>.]]></string>
+    <string name="file_open_unsupported">Open this file in the Octop Bot web app or on the desktop.</string>
 </resources>

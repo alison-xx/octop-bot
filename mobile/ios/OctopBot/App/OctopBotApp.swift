@@ -58,6 +58,12 @@ struct RootView: View {
         }
         .animation(.easeOut(duration: 0.35), value: model.phase)
         .tint(Palette.text)
+        // Files a Bot links to live on its server; open them with this account's access.
+        .environment(\.openURL, OpenURLAction { url in
+            guard let server = model.server, ServerBackend.isWorkspaceDownload(url) else { return .systemAction }
+            Task { await FileOpener.open(url, from: server) }
+            return .handled
+        })
     }
 }
 

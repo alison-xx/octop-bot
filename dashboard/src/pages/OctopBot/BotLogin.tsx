@@ -21,6 +21,8 @@ export default function BotLogin() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Octop Bot cloud: every Lynxce account signs in to an account of its own.
+  const [cloud, setCloud] = useState(false);
   useEffect(() => {
     let mounted = true;
     Promise.all([authApi.getAuthStatus(), authApi.getLynxceIdentityStatus()])
@@ -30,7 +32,12 @@ export default function BotLogin() {
           navigate("/setup", { replace: true });
           return;
         }
-        setMode(lynxce.enabled && lynxce.claimed ? "lynxce" : "local");
+        setCloud(lynxce.cloud === true);
+        setMode(
+          lynxce.enabled && (lynxce.claimed || lynxce.cloud)
+            ? "lynxce"
+            : "local",
+        );
       })
       .catch(() => mounted && setMode("local"));
     return () => {
@@ -103,9 +110,11 @@ export default function BotLogin() {
             <>
               <p>
                 {t(
-                  mode === "lynxce"
-                    ? "botOnboarding.loginLynxceBody"
-                    : "botOnboarding.loginLocalBody",
+                  mode !== "lynxce"
+                    ? "botOnboarding.loginLocalBody"
+                    : cloud
+                    ? "botOnboarding.loginCloudBody"
+                    : "botOnboarding.loginLynxceBody",
                 )}
               </p>
               {error && <Alert type="error" message={error} showIcon />}

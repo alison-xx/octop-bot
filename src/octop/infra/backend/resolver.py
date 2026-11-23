@@ -100,6 +100,11 @@ def resolve_agent_backend_spec(
             raise ValueError(f"storage backend {name!r} is incomplete")
         return resolve_agent_backend_spec(inner, repo=repo)
 
+    if kind == "bot_cloud":
+        from octop.infra.cloud.bot_cloud.files import harness_spec  # noqa: PLC0415
+
+        return harness_spec(spec)
+
     if kind == "composite":
         default = spec.get("default")
         if default is None:

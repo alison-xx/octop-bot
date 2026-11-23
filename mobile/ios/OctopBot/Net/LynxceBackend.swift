@@ -475,13 +475,7 @@ final class LynxceBackend: ChatBackend {
 
     /// Lynxce ties the purchase to this account through the returned App Store account token.
     func purchaseIntent(packId: String) async throws -> (productId: String, accountToken: UUID) {
-        let data = try await call(.post, "/api/billing/apple/purchase-intents", json: ["packageId": packId], iap: true)
-        guard
-            let body = data as? [String: Any],
-            let product = body["productId"] as? String,
-            let token = (body["appAccountToken"] as? String).flatMap(UUID.init(uuidString:))
-        else { throw APIError(kind: .server, status: 502, message: nil) }
-        return (product, token)
+        try Self.intent(from: try await call(.post, "/api/billing/apple/purchase-intents", json: ["packageId": packId], iap: true))
     }
 
     /// Report a StoreKit transaction; Lynxce verifies it with Apple and credits the wallet once.

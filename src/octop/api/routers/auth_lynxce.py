@@ -16,7 +16,8 @@ from octop.api.deps import get_server, require_database
 from octop.infra.auth import lynxce_cloud
 from octop.infra.auth.lynxce_owner import OWNER_USERNAME, bind_owner, owner_binding
 from octop.infra.auth.mfa.service import MfaService
-from octop.infra.desktop import bot_web_enabled
+from octop.infra.cloud.bot_cloud import accounts as cloud_accounts
+from octop.infra.desktop import bot_cloud_enabled, bot_web_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role
 from octop.infra.utils.locale import normalize_locale, resolve_request_locale
@@ -60,6 +61,10 @@ class LynxceCodeLoginBody(BaseModel):
 class LynxceIdentityStatus(BaseModel):
     enabled: bool = Field(description="This build signs its owner in with a Lynxce account.")
     claimed: bool = Field(description="An owner Lynxce account is already bound.")
+    cloud: bool = Field(
+        default=False,
+        description="Octop Bot cloud: every Lynxce account signs in to an account of its own.",
+    )
 
 
 def _client_ip(request: Request) -> str:
@@ -79,7 +84,7 @@ def _raise_if_throttled(ip: str) -> None:
 
 
 def _require_enabled() -> None:
-    if not bot_web_enabled():
+    if not (bot_web_enabled() or bot_cloud_enabled()):
         raise OctopError.localized(ErrorCode.FORBIDDEN)
 
 
@@ -90,6 +95,8 @@ def _require_enabled() -> None:
 )
 async def lynxce_identity_status(server: Any = Depends(get_server)) -> LynxceIdentityStatus:
     """Whether this instance signs in with Lynxce, and whether an owner is bound yet."""
+    if bot_cloud_enabled():
+        return LynxceIdentityStatus(enabled=True, claimed=False, cloud=True)
     if not bot_web_enabled() or not server.database_bound:
         return LynxceIdentityStatus(enabled=bot_web_enabled(), claimed=False)
     binding = await asyncio.to_thread(owner_binding, server.services.settings_repo)
@@ -132,6 +139,13 @@ async def lynxce_login(
     Lynxce account can sign in here. The Lynxce password is forwarded to Lynxce
     once and never stored.
     """
+    if bot_cloud_enabled():
+        return await _cloud_sign_in(
+            server,
+            request,
+            body.locale,
+            lambda: lynxce_cloud.open_password_session(body.account, body.password),
+        )
     return await _sign_in(
         server,
         request,
@@ -174,12 +188,63 @@ async def lynxce_code_login(
 
     Works for Lynxce accounts that never set a password.
     """
+    if bot_cloud_enabled():
+        return await _cloud_sign_in(
+            server,
+            request,
+            body.locale,
+            lambda: lynxce_cloud.open_code_session(body.target, body.code),
+        )
     return await _sign_in(
         server,
         request,
         body.locale,
         lambda: lynxce_cloud.verify_account_code(body.target, body.code),
     )
+
+
+async def _opened[T](request: Request, opener: Callable[[], Awaitable[T]]) -> T:
+    """Run a Lynxce sign-in, counting wrong passwords and codes toward the client's lockout."""
+    ip = _client_ip(request)
+    _raise_if_throttled(ip)
+    try:
+        return await opener()
+    except OctopError as exc:
+        if exc.code in {
+            ErrorCode.AUTH_FAILED,
+            ErrorCode.SLASH_BAD_ARGS,
+            ErrorCode.LYNXCE_CODE_INVALID,
+        }:
+            _failures.setdefault(ip, []).append(time.time())
+        raise
+
+
+async def _cloud_sign_in(
+    server: Any,
+    request: Request,
+    _requested_locale: str | None,
+    opener: Callable[[], Awaitable[lynxce_cloud.CloudSession]],
+) -> dict[str, Any]:
+    """Cloud mode: any Lynxce account signs in to (and on first use, gets) its own account."""
+    require_database(server)
+    session = await _opened(request, opener)
+    user = await cloud_accounts.provision(server.services, server.user_manager, session)
+    # Tells clients this server also keeps the Lynxce wallet for the account.
+    return {**_issue(server, user, "auth.lynxce_cloud_login"), "cloud": True}
+
+
+def _issue(server: Any, user: Any, action: str) -> dict[str, Any]:
+    server.services.user_repo.touch_last_login(user.id)
+    server.services.audit_repo.write(actor=user.username, action=action)
+    token, ttl = MfaService(server.services).mint_access_token(user)
+    from octop.api.routers.auth import _user_json  # noqa: PLC0415
+
+    return {
+        "access_token": token,
+        "token_type": "Bearer",
+        "expires_in": ttl,
+        "user": _user_json(user, locale=user.locale),
+    }
 
 
 async def _sign_in(
@@ -191,17 +256,7 @@ async def _sign_in(
     _require_enabled()
     require_database(server)
     ip = _client_ip(request)
-    _raise_if_throttled(ip)
-    try:
-        identity = await verify()
-    except OctopError as exc:
-        if exc.code in {
-            ErrorCode.AUTH_FAILED,
-            ErrorCode.SLASH_BAD_ARGS,
-            ErrorCode.LYNXCE_CODE_INVALID,
-        }:
-            _failures.setdefault(ip, []).append(time.time())
-        raise
+    identity = await _opened(request, verify)
     assert identity.account_id is not None
     locale = normalize_locale(requested_locale or resolve_request_locale(request))
     async with _claim_lock:
@@ -215,14 +270,4 @@ async def _sign_in(
         if user is None:
             _failures.setdefault(ip, []).append(time.time())
             raise OctopError.localized(ErrorCode.LYNXCE_OWNER_MISMATCH, status=403)
-    server.services.user_repo.touch_last_login(user.id)
-    server.services.audit_repo.write(actor=user.username, action="auth.lynxce_login")
-    token, ttl = MfaService(server.services).mint_access_token(user)
-    from octop.api.routers.auth import _user_json  # noqa: PLC0415
-
-    return {
-        "access_token": token,
-        "token_type": "Bearer",
-        "expires_in": ttl,
-        "user": _user_json(user, locale=user.locale),
-    }
+    return _issue(server, user, "auth.lynxce_login")

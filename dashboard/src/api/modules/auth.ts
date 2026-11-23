@@ -406,7 +406,9 @@ export const authApi = {
 
   /** Bot web build: whether an owner Lynxce account is already bound. */
   getLynxceIdentityStatus: () =>
-    request<{ enabled: boolean; claimed: boolean }>("/auth/lynxce/status"),
+    request<{ enabled: boolean; claimed: boolean; cloud?: boolean }>(
+      "/auth/lynxce/status",
+    ),
 
   /**
    * Bot web build: sign in with a Lynxce account. On a fresh instance the

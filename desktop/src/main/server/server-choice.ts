@@ -18,6 +18,9 @@ export type AddressCheck = { ok: true; origin: string } | { ok: false; reason: "
 
 const MAX_RECENT = 5;
 
+/** Octop Bot cloud, run by Lynxce: sign in with a Lynxce account, nothing to install. */
+export const LYNXCE_CLOUD_ORIGIN = "https://bot.lynxce.cn";
+
 /** Private, loopback and mDNS hosts may use plain HTTP; anything public needs HTTPS. */
 export function isLocalNetworkHost(hostname: string): boolean {
   const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
