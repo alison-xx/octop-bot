@@ -10,11 +10,17 @@ struct ChatScreen: View {
     @State private var showHistory = false
     @State private var showVoice = false
     @State private var editing = false
+    /// Octop Bot cloud only: the Bot's cloud computer floating over the chat.
+    @State private var cloudFloat: CloudFloat?
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         VStack(spacing: 0) {
             topBar
             ConversationView(chat: chat)
+                .overlay {
+                    if let cloudFloat { CloudFloatOverlay(float: cloudFloat, bot: chat.bot) }
+                }
             if let pause = chat.pause, !chat.isStreaming {
                 HitlCard(chat: chat, pause: pause)
                     .id(pause.id)
@@ -39,6 +45,19 @@ struct ChatScreen: View {
             if chat.bot.isLocal && !ids.contains(chat.bot.id) { dismiss() }
         }
         .task { await chat.reloadConversations() }
+        // Polls only while this chat is open and the app is in front (the screen is never streamed in the background).
+        .task(id: scenePhase == .active) {
+            guard scenePhase == .active, !chat.bot.isLocal, let server = model.server, server.isCloud else { return }
+            let float = cloudFloat ?? CloudFloat(server: server, botId: chat.bot.id)
+            cloudFloat = float
+            await float.run()
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { cloudFloat?.expanded ?? false },
+            set: { cloudFloat?.expanded = $0 }
+        )) {
+            if let cloudFloat { CloudScreenCover(float: cloudFloat, bot: chat.bot) }
+        }
         // A light tap when a reply starts, a success buzz when it lands.
         .onChange(of: chat.isStreaming) { _, streaming in
             streaming ? Haptics.tap() : Haptics.success()
@@ -79,6 +98,9 @@ struct ChatScreen: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("botTitle")
             Spacer(minLength: 0)
+            if let cloudFloat, cloudFloat.available {
+                CloudFloatToggle(float: cloudFloat)
+            }
             Button { showHistory = true } label: {
                 Image(systemName: "clock.arrow.circlepath").font(.title3.weight(.medium)).frame(width: 40, height: 44)
             }

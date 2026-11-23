@@ -110,6 +110,9 @@ extension ServerBackend {
         var state: State
         var runningSince: Date?
         var takeover = false
+        /// The Bot is working on the computer right now, and its last action (`click`, `type`, …).
+        var busy = false
+        var activity: String?
 
         var label: String {
             switch state {
@@ -124,7 +127,9 @@ extension ServerBackend {
                 throw APIError(kind: .server, status: 502, message: nil)
             }
             let since = (body["running_since"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
-            return ComputerStatus(state: state, runningSince: since, takeover: body["takeover"] as? Bool ?? false)
+            return ComputerStatus(
+                state: state, runningSince: since, takeover: body["takeover"] as? Bool ?? false,
+                busy: body["busy"] as? Bool ?? false, activity: body["activity"] as? String)
         }
     }
 

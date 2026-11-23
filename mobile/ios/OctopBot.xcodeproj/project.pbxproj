@@ -48,6 +48,7 @@
 		DEC5AC974DAE214BF6C67D43 /* Hitl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44AA9D2522DD5EC8E5320048 /* Hitl.swift */; };
 		DEC9A2364E12C86351B28398 /* LaunchSplash@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 7D05B2CADB1735B180DD738F /* LaunchSplash@1x.png */; };
 		E4D12A2503C63875BFFB19EA /* LynxceBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */; };
+		F2ED60F819DD51A46615A4E4 /* CloudComputerFloat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 226FEDB7E21C711880C1281F /* CloudComputerFloat.swift */; };
 		F9AAC368DBB70E5F7E9FA7D7 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFA4F9D2603084616EA20193 /* AppModel.swift */; };
 		FE38F2BAB33A8B48E5C629C3 /* HitlCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64A1DD83356759A7465B69ED /* HitlCard.swift */; };
 /* End PBXBuildFile section */
@@ -69,6 +70,7 @@
 		185F69E704AE68F0C0ED11C1 /* OctopBotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OctopBotTests.swift; sourceTree = "<group>"; };
 		1BFCE63FDD2FE3C02C5B5158 /* CreditStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditStore.swift; sourceTree = "<group>"; };
 		1C21A989B7260F2117C40E87 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		226FEDB7E21C711880C1281F /* CloudComputerFloat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudComputerFloat.swift; sourceTree = "<group>"; };
 		273BA3F6AD10D4A909CDADE6 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
 		2B36A66B6B51F3F46A0C5001 /* VoiceModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceModeView.swift; sourceTree = "<group>"; };
 		3673E4497A330EC42D8B0AE4 /* GroupRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupRoomView.swift; sourceTree = "<group>"; };
@@ -217,6 +219,7 @@
 			children = (
 				EF7D3162679B1070B3004C72 /* AttachmentViews.swift */,
 				FB0D4BB60CF5FB920280CF55 /* ChatScreen.swift */,
+				226FEDB7E21C711880C1281F /* CloudComputerFloat.swift */,
 				687A510E1D53E5F2DED96BFF /* CloudComputerSection.swift */,
 				60FE975D80457770F2B56FE7 /* CreditsView.swift */,
 				3673E4497A330EC42D8B0AE4 /* GroupRoomView.swift */,
@@ -370,6 +373,7 @@
 				8330BE0127CCDC3E8975B833 /* Characters.swift in Sources */,
 				94F0BEE560698A2E757BFE90 /* ChatScreen.swift in Sources */,
 				ABC1C4B78D4E12D40A46D64A /* ChatSession.swift in Sources */,
+				F2ED60F819DD51A46615A4E4 /* CloudComputerFloat.swift in Sources */,
 				D6C8001E9D47CD4082C819F4 /* CloudComputerSection.swift in Sources */,
 				DB504ED3D1733302B3F10D9E /* CreditAccount.swift in Sources */,
 				4BACAF514D63D9CBB1311E3D /* CreditStore.swift in Sources */,
