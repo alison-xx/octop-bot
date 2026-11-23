@@ -17,6 +17,20 @@ import type { WelcomeQuickCard } from "../Chat/components/WelcomeScreen";
 import LynxceRegistration from "./LynxceRegistration";
 import styles from "./botConversation.module.less";
 
+/** Centred grey time label between stretches of a conversation. */
+export function BotTimeDivider({ when }: { when: number }) {
+  const { t } = useTranslation();
+  const timezone = useServerTimezone();
+  const day = formatServerYmd(when, timezone);
+  const today = day === formatServerYmd(Date.now(), timezone);
+  return (
+    <time className={styles.date} dateTime={new Date(when).toISOString()}>
+      {today ? t("botClient.today") : day}{" "}
+      {formatServerHourMinute(when, timezone)}
+    </time>
+  );
+}
+
 export function BotConversationIntro({
   avatar,
   name,
@@ -30,18 +44,10 @@ export function BotConversationIntro({
   timestamp?: number;
   children?: ReactNode;
 }) {
-  const { t } = useTranslation();
-  const timezone = useServerTimezone();
   const [openedAt] = useState(Date.now);
-  const when = timestamp || openedAt;
-  const day = formatServerYmd(when, timezone);
-  const today = day === formatServerYmd(Date.now(), timezone);
   return (
     <div className={styles.introduction}>
-      <time className={styles.date} dateTime={new Date(when).toISOString()}>
-        {today ? t("botClient.today") : day}{" "}
-        {formatServerHourMinute(when, timezone)}
-      </time>
+      <BotTimeDivider when={timestamp || openedAt} />
       {(text || children) && (
         <div className={styles.greetingRow}>
           <div className={styles.greetingAvatar} title={name}>

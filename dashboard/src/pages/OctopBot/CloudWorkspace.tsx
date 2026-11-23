@@ -29,6 +29,7 @@ import {
 import { octopBotApi, type WorkspaceBot } from "../../api/modules/octopBot";
 import { BOT_HOME, botClientDestination } from "../../utils/botClientRoute";
 import { apiErrorMessage } from "../../utils/apiError";
+import { getDesktopBridge } from "../../utils/desktopBridge";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
 import WalletBalance from "./WalletBalance";
 import LynxceRegistration from "./LynxceRegistration";
@@ -78,6 +79,33 @@ export default function CloudWorkspace() {
     setError("");
     try {
       const next = await botCloudApi.login(user.trim(), password);
+      ++seq.current;
+      setAccount(next);
+    } catch (err) {
+      setError(apiErrorMessage(err, t("octopBot.failed"), t));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const workbuddyLogin = getDesktopBridge()?.workbuddyLogin;
+  async function loginWorkbuddy() {
+    if (!workbuddyLogin) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await workbuddyLogin();
+      if (!result.ok) {
+        if (result.reason !== "cancelled")
+          setError(
+            t(
+              result.reason === "denied"
+                ? "botCloud.workbuddyDenied"
+                : "botCloud.workbuddyFailed",
+            ),
+          );
+        return;
+      }
+      const next = await botCloudApi.loginWorkbuddy(result.code);
       ++seq.current;
       setAccount(next);
     } catch (err) {
@@ -188,6 +216,18 @@ export default function CloudWorkspace() {
                 {t("botCloud.signIn")}
               </Button>
             </Form>
+            {workbuddyLogin && (
+              <div className={styles.altLogin}>
+                <Button
+                  block
+                  disabled={busy}
+                  onClick={() => void loginWorkbuddy()}
+                >
+                  {t("botCloud.workbuddySignIn")}
+                </Button>
+                <p>{t("botCloud.workbuddyHint")}</p>
+              </div>
+            )}
             <LynxceRegistration />
           </section>
         </div>

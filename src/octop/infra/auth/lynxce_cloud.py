@@ -6,7 +6,7 @@ import asyncio
 import re
 from collections.abc import Coroutine, Mapping
 from contextlib import suppress
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 from uuid import uuid4
 
@@ -23,6 +23,9 @@ _ORIGIN = "https://api.lynxce.cn"
 _ID = r"(?!\.{1,2}(?:/|$))[A-Za-z0-9_.-]{1,256}"
 _WEB_ID = r"[A-Za-z0-9._:-]{4,96}"
 CHECKOUT_PATH = "/api/billing/recharge/checkout-link"
+WORKBUDDY_SESSION_PATH = "/api/oauth/workbuddy/session"
+# Lynxce's WorkBuddy hand-off code: "wb-handoff." + base64url payload + "." + HMAC-SHA256.
+_HANDOFF = re.compile(r"wb-handoff\.[A-Za-z0-9_-]{16,1024}\.[A-Za-z0-9_-]{43}")
 _READS = {
     "/api/user/quota": set(),
     "/api/user/cloud-work/capabilities": set(),
@@ -40,6 +43,7 @@ class CloudAccountStatus(BaseModel):
     connected: bool = False
     account_id: str | None = None
     display_name: str | None = None
+    avatar_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -49,10 +53,15 @@ class _Grant:
     binding: str
     access_token: str = field(repr=False)
     refresh_token: str = field(repr=False)
+    # None: not read from Lynxce yet (logins saved before the avatar was kept); "": no avatar.
+    avatar_url: str | None = None
 
     def status(self) -> CloudAccountStatus:
         return CloudAccountStatus(
-            connected=True, account_id=self.account_id, display_name=self.display_name
+            connected=True,
+            account_id=self.account_id,
+            display_name=self.display_name,
+            avatar_url=self.avatar_url or None,
         )
 
 
@@ -83,6 +92,34 @@ def cloud_status(services: SharedServices, user_id: int) -> CloudAccountStatus:
     """Read the locally saved identity without contacting the cloud."""
     grant = _load(services, user_id) if bot_desktop_enabled() else None
     return grant.status() if grant else CloudAccountStatus()
+
+
+def _avatar(profile: dict[str, Any]) -> str:
+    value = profile.get("avatarUrl")
+    if isinstance(value, str) and value.startswith("https://") and len(value) <= 2048:
+        return value
+    return ""
+
+
+async def cloud_account(services: SharedServices, user_id: int) -> CloudAccountStatus:
+    """The saved identity; a login saved before avatars were kept reads its avatar once."""
+    grant = await asyncio.to_thread(_load, services, user_id) if bot_desktop_enabled() else None
+    if grant is None or grant.avatar_url is not None:
+        return grant.status() if grant else CloudAccountStatus()
+    async with _lock(services, user_id):
+        current = await asyncio.to_thread(_load, services, user_id)
+        if current is None or current.binding != grant.binding or current.avatar_url is not None:
+            return current.status() if current else CloudAccountStatus()
+        try:
+            profile = await _send("GET", "/api/user/profile", bearer=current.access_token)
+        except _UpstreamFailure:
+            # An expired token is renewed by the next cloud request; show initials until then.
+            return current.status()
+        if not isinstance(profile, dict) or profile.get("id") != current.account_id:
+            return current.status()
+        updated = replace(current, avatar_url=_avatar(profile))
+        await _finish(asyncio.to_thread(_save, services, user_id, updated))
+        return updated.status()
 
 
 def _lock(services: SharedServices, user_id: int) -> AsyncFileLock:
@@ -169,14 +206,10 @@ def _token(data: Any, name: str) -> str:
     return value
 
 
-async def _password_login(account: str, password: str) -> _Grant:
-    account = account.strip()
-    if not (1 <= len(account) <= 200 and 8 <= len(password) <= 4096):
-        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
+async def _session_login(path: str, body: dict[str, str]) -> _Grant:
+    """Open a Lynxce 'web' session through one of its sign-in endpoints."""
     try:
-        data = await _send(
-            "POST", "/api/auth/password-login", json={"account": account, "password": password}
-        )
+        data = await _send("POST", path, json=body)
     except _UpstreamFailure as exc:
         if exc.status in {401, 403}:
             raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403) from None
@@ -195,6 +228,16 @@ async def _password_login(account: str, password: str) -> _Grant:
         uuid4().hex,
         _token(data, "accessToken"),
         _token(data, "refreshToken"),
+        _avatar(profile),
+    )
+
+
+async def _password_login(account: str, password: str) -> _Grant:
+    account = account.strip()
+    if not (1 <= len(account) <= 200 and 8 <= len(password) <= 4096):
+        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
+    return await _session_login(
+        "/api/auth/password-login", {"account": account, "password": password}
     )
 
 
@@ -217,6 +260,24 @@ async def login_cloud(
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     async with _lock(services, user_id):
         grant = await _password_login(account, password)
+        await _finish(asyncio.to_thread(_save, services, user_id, grant))
+        return grant.status()
+
+
+async def login_cloud_workbuddy(
+    services: SharedServices, user_id: int, handoff_code: str
+) -> CloudAccountStatus:
+    """Sign in with the one-time code Lynxce issues after a WorkBuddy authorization.
+
+    The desktop shell captures the code from Lynxce's landing page before that page
+    can spend it. The account is the Lynxce account bound to the WorkBuddy identity.
+    """
+    if not bot_desktop_enabled():
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
+    if not _HANDOFF.fullmatch(handoff_code):
+        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
+    async with _lock(services, user_id):
+        grant = await _session_login(WORKBUDDY_SESSION_PATH, {"handoffCode": handoff_code})
         await _finish(asyncio.to_thread(_save, services, user_id, grant))
         return grant.status()
 
@@ -258,7 +319,9 @@ async def _refresh(services: SharedServices, user_id: int, grant: _Grant) -> _Gr
             raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED) from None
         raise _rejected(exc.status) from None
     refresh = _token(data, "refreshToken") if "refreshToken" in data else grant.refresh_token
-    updated = _Grant(grant.account_id, grant.display_name, grant.binding, access, refresh)
+    updated = replace(
+        grant, access_token=access, refresh_token=refresh, avatar_url=_avatar(profile)
+    )
     await asyncio.to_thread(_save, services, user_id, updated)
     return updated
 

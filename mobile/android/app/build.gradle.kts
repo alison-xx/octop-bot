@@ -1,4 +1,6 @@
+import java.io.File
 import java.net.URI
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -13,6 +15,17 @@ val updatePublicKey = "MCowBQYDK2VwAyEAjfzS5kpiVxqx/79rU5tYno7Js31ezDt05RmrmXnRT
 val debugManifestUrl = providers.gradleProperty("octopBotUpdateManifestUrl").orNull
 val debugPublicKey = providers.gradleProperty("octopBotUpdatePublicKey").orNull
 
+// Release signing comes from a properties file kept outside the repo (storeFile, storePassword,
+// keyAlias, keyPassword). Default ~/.octop-bot-release/android-signing.properties, or
+// -PoctopBotSigning=<path>. Without it the release APK is unsigned.
+val signingFile = File(
+    providers.gradleProperty("octopBotSigning").orNull
+        ?: "${System.getProperty("user.home")}/.octop-bot-release/android-signing.properties",
+)
+val releaseSigning = signingFile.takeIf { it.isFile }?.let { file ->
+    Properties().apply { file.inputStream().use { load(it) } }
+}
+
 fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
@@ -23,13 +36,24 @@ android {
         applicationId = "io.github.alisonxx.octopbot"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "1.0.0"
 
         buildConfigField("String", "UPDATE_MANIFEST_URL", quoted(updateManifestUrl))
         buildConfigField("String", "UPDATE_PUBLIC_KEY", quoted(updatePublicKey))
         // Debug only: the origin (scheme://host:port) of a test manifest, also allowed for the APK download.
         buildConfigField("String", "UPDATE_DEBUG_ORIGIN", quoted(""))
+    }
+
+    signingConfigs {
+        releaseSigning?.let { props ->
+            create("release") {
+                storeFile = File(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -44,6 +68,7 @@ android {
         }
         release {
             isMinifyEnabled = false
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
 

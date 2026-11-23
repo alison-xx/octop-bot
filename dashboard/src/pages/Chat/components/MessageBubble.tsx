@@ -13,6 +13,7 @@ import { QuoteMessageContext } from "../ChatRouteContext";
 
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import botStyles from "../../OctopBot/botConversation.module.less";
+import BotMessageActions from "../../OctopBot/BotMessageActions";
 import {
   RotateCcw,
   Pencil,
@@ -1089,8 +1090,56 @@ function MessageBubble({
             )}
           </>
         )}
+        {botOnly && isLastInGroup && !hasToolData && !isEditing && (
+          <BotMessageActions
+            text={isStreaming ? "" : isUser ? message.content : textContent}
+            onQuote={quoteMessage}
+            more={[
+              isUser &&
+                onEditUserMessage && {
+                  key: "edit",
+                  label: t("common.edit"),
+                  run: () => {
+                    setEditText(message.content);
+                    setIsEditing(true);
+                  },
+                },
+              isUser &&
+                onWithdrawSteer &&
+                message.steerPending && {
+                  key: "withdraw",
+                  label: t("chat.steer.withdraw"),
+                  run: () => onWithdrawSteer(message.id),
+                },
+              !isUser &&
+                !isStreaming &&
+                readAloud &&
+                Boolean(speechText) && {
+                  key: "speak",
+                  label: t("voice.readAloud", "朗读"),
+                  run: () => speak(message.id, textContent),
+                },
+              !isUser &&
+                !isStreaming &&
+                onRegenerate && {
+                  key: "regenerate",
+                  label: t("chat.regenerate", "重新生成"),
+                  run: () => onRegenerate(message.id),
+                },
+              !isUser &&
+                !isStreaming &&
+                onForkAssistantMessage &&
+                !forkDisabled && {
+                  key: "fork",
+                  label: t("chat.forkFromHere"),
+                  run: () => onForkAssistantMessage(message.id),
+                },
+            ]}
+          />
+        )}
         {/* Meta row: last-in-group only. User copy/edit sit left of the timestamp. */}
-        {isLastInGroup &&
+        {!botOnly &&
+          isLastInGroup &&
           !hasToolData &&
           (message.timestamp > 0 ||
             (quoteMessage && textContent && !isStreaming) ||
@@ -1103,7 +1152,6 @@ function MessageBubble({
             <div
               className={cx(
                 styles.msgMetaRow,
-                botOnly && botStyles.meta,
                 isUser && styles.msgMetaRowRight,
               )}
             >
@@ -1202,11 +1250,7 @@ function MessageBubble({
                 </div>
               )}
               {usageLine.length > 0 && (
-                <div
-                  className={cx(styles.msgUsage, botOnly && botStyles.usage)}
-                >
-                  {usageLine.join(" / ")}
-                </div>
+                <div className={styles.msgUsage}>{usageLine.join(" / ")}</div>
               )}
             </div>
           )}

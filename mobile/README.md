@@ -80,7 +80,7 @@ Grok-style: dark-first, chat-first, one big character.
   - *Account*: signed in as, connection (server: full address, tap to copy), "Switch account or
     server" (signs out and returns to the first screen; for a server, reopens the server sheet with
     the address filled), "Sign out" (destructive, confirmed; also clears previews and unread marks).
-  - *About*: version "0.1.0 (1)", project page (GitHub), report a problem (GitHub new issue), Lynxce
+  - *About*: version "1.0.0 (1)", project page (GitHub), report a problem (GitHub new issue), Lynxce
     website.
 - **Polish.** Home has a search field and swipe actions (edit look, voice, delete phone-local Bot) and an
   inline banner when a refresh fails. Chat shows a "jump to latest" button when scrolled up, follows the
@@ -193,4 +193,4 @@ xcodebuild -project mobile/ios/OctopBot.xcodeproj -scheme OctopBot -destination 
 cd mobile/android && ./gradlew testDebugUnitTest assembleDebug
 ```
 
-Application id / bundle id: `io.github.alisonxx.octopbot`.
+Application id / bundle id: iOS `cn.lynxce.octopbot`, Android `io.github.alisonxx.octopbot`.

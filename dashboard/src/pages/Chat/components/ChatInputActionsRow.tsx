@@ -6,6 +6,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   Send,
   ArrowUp,
+  AudioLines,
   ChevronDown,
   Square,
   MessageSquarePlus,
@@ -1564,16 +1565,29 @@ export default function ChatInputActionsRow({
             </Popover>
           )}
           {voiceButton}
-          <button
-            type="button"
-            className={cx(styles.sendBtn, botStyles.send)}
-            title={sendLabel}
-            aria-label={sendLabel}
-            disabled={!stop && !canSend}
-            onClick={stop ? onCancel : onSubmit}
-          >
-            {stop ? <Square size={16} /> : <ArrowUp size={18} />}
-          </button>
+          {!stop && !canSend && !isStreaming ? (
+            <button
+              type="button"
+              className={cx(styles.sendBtn, botStyles.send)}
+              title={t("voice.startRecording", "语音输入")}
+              aria-label={t("voice.startRecording", "语音输入")}
+              disabled={disabled || transcribing || !_sttAvailable}
+              onClick={onToggleVoice}
+            >
+              <AudioLines size={17} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={cx(styles.sendBtn, botStyles.send)}
+              title={sendLabel}
+              aria-label={sendLabel}
+              disabled={!stop && !canSend}
+              onClick={stop ? onCancel : onSubmit}
+            >
+              {stop ? <Square size={16} /> : <ArrowUp size={18} />}
+            </button>
+          )}
         </div>
       </div>
     );

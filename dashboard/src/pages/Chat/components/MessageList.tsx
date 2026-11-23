@@ -18,6 +18,10 @@ import type { ChatMessage } from "../hooks/useChat";
 import type { ComposerTagLookups } from "./UserMessageComposerTags";
 import MessageBubble from "./MessageBubble";
 import AssistantTurnView from "./AssistantTurnView";
+import BotTurnView from "../../OctopBot/BotTurnView";
+import BotWorkingLine from "../../OctopBot/BotWorkingLine";
+import { BotTimeDivider } from "../../OctopBot/BotClientWelcome";
+import { isBotClient } from "../../../utils/desktopBridge";
 import ScrollToBottomButton from "./ScrollToBottomButton";
 import GeneratingIndicator from "./GeneratingIndicator";
 import TurnTimelineRail from "./TurnTimelineRail";
@@ -147,9 +151,28 @@ interface GroupRenderContext {
   shellCommandDisabledTitle?: string;
   compactProcess?: boolean;
   registerBubbleRef: (messageId: string, el: HTMLDivElement | null) => void;
+  /** Bot client: timestamp of the centred time divider before a group. */
+  dividers?: ReadonlyMap<number, number>;
 }
 
 function renderMessageGroup(
+  group: MessageGroup,
+  groupIndex: number,
+  ctx: GroupRenderContext,
+) {
+  const body = renderGroupBody(group, groupIndex, ctx);
+  const when = ctx.dividers?.get(groupIndex);
+  return when ? (
+    <>
+      <BotTimeDivider when={when} />
+      {body}
+    </>
+  ) : (
+    body
+  );
+}
+
+function renderGroupBody(
   group: MessageGroup,
   groupIndex: number,
   ctx: GroupRenderContext,
@@ -165,6 +188,30 @@ function renderMessageGroup(
     lastAssistantGroupIndex: ctx.lastAssistantGroupIndex,
     lastUserGroupIndex: ctx.lastUserGroupIndex,
   });
+
+  if (isBotClient() && group.messages[0]?.role === "assistant") {
+    return (
+      <div
+        data-message-id={group.messages[0].id}
+        data-role="assistant"
+        ref={(el) => {
+          for (const msg of group.messages) ctx.registerBubbleRef(msg.id, el);
+        }}
+      >
+        <BotTurnView
+          messages={group.messages}
+          agentId={ctx.agentId}
+          onRegenerate={ctx.onRegenerate}
+          onDisableStreamUsage={ctx.onDisableStreamUsage}
+          onForkAssistantMessage={ctx.onForkAssistantMessage}
+          forkDisabled={ctx.forkDisabled}
+          forkDisabledHint={ctx.forkDisabledHint}
+          onAcpPermissionSelect={ctx.onAcpPermissionSelect}
+          onHitlDecision={ctx.onHitlDecision}
+        />
+      </div>
+    );
+  }
 
   if (!group.isGroup || group.messages.length === 1) {
     const msg = group.messages[0];
@@ -760,8 +807,22 @@ export default function MessageList(props: MessageListProps) {
     scrollToBottom(true, true);
   }, [isStreaming, messages, scrollToBottom]);
 
+  // Bot client: a centred time label wherever the talk pauses for 30 minutes.
+  const dividers = useMemo(() => {
+    const at = new Map<number, number>();
+    if (!isBotClient()) return at;
+    let last = 0;
+    messageGroups.forEach((group, index) => {
+      const first = group.messages[0]?.timestamp ?? 0;
+      if (last && first - last > 30 * 60_000) at.set(index, first);
+      last = group.messages[group.messages.length - 1]?.timestamp || last;
+    });
+    return at;
+  }, [messageGroups]);
+
   const groupContext = useMemo<GroupRenderContext>(
     () => ({
+      dividers,
       agentId,
       composerLookups,
       isStreaming,
@@ -810,13 +871,17 @@ export default function MessageList(props: MessageListProps) {
       shellCommandDisabledTitle,
       compactProcess,
       registerBubbleRef,
+      dividers,
     ],
   );
 
   const footer = useMemo(
     () => (
       <>
-        {showGenerating && (
+        {showGenerating && isBotClient() ? (
+          <BotWorkingLine messages={messages} agentId={agentId} />
+        ) : null}
+        {showGenerating && !isBotClient() && (
           <div className={styles.generatingSlot}>
             <GeneratingIndicator
               startedAt={thinkingStartedAt}
@@ -833,6 +898,7 @@ export default function MessageList(props: MessageListProps) {
     ),
     [
       showGenerating,
+      messages,
       thinkingStartedAt,
       isAwaitingAssistantReply,
       generatingMembersOnly,

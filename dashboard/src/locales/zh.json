@@ -52,6 +52,10 @@
     "accountRequired": "请输入灵策账号",
     "passwordRequired": "请输入密码",
     "signIn": "登录云端工作区",
+    "workbuddySignIn": "用 WorkBuddy 账号登录",
+    "workbuddyHint": "WorkBuddy 登录对应的是另一个灵策账号，和用密码登录的账号不通用。",
+    "workbuddyDenied": "你在 WorkBuddy 拒绝了授权，没有登录。",
+    "workbuddyFailed": "WorkBuddy 登录没有完成，请重试。",
     "signOut": "登出这台设备的云端账号",
     "chats": "云端会话",
     "newChat": "新建云端会话",
@@ -322,7 +326,10 @@
     "planPrompt": "帮我把一个想法整理成可执行的计划。请先问我最需要明确的三个问题。",
     "planLabel": "梳理一个想法",
     "menu": {
-      "settings": "设置"
+      "settings": "设置",
+      "settingsHint": "模型、外观、语言和通知",
+      "capabilitiesHint": "技能、连接器、知识库等",
+      "cloudHint": "电脑关机也能继续跑的任务"
     },
     "nav": {
       "general": "通用",
@@ -368,6 +375,8 @@
       "skipped": "已跳过"
     },
     "thinking": "正在思考",
+    "share": "分享",
+    "moreUnreads": "更多未读",
     "avatar": {
       "title": "Bot 头像",
       "characters": "角色",

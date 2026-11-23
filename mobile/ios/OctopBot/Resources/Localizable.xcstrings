@@ -2053,6 +2053,22 @@
         }
       }
     },
+    "home.pick": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick a Bot to start chatting"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选一个 Bot 开始聊天"
+          }
+        }
+      }
+    },
     "home.offline": {
       "localizations": {
         "en": {

@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-CN" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <script>(function(){var d=document.documentElement,t,l;d.classList.remove('no-js');try{t=localStorage.getItem('ob-theme');l=localStorage.getItem('ob-lang')}catch(e){}if(t==='light'||t==='dark')d.dataset.theme=t;if(l!=='zh'&&l!=='en')l=/^zh/i.test((navigator.languages&&navigator.languages[0])||navigator.language||'')?'zh':'en';d.dataset.lang=l;if(l==='en'){d.classList.add('i18n-wait');setTimeout(function(){d.classList.remove('i18n-wait')},1500)}setTimeout(function(){if(!d.dataset.ready)d.classList.add('no-js')},3000)})();</script>
+  <title data-en="Features · Octop Bot">功能 · Octop Bot</title>
+  <meta name="description" content="Chief 组队、群聊接力、Goal 验收、云端工作区、本机工作区和自由选择模型。看看 Octop Bot 的每个细节。" data-en-content="Chief builds the team, the group hands work along, Goals make it checkable, and cloud and local workspaces keep it moving.">
+  <meta name="theme-color" content="#f7f6f2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="功能 · Octop Bot">
+  <meta property="og:description" content="Chief 组队、群聊接力、Goal 验收、云端工作区、本机工作区和自由选择模型。看看 Octop Bot 的每个细节。">
+  <meta property="og:image" content="https://octop-bot.lynxce.cn/assets/art/team.webp">
+  <meta property="og:url" content="https://octop-bot.lynxce.cn/features.html">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="https://octop-bot.lynxce.cn/features.html">
+  <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="assets/site.css?v=11">
+  <script src="assets/site.js?v=10" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
+
+  <header class="header">
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="assets/app-icon.webp" alt="" width="30" height="30">Octop Bot</a>
+      <nav class="nav" aria-label="主导航" data-en-aria-label="Main">
+        <a href="index.html" data-en="Home">首页</a>
+        <a href="features.html" aria-current="page" data-en="Features">功能</a>
+        <a href="download.html" data-en="Download">下载</a>
+        <a href="guide.html" data-en="Guide">使用指南</a>
+        <a href="download.html#changelog" data-en="Changelog">更新日志</a>
+      </nav>
+      <div class="header-tools">
+        <div class="gh-stars"><a class="gh-star" href="https://github.com/alison-xx/octop-bot" title="github.com/alison-xx/octop-bot"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop Bot">Octop Bot</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="alison-xx/octop-bot">6</b></span></a><a class="gh-star upstream" href="https://github.com/TencentCloud/Octop" title="github.com/TencentCloud/Octop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop">Octop</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="TencentCloud/Octop">12.4k</b></span></a></div>
+        <button class="icon-btn lang-btn" type="button">EN</button>
+        <button class="icon-btn theme-btn" type="button" aria-label="外观"></button>
+        <a class="btn btn-primary btn-sm" href="download.html" data-en="Download">下载</a>
+        <button class="icon-btn menu-btn" type="button" aria-expanded="false" aria-controls="mobile-nav" aria-label="菜单" data-en-aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8h16M4 16h16"/></svg></button>
+      </div>
+    </div>
+    <nav class="mobile-nav" id="mobile-nav" aria-label="主导航" data-en-aria-label="Main">
+      <a href="index.html" data-en="Home">首页</a>
+      <a href="features.html" aria-current="page" data-en="Features">功能</a>
+      <a href="download.html" data-en="Download">下载</a>
+      <a href="guide.html" data-en="Guide">使用指南</a>
+      <a href="download.html#changelog" data-en="Changelog">更新日志</a>
+      <div class="gh-stars"><a class="gh-star" href="https://github.com/alison-xx/octop-bot" title="github.com/alison-xx/octop-bot"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop Bot">Octop Bot</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="alison-xx/octop-bot">6</b></span></a><a class="gh-star upstream" href="https://github.com/TencentCloud/Octop" title="github.com/TencentCloud/Octop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop">Octop</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="TencentCloud/Octop">12.4k</b></span></a></div>
+      <a class="btn btn-primary" href="download.html" data-en="Download Octop Bot">下载 Octop Bot</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="page-hero wrap">
+      <span class="eyebrow reveal" data-en="Features">功能</span>
+      <h1 class="display reveal" style="--delay:.05s" data-en="Lead a team,<br>even on your own.">一个人，<br>也能带一支团队。</h1>
+      <p class="lead reveal" style="--delay:.1s" data-en="Chief assembles the team, the group does the work, and you check the result. Here is everything that makes that possible.">Chief 负责组队，群里分工接力，你只管验收。下面是让这一切顺畅运转的每个细节。</p>
+    </section>
+
+    <nav class="subnav" aria-label="功能目录" data-en-aria-label="Feature sections">
+      <div class="tabs">
+        <a href="#chief">Chief</a>
+        <a href="#group" data-en="Group chat">群聊协作</a>
+        <a href="#goal" data-en="Goals">Goal 验收</a>
+        <a href="#cloud" data-en="Cloud">云端工作区</a>
+        <a href="#local" data-en="Local">本机工作区</a>
+        <a href="#models" data-en="Models">模型</a>
+        <a href="#desktop" data-en="Desktop">桌面体验</a>
+      </div>
+    </nav>
+
+    <div class="wrap">
+      <article class="feature" id="chief">
+        <div class="feature-copy reveal">
+          <span class="eyebrow" data-en="Chief">Chief 总管</span>
+          <h2 class="h2" data-en="One assistant who knows your whole team.">一位懂你整个团队的总管。</h2>
+          <p class="lead" data-en="Chief is the octopus at the top of your directory. Describe the result you want and it works out who should do it.">Chief 是通讯录顶端那只八爪鱼。说出你想要的结果，它来判断该由谁来做。</p>
+          <ul>
+            <li data-en="Finds the bots you already have and creates the experts you are missing.">查找已有成员，缺什么角色就补建什么专家。</li>
+            <li data-en="Opens a group chat and brings the right members in with one sentence.">一句话创建群聊，把合适的成员拉进来。</li>
+            <li data-en="Organises bots and groups into sections and keeps your directory tidy.">按项目整理 Bot 和群聊，让通讯录一直清爽。</li>
+            <li data-en="To let Chief build groups, pick a model that supports tool calling.">让 Chief 帮你建群时，请选择支持工具调用的模型。</li>
+          </ul>
+        </div>
+        <div class="feature-media reveal" style="--delay:.1s">
+          <div class="window">
+            <img src="assets/screen-guide-zh.webp" data-lang-src="assets/screen-guide-{lang}.webp" width="1920" height="1200" alt="新手引导：和 Chief 一起工作" data-en-alt="Getting started: work with Chief" data-zoom loading="lazy"></div>
+        </div>
+      </article>
+
+      <article class="feature" id="group">
+        <div class="feature-copy reveal">
+          <span class="eyebrow" data-en="Group chat">群聊协作</span>
+          <h2 class="h2" data-en="One request.<br>Several hands.">一份需求，<br>多人接力。</h2>
+          <p class="lead" data-en="Each bot keeps its own role and memory. In a group they hand work to each other, and you see every step.">每个 Bot 都有自己的职责。进了群，它们彼此交接，每一步都摆在你眼前。</p>
+          <ul>
+            <li data-en="@ a member to assign a task, or let the admin decide who replies.">用 @ 指定成员，或让管理员决定由谁回复。</li>
+            <li data-en="Share files as group attachments, or pick files the group already has.">把资料作为群附件发送，或选择本群已有的文件，大家围绕同一份资料工作。</li>
+            <li data-en="Write what you decided into the group notes so nobody forgets.">把定下来的事写进群笔记，谁都不会忘。</li>
+            <li data-en="Members keep their own private chats and working folders.">成员同时保留各自的私聊和工作目录。</li>
+          </ul>
+        </div>
+        <div class="feature-media reveal" style="--delay:.1s">
+          <div class="window">
+            <img src="assets/screen-team-zh.webp" data-lang-src="assets/screen-team-{lang}.webp" width="1920" height="1200" alt="团队群聊" data-en-alt="Group chat" data-zoom loading="lazy"></div>
+        </div>
+      </article>
+
+      <article class="feature" id="goal">
+        <div class="feature-copy reveal">
+          <span class="eyebrow" data-en="Goals">Goal 验收</span>
+          <h2 class="h2" data-en="Write it down.<br>Check it off.">写下来，<br>就能验收。</h2>
+          <p class="lead" data-en="A Goal turns a vague request into roles, stages and acceptance criteria the whole group can see.">Goal 把一句模糊的需求，变成全群都看得见的分工、阶段和验收标准。</p>
+          <ul>
+            <li data-en="Example: the planner offers three angles, you pick one, the writer delivers 80–120 words.">例如：策划给三个角度，你选定后，写手交付一段 80–120 字的招募文案。</li>
+            <li data-en="The admin checks each point: who it is for, when it happens, how to sign up.">管理员逐项核对：面向谁、何时举行、如何报名。</li>
+            <li data-en="Reopen the group later and review each member's replies and evidence by stage.">之后重开群聊，也能按阶段查看各成员的回复和依据。</li>
+          </ul>
+        </div>
+        <div class="feature-media reveal" style="--delay:.1s">
+          <div class="art-frame"><img src="assets/art/goal.webp" alt="" width="880" height="900" loading="lazy"></div>
+        </div>
+      </article>
+
+      <article class="feature" id="cloud">
+        <div class="feature-copy reveal">
+          <span class="eyebrow" data-en="Cloud workspace">云端工作区</span>
+          <h2 class="h2" data-en="Your computer sleeps.<br>The work doesn't.">电脑休息了，<br>工作没停。</h2>
+          <p class="lead" data-en="Sign in to the cloud workspace with your Lynxce account and hand off work that should run on a schedule or follow you to another device.">用灵策账号登录云端工作区，把需要定时执行、或要换台设备继续的工作交给云端。</p>
+          <ul>
+            <li data-en="Scheduled cloud tasks: write the instruction, the time and the time zone. They run with your computer off.">云端定时任务：填写指令、时间和时区，电脑关机也照常执行。</li>
+            <li data-en="Open the result and keep chatting from the same conversation.">任务完成后，点「打开结果并续聊」。</li>
+            <li data-en="Bring a local chat to the cloud: preview up to 20 recent visible messages before importing. Attachments, tool logs and reasoning stay on this computer.">把本机私聊带到云端：导入前可预览最多 20 条最近的可见文字，附件、工具记录和思考过程留在本机。</li>
+            <li data-en="Sign in with the same Lynxce account on another computer to continue.">另一台电脑登录同一灵策账号，就能接着聊。</li>
+          </ul>
+          <p class="muted" style="font-size:14px" data-en="Available models, cloud permissions and credits depend on your Lynxce account.">可用模型、云端执行权限和积分取决于当前灵策账号。</p>
+        </div>
+        <div class="feature-media reveal" style="--delay:.1s">
+          <div class="window">
+            <img src="assets/screen-cloud-zh.webp" data-lang-src="assets/screen-cloud-{lang}.webp" width="1920" height="1200" alt="云端定时任务" data-en-alt="Scheduled cloud tasks" data-zoom loading="lazy"></div>
+        </div>
+      </article>
+
+      <article class="feature" id="local">
+        <div class="feature-copy reveal">
+          <span class="eyebrow" data-en="Local workspace">本机工作区</span>
+          <h2 class="h2" data-en="Files on this computer<br>stay on this computer.">电脑里的文件，<br>就在电脑里处理。</h2>
+          <p class="lead" data-en="When the files, scripts or apps live on your machine, let a local bot take the job.">文件、脚本或已安装的应用只在这台电脑上时，就让本机 Bot 接手。</p>
+          <ul>
+            <li data-en="Send the files to a bot or group as attachments and let them work on them.">把需要处理的文件作为附件发给 Bot 或群聊。</li>
+            <li data-en="For recurring work, set weekdays or weekly runs under Scheduled tasks in the bot's profile.">需要反复执行时，在 Bot 资料的「定时任务」里选工作日或每周。</li>
+            <li data-en="Keep the computer awake and Octop running at the scheduled time.">到点时保持电脑唤醒、Octop 服务运行即可。</li>
+            <li data-en="Protected folders are kept when you remove a bot, until you clear them.">删除 Bot 后，保留的隐私目录会一直留着，直到你手动清理。</li>
+          </ul>
+        </div>
+        <div class="feature-media reveal" style="--delay:.1s">
+          <div class="art-frame"><img src="assets/art/local.webp" alt="" width="900" height="859" loading="lazy"></div>
+        </div>
+      </article>
+
+      <article class="feature" id="models">
+        <div class="feature-copy reveal">
+          <span class="eyebrow" data-en="Models">模型</span>
+          <h2 class="h2" data-en="Bring the model<br>you trust.">用你信得过的<br>模型。</h2>
+          <p class="lead" data-en="Octop Bot does not lock you in. Connect a model on first launch and switch whenever you like.">Octop Bot 不绑定任何一家。首次启动时连接模型，之后随时切换。</p>
+          <ul>
+            <li data-en="Sign in with a Lynxce account for cloud models, the cloud workspace and credits in one place.">登录灵策智算账号：云端模型、云端工作区和积分一站搞定。</li>
+            <li data-en="Or connect another provider with an API key.">也可以用 API Key 接入其他模型服务。</li>
+            <li data-en="Or run a local model on your own machine.">或者直接用本机模型。</li>
+            <li data-en="Switch models from the message box at any time.">在输入框里随时切换模型。</li>
+          </ul>
+        </div>
+        <div class="feature-media reveal" style="--delay:.1s">
+          <div class="art-frame"><img src="assets/art/models.webp" alt="" width="900" height="899" loading="lazy"></div>
+        </div>
+      </article>
+
+      <section class="feature" id="desktop" style="display:block">
+        <div class="section-head reveal">
+          <span class="eyebrow" data-en="Desktop">桌面体验</span>
+          <h2 class="h2" data-en="Made for your desktop.">为桌面打造的细节。</h2>
+        </div>
+        <div class="bento">
+          <div class="card ink span-3 reveal">
+            <h3 class="h3" data-en="Find anything">什么都找得到</h3>
+            <p data-en="Press Ctrl+K to search bots and groups, switch to past chats, and reopen a conversation by title or keyword.">按 Ctrl+K 搜索通讯录，切到「历史私聊」，输入标题或关键词就能重开会话。</p>
+            <div class="keys"><span class="kbd" style="background:transparent;color:inherit">Ctrl</span><span class="kbd" style="background:transparent;color:inherit">K</span></div>
+          </div>
+          <div class="card span-3 reveal" style="--delay:.06s">
+            <h3 class="h3" data-en="Quote the exact words">引用原话</h3>
+            <p data-en="Use Quote conversation in a chat to insert what was actually said earlier, instead of retyping it.">在私聊中用「引用对话」插入之前的原话，不用重新转述。</p>
+          </div>
+          <div class="card span-2 reveal">
+            <h3 class="h3" data-en="Chief on your desktop">桌面悬浮球</h3>
+            <p data-en="Keep a small Chief floating on your desktop and start a chat from anywhere.">让 Chief 以小悬浮球留在桌面上，随时发起对话。</p>
+          </div>
+          <div class="card span-2 reveal" style="--delay:.06s">
+            <h3 class="h3" data-en="Light, dark, 中文, English">深浅色与中英文</h3>
+            <p data-en="Follow the system appearance or pick one, and switch between Chinese and English.">外观跟随系统或手动选择，界面支持中文和英文。</p>
+          </div>
+          <div class="card span-2 reveal" style="--delay:.12s">
+            <h3 class="h3" data-en="Stays in the tray">常驻托盘</h3>
+            <p data-en="Close the window and Octop keeps running in the tray, so scheduled work is not interrupted.">关闭窗口后可以留在托盘里继续运行，本机定时任务不中断。</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="wrap" style="margin-top:40px">
+      <div class="cta reveal">
+        <img class="app-icon" src="assets/app-icon.webp" alt="" width="96" height="96">
+        <h2 class="h2" data-en="Ready to meet Chief?">准备好认识 Chief 了吗？</h2>
+        <p class="lead" data-en="Download the app, connect a model, and hand over your first task.">下载客户端，连接一个模型，把第一件事交出去。</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary btn-lg" href="download.html" data-download-primary><span data-en="Download">下载</span></a>
+          <a class="btn btn-ghost btn-lg" href="guide.html" data-en="Getting started">快速上手</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="index.html"><img src="assets/app-icon.webp" alt="" width="30" height="30">Octop Bot</a>
+          <p data-en="One sentence, a whole AI team. A free, open-source desktop app.">一句话，组建你的 AI 团队。免费开源的桌面客户端。</p>
+        </div>
+        <div>
+          <h4 data-en="Product">产品</h4>
+          <ul>
+            <li><a href="features.html" data-en="Features">功能</a></li>
+            <li><a href="download.html" data-en="Download">下载</a></li>
+            <li><a href="download.html#changelog" data-en="Changelog">更新日志</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 data-en="Resources">资源</h4>
+          <ul>
+            <li><a href="guide.html" data-en="Getting started">快速上手</a></li>
+            <li><a href="guide.html#faq" data-en="FAQ">常见问题</a></li>
+            <li><a href="privacy.html" data-en="Privacy">隐私政策</a></li>
+            <li><a href="https://github.com/alison-xx/octop-bot/blob/main/docs/octop-bot.md" data-en="Full guide (Chinese) ↗">完整文档 ↗</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 data-en="Community">社区</h4>
+          <ul>
+            <li><a href="https://github.com/alison-xx/octop-bot">GitHub ↗</a></li>
+            <li><a href="https://github.com/alison-xx/octop-bot/issues" data-en="Report an issue ↗">问题反馈 ↗</a></li>
+            <li><a href="https://lynxce.cn" data-en="Lynxce ↗">灵策智算 ↗</a></li>
+            <li><a href="https://octop.cloud/" data-en="Octop project ↗">Octop 项目 ↗</a></li>
+            <li><a href="https://github.com/TencentCloud/Octop" data-en="Octop on GitHub ↗">Octop · GitHub ↗</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© <span data-year>2026</span> Octop Bot · MIT License</span>
+        <span data-en="Made with care for small teams.">为小团队用心打造。</span>
+      </div>
+    </div>
+  </footer>
+
+  <dialog class="modal" id="film" aria-label="介绍片" data-en-aria-label="Product film">
+    <button class="modal-close" type="button" aria-label="关闭" data-en-aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <video controls playsinline preload="none"></video>
+  </dialog>
+  <dialog class="modal light" id="lightbox" aria-label="查看大图" data-en-aria-label="Enlarged screenshot">
+    <button class="modal-close" type="button" aria-label="关闭" data-en-aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <img alt="">
+  </dialog>
+</body>
+</html>

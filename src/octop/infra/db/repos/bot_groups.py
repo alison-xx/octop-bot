@@ -42,7 +42,8 @@ class BotGroupRepo:
                 "created_at) VALUES(?,?,?,?,?,?,?)",
                 (group_id, user_id, name, admin, json.dumps(members), mode, now_ts()),
             )
-            # Groups without a cursor predate read tracking and report nothing unread.
+            # Groups without a cursor predate read tracking; activity() starts them
+            # at their latest message.
             conn.execute(
                 "INSERT INTO settings(key,value) VALUES(?,'0') ON CONFLICT(key) DO NOTHING",
                 (_read_key(user_id, group_id),),
@@ -53,7 +54,8 @@ class BotGroupRepo:
         """Replies after the owner's read cursor and the latest visible message, per group."""
         with self._db.connect() as conn:
             rows = conn.execute(
-                "SELECT g.group_id, (SELECT COUNT(*) FROM bot_group_messages m "
+                "SELECT g.group_id, r.value IS NULL AS no_cursor, "
+                "(SELECT COUNT(*) FROM bot_group_messages m "
                 "WHERE m.group_id=g.group_id AND m.role IN ('assistant','error') "
                 "AND m.id>CAST(r.value AS INTEGER)) AS unread_count, "
                 "(SELECT MAX(m.id) FROM bot_group_messages m WHERE m.group_id=g.group_id "
@@ -75,6 +77,11 @@ class BotGroupRepo:
                         tuple(last_ids),
                     ).fetchall()
                 }
+        # Groups from before read tracking start reading at their latest message,
+        # so history stays read and later replies count.
+        for group in groups:
+            if group.pop("no_cursor"):
+                self.mark_read(group["group_id"], user_id)
         for group in groups:
             pk = group.pop("last_pk")
             group["unread_count"] = int(group["unread_count"] or 0)

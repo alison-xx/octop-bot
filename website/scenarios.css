@@ -1,0 +1,81 @@
+.scenarios {
+  padding-block: clamp(48px, 6.5vw, 94px);
+  border-bottom: 1px solid var(--line);
+}
+.scenario-tabs.ant-tabs-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 30px 0 24px;
+}
+.scenario-tabs .ant-tabs-bar-item {
+  flex: 0 0 auto;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+}
+.scenario-tabs .ant-tabs-bar-capsule-title {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 650;
+}
+.scenario-panel {
+  display: grid;
+  grid-template-columns: 1.07fr 0.93fr;
+  gap: clamp(24px, 5vw, 76px);
+  align-items: start;
+  outline-offset: 5px;
+}
+.scenario-panel:focus-visible {outline: 3px solid var(--accent)}
+.scenario-panel[hidden] {display: none}
+.scenario-brief, .scenario-sample {min-width: 0}
+.scenario-brief h3 {
+  font-size: clamp(22px, 2.3vw, 35px);
+  letter-spacing: -.035em;
+  line-height: 1.24;
+  text-wrap: balance;
+}
+.scenario-brief dl {margin: 18px 0 0}
+.scenario-brief dl > div {
+  display: grid;
+  grid-template-columns: minmax(68px, 0.26fr) 1fr;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+  padding-block: 12px;
+  font-size: 15px;
+  line-height: 1.65;
+}
+.scenario-brief dt {font-weight: 650}
+.scenario-brief dd {margin: 0; color: var(--muted)}
+.scenario-sample {
+  padding: clamp(19px, 3vw, 35px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--wash);
+}
+.scenario-sample h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--accent);
+}
+.scenario-sample blockquote {
+  margin: 16px 0 22px;
+  color: var(--ink);
+  font-size: clamp(16px, 1.5vw, 21px);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.scenario-actions {display: flex; align-items: center; gap: 12px; flex-wrap: wrap}
+.scenario-copy:hover {--button-border-color: var(--accent)}
+.scenario-status {color: var(--muted); font-size: 13px; line-height: 1.5}
+@media (max-width: 720px) {
+  .scenario-panel {grid-template-columns: 1fr; gap: 13px}
+  .scenario-tabs.ant-tabs-bar {margin: 20px 0 24px}
+}
+@media (max-width: 420px) {
+  .scenario-tabs .ant-tabs-bar-capsule-title {font-size: 13px; padding-inline: 10px}
+  .scenario-brief dl > div {gap: 10px}
+}

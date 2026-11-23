@@ -7,8 +7,11 @@ export default function RoomIdentity({
   onList,
   onToggle,
   expanded,
+  actions,
 }: {
   children: React.ReactNode;
+  /** Pills pinned to the top-right corner, e.g. Share. */
+  actions?: React.ReactNode;
   onList?: () => void;
   onToggle: () => void;
   expanded: boolean;
@@ -40,6 +43,7 @@ export default function RoomIdentity({
           <ChevronDown size={14} aria-hidden />
         )}
       </button>
+      {actions ? <span className={styles.roomActions}>{actions}</span> : null}
     </header>
   );
 }

@@ -57,7 +57,7 @@ docker save "ghcr.io/alison-xx/octop-bot:nas-$version" | gzip > "dist/Octop-Bot-
 在构建机上可复用已发布镜像内同版本的 Bot 网页、后端和架构专用依赖，分别导出两份原生 FPK。将下面的版本替换为目标 Release 对应的 Python 版本。
 
 ```sh
-version=1.0.3b8
+version=1.0.4
 for arch in amd64 arm64; do
   docker buildx build --platform "linux/$arch" -f scripts/fnos/bot-native.Dockerfile \
     --build-arg "BOT_IMAGE=ghcr.io/alison-xx/octop-bot:nas-$version" \

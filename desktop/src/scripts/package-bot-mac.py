@@ -367,6 +367,14 @@ def main() -> None:
         if dmg:
             notarize_dmg(dmg, args.notary_profile)
         verify_signed(app, dmg)
+        if dmg:
+            # The release folder that octop_bot_manifest.py build --dist reads.
+            dist = REPO / "dist" / version
+            dist.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(dmg, dist / dmg.name)
+            digest = hashlib.sha256(dmg.read_bytes()).hexdigest()
+            (dist / f"{dmg.name}.sha256").write_text(f"{digest}  {dmg.name}\n", encoding="utf-8")
+            dmg = dist / dmg.name
     print(dmg or app)
 
 

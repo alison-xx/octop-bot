@@ -113,6 +113,71 @@ describe("the hosted Bot chat", () => {
     expect(input).toHaveValue("example@account.test");
     expect(login).not.toHaveBeenCalled();
   });
+  it("signs in with the WorkBuddy hand-off code from the desktop window", async () => {
+    vi.spyOn(botCloudApi, "account").mockResolvedValue({
+      connected: false,
+      account_id: null,
+      display_name: null,
+    });
+    const exchange = vi.spyOn(botCloudApi, "loginWorkbuddy").mockResolvedValue({
+      connected: true,
+      account_id: "acct-wb",
+      display_name: "WorkBuddy user",
+    });
+    vi.spyOn(botCloudApi, "capabilities").mockResolvedValue({
+      enabled: true,
+      reason: null,
+      models: ["m"],
+      default_model: "m",
+    });
+    vi.spyOn(botCloudApi, "sessions").mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    });
+    vi.spyOn(octopBotApi, "workspace").mockResolvedValue({
+      chief_id: "",
+      bots: [],
+      groups: [],
+      pinned: [],
+      sections: [],
+      revision: 0,
+    });
+    vi.spyOn(lynxceWalletApi, "balance").mockResolvedValue({
+      source: "cloud",
+      account_id: "acct-wb",
+      connection_id: null,
+      credits: 5,
+      status: "available",
+      recharge_mode: "ticket",
+    });
+    const workbuddyLogin = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, reason: "denied" })
+      .mockResolvedValueOnce({ ok: true, code: "handoff-code" });
+    window.octopDesktop = {
+      workbuddyLogin,
+    } as unknown as typeof window.octopDesktop;
+    try {
+      render(
+        <MemoryRouter>
+          <CloudWorkspace />
+        </MemoryRouter>,
+      );
+      const button = await screen.findByRole("button", {
+        name: "botCloud.workbuddySignIn",
+      });
+      fireEvent.click(button);
+      expect(
+        await screen.findByText("botCloud.workbuddyDenied"),
+      ).toBeInTheDocument();
+      expect(exchange).not.toHaveBeenCalled();
+      fireEvent.click(button);
+      expect(await screen.findByText("WorkBuddy user")).toBeInTheDocument();
+      expect(exchange).toHaveBeenCalledExactlyOnceWith("handoff-code");
+    } finally {
+      delete window.octopDesktop;
+    }
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });

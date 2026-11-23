@@ -20,6 +20,7 @@ from octop.infra.server import OctopServer
 API = "/api/octop-bot/cloud/account"
 CAPABILITIES = "/api/user/cloud-work/capabilities"
 TASKS = "/api/user/cloud-work/tasks"
+HANDOFF = "wb-handoff.eyJ1c2VySWQiOiJ3YiIsImV4cCI6MX0." + "s" * 43
 Auth = dict[str, str]
 Env = tuple[httpx.AsyncClient, OctopServer, Auth, Auth]
 
@@ -55,9 +56,26 @@ class Upstream:
                         "user": {
                             "id": uid,
                             "displayName": "Name " + uid,
+                            "avatarUrl": f"https://cdn.avatars.test/{uid}.jpg",
                             "email": "private@example.invalid",
                         },
                         "apiKey": {"secretFull": "sensitive-api-key"},
+                        "quota": {"private": True},
+                    },
+                },
+            )
+        if path == cloud.WORKBUDDY_SESSION_PATH:
+            assert "Authorization" not in req.headers
+            if json.loads(req.content) != {"handoffCode": HANDOFF}:
+                return httpx.Response(401, json={"message": "invalid hand-off"})
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "accessToken": "access-wb",
+                        "refreshToken": "refresh-wb",
+                        "user": {"id": "wb", "displayName": "WorkBuddy 用户"},
                         "quota": {"private": True},
                     },
                 },
@@ -86,7 +104,11 @@ class Upstream:
                 200,
                 json={
                     "code": 0,
-                    "data": {"id": self.refreshed_account or bearer.removeprefix("renewed-")},
+                    "data": {
+                        "id": self.refreshed_account
+                        or bearer.removeprefix("renewed-").removeprefix("access-"),
+                        "avatarUrl": "https://cdn.avatars.test/profile.jpg",
+                    },
                 },
             )
         return httpx.Response(
@@ -117,7 +139,7 @@ async def test_password_login_encrypted_grants_are_local_owner_only(
     assert server.services is not None
     services = server.services
     aid = server.user_manager.get("alice").id
-    blank = {"connected": False, "account_id": None, "display_name": None}
+    blank = {"connected": False, "account_id": None, "display_name": None, "avatar_url": None}
     assert (await client.get(API)).status_code == 401
     assert (await client.get(API, headers=alice)).json() == blank
     malformed = await client.post(
@@ -132,7 +154,12 @@ async def test_password_login_encrypted_grants_are_local_owner_only(
         API, headers=alice, json={"account": "a", "password": "test-password"}
     )
     result.raise_for_status()
-    assert result.json() == {"connected": True, "account_id": "a", "display_name": "Name a"}
+    assert result.json() == {
+        "connected": True,
+        "account_id": "a",
+        "display_name": "Name a",
+        "avatar_url": "https://cdn.avatars.test/a.jpg",
+    }
     assert (await client.get(API, headers=admin)).json() == blank
     assert not model_connected(services, aid)
     raw = services.secret_repo.get(cloud._key(aid))
@@ -169,6 +196,47 @@ async def test_password_login_encrypted_grants_are_local_owner_only(
     (await client.delete(f"/api/users/{aid}", headers=admin)).raise_for_status()
     assert not services.secret_repo.get(cloud._key(aid))
     assert not services.secret_repo.get(cloud._key(aid) + ".fernet")
+
+
+async def test_workbuddy_handoff_login_replaces_the_saved_account(
+    env_admin_alice: Env, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, server, admin, alice = env_admin_alice
+    assert server.services is not None
+    services = server.services
+    aid = server.user_manager.get("alice").id
+    api = API + "/workbuddy"
+    assert (await client.post(api, json={"handoff_code": HANDOFF})).status_code == 401
+    for malformed in ({}, {"handoff_code": "wb-handoff.unique-malformed"}):
+        refused = await client.post(api, headers=alice, json=malformed)
+        assert refused.status_code == 422 and "unique-malformed" not in refused.text
+    assert upstream.counts[cloud.WORKBUDDY_SESSION_PATH] == 0
+    (
+        await client.post(API, headers=alice, json={"account": "a", "password": "test-password"})
+    ).raise_for_status()
+    spent = HANDOFF[:-1] + "x"
+    rejected = await client.post(api, headers=alice, json={"handoff_code": spent})
+    assert rejected.status_code == 403 and spent not in rejected.text
+    assert cloud.cloud_status(services, aid).account_id == "a"
+    result = await client.post(api, headers=alice, json={"handoff_code": HANDOFF})
+    result.raise_for_status()
+    assert result.json() == {
+        "connected": True,
+        "account_id": "wb",
+        "display_name": "WorkBuddy 用户",
+        "avatar_url": None,
+    }
+    raw = services.secret_repo.get(cloud._key(aid))
+    assert raw and b"access-wb" not in raw and HANDOFF.encode() not in raw
+    assert (await cloud.request_cloud(services, aid, "GET", CAPABILITIES))[
+        "fixture-owner"
+    ] == "access-wb"
+    assert (await client.get(API, headers=admin)).json()["connected"] is False
+    monkeypatch.delenv("OCTOP_DESKTOP_PRODUCT")
+    assert (
+        await client.post(api, headers=alice, json={"handoff_code": HANDOFF})
+    ).status_code == 403
+    assert upstream.counts[cloud.WORKBUDDY_SESSION_PATH] == 2
 
 
 async def test_restricted_requests_and_refresh_isolation(
@@ -343,3 +411,42 @@ async def test_cancelled_login_finishes_saving_before_another_account_can_switch
         await old
     await cloud.login_cloud(services, uid, "new", "test-password")
     assert cloud.cloud_status(services, uid).account_id == "new"
+
+
+async def test_saved_login_without_avatar_reads_it_once(
+    env_admin_alice: Env, upstream: Upstream
+) -> None:
+    client, server, _admin, alice = env_admin_alice
+    assert server.services is not None
+    services = server.services
+    aid = server.user_manager.get("alice").id
+    assert (
+        await client.post(API, headers=alice, json={"account": "a", "password": "test-password"})
+    ).status_code == 200
+    # A login saved before avatars were kept has no avatar field at all.
+    old = cloud._load(services, aid)
+    assert old is not None
+    cloud._save(services, aid, cloud._Grant(**{**cloud.asdict(old), "avatar_url": None}))
+
+    first = (await client.get(API, headers=alice)).json()
+    second = (await client.get(API, headers=alice)).json()
+    assert first == second and first["avatar_url"] == "https://cdn.avatars.test/profile.jpg"
+    assert upstream.counts["/api/user/profile"] == 1
+
+
+async def test_avatar_lookup_failure_still_returns_the_account(
+    env_admin_alice: Env, upstream: Upstream
+) -> None:
+    client, server, _admin, alice = env_admin_alice
+    assert server.services is not None
+    services = server.services
+    aid = server.user_manager.get("alice").id
+    await client.post(API, headers=alice, json={"account": "a", "password": "test-password"})
+    old = cloud._load(services, aid)
+    assert old is not None
+    cloud._save(services, aid, cloud._Grant(**{**cloud.asdict(old), "avatar_url": None}))
+    upstream.expired.add("access-a")
+
+    body = (await client.get(API, headers=alice)).json()
+    assert body["connected"] and body["account_id"] == "a" and body["avatar_url"] is None
+    assert cloud._load(services, aid) == cloud._Grant(**{**cloud.asdict(old), "avatar_url": None})

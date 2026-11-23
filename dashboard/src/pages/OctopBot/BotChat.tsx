@@ -34,6 +34,8 @@ import { apiErrorMessage } from "../../utils/apiError";
 import EditAgentDrawer from "../Experts/components/EditAgentDrawer";
 import ChatPage from "../Chat";
 import { ChatRouteContext } from "../Chat/ChatRouteContext";
+import ShareConversationDialog from "../Chat/components/ShareConversationDialog";
+import { publicShareAvailable } from "../Chat/utils/publicShareHost";
 import styles from "./index.module.less";
 import ReferenceDialog from "./ReferenceDialog";
 import GroupMemory from "./GroupMemory";
@@ -162,6 +164,7 @@ export default function BotChat({
   const user = useCurrentUser();
   const navigate = useNavigate();
   const [details, setDetails] = useState(false);
+  const [sharing, setSharing] = useState(false);
   useEffect(() => setDetails(false), [bot.agent_id]);
   const [panel, setPanel] = useState<
     | "side"
@@ -301,6 +304,17 @@ export default function BotChat({
         <div className={standalone ? directory.column : directory.transparent}>
           {standalone ? (
             <RoomIdentity
+              actions={
+                threadId && publicShareAvailable() ? (
+                  <button
+                    type="button"
+                    className={directory.roomPill}
+                    onClick={() => setSharing(true)}
+                  >
+                    {t("octopBot.share")}
+                  </button>
+                ) : null
+              }
               expanded={details}
               onToggle={() => setDetails((v) => !v)}
               onList={onOpenList}
@@ -414,6 +428,14 @@ export default function BotChat({
           />
         )}
       </div>
+      {sharing && threadId && (
+        <ShareConversationDialog
+          open
+          agentId={bot.agent_id}
+          threadId={threadId}
+          onClose={() => setSharing(false)}
+        />
+      )}
       {panel === "history" && (
         <ThreadHistory agentId={bot.agent_id} onClose={() => setPanel(null)} />
       )}
