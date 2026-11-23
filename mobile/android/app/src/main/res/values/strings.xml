@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Octop Bot</string>
+
+    <!-- Built-in Bots -->
+    <string name="bot_chief_subtitle">Your main assistant</string>
+    <string name="bot_chief_prompt">You are Chief, the main assistant in Octop Bot. Answer accurately, concisely and warmly, and explain step by step when it helps.</string>
+    <string name="bot_researcher_name">Researcher</string>
+    <string name="bot_researcher_subtitle">Research and analysis</string>
+    <string name="bot_researcher_prompt">You are a researcher. Clarify the question first, then give a well-sourced, clearly structured analysis and point out what is uncertain.</string>
+    <string name="bot_engineer_name">Engineer</string>
+    <string name="bot_engineer_subtitle">Code and debugging</string>
+    <string name="bot_engineer_prompt">You are a senior software engineer. Give runnable code with a brief explanation and call out edge cases.</string>
+    <string name="bot_translator_name">Translator</string>
+    <string name="bot_translator_subtitle">Translation</string>
+    <string name="bot_translator_prompt">You are a professional translator. Translate Chinese into natural English and any other language into Chinese, keep the formatting, and output only the translation.</string>
+    <string name="bot_writer_name">Writer</string>
+    <string name="bot_writer_subtitle">Drafting and editing</string>
+    <string name="bot_writer_prompt">You are a writing assistant. Help draft, polish and rewrite text in a natural voice that fits the style the user wants.</string>
+    <string name="bot_companion_name">Buddy</string>
+    <string name="bot_companion_subtitle">Just chat</string>
+    <string name="bot_companion_prompt">You are a warm, funny chat buddy. Talk casually like a friend and remember what the user told you in this conversation.</string>
+    <string name="bot_custom_subtitle">Your own Bot</string>
+
+    <!-- Common -->
+    <string name="common_back">Back</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_close">Close</string>
+    <string name="common_copy">Copy</string>
+    <string name="common_copied">Copied</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_save">Save</string>
+
+    <!-- Errors -->
+    <string name="error_unauthorized">Your session expired. Please sign in again.</string>
+    <string name="error_credits">Your Lynxce balance is used up. Top it up and try again.</string>
+    <string name="error_rejected">The request was rejected (%1$d).</string>
+    <string name="error_network">Can\'t reach the server. Check your connection.</string>
+    <string name="error_server">Server error (%1$d). Try again later.</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_tagline">Your team of AI Bots, in your pocket.</string>
+    <string name="onboarding_lynxce">Sign in with Lynxce</string>
+    <string name="onboarding_account">Phone or email</string>
+    <string name="onboarding_password">Password</string>
+    <string name="onboarding_sign_in">Sign in</string>
+    <string name="onboarding_register">No account? Sign up at lynxce.cn</string>
+    <string name="onboarding_server">Connect my own server</string>
+    <string name="onboarding_footnote">Your own Octop Bot server works too: Bots, tools, memory and groups from your NAS.</string>
+    <string name="password_show">Show password</string>
+    <string name="password_hide">Hide password</string>
+
+    <!-- Own server -->
+    <string name="server_title">Your server</string>
+    <string name="server_address">Server address</string>
+    <string name="server_address_placeholder" translatable="false">https://nas.local:8080</string>
+    <string name="server_address_footer">The address of your Octop Bot web or NAS build, e.g. https://nas.local:8080. The desktop app\'s built-in server can\'t be reached from a phone.</string>
+    <string name="server_address_invalid">Enter an http or https address.</string>
+    <string name="server_next">Next</string>
+    <string name="server_sign_in_lynxce">Sign in with the Lynxce account that owns this server</string>
+    <string name="server_sign_in_local">Sign in with the password you set for this server</string>
+    <string name="server_unclaimed">This server has no owner yet. The first account to sign in becomes its owner.</string>
+    <string name="server_username">Username</string>
+    <string name="server_sign_in_password">Sign in to this Octop server</string>
+    <string name="server_mfa">Authenticator code</string>
+    <string name="server_mfa_hint">Enter the 6-digit code from your authenticator app.</string>
+    <string name="server_verify">Verify</string>
+
+    <!-- Chat -->
+    <string name="chat_history">Conversations</string>
+    <string name="chat_new">New chat</string>
+    <string name="chat_voice">Voice mode</string>
+    <string name="chat_greeting">I\'m %1$s</string>
+    <string name="chat_placeholder">Ask anything</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_stop">Stop</string>
+    <string name="chat_dictate">Dictate</string>
+    <string name="chat_attach">Add photos</string>
+    <string name="chat_take_photo">Take photo</string>
+    <string name="chat_photo_library">Photo library</string>
+    <string name="chat_remove_photo">Remove photo</string>
+    <string name="chat_thought">Thought for a moment</string>
+    <string name="chat_thinking">Thinking…</string>
+    <string name="chat_tool_running">Using %1$s…</string>
+    <string name="chat_tool_done">Used %1$s</string>
+    <string name="chat_tools_summary">Used %1$s · %2$s</string>
+    <plurals name="chat_tools_count">
+        <item quantity="one">%1$d tool</item>
+        <item quantity="other">%1$d tools</item>
+    </plurals>
+    <plurals name="chat_steps_count">
+        <item quantity="one">%1$d step</item>
+        <item quantity="other">%1$d steps</item>
+    </plurals>
+    <string name="chat_failed">Reply failed</string>
+    <string name="chat_read_aloud">Read aloud</string>
+    <string name="chat_retry">Retry</string>
+    <string name="chat_jump_latest">Jump to latest</string>
+    <string name="chat_listening">Listening…</string>
+    <string-array name="suggestions_default">
+        <item>Plan my day</item>
+        <item>Explain something simply</item>
+        <item>Help me write a message</item>
+    </string-array>
+    <string-array name="suggestions_researcher">
+        <item>Compare two options for me…</item>
+        <item>Summarize what is known about…</item>
+        <item>What are the pros and cons of…</item>
+    </string-array>
+    <string-array name="suggestions_engineer">
+        <item>Review this code…</item>
+        <item>Explain this error message…</item>
+        <item>Write a small script that…</item>
+    </string-array>
+    <string-array name="suggestions_translator">
+        <item>Translate into English…</item>
+        <item>Translate into Chinese…</item>
+        <item>Polish my English…</item>
+    </string-array>
+    <string-array name="suggestions_writer">
+        <item>Draft an email about…</item>
+        <item>Polish this paragraph…</item>
+        <item>Make this shorter…</item>
+    </string-array>
+    <string-array name="suggestions_companion">
+        <item>Tell me something fun</item>
+        <item>Recommend a movie for tonight</item>
+        <item>Let\'s play a word game</item>
+    </string-array>
+    <string name="chat_photo_failed">That photo couldn\'t be read.</string>
+
+    <!-- Drawer -->
+    <string name="drawer_empty">No conversations yet</string>
+
+    <!-- Bot picker and editor -->
+    <string name="bot_new">New Bot</string>
+    <string name="bot_edit">Edit look</string>
+    <string name="home_search">Search</string>
+    <string name="bot_edit_title">Edit Bot</string>
+    <string name="bot_name">Name</string>
+    <string name="bot_name_placeholder">Give your Bot a name</string>
+    <string name="bot_persona">Persona</string>
+    <string name="bot_persona_placeholder">Who is this Bot and how should it answer?</string>
+    <string name="bot_shape">Shape</string>
+    <string name="bot_color">Color</string>
+    <string name="bot_delete">Delete Bot</string>
+    <string name="bot_delete_confirm">Delete %1$s? Its conversations stay in your account.</string>
+
+    <!-- Groups -->
+    <string name="groups_title">Groups</string>
+    <string name="groups_new">New group</string>
+    <string name="groups_name">Name</string>
+    <string name="groups_name_placeholder">e.g. Launch Team</string>
+    <string name="groups_empty">No groups on this server yet.</string>
+    <string name="groups_placeholder">Message the group, @ to mention</string>
+    <string name="groups_info">Group info</string>
+    <string name="groups_goal">Goal</string>
+    <string name="groups_no_goal">No goal yet.</string>
+    <string name="groups_memory">Shared memory</string>
+    <string name="groups_memory_empty">Nothing remembered yet.</string>
+    <string name="groups_members">Members</string>
+    <plurals name="groups_member_count">
+        <item quantity="one">%1$d member</item>
+        <item quantity="other">%1$d members</item>
+    </plurals>
+
+    <!-- Voice -->
+    <string name="voice_title">Voice mode</string>
+    <string name="voice_tap_to_talk">Tap to talk</string>
+    <string name="voice_listening">Listening… tap to send</string>
+    <string name="voice_transcribing">Transcribing…</string>
+    <string name="voice_thinking">Thinking…</string>
+    <string name="voice_speaking">Speaking</string>
+    <string name="voice_not_heard">Didn\'t catch that. Try again.</string>
+    <string name="voice_mic_denied">Voice needs microphone access. Allow it in system settings.</string>
+    <string name="voice_unavailable">Speech recognition isn\'t available on this phone.</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_signed_in_as">Signed in as</string>
+    <string name="settings_connection">Connected to</string>
+    <string name="settings_lynxce">Lynxce cloud</string>
+    <string name="settings_model">Model</string>
+    <string name="settings_model_auto">Auto</string>
+    <string name="settings_model_footer">Auto lets Lynxce pick the model for each question.</string>
+    <string name="settings_general">General</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_follow_system">Follow system</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_appearance_dark">Dark</string>
+    <string name="settings_appearance_light">Light</string>
+    <string name="settings_read_aloud">Read replies aloud</string>
+    <string name="settings_notify">Notify when a reply finishes</string>
+    <string name="settings_about">About</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_sign_out">Sign out</string>
+    <string name="settings_sign_out_confirm">Sign out of Octop Bot on this phone?</string>
+
+    <!-- Notifications -->
+    <string name="notify_channel">Replies</string>
+    <string name="notify_channel_description">When a Bot finishes replying while Octop Bot is in the background.</string>
+
+    <!-- Polish: reply actions, history, settings -->
+    <string name="chat_replying">Replying…</string>
+    <string name="chat_share">Share</string>
+    <string name="chat_stop_reading">Stop reading</string>
+    <string name="chat_edit">Edit</string>
+    <string name="time_yesterday">Yesterday %1$s</string>
+    <string name="image_open">Open image</string>
+    <string name="image_share_failed">Couldn\'t share this image.</string>
+    <string name="history_search">Search conversations</string>
+    <string name="history_today">Today</string>
+    <string name="history_yesterday">Yesterday</string>
+    <string name="history_week">Previous 7 days</string>
+    <string name="history_earlier">Earlier</string>
+    <string name="history_no_match">No matching conversations</string>
+    <string name="history_current">Open now</string>
+    <string name="home_unread">Unread</string>
+    <string name="bot_shuffle">Shuffle</string>
+    <string name="settings_balance_chip">Balance %1$s</string>
+    <string name="settings_text_size">Chat text size</string>
+    <string name="settings_text_small">Small</string>
+    <string name="settings_text_standard">Standard</string>
+    <string name="settings_text_large">Large</string>
+    <string name="settings_haptics">Haptics</string>
+    <string name="settings_chat">Chat</string>
+    <string name="settings_expand_reasoning">Expand reasoning by default</string>
+    <string name="settings_speech_rate">Speaking speed</string>
+    <string name="settings_speed_slow">Slow</string>
+    <string name="settings_speed_normal">Normal</string>
+    <string name="settings_speed_fast">Fast</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_notify_blocked">Notifications for Octop Bot are turned off in system settings, so finished replies can\'t reach you.</string>
+    <string name="settings_open_system_settings">Open system settings</string>
+    <string name="settings_storage">Storage</string>
+    <string name="settings_clear_cache">Clear local cache</string>
+    <string name="settings_clear_cache_footer">Removes reply previews, unread marks and temporary voice and image files. You stay signed in.</string>
+    <string name="settings_clear_cache_confirm">Clear local cache?</string>
+    <string name="settings_clear">Clear</string>
+    <string name="settings_cache_cleared">Local cache cleared</string>
+    <string name="settings_switch_account">Switch account or server</string>
+    <string name="settings_report">Report a problem</string>
+    <string name="settings_lynxce_site">Lynxce website</string>
+
+    <!-- Questions and approvals, queued messages -->
+    <string name="hitl_question_title">%1$s has a question</string>
+    <string name="hitl_approval_title">Needs your approval</string>
+    <string name="hitl_something_else">Something else…</string>
+    <string name="hitl_your_answer">Your answer…</string>
+    <string name="hitl_you_decide">You decide</string>
+    <string name="hitl_approve">Approve</string>
+    <string name="hitl_reject">Reject</string>
+    <string name="hitl_reply_you_decide">You decide — pick the best default and tell me what you assumed.</string>
+    <string name="hitl_reply_closed">The user closed these questions without answering. Do not ask again — wrap up this turn.</string>
+    <string name="hitl_note_approved">Approved: %1$s</string>
+    <string name="hitl_note_declined">Declined: %1$s</string>
+    <string name="hitl_composer_answer">Type your answer</string>
+    <string name="hitl_composer_decline">Or say what you want instead</string>
+    <string name="chat_queued">Queued</string>
+    <string name="chat_queued_cancel">Cancel queued message</string>
+    <string name="groups_not_sent">Not sent — tap to retry</string>
+    <string name="hitl_next">Next</string>
+    <string name="hitl_collapse">Collapse</string>
+    <string name="hitl_expand">Expand</string>
+
+    <!-- In-app updates -->
+    <string name="update_banner">Version %1$s is available</string>
+    <string name="update_banner_urgent">This version is no longer supported. Please update to %1$s.</string>
+    <string name="update_action">Update</string>
+    <string name="update_install_to">Update to %1$s</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_receive_beta">Receive beta versions</string>
+    <string name="update_status_latest">Up to date</string>
+    <string name="update_status_checking">Checking…</string>
+    <string name="update_status_available">%1$s available</string>
+    <string name="update_status_downloading">Downloading %1$d%%</string>
+    <string name="update_status_downloading_plain">Downloading…</string>
+    <string name="update_status_ready">Ready to install</string>
+    <string name="update_status_check_failed">Check failed</string>
+    <string name="update_status_download_failed">Download failed</string>
+    <string name="update_status_verify_failed">Verification failed</string>
+    <string name="update_check_failed">Couldn\'t check for updates. Try again later.</string>
+    <string name="update_permission_title">Allow installing the update</string>
+    <string name="update_permission_text">To install updates, allow Octop Bot to install unknown apps on the next screen, then come back. The update continues by itself.</string>
+    <string name="update_permission_open">Open settings</string>
+</resources>

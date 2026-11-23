@@ -1,0 +1,632 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		007ABFA2A336E9735DE09CDF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A58EF3F0541F5BFE3F7F8B17 /* Models.swift */; };
+		026117960095D1EB882638E1 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB2E4DD3683D12292D912221 /* HomeView.swift */; };
+		06D222EA88F08977C5F70343 /* OctopBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCAE45B5468F79305E620A83 /* OctopBotApp.swift */; };
+		1251B34A706BD0B429A1AC0C /* ImageViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47EB786F0FC7601BFB45245 /* ImageViewer.swift */; };
+		130DA3D3E41D2DEBBF1B8002 /* soft-characters.json in Resources */ = {isa = PBXBuildFile; fileRef = 9D571B602D444EEE48A8962B /* soft-characters.json */; };
+		199AED752BEFE0F3CE88E25C /* LocalBots.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07983C65452A324E84BBF59A /* LocalBots.swift */; };
+		19E2EB24C0D7CC125AC821D9 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C21A989B7260F2117C40E87 /* Theme.swift */; };
+		1B7B58F6A8BA9CD69D10F5F4 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = B0B4725C78C81A15A4357C17 /* Localizable.xcstrings */; };
+		1FDC57332E69AE769E1243A7 /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 273BA3F6AD10D4A909CDADE6 /* Preferences.swift */; };
+		23EE84C97894827ED6A8E595 /* CharacterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C5948840F044AA5B01E6FB /* CharacterView.swift */; };
+		259EDAA2D79261E4D0BE4586 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A4E82E7227484F22CB6A5433 /* InfoPlist.xcstrings */; };
+		2B28871028EA4B40CBC4DAEE /* OctopBotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 185F69E704AE68F0C0ED11C1 /* OctopBotTests.swift */; };
+		2CCBCC317754D53E26034F28 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15BBCE5B206951E544D4FD60 /* Keychain.swift */; };
+		41B9ABBCAFF713FEA04C284C /* HTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1E4C98857F2A9A92FA53F6 /* HTTP.swift */; };
+		50D8356BA21790C2FFF46F1D /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2022CECD87289127591F30D /* AppUpdater.swift */; };
+		5E31F9FF32F06FBE952A0A9F /* octop-mascot.webp in Resources */ = {isa = PBXBuildFile; fileRef = 7B4198C3433D9E46B368560D /* octop-mascot.webp */; };
+		670A22CF3CD26D0459F1C862 /* GroupRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3673E4497A330EC42D8B0AE4 /* GroupRoomView.swift */; };
+		701243634B93B3D55795922A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CF6F0F3501DAF6D838B0A354 /* LaunchScreen.storyboard */; };
+		8330BE0127CCDC3E8975B833 /* Characters.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27E10E2BDC532D8A8733A20 /* Characters.swift */; };
+		871A5E282D3F9B836B3A0901 /* ServerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 853AB250E633AC85F64B4B8E /* ServerBackend.swift */; };
+		8AD1B6205CE7292AE3297C8A /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B26B5219B243FA949E1B4CC /* MarkdownText.swift */; };
+		94F0BEE560698A2E757BFE90 /* ChatScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0D4BB60CF5FB920280CF55 /* ChatScreen.swift */; };
+		A53EA84F3C4475B95A47F587 /* Voice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C235A1CAB3877508B396E0E7 /* Voice.swift */; };
+		A92EDF4C2FD34A513BAC2B1E /* LaunchSplash@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = 485730F843527F6DB74B2288 /* LaunchSplash@3x.png */; };
+		ABC1C4B78D4E12D40A46D64A /* ChatSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B348FA18444D7D35A387C8 /* ChatSession.swift */; };
+		B771D743DC4B5E39F8C6F4EF /* Panels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45C5942C9895849A32C673AB /* Panels.swift */; };
+		C37A0D05944FEC7D2C355DC7 /* characters.json in Resources */ = {isa = PBXBuildFile; fileRef = 7280A8EE1534AA92B85CF8D7 /* characters.json */; };
+		C4FEC5251E5ED4CB56B08AA8 /* VoiceModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B36A66B6B51F3F46A0C5001 /* VoiceModeView.swift */; };
+		C771D8F5FBC1CCEA9E472EE8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7F42D68AD0EF0EE042F76EBF /* Assets.xcassets */; };
+		D0594327B5388BA21151650A /* LaunchSplash@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 6F77470F5AE016E9DEF759F6 /* LaunchSplash@2x.png */; };
+		D79859D85ACC51E337C24629 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8FC5EE7F64E7D3DE6CC62A4 /* OnboardingView.swift */; };
+		DEC5AC974DAE214BF6C67D43 /* Hitl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44AA9D2522DD5EC8E5320048 /* Hitl.swift */; };
+		DEC9A2364E12C86351B28398 /* LaunchSplash@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 7D05B2CADB1735B180DD738F /* LaunchSplash@1x.png */; };
+		E4D12A2503C63875BFFB19EA /* LynxceBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */; };
+		F9AAC368DBB70E5F7E9FA7D7 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFA4F9D2603084616EA20193 /* AppModel.swift */; };
+		FE38F2BAB33A8B48E5C629C3 /* HitlCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64A1DD83356759A7465B69ED /* HitlCard.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		2A2F63C3FF6969A06A210477 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 10285DBCF2D20B8FBFA652B6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1E344C9E9C9E088DA2A5AF82;
+			remoteInfo = OctopBot;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		07983C65452A324E84BBF59A /* LocalBots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalBots.swift; sourceTree = "<group>"; };
+		15BBCE5B206951E544D4FD60 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		185F69E704AE68F0C0ED11C1 /* OctopBotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OctopBotTests.swift; sourceTree = "<group>"; };
+		1C21A989B7260F2117C40E87 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		273BA3F6AD10D4A909CDADE6 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
+		2B36A66B6B51F3F46A0C5001 /* VoiceModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceModeView.swift; sourceTree = "<group>"; };
+		3673E4497A330EC42D8B0AE4 /* GroupRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupRoomView.swift; sourceTree = "<group>"; };
+		3CC84AAA343F8CD780BB2DF1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		44AA9D2522DD5EC8E5320048 /* Hitl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Hitl.swift; sourceTree = "<group>"; };
+		45C5942C9895849A32C673AB /* Panels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels.swift; sourceTree = "<group>"; };
+		485730F843527F6DB74B2288 /* LaunchSplash@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LaunchSplash@3x.png"; sourceTree = "<group>"; };
+		4B26B5219B243FA949E1B4CC /* MarkdownText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownText.swift; sourceTree = "<group>"; };
+		5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LynxceBackend.swift; sourceTree = "<group>"; };
+		64A1DD83356759A7465B69ED /* HitlCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitlCard.swift; sourceTree = "<group>"; };
+		6F77470F5AE016E9DEF759F6 /* LaunchSplash@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LaunchSplash@2x.png"; sourceTree = "<group>"; };
+		7280A8EE1534AA92B85CF8D7 /* characters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = characters.json; sourceTree = "<group>"; };
+		75A1511FD9AC865EEFAC5AC4 /* OctopBot.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OctopBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7B4198C3433D9E46B368560D /* octop-mascot.webp */ = {isa = PBXFileReference; path = "octop-mascot.webp"; sourceTree = "<group>"; };
+		7D05B2CADB1735B180DD738F /* LaunchSplash@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LaunchSplash@1x.png"; sourceTree = "<group>"; };
+		7F42D68AD0EF0EE042F76EBF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		853AB250E633AC85F64B4B8E /* ServerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerBackend.swift; sourceTree = "<group>"; };
+		9D571B602D444EEE48A8962B /* soft-characters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "soft-characters.json"; sourceTree = "<group>"; };
+		A4E82E7227484F22CB6A5433 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
+		A58EF3F0541F5BFE3F7F8B17 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		B0B4725C78C81A15A4357C17 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		B376C8BCAD0157318169A260 /* OctopBotTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OctopBotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C2022CECD87289127591F30D /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
+		C235A1CAB3877508B396E0E7 /* Voice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Voice.swift; sourceTree = "<group>"; };
+		C7C5948840F044AA5B01E6FB /* CharacterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterView.swift; sourceTree = "<group>"; };
+		C8FC5EE7F64E7D3DE6CC62A4 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		CB2E4DD3683D12292D912221 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		CF6F0F3501DAF6D838B0A354 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		DCAE45B5468F79305E620A83 /* OctopBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OctopBotApp.swift; sourceTree = "<group>"; };
+		DFA4F9D2603084616EA20193 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		E47EB786F0FC7601BFB45245 /* ImageViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewer.swift; sourceTree = "<group>"; };
+		ED1E4C98857F2A9A92FA53F6 /* HTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTP.swift; sourceTree = "<group>"; };
+		F27E10E2BDC532D8A8733A20 /* Characters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Characters.swift; sourceTree = "<group>"; };
+		F2B348FA18444D7D35A387C8 /* ChatSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSession.swift; sourceTree = "<group>"; };
+		FB0D4BB60CF5FB920280CF55 /* ChatScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScreen.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		11E2CC0CF7DA15013237715D = {
+			isa = PBXGroup;
+			children = (
+				AF1323D2375BE7D9A6DD5B99 /* OctopBot */,
+				9D64B23DB0D3B0296C73026A /* OctopBotTests */,
+				DC2CD5F8FF885BE63A61FD71 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		2BF4BBBE23349A38E92F1B15 /* Net */ = {
+			isa = PBXGroup;
+			children = (
+				ED1E4C98857F2A9A92FA53F6 /* HTTP.swift */,
+				5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */,
+				853AB250E633AC85F64B4B8E /* ServerBackend.swift */,
+			);
+			path = Net;
+			sourceTree = "<group>";
+		};
+		35594942A8D3D337123F7413 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				DFA4F9D2603084616EA20193 /* AppModel.swift */,
+				F2B348FA18444D7D35A387C8 /* ChatSession.swift */,
+				DCAE45B5468F79305E620A83 /* OctopBotApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		3B0CEE8C9A18ED375976BA0A /* Voice */ = {
+			isa = PBXGroup;
+			children = (
+				C235A1CAB3877508B396E0E7 /* Voice.swift */,
+			);
+			path = Voice;
+			sourceTree = "<group>";
+		};
+		9D64B23DB0D3B0296C73026A /* OctopBotTests */ = {
+			isa = PBXGroup;
+			children = (
+				185F69E704AE68F0C0ED11C1 /* OctopBotTests.swift */,
+			);
+			path = OctopBotTests;
+			sourceTree = "<group>";
+		};
+		9F5BD1F715B640085626DD40 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				7F42D68AD0EF0EE042F76EBF /* Assets.xcassets */,
+				7280A8EE1534AA92B85CF8D7 /* characters.json */,
+				A4E82E7227484F22CB6A5433 /* InfoPlist.xcstrings */,
+				CF6F0F3501DAF6D838B0A354 /* LaunchScreen.storyboard */,
+				B0B4725C78C81A15A4357C17 /* Localizable.xcstrings */,
+				7B4198C3433D9E46B368560D /* octop-mascot.webp */,
+				9D571B602D444EEE48A8962B /* soft-characters.json */,
+				E5114EA628507375A5CD1504 /* Launch */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		AE037F31FDC8F88E9A8CE3E2 /* Model */ = {
+			isa = PBXGroup;
+			children = (
+				44AA9D2522DD5EC8E5320048 /* Hitl.swift */,
+				A58EF3F0541F5BFE3F7F8B17 /* Models.swift */,
+			);
+			path = Model;
+			sourceTree = "<group>";
+		};
+		AF1323D2375BE7D9A6DD5B99 /* OctopBot */ = {
+			isa = PBXGroup;
+			children = (
+				3CC84AAA343F8CD780BB2DF1 /* Info.plist */,
+				35594942A8D3D337123F7413 /* App */,
+				F732487B520D107FFEBB502A /* Character */,
+				AE037F31FDC8F88E9A8CE3E2 /* Model */,
+				2BF4BBBE23349A38E92F1B15 /* Net */,
+				9F5BD1F715B640085626DD40 /* Resources */,
+				CBB80F86FC24FBC28491DE50 /* Store */,
+				D9AAC1975601BF7EBEE50A14 /* UI */,
+				3B0CEE8C9A18ED375976BA0A /* Voice */,
+			);
+			path = OctopBot;
+			sourceTree = "<group>";
+		};
+		CBB80F86FC24FBC28491DE50 /* Store */ = {
+			isa = PBXGroup;
+			children = (
+				C2022CECD87289127591F30D /* AppUpdater.swift */,
+				15BBCE5B206951E544D4FD60 /* Keychain.swift */,
+				07983C65452A324E84BBF59A /* LocalBots.swift */,
+				273BA3F6AD10D4A909CDADE6 /* Preferences.swift */,
+			);
+			path = Store;
+			sourceTree = "<group>";
+		};
+		D9AAC1975601BF7EBEE50A14 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				FB0D4BB60CF5FB920280CF55 /* ChatScreen.swift */,
+				3673E4497A330EC42D8B0AE4 /* GroupRoomView.swift */,
+				64A1DD83356759A7465B69ED /* HitlCard.swift */,
+				CB2E4DD3683D12292D912221 /* HomeView.swift */,
+				E47EB786F0FC7601BFB45245 /* ImageViewer.swift */,
+				4B26B5219B243FA949E1B4CC /* MarkdownText.swift */,
+				C8FC5EE7F64E7D3DE6CC62A4 /* OnboardingView.swift */,
+				45C5942C9895849A32C673AB /* Panels.swift */,
+				1C21A989B7260F2117C40E87 /* Theme.swift */,
+				2B36A66B6B51F3F46A0C5001 /* VoiceModeView.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		DC2CD5F8FF885BE63A61FD71 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				75A1511FD9AC865EEFAC5AC4 /* OctopBot.app */,
+				B376C8BCAD0157318169A260 /* OctopBotTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E5114EA628507375A5CD1504 /* Launch */ = {
+			isa = PBXGroup;
+			children = (
+				7D05B2CADB1735B180DD738F /* LaunchSplash@1x.png */,
+				6F77470F5AE016E9DEF759F6 /* LaunchSplash@2x.png */,
+				485730F843527F6DB74B2288 /* LaunchSplash@3x.png */,
+			);
+			path = Launch;
+			sourceTree = "<group>";
+		};
+		F732487B520D107FFEBB502A /* Character */ = {
+			isa = PBXGroup;
+			children = (
+				F27E10E2BDC532D8A8733A20 /* Characters.swift */,
+				C7C5948840F044AA5B01E6FB /* CharacterView.swift */,
+			);
+			path = Character;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1E344C9E9C9E088DA2A5AF82 /* OctopBot */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 07F877B4C85D5CE3533DF9DD /* Build configuration list for PBXNativeTarget "OctopBot" */;
+			buildPhases = (
+				9FD526511A7832FD8FA0F474 /* Sources */,
+				12E2C5F8F125F54E92106E5B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OctopBot;
+			packageProductDependencies = (
+			);
+			productName = OctopBot;
+			productReference = 75A1511FD9AC865EEFAC5AC4 /* OctopBot.app */;
+			productType = "com.apple.product-type.application";
+		};
+		5A2C288FC6F01256E5AD548C /* OctopBotTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 189F00353816406FE427C09E /* Build configuration list for PBXNativeTarget "OctopBotTests" */;
+			buildPhases = (
+				F437881A54CCB9D24A41C3D7 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				628C3D730BFB19F18A4D349C /* PBXTargetDependency */,
+			);
+			name = OctopBotTests;
+			packageProductDependencies = (
+			);
+			productName = OctopBotTests;
+			productReference = B376C8BCAD0157318169A260 /* OctopBotTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		10285DBCF2D20B8FBFA652B6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					1E344C9E9C9E088DA2A5AF82 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					5A2C288FC6F01256E5AD548C = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = 9B4D574AAEEE62437D4F956E /* Build configuration list for PBXProject "OctopBot" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+				"zh-Hans",
+			);
+			mainGroup = 11E2CC0CF7DA15013237715D;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = DC2CD5F8FF885BE63A61FD71 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1E344C9E9C9E088DA2A5AF82 /* OctopBot */,
+				5A2C288FC6F01256E5AD548C /* OctopBotTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		12E2C5F8F125F54E92106E5B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C771D8F5FBC1CCEA9E472EE8 /* Assets.xcassets in Resources */,
+				259EDAA2D79261E4D0BE4586 /* InfoPlist.xcstrings in Resources */,
+				701243634B93B3D55795922A /* LaunchScreen.storyboard in Resources */,
+				DEC9A2364E12C86351B28398 /* LaunchSplash@1x.png in Resources */,
+				D0594327B5388BA21151650A /* LaunchSplash@2x.png in Resources */,
+				A92EDF4C2FD34A513BAC2B1E /* LaunchSplash@3x.png in Resources */,
+				1B7B58F6A8BA9CD69D10F5F4 /* Localizable.xcstrings in Resources */,
+				C37A0D05944FEC7D2C355DC7 /* characters.json in Resources */,
+				5E31F9FF32F06FBE952A0A9F /* octop-mascot.webp in Resources */,
+				130DA3D3E41D2DEBBF1B8002 /* soft-characters.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9FD526511A7832FD8FA0F474 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F9AAC368DBB70E5F7E9FA7D7 /* AppModel.swift in Sources */,
+				50D8356BA21790C2FFF46F1D /* AppUpdater.swift in Sources */,
+				23EE84C97894827ED6A8E595 /* CharacterView.swift in Sources */,
+				8330BE0127CCDC3E8975B833 /* Characters.swift in Sources */,
+				94F0BEE560698A2E757BFE90 /* ChatScreen.swift in Sources */,
+				ABC1C4B78D4E12D40A46D64A /* ChatSession.swift in Sources */,
+				670A22CF3CD26D0459F1C862 /* GroupRoomView.swift in Sources */,
+				41B9ABBCAFF713FEA04C284C /* HTTP.swift in Sources */,
+				DEC5AC974DAE214BF6C67D43 /* Hitl.swift in Sources */,
+				FE38F2BAB33A8B48E5C629C3 /* HitlCard.swift in Sources */,
+				026117960095D1EB882638E1 /* HomeView.swift in Sources */,
+				1251B34A706BD0B429A1AC0C /* ImageViewer.swift in Sources */,
+				2CCBCC317754D53E26034F28 /* Keychain.swift in Sources */,
+				199AED752BEFE0F3CE88E25C /* LocalBots.swift in Sources */,
+				E4D12A2503C63875BFFB19EA /* LynxceBackend.swift in Sources */,
+				8AD1B6205CE7292AE3297C8A /* MarkdownText.swift in Sources */,
+				007ABFA2A336E9735DE09CDF /* Models.swift in Sources */,
+				06D222EA88F08977C5F70343 /* OctopBotApp.swift in Sources */,
+				D79859D85ACC51E337C24629 /* OnboardingView.swift in Sources */,
+				B771D743DC4B5E39F8C6F4EF /* Panels.swift in Sources */,
+				1FDC57332E69AE769E1243A7 /* Preferences.swift in Sources */,
+				871A5E282D3F9B836B3A0901 /* ServerBackend.swift in Sources */,
+				19E2EB24C0D7CC125AC821D9 /* Theme.swift in Sources */,
+				A53EA84F3C4475B95A47F587 /* Voice.swift in Sources */,
+				C4FEC5251E5ED4CB56B08AA8 /* VoiceModeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F437881A54CCB9D24A41C3D7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2B28871028EA4B40CBC4DAEE /* OctopBotTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		628C3D730BFB19F18A4D349C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1E344C9E9C9E088DA2A5AF82 /* OctopBot */;
+			targetProxy = 2A2F63C3FF6969A06A210477 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2A108664A70BD5946A1E8746 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = OctopBot/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.alisonxx.octopbot;
+				PRODUCT_NAME = OctopBot;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		6656E2D7DA49B9EF990DE920 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.alisonxx.octopbot.tests;
+				SDKROOT = iphoneos;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OctopBot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/OctopBot";
+			};
+			name = Debug;
+		};
+		8E6552A614F3E440D3F0ADDF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A0D9CA0AFF675FD835A5AA2E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.alisonxx.octopbot.tests;
+				SDKROOT = iphoneos;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OctopBot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/OctopBot";
+			};
+			name = Release;
+		};
+		AF68373FA2CF3D75FF7170F8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		D81E1791A4753A9E9E5CB467 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = OctopBot/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.alisonxx.octopbot;
+				PRODUCT_NAME = OctopBot;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		07F877B4C85D5CE3533DF9DD /* Build configuration list for PBXNativeTarget "OctopBot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2A108664A70BD5946A1E8746 /* Debug */,
+				D81E1791A4753A9E9E5CB467 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		189F00353816406FE427C09E /* Build configuration list for PBXNativeTarget "OctopBotTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6656E2D7DA49B9EF990DE920 /* Debug */,
+				A0D9CA0AFF675FD835A5AA2E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9B4D574AAEEE62437D4F956E /* Build configuration list for PBXProject "OctopBot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8E6552A614F3E440D3F0ADDF /* Debug */,
+				AF68373FA2CF3D75FF7170F8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 10285DBCF2D20B8FBFA652B6 /* Project object */;
+}

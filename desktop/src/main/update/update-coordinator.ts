@@ -11,6 +11,9 @@ export interface DownloadAsset {
   name: string;
   ext: string;
   url: string;
+  /** Hex SHA-256 from a signed manifest (Octop Bot); the download must match it. */
+  sha256?: string;
+  size?: number;
 }
 
 export interface ChannelRelease {
@@ -58,13 +61,14 @@ export interface SelectedRelease {
   releasesUrl: string;
 }
 
-const ALLOWED_DOWNLOAD_HOST = "download.octop.cloud";
+/** Upstream Octop packages, and Octop Bot packages listed in its signed manifest. */
+const ALLOWED_DOWNLOAD_HOSTS = new Set(["download.octop.cloud", "dl.lynxce.cn"]);
 
-/** Only ``https`` assets from the fixed download host are accepted. */
+/** Only ``https`` assets from the fixed download hosts are accepted. */
 export function isValidAssetUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    return parsed.protocol === "https:" && parsed.hostname === ALLOWED_DOWNLOAD_HOST;
+    return parsed.protocol === "https:" && ALLOWED_DOWNLOAD_HOSTS.has(parsed.hostname);
   } catch {
     return false;
   }

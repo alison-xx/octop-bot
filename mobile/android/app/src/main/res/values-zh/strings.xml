@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bot_chief_subtitle">你的主助理</string>
+    <string name="bot_chief_prompt">你是 Chief，Octop Bot 的主助理。回答准确、简洁、友好，需要时分步骤说明。</string>
+    <string name="bot_researcher_name">研究员</string>
+    <string name="bot_researcher_subtitle">查资料、做分析</string>
+    <string name="bot_researcher_prompt">你是研究员。先澄清问题，再给出有依据、结构清晰的分析，注明不确定之处。</string>
+    <string name="bot_engineer_name">工程师</string>
+    <string name="bot_engineer_subtitle">写代码、排查问题</string>
+    <string name="bot_engineer_prompt">你是资深软件工程师。给出可运行的代码和简明解释，指出边界情况。</string>
+    <string name="bot_translator_name">翻译官</string>
+    <string name="bot_translator_subtitle">中英互译</string>
+    <string name="bot_translator_prompt">你是专业翻译。中文译成地道英文，其他语言译成中文，保留格式，只输出译文。</string>
+    <string name="bot_writer_name">写作助手</string>
+    <string name="bot_writer_subtitle">起草与润色</string>
+    <string name="bot_writer_prompt">你是写作助手。帮用户起草、润色和改写文字，语气自然，贴合用户要的风格。</string>
+    <string name="bot_companion_name">小伙伴</string>
+    <string name="bot_companion_subtitle">随便聊聊</string>
+    <string name="bot_companion_prompt">你是一个温暖、幽默的聊天伙伴。像朋友一样轻松交流，记住对话里用户说过的事。</string>
+    <string name="bot_custom_subtitle">我的 Bot</string>
+
+    <string name="common_back">返回</string>
+    <string name="common_cancel">取消</string>
+    <string name="common_close">关闭</string>
+    <string name="common_copy">复制</string>
+    <string name="common_copied">已复制</string>
+    <string name="common_delete">删除</string>
+    <string name="common_save">保存</string>
+
+    <string name="error_unauthorized">登录已过期，请重新登录。</string>
+    <string name="error_credits">灵策账户余额不足，请充值后再试。</string>
+    <string name="error_rejected">请求被拒绝（%1$d）。</string>
+    <string name="error_network">连不上服务器，请检查网络。</string>
+    <string name="error_server">服务器出错（%1$d），请稍后再试。</string>
+
+    <string name="onboarding_tagline">把你的 AI Bot 团队装进口袋。</string>
+    <string name="onboarding_lynxce">使用灵策智算账号登录</string>
+    <string name="onboarding_account">手机号或邮箱</string>
+    <string name="onboarding_password">密码</string>
+    <string name="onboarding_sign_in">登录</string>
+    <string name="onboarding_register">还没有账号？去 lynxce.cn 注册</string>
+    <string name="onboarding_server">连接自己的服务器</string>
+    <string name="onboarding_footnote">也可以连接自己的 Octop Bot 服务器，使用 NAS 上的 Bot、工具、记忆和群组。</string>
+    <string name="password_show">显示密码</string>
+    <string name="password_hide">隐藏密码</string>
+
+    <string name="server_title">自己的服务器</string>
+    <string name="server_address">服务器地址</string>
+    <string name="server_address_footer">填写 Octop Bot Web 版或 NAS 版的地址，例如 https://nas.local:8080。桌面版内置的服务只在本机可用，手机连不上。</string>
+    <string name="server_address_invalid">请输入 http 或 https 地址。</string>
+    <string name="server_next">下一步</string>
+    <string name="server_sign_in_lynxce">使用拥有这台服务器的灵策账号登录</string>
+    <string name="server_sign_in_local">使用为这台服务器设置的密码登录</string>
+    <string name="server_unclaimed">这台服务器还没有主人，第一个登录的账号会成为它的主人。</string>
+    <string name="server_username">用户名</string>
+    <string name="server_sign_in_password">登录这台 Octop 服务器</string>
+    <string name="server_mfa">验证器动态码</string>
+    <string name="server_mfa_hint">输入身份验证器 App 里的 6 位动态码。</string>
+    <string name="server_verify">验证</string>
+
+    <string name="chat_history">会话</string>
+    <string name="chat_new">新对话</string>
+    <string name="chat_voice">语音模式</string>
+    <string name="chat_greeting">我是 %1$s</string>
+    <string name="chat_placeholder">问点什么</string>
+    <string name="chat_send">发送</string>
+    <string name="chat_stop">停止</string>
+    <string name="chat_dictate">语音输入</string>
+    <string name="chat_attach">添加图片</string>
+    <string name="chat_take_photo">拍照</string>
+    <string name="chat_photo_library">从相册选择</string>
+    <string name="chat_remove_photo">移除图片</string>
+    <string name="chat_thought">已思考</string>
+    <string name="chat_thinking">思考中…</string>
+    <string name="chat_tool_running">正在使用 %1$s…</string>
+    <string name="chat_tool_done">已使用 %1$s</string>
+    <string name="chat_tools_summary">用了 %1$s · %2$s</string>
+    <plurals name="chat_tools_count">
+        <item quantity="other">%1$d 个工具</item>
+    </plurals>
+    <plurals name="chat_steps_count">
+        <item quantity="other">%1$d 步</item>
+    </plurals>
+    <string name="chat_failed">回复失败</string>
+    <string name="chat_read_aloud">朗读</string>
+    <string name="chat_retry">重试</string>
+    <string name="chat_jump_latest">回到最新</string>
+    <string name="chat_listening">正在听…</string>
+    <string-array name="suggestions_default">
+        <item>帮我规划今天</item>
+        <item>用简单的话解释一个概念</item>
+        <item>帮我写一段话</item>
+    </string-array>
+    <string-array name="suggestions_researcher">
+        <item>帮我对比两个方案…</item>
+        <item>总结一下关于…的现状</item>
+        <item>…有哪些优缺点？</item>
+    </string-array>
+    <string-array name="suggestions_engineer">
+        <item>帮我审查这段代码…</item>
+        <item>解释这条报错…</item>
+        <item>写一个小脚本，用来…</item>
+    </string-array>
+    <string-array name="suggestions_translator">
+        <item>翻译成英文…</item>
+        <item>翻译成中文…</item>
+        <item>润色我的英文…</item>
+    </string-array>
+    <string-array name="suggestions_writer">
+        <item>起草一封关于…的邮件</item>
+        <item>润色这段文字…</item>
+        <item>把这段改短一些…</item>
+    </string-array>
+    <string-array name="suggestions_companion">
+        <item>讲点有意思的事</item>
+        <item>推荐一部今晚看的电影</item>
+        <item>我们来玩个文字游戏吧</item>
+    </string-array>
+    <string name="chat_photo_failed">这张图片无法读取。</string>
+    <string name="drawer_empty">还没有会话</string>
+
+    <string name="bot_new">新建 Bot</string>
+    <string name="bot_edit">修改形象</string>
+    <string name="home_search">搜索</string>
+    <string name="bot_edit_title">编辑 Bot</string>
+    <string name="bot_name">名字</string>
+    <string name="bot_name_placeholder">给 Bot 起个名字</string>
+    <string name="bot_persona">人设</string>
+    <string name="bot_persona_placeholder">这个 Bot 是谁，应该怎样回答？</string>
+    <string name="bot_shape">形状</string>
+    <string name="bot_color">颜色</string>
+    <string name="bot_delete">删除 Bot</string>
+    <string name="bot_delete_confirm">删除 %1$s？它的会话仍保留在你的账号里。</string>
+
+    <string name="groups_title">群组</string>
+    <string name="groups_new">新建群组</string>
+    <string name="groups_name">群名</string>
+    <string name="groups_name_placeholder">例如：发布小组</string>
+    <string name="groups_empty">这台服务器上还没有群组。</string>
+    <string name="groups_placeholder">发消息，用 @ 点名</string>
+    <string name="groups_info">群组信息</string>
+    <string name="groups_goal">目标</string>
+    <string name="groups_no_goal">还没有目标。</string>
+    <string name="groups_memory">群记忆</string>
+    <string name="groups_memory_empty">还没有记忆。</string>
+    <string name="groups_members">成员</string>
+    <plurals name="groups_member_count">
+        <item quantity="other">%1$d 位成员</item>
+    </plurals>
+
+    <string name="voice_title">语音模式</string>
+    <string name="voice_tap_to_talk">点一下开始说话</string>
+    <string name="voice_listening">正在听…点一下发送</string>
+    <string name="voice_transcribing">正在识别…</string>
+    <string name="voice_thinking">思考中…</string>
+    <string name="voice_speaking">正在说</string>
+    <string name="voice_not_heard">没听清，再说一次吧。</string>
+    <string name="voice_mic_denied">语音模式需要麦克风权限，请在系统设置中允许。</string>
+    <string name="voice_unavailable">这台手机不支持语音识别。</string>
+
+    <string name="settings_title">设置</string>
+    <string name="settings_account">账号</string>
+    <string name="settings_signed_in_as">当前账号</string>
+    <string name="settings_connection">连接到</string>
+    <string name="settings_lynxce">灵策云端</string>
+    <string name="settings_model">模型</string>
+    <string name="settings_model_auto">智能路由</string>
+    <string name="settings_model_footer">智能路由会为每个问题自动选择模型。</string>
+    <string name="settings_general">通用</string>
+    <string name="settings_language">语言</string>
+    <string name="settings_follow_system">跟随系统</string>
+    <string name="settings_appearance">外观</string>
+    <string name="settings_appearance_dark">深色</string>
+    <string name="settings_appearance_light">浅色</string>
+    <string name="settings_read_aloud">朗读回复</string>
+    <string name="settings_notify">回复完成时通知我</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_version">版本</string>
+    <string name="settings_sign_out">退出登录</string>
+    <string name="settings_sign_out_confirm">要在这台手机上退出 Octop Bot 吗？</string>
+
+    <string name="notify_channel">回复</string>
+    <string name="notify_channel_description">Octop Bot 在后台时，Bot 完成回复会通知你。</string>
+
+    <!-- Polish: reply actions, history, settings -->
+    <string name="chat_replying">正在回复…</string>
+    <string name="chat_share">分享</string>
+    <string name="chat_stop_reading">停止朗读</string>
+    <string name="chat_edit">编辑</string>
+    <string name="time_yesterday">昨天 %1$s</string>
+    <string name="image_open">查看图片</string>
+    <string name="image_share_failed">无法分享这张图片。</string>
+    <string name="history_search">搜索会话</string>
+    <string name="history_today">今天</string>
+    <string name="history_yesterday">昨天</string>
+    <string name="history_week">过去 7 天</string>
+    <string name="history_earlier">更早</string>
+    <string name="history_no_match">没有匹配的会话</string>
+    <string name="history_current">当前会话</string>
+    <string name="home_unread">未读</string>
+    <string name="bot_shuffle">随机换一个</string>
+    <string name="settings_balance_chip">余额 %1$s</string>
+    <string name="settings_text_size">聊天字号</string>
+    <string name="settings_text_small">小</string>
+    <string name="settings_text_standard">标准</string>
+    <string name="settings_text_large">大</string>
+    <string name="settings_haptics">触感反馈</string>
+    <string name="settings_chat">聊天</string>
+    <string name="settings_expand_reasoning">默认展开思考过程</string>
+    <string name="settings_speech_rate">朗读语速</string>
+    <string name="settings_speed_slow">慢</string>
+    <string name="settings_speed_normal">正常</string>
+    <string name="settings_speed_fast">快</string>
+    <string name="settings_notifications">通知</string>
+    <string name="settings_notify_blocked">系统设置里关闭了 Octop Bot 的通知，回复完成时没法提醒你。</string>
+    <string name="settings_open_system_settings">打开系统设置</string>
+    <string name="settings_storage">存储</string>
+    <string name="settings_clear_cache">清除本地缓存</string>
+    <string name="settings_clear_cache_footer">清除回复预览、未读标记和临时的语音、图片文件，不会退出登录。</string>
+    <string name="settings_clear_cache_confirm">清除本地缓存？</string>
+    <string name="settings_clear">清除</string>
+    <string name="settings_cache_cleared">本地缓存已清除</string>
+    <string name="settings_switch_account">切换账号或服务器</string>
+    <string name="settings_report">反馈问题</string>
+    <string name="settings_lynxce_site">灵策官网</string>
+
+    <!-- Questions and approvals, queued messages -->
+    <string name="hitl_question_title">%1$s 想问你</string>
+    <string name="hitl_approval_title">需要你批准</string>
+    <string name="hitl_something_else">其他回答…</string>
+    <string name="hitl_your_answer">你的回答…</string>
+    <string name="hitl_you_decide">你决定</string>
+    <string name="hitl_approve">批准</string>
+    <string name="hitl_reject">拒绝</string>
+    <string name="hitl_reply_you_decide">你决定吧——按最优默认方案继续，并告诉我你依据的假设。</string>
+    <string name="hitl_reply_closed">用户关闭了这些问题，没有作答。不要再追问，请就此结束本轮。</string>
+    <string name="hitl_note_approved">已批准：%1$s</string>
+    <string name="hitl_note_declined">已拒绝：%1$s</string>
+    <string name="hitl_composer_answer">输入你的回答</string>
+    <string name="hitl_composer_decline">或者直接说你想怎么做</string>
+    <string name="chat_queued">待发送</string>
+    <string name="chat_queued_cancel">取消待发送的消息</string>
+    <string name="groups_not_sent">发送失败，点按重试</string>
+    <string name="hitl_next">下一题</string>
+    <string name="hitl_collapse">收起</string>
+    <string name="hitl_expand">展开</string>
+
+    <!-- 应用内更新 -->
+    <string name="update_banner">有新版本 %1$s</string>
+    <string name="update_banner_urgent">当前版本已不再支持，请更新到 %1$s</string>
+    <string name="update_action">更新</string>
+    <string name="update_install_to">更新到 %1$s</string>
+    <string name="update_check">检查更新</string>
+    <string name="update_receive_beta">接收测试版</string>
+    <string name="update_status_latest">已是最新</string>
+    <string name="update_status_checking">正在检查…</string>
+    <string name="update_status_available">有新版本 %1$s</string>
+    <string name="update_status_downloading">正在下载 %1$d%%</string>
+    <string name="update_status_downloading_plain">正在下载…</string>
+    <string name="update_status_ready">可以安装</string>
+    <string name="update_status_check_failed">检查失败</string>
+    <string name="update_status_download_failed">下载失败</string>
+    <string name="update_status_verify_failed">校验失败</string>
+    <string name="update_check_failed">检查更新失败，请稍后再试</string>
+    <string name="update_permission_title">允许安装更新</string>
+    <string name="update_permission_text">安装更新需要允许 Octop Bot 安装未知应用。在接下来的页面打开开关后返回，更新会自动继续。</string>
+    <string name="update_permission_open">去设置</string>
+</resources>
