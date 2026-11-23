@@ -94,6 +94,10 @@ Octop Bot 是一款运行在 Windows 和 Apple Silicon Mac 上的桌面应用。
 
 Windows 独立版默认将本机工作区保存在 `%USERPROFILE%\.octop-bot`。群文件、共享笔记、头像设置和电脑控制等操作见[使用指南](docs/octop-bot.md)。
 
+## 手机客户端
+
+`mobile/` 里是原生 iOS（SwiftUI）和 Android（Jetpack Compose）客户端，首页是 Bot 通讯录：Chief 置顶，每个 Bot 都是会动的角色，各聊各的，也能进群组 @ 成员。用灵策智算账号登录即可直接对话，也可以连接自己的 NAS 或 Docker 部署，使用那台服务器上的 Bot、工具、记忆和群组。应用内可切换中文、英文和深浅色。目前需要自行构建，步骤见 [mobile/README.md](mobile/README.md)。
+
 ## 从源码运行
 
 准备 Git、uv、Node.js 24 和 pnpm 12.15.0。在 Windows PowerShell 中运行以下命令。
