@@ -31,7 +31,8 @@ module.exports = {
   directories: { output: "release/octop-bot", buildResources: "resources" },
   // require("electron") is dist/electron.exe on Windows but a path inside
   // Electron.app on macOS; electron-builder wants the dist directory itself.
-  electronDist: join(dirname(require.resolve("electron/package.json")), "dist"),
+  // Electron 45 has no postinstall; requiring it downloads the binary on first use.
+  electronDist: (require("electron"), join(dirname(require.resolve("electron/package.json")), "dist")),
   npmRebuild: false,
   toolsets: { winCodeSign: "1.1.0", nsis: "1.2.1" },
   asar: true,
