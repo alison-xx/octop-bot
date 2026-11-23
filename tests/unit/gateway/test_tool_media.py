@@ -91,6 +91,7 @@ async def test_import_external_file_via_workspace() -> None:
             external.as_uri(),
             filename="shot.png",
             mime="image/png",
+            host_files=True,
         )
         assert rel is not None
         assert rel.startswith(f"{OUTBOUND_DIR}/")
@@ -109,6 +110,7 @@ async def test_import_external_file_virtual_mode() -> None:
             external.as_uri(),
             filename="harness-browser.png",
             mime="image/png",
+            host_files=True,
         )
         assert rel is not None
         assert rel.startswith(f"{OUTBOUND_DIR}/")

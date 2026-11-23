@@ -1411,7 +1411,8 @@ class GlobalProcessor:
         stream_ok = False
         failure_saved = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
-        host_files = self._agent_manager.host_files_allowed(agent_id)
+        # Reads the agent and owner rows: off the event loop.
+        host_files = await asyncio.to_thread(self._agent_manager.host_files_allowed, agent_id)
         usage_tracker = UsageTracker()
         # Align with IM stream_project: only push tool_call ids opened this
         # turn, then dedupe intra-turn replays and identical path/URL frames.

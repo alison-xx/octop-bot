@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
+import time
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import uuid4
@@ -106,21 +108,40 @@ class AccountModel:
         }
 
 
+# How often a cloud tenant's model key is checked with the gateway, per tenant.
+KEY_CHECK_SECONDS = 10 * 60
+_key_checked: dict[int, float] = {}
+
+
 @dataclass(frozen=True)
 class CloudAccountModel(AccountModel):
     """Cloud mode: the tenant's own Lynxce personal API key, read on every request."""
 
     def provider(self, services: SharedServices | None) -> ProviderConfig:
         async def key_for_request() -> str:
-            from octop.infra.cloud.bot_cloud.accounts import load_model_key  # noqa: PLC0415
-
-            key = (
-                await asyncio.to_thread(load_model_key, services, self.user_id)
-                if services is not None
-                else None
+            from octop.infra.cloud.bot_cloud.accounts import (  # noqa: PLC0415
+                ensure_model_key,
+                load_model_key,
             )
-            if key is None:
+
+            if services is None:
                 raise _auth_required()
+            key = await asyncio.to_thread(load_model_key, services, self.user_id)
+            now = time.monotonic()
+            if (
+                key is not None
+                and now - _key_checked.get(self.user_id, -math.inf) < KEY_CHECK_SECONDS
+            ):
+                return key.secret
+            # Now and then, ask the gateway: a key it refuses (401, revoked in the Lynxce account
+            # centre) is replaced with the tenant's stored session, without signing in again.
+            try:
+                key = await ensure_model_key(services, self.user_id, verify=True)
+            except Exception:  # noqa: BLE001 - no session to mint with, or Lynxce unreachable
+                if key is None:
+                    raise _auth_required() from None
+                return key.secret
+            _key_checked[self.user_id] = now
             return key.secret
 
         return ProviderConfig(
