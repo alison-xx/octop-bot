@@ -321,4 +321,20 @@
     <string name="computer_view">View screen</string>
     <string name="computer_take_over">Take over</string>
     <string name="computer_hand_back">Hand back</string>
+    <string name="computer_activity_click">Clicking</string>
+    <string name="computer_activity_command">Running a command</string>
+    <string name="computer_activity_file">Working with files</string>
+    <string name="computer_activity_key">Pressing keys</string>
+    <string name="computer_activity_screenshot">Looking at the screen</string>
+    <string name="computer_activity_scroll">Scrolling</string>
+    <string name="computer_activity_type">Typing</string>
+    <string name="computer_float_busy">Working on the computer</string>
+    <string name="computer_float_close">Close</string>
+    <string name="computer_float_expand">Full screen</string>
+    <string name="computer_float_idle">Idle</string>
+    <string name="computer_float_loading">Loading the screen…</string>
+    <string name="computer_float_minimise">Minimise</string>
+    <string name="computer_float_off">The computer is off. It starts when the Bot needs it.</string>
+    <string name="computer_float_toggle">Cloud computer</string>
+    <string name="computer_float_yours">You\'re in control</string>
 </resources>

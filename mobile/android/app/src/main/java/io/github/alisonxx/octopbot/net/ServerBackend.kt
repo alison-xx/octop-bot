@@ -267,6 +267,13 @@ class ServerBackend(
             json("POST", "/api/octop-bot/computers/" + segment(botId) + "/takeover", body = Http.body(buildJsonObject { put("active", active) })),
         ) ?: throw ApiException.badResponse()
 
+    /** Front window and a small thumbnail of a running computer; null while it is off (never wakes it). */
+    suspend fun glance(botId: String): ServerProtocol.Glance? = try {
+        ServerProtocol.glance(json("GET", "/api/octop-bot/computers/" + segment(botId) + "/glance"))
+    } catch (e: ApiException) {
+        if (e.status == 404) null else throw e
+    }
+
     /** The screen page for a Bot's computer, with a fresh one-time ticket. */
     suspend fun screenUrl(botId: String, control: Boolean): String {
         val ticket = json("POST", "/api/octop-bot/computers/" + segment(botId) + "/screen").asObject()
