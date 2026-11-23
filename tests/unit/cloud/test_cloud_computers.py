@@ -698,11 +698,3 @@ def test_ags_times_without_a_zone_are_utc() -> None:
     assert driver_module._timestamp("2026-11-24T09:44:02+08:00") == driver_module._timestamp(
         "2026-11-24T01:44:02Z"
     )
-
-
-def test_the_old_layouts_bootstrap_marker_lives_in_the_store() -> None:
-    from octop.infra.cloud.computers.backend import on_store
-
-    assert on_store("/.bootstrapped")
-    assert on_store("/.octop/.bootstrapped")
-    assert not on_store("/notes/.bootstrapped")

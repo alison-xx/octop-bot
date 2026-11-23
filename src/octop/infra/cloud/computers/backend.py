@@ -53,8 +53,7 @@ STORE_FILES = frozenset(
         "/IDENTITY.md",
         "/TOOLS.md",
         "/HEARTBEAT.md",
-        # Older workspaces (system_files_path unset) keep these system files at the root instead
-        # of under .octop/; reading them must not start the computer.
+        # Older workspaces keep these system files at the root instead of under .octop/.
         "/.bootstrapped",
         "/manifest.json",
     }
