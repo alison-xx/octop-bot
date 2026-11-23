@@ -7,9 +7,11 @@ import {
   BookOpen,
   Cloud,
   Cpu,
+  FolderLock,
   Link2,
   LogOut,
   Plus,
+  SlidersHorizontal,
   UserRound,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -17,15 +19,12 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { lynxceBotApi } from "../../api/modules/lynxceBot";
 import { refreshBotModels, useLynxceStatus } from "../../hooks/useLynxceStatus";
 import LynxceAccount from "./LynxceAccount";
+import BotNotifySettings from "./BotNotifySettings";
 import RetainedFolders from "./RetainedFolders";
-import { authApi } from "../../api/modules/auth";
 import { providerApi } from "../../api/modules/provider";
 import type { ResolvedModel } from "../../api/types";
-import { clearAuthToken } from "../../api/request";
-import { holdDesktopLocalAutoLogin } from "../../api/desktopSession";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import ThemeSwitcher from "../../components/ThemeSwitcher";
-import { applyGuestLocale } from "../../utils/locale";
 import { getDesktopBridge, isBotWebClient } from "../../utils/desktopBridge";
 import { userCan } from "../../utils/permissions";
 import {
@@ -52,10 +51,17 @@ import {
   isLocalPreset,
 } from "../Settings/Models/presetUtils";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
+import { LANGUAGES, signOutBotClient, useLanguage } from "./AccountMenu";
+import {
+  accountDisplayName,
+  accountInitials,
+} from "../Chat/utils/accountDisplayName";
 import styles from "./index.module.less";
 import settings from "./BotClientSettings.module.less";
+import ModelName from "./ModelName";
 
 type ModelSource = "lynxce" | "cloud" | "custom" | "local";
+type SettingsTab = "models" | "general" | "account";
 
 function ConnectionForm({
   mode,
@@ -245,6 +251,17 @@ export default function BotClientSettings() {
     }
   };
   const [full, setFull] = useState(false);
+  const [language, setLanguage] = useLanguage();
+  const [tab, setTab] = useState<SettingsTab>(
+    location.state?.tab === "general" || location.state?.tab === "account"
+      ? location.state.tab
+      : "models",
+  );
+  const tabs = [
+    ["models", "botClient.nav.models", Cpu],
+    ["general", "botClient.nav.general", SlidersHorizontal],
+    ["account", "botClient.nav.account", UserRound],
+  ] as const;
   const refresh = () => setRevision((value) => value + 1);
   useEffect(() => {
     let active = true;
@@ -299,230 +316,125 @@ export default function BotClientSettings() {
         >
           {t(back === BOT_GUIDE ? "botGuide.resume" : "common.backToChat")}
         </Button>
-        <div className={styles.account}>
-          {back !== BOT_GUIDE && !prefillInput && (
-            <Button
-              type="text"
-              icon={<Blocks size={16} />}
-              onClick={() =>
-                navigate(BOT_CAPABILITIES, { state: { from: back } })
-              }
-            >
-              {t("botCapabilities.title")}
-            </Button>
-          )}
-          {!web && back !== BOT_GUIDE && !prefillInput && (
-            <Button
-              type="text"
-              icon={<BookOpen size={16} />}
-              onClick={() => navigate(BOT_GUIDE, { state: { returnTo: back } })}
-            >
-              {t("botGuide.title")}
-            </Button>
-          )}
-          {getDesktopBridge()?.showBotOrb && (
-            <Button
-              type="text"
-              size="small"
-              onClick={() => getDesktopBridge()?.showBotOrb?.()}
-            >
-              {t("botClient.showOrb")}
-            </Button>
-          )}
-          <Button type="text" size="small" onClick={() => setFoldersOpen(true)}>
-            {t("octopBot.retainedFolders")}
-          </Button>
-          <ThemeSwitcher compact />
-          <span>{user?.display_name || user?.username}</span>
-          <Button
-            type="text"
-            title={t("auth.logout")}
-            aria-label={t("auth.logout")}
-            icon={<LogOut size={16} />}
-            onClick={async () => {
-              if (user?.username === "local") holdDesktopLocalAutoLogin();
-              await authApi.logout();
-              clearAuthToken();
-              await applyGuestLocale();
-              navigate("/login", { replace: true });
-            }}
-          />
-        </div>
       </header>
-      {web && (cloud || local) ? (
-        <ModelsPage chatOnly onConnectionSaved={refreshBotModels} />
-      ) : full ? (
-        <>
-          <div className={styles.catalogBack}>
-            <Button
-              type="text"
-              icon={<ArrowLeft size={15} />}
-              onClick={() => {
-                setFull(false);
-                refresh();
-              }}
+      <div className={settings.layout}>
+        <nav className={settings.nav} aria-label={t("botClient.menu.settings")}>
+          <h1>{t("botClient.menu.settings")}</h1>
+          {tabs.map(([value, label, Icon]) => (
+            <button
+              key={value}
+              type="button"
+              aria-current={tab === value ? "page" : undefined}
+              onClick={() => setTab(value)}
             >
-              {t("botClient.settings")}
-            </Button>
-          </div>
-          {switchError && (
-            <Alert
-              type="error"
-              message={switchError}
-              action={
-                <Button onClick={() => void activateOtherSource()}>
-                  {t("octopBot.retry")}
-                </Button>
-              }
-            />
-          )}
-          <ModelsPage chatOnly onConnectionSaved={activateOtherSource} />
-        </>
-      ) : (
-        <div className={styles.connectScroll}>
-          <section className={styles.connectPanel} data-bot-connect>
-            <BotCharacter
-              look={{ ...octopCharacter, source: "character" }}
-              badges={false}
-              size={48}
-            />
-            <h1>
-              {t(
-                models === null && !personalModel
-                  ? "botClient.settings"
-                  : ready
-                  ? "botClient.availableModels"
-                  : "botClient.connectModel",
-              )}
-            </h1>
-            {error && (
-              <Alert
-                type="error"
-                showIcon
-                message={error}
-                action={
-                  <Button onClick={refresh}>{t("octopBot.retry")}</Button>
+              <Icon size={16} />
+              {t(label)}
+            </button>
+          ))}
+          {back !== BOT_GUIDE && !prefillInput && (
+            <>
+              <hr />
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(BOT_CAPABILITIES, { state: { from: back } })
                 }
-              />
-            )}
-            {models === null && !error && !personalModel && <Spin />}
-            {ready && (
-              <>
-                <ul
-                  className={settings.models}
-                  tabIndex={
-                    !personalModel && (models?.length ?? 0) > 3 ? 0 : undefined
+              >
+                <Blocks size={16} />
+                {t("botCapabilities.title")}
+              </button>
+              {!web && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(BOT_GUIDE, { state: { returnTo: back } })
                   }
-                  aria-label={t("botClient.availableModels")}
                 >
-                  {personalModel ? (
-                    <li>
-                      <span>{personalModel}</span>
-                      <small>{t("botClient.lynxce.source")}</small>
-                    </li>
-                  ) : (
-                    models?.map((m) => (
-                      <li key={JSON.stringify([m.provider_id, m.model])}>
-                        <span>{m.name || m.model}</span>
-                        <small>{m.provider_name}</small>
-                      </li>
-                    ))
-                  )}
-                </ul>
-                {prefillInput && <p>{t("botClient.draftKept")}</p>}
-                <Button type="primary" block onClick={returnToChat}>
-                  {t(
-                    back === BOT_GUIDE
-                      ? "botGuide.resume"
-                      : location.state?.from
-                      ? "common.backToChat"
-                      : "botClient.startChat",
-                  )}
-                </Button>
-                {!web && (
-                  <Button
-                    block
-                    icon={<Plus size={15} />}
-                    aria-expanded={adding}
-                    aria-controls="bot-connection-form"
-                    onClick={() => setAdding(!adding)}
-                  >
-                    {t(
-                      adding
-                        ? "common.cancel"
-                        : account.status?.connected
-                        ? "botClient.lynxce.manage"
-                        : "botClient.addConnection",
-                    )}
-                  </Button>
-                )}
-              </>
-            )}
-            {models && !ready && !error && (
-              <p>
-                {t(
-                  web
-                    ? "modelConfig.promptMessageNoPermission"
-                    : "botClient.connectHint",
-                )}
-              </p>
-            )}
-            {!web && showConnections && (
-              <div className={settings.form} id="bot-connection-form">
-                {sources.length > 1 && (
-                  <Radio.Group
-                    aria-label={t("botClient.connectModel")}
-                    className={settings.sources}
-                    value={source}
-                    onChange={(e) => setSource(e.target.value)}
-                  >
-                    {sources.map(([value, label, Icon]) => (
-                      <Radio.Button key={value} value={value}>
-                        <Icon size={15} />
-                        {t(label)}
-                      </Radio.Button>
-                    ))}
-                  </Radio.Group>
-                )}
-                {switchError && (
-                  <Alert
-                    type="error"
-                    message={switchError}
-                    action={
-                      <Button onClick={() => void activateOtherSource()}>
-                        {t("octopBot.retry")}
-                      </Button>
-                    }
+                  <BookOpen size={16} />
+                  {t("botGuide.title")}
+                </button>
+              )}
+            </>
+          )}
+        </nav>
+        <div className={settings.content}>
+          {tab === "general" ? (
+            <div className={settings.page}>
+              <h2>{t("botClient.nav.general")}</h2>
+              <div className={settings.group}>
+                <div className={settings.row}>
+                  <span>{t("botClient.nav.appearance")}</span>
+                  <ThemeSwitcher compact />
+                </div>
+                <div className={settings.row}>
+                  <span>{t("botClient.nav.language")}</span>
+                  <Select
+                    className={settings.select}
+                    value={language}
+                    onChange={(lang) => void setLanguage(lang)}
+                    options={LANGUAGES.map(([value, label]) => ({
+                      value,
+                      label,
+                    }))}
                   />
-                )}
-                {source !== "lynxce" && (
-                  <>
-                    {Boolean(models?.length) && (
-                      <Button
-                        loading={switching}
-                        onClick={() => void activateOtherSource()}
-                      >
-                        {t("botClient.lynxce.useOther")}
-                      </Button>
-                    )}
-                    <ConnectionForm
-                      key={source}
-                      mode={source}
-                      noModels={!ready}
-                      onSaved={() => void activateOtherSource()}
-                    />
-                  </>
+                </div>
+                {getDesktopBridge()?.showBotOrb && (
+                  <div className={settings.row}>
+                    <span>
+                      {t("botClient.nav.floatingButton")}
+                      <small>{t("botClient.nav.floatingButtonHint")}</small>
+                    </span>
+                    <Button onClick={() => getDesktopBridge()?.showBotOrb?.()}>
+                      {t("botClient.showOrb")}
+                    </Button>
+                  </div>
                 )}
               </div>
-            )}
-            {!web &&
-              (showConnections
-                ? source === "lynxce"
-                : account.status?.connected) && (
+              <BotNotifySettings />
+              <h3>{t("botClient.nav.privacy")}</h3>
+              <div className={settings.group}>
+                <div className={settings.row}>
+                  <span>{t("octopBot.retainedFolders")}</span>
+                  <Button
+                    icon={<FolderLock size={15} />}
+                    onClick={() => setFoldersOpen(true)}
+                  >
+                    {t("botClient.nav.manage")}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : tab === "account" ? (
+            <div className={settings.page}>
+              <h2>{t("botClient.nav.account")}</h2>
+              <div className={settings.group}>
+                <div className={settings.row}>
+                  <span className={settings.who}>
+                    <span className={settings.initials}>
+                      {accountInitials(accountDisplayName(user))}
+                    </span>
+                    <span>
+                      {accountDisplayName(user)}
+                      <small>
+                        {t("botClient.nav.signedInAs")} {user?.username}
+                      </small>
+                    </span>
+                  </span>
+                  <Button
+                    icon={<LogOut size={15} />}
+                    onClick={() =>
+                      void signOutBotClient(user?.username, navigate)
+                    }
+                  >
+                    {t("auth.logout")}
+                  </Button>
+                </div>
+              </div>
+              {!web && (
                 <LynxceAccount
                   key={user?.username}
                   owner={user?.username ?? ""}
-                  compact={!showConnections}
+                  compact
                   status={account.status}
                   statusError={account.error}
                   onReload={account.reload}
@@ -530,14 +442,205 @@ export default function BotClientSettings() {
                   onSwitch={models?.length ? activateOtherSource : undefined}
                 />
               )}
-            {(cloud || local) && (
-              <Button type="link" size="small" onClick={() => setFull(true)}>
-                {t("botClient.manage")}
-              </Button>
-            )}
-          </section>
+            </div>
+          ) : web && (cloud || local) ? (
+            <ModelsPage chatOnly onConnectionSaved={refreshBotModels} />
+          ) : full ? (
+            <>
+              <div className={styles.catalogBack}>
+                <Button
+                  type="text"
+                  icon={<ArrowLeft size={15} />}
+                  onClick={() => {
+                    setFull(false);
+                    refresh();
+                  }}
+                >
+                  {t("botClient.settings")}
+                </Button>
+              </div>
+              {switchError && (
+                <Alert
+                  type="error"
+                  message={switchError}
+                  action={
+                    <Button onClick={() => void activateOtherSource()}>
+                      {t("octopBot.retry")}
+                    </Button>
+                  }
+                />
+              )}
+              <ModelsPage chatOnly onConnectionSaved={activateOtherSource} />
+            </>
+          ) : (
+            <div className={styles.connectScroll}>
+              <section className={styles.connectPanel} data-bot-connect>
+                <BotCharacter
+                  look={{ ...octopCharacter, source: "character" }}
+                  badges={false}
+                  size={48}
+                />
+                <h1>
+                  {t(
+                    models === null && !personalModel
+                      ? "botClient.settings"
+                      : ready
+                      ? "botClient.availableModels"
+                      : "botClient.connectModel",
+                  )}
+                </h1>
+                {error && (
+                  <Alert
+                    type="error"
+                    showIcon
+                    message={error}
+                    action={
+                      <Button onClick={refresh}>{t("octopBot.retry")}</Button>
+                    }
+                  />
+                )}
+                {models === null && !error && !personalModel && <Spin />}
+                {ready && (
+                  <>
+                    <ul
+                      className={settings.models}
+                      tabIndex={
+                        !personalModel && (models?.length ?? 0) > 3
+                          ? 0
+                          : undefined
+                      }
+                      aria-label={t("botClient.availableModels")}
+                    >
+                      {personalModel ? (
+                        <li>
+                          <ModelName id={personalModel} />
+                          <small>{t("botClient.lynxce.source")}</small>
+                        </li>
+                      ) : (
+                        models?.map((m) => (
+                          <li key={JSON.stringify([m.provider_id, m.model])}>
+                            <ModelName id={m.model} name={m.name} />
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                    {prefillInput && <p>{t("botClient.draftKept")}</p>}
+                    <Button type="primary" block onClick={returnToChat}>
+                      {t(
+                        back === BOT_GUIDE
+                          ? "botGuide.resume"
+                          : location.state?.from
+                          ? "common.backToChat"
+                          : "botClient.startChat",
+                      )}
+                    </Button>
+                    {!web && (
+                      <Button
+                        block
+                        icon={<Plus size={15} />}
+                        aria-expanded={adding}
+                        aria-controls="bot-connection-form"
+                        onClick={() => setAdding(!adding)}
+                      >
+                        {t(
+                          adding
+                            ? "common.cancel"
+                            : account.status?.connected
+                            ? "botClient.lynxce.manage"
+                            : "botClient.addConnection",
+                        )}
+                      </Button>
+                    )}
+                  </>
+                )}
+                {models && !ready && !error && (
+                  <p>
+                    {t(
+                      web
+                        ? "modelConfig.promptMessageNoPermission"
+                        : "botClient.connectHint",
+                    )}
+                  </p>
+                )}
+                {!web && showConnections && (
+                  <div className={settings.form} id="bot-connection-form">
+                    {sources.length > 1 && (
+                      <Radio.Group
+                        aria-label={t("botClient.connectModel")}
+                        className={settings.sources}
+                        value={source}
+                        onChange={(e) => setSource(e.target.value)}
+                      >
+                        {sources.map(([value, label, Icon]) => (
+                          <Radio.Button key={value} value={value}>
+                            <Icon size={15} />
+                            {t(label)}
+                          </Radio.Button>
+                        ))}
+                      </Radio.Group>
+                    )}
+                    {switchError && (
+                      <Alert
+                        type="error"
+                        message={switchError}
+                        action={
+                          <Button onClick={() => void activateOtherSource()}>
+                            {t("octopBot.retry")}
+                          </Button>
+                        }
+                      />
+                    )}
+                    {source !== "lynxce" && (
+                      <>
+                        {Boolean(models?.length) && (
+                          <Button
+                            loading={switching}
+                            onClick={() => void activateOtherSource()}
+                          >
+                            {t("botClient.lynxce.useOther")}
+                          </Button>
+                        )}
+                        <ConnectionForm
+                          key={source}
+                          mode={source}
+                          noModels={!ready}
+                          onSaved={() => void activateOtherSource()}
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
+                {!web &&
+                  (showConnections
+                    ? source === "lynxce"
+                    : account.status?.connected) && (
+                    <LynxceAccount
+                      key={user?.username}
+                      owner={user?.username ?? ""}
+                      compact={!showConnections}
+                      status={account.status}
+                      statusError={account.error}
+                      onReload={account.reload}
+                      onSaved={refreshSource}
+                      onSwitch={
+                        models?.length ? activateOtherSource : undefined
+                      }
+                    />
+                  )}
+                {(cloud || local) && (
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => setFull(true)}
+                  >
+                    {t("botClient.manage")}
+                  </Button>
+                )}
+              </section>
+            </div>
+          )}
         </div>
-      )}
+      </div>
       {foldersOpen && <RetainedFolders onClose={() => setFoldersOpen(false)} />}
     </section>
   );

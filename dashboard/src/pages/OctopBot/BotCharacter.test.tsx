@@ -69,7 +69,7 @@ describe("Octop Bot character identity", () => {
     });
     expect(container.querySelector('input[type="color"]')).toBeNull();
     fireEvent.click(
-      screen.getByRole("button", { name: "octopBot.avatar.shapes.star" }),
+      screen.getByRole("button", { name: "octopBot.avatar.shapes.sparkle" }),
     );
     expect(container.querySelector('input[type="color"]')).not.toBeNull();
     expect(screen.queryByRole("button", { name: /deepseek/i })).toBeNull();
@@ -93,7 +93,7 @@ describe("Octop Bot character identity", () => {
     const gradients = container.querySelectorAll("linearGradient");
     expect(gradients).toHaveLength(2);
     expect(gradients[0].id).not.toBe(gradients[1].id);
-    expect(container.querySelectorAll("ellipse")).toHaveLength(4);
+    expect(container.querySelectorAll("rect")).toHaveLength(4);
     expect(
       screen.getByRole("img", { name: "octopBot.avatar.chief" }),
     ).toBeInTheDocument();
@@ -135,9 +135,7 @@ describe("Octop Bot character identity", () => {
     expect(container.querySelector("picture")).toBeNull();
     fireEvent.error(img);
     expect(
-      container.querySelectorAll(
-        '[data-shape="gumdrop"][data-ink="blue"] ellipse',
-      ),
+      container.querySelectorAll('[data-shape="orb"][data-ink="blue"] rect'),
     ).toHaveLength(2);
   });
   it("shows three identities and the remaining count for a large group", () => {

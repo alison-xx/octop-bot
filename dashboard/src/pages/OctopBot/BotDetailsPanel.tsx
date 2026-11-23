@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, Drawer, Grid, Select } from "antd";
+import { Button, Drawer, Grid } from "antd";
 import {
   BarChart3,
   Blocks,
@@ -11,6 +11,7 @@ import {
   History,
   Image,
   MessagesSquare,
+  Monitor,
   NotebookPen,
   Pencil,
   Shield,
@@ -33,16 +34,20 @@ import {
   botCapabilityPath,
 } from "../../utils/botClientRoute";
 import {
-  buildModelSelectOptions,
+  MODEL_AUTO_VALUE,
   defaultModelFromForm,
   defaultModelToForm,
+  modelOptionValue,
 } from "../../utils/modelOptions";
 import { BotCharacter, type BotMotion } from "./BotCharacter";
 import { useLynxceStatus } from "../../hooks/useLynxceStatus";
 import { isBotOnlyDesktop } from "../../utils/desktopBridge";
 import styles from "./BotDetailsPanel.module.less";
+import BotComputerCard from "./BotComputerCard";
 import BotSchedulesDialog from "./BotSchedulesDialog";
 import BotUsageDialog from "./BotUsageDialog";
+import ModelName from "./ModelName";
+import ModelSelect, { type ModelItem } from "./ModelSelect";
 
 interface Props {
   bot: WorkspaceBot;
@@ -228,12 +233,13 @@ export default function BotDetailsPanel({
       : []),
   ];
   const modelValue = defaultModelToForm(agent?.default_model);
-  const options = buildModelSelectOptions(
-    models ?? [],
-    t("botClient.profile.autoModel"),
-  );
-  if (modelValue && !options.some((option) => option.value === modelValue)) {
-    options.push({ value: modelValue, label: modelValue });
+  const items: ModelItem[] = (models ?? []).map((m) => ({
+    value: modelOptionValue(m),
+    id: m.model,
+    name: m.name,
+  }));
+  if (modelValue && !items.some((item) => item.value === modelValue)) {
+    items.push({ value: modelValue, id: modelValue });
   }
   const contents = (
     <section
@@ -290,8 +296,9 @@ export default function BotDetailsPanel({
           </h4>
           {personalModel ? (
             <button type="button" className={styles.row} onClick={goToSettings}>
-              <span>
-                {t("botClient.lynxce.source")} · {personalModel}
+              <span className={styles.modelRow}>
+                <ModelName id={personalModel} />
+                <small>{t("botClient.lynxce.source")}</small>
               </span>
               <ChevronRight size={14} />
             </button>
@@ -301,16 +308,20 @@ export default function BotDetailsPanel({
               <ChevronRight size={14} />
             </button>
           ) : (
-            <Select
+            <ModelSelect
               className={styles.select}
               aria-label={t("botClient.profile.model")}
               value={modelValue}
               loading={saving || (!models && !error)}
               disabled={saving || !models?.length || !agent}
-              options={options}
+              items={items}
+              lead={[
+                {
+                  value: MODEL_AUTO_VALUE,
+                  label: t("botClient.profile.autoModel"),
+                },
+              ]}
               onChange={changeModel}
-              showSearch
-              optionFilterProp="label"
             />
           )}
           {error && (
@@ -334,6 +345,17 @@ export default function BotDetailsPanel({
             </small>
           )}
         </section>
+        {agent?.kind === "expert" &&
+          !agent.is_shared &&
+          canAccessPath(user, "/remote-desktop/desktop") && (
+            <section className={styles.block}>
+              <h4>
+                <Monitor size={14} />
+                {t("octopBot.computer.section")}
+              </h4>
+              <BotComputerCard key={bot.agent_id} botId={bot.agent_id} />
+            </section>
+          )}
         <section className={styles.block}>
           <h4>{t("botClient.profile.actions")}</h4>
           {actions.map(({ icon: Icon, label, open }) => (

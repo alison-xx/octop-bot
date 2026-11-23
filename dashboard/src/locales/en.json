@@ -320,9 +320,35 @@
     "teamPrompt": "Create a content team group with a writer and an editor. The writer drafts the stories and the editor reviews them.",
     "teamLabel": "Build a content team",
     "planPrompt": "Help me turn an idea into an actionable plan. Ask me the three most important questions first.",
-    "planLabel": "Explore an idea"
+    "planLabel": "Explore an idea",
+    "menu": {
+      "settings": "Settings"
+    },
+    "nav": {
+      "general": "General",
+      "models": "Models",
+      "account": "Account",
+      "appearance": "Appearance",
+      "floatingButton": "Floating button",
+      "floatingButtonHint": "A small Octop on your desktop for quick chats.",
+      "privacy": "Privacy",
+      "signedInAs": "Signed in as",
+      "manage": "Manage",
+      "language": "Language"
+    },
+    "account": {
+      "local": "Local account",
+      "lynxce": "Lynxce account"
+    }
   },
   "octopBot": {
+    "ask": {
+      "somethingElse": "Something else",
+      "skip": "Skip",
+      "done": "Done",
+      "skipped": "Skipped"
+    },
+    "thinking": "Thinking",
     "avatar": {
       "title": "Bot avatar",
       "characters": "Characters",
@@ -339,6 +365,12 @@
       "invalidImage": "Choose a PNG, JPEG, WebP or GIF image under 25 MB.",
       "shapes": {
         "octop": "Octop octopus",
+        "orb": "Orb",
+        "heart": "Heart",
+        "sparkle": "Sparkle",
+        "drop": "Drop",
+        "cloud": "Cloud",
+        "bean": "Bean",
         "star": "Star",
         "moon": "Moon",
         "wave": "Wave",
@@ -390,7 +422,12 @@
       "apps": "Allowed running applications",
       "takeover": "Take over",
       "resume": "Hand back",
-      "unavailable": "Install Octop's computer-use extra on this host to enable application control."
+      "unavailable": "Install Octop's computer-use extra on this host to enable application control.",
+      "section": "Computer",
+      "card": "Bot's computer",
+      "asleep": "Asleep",
+      "paused": "You're in control",
+      "using": "Using {{app}}"
     },
     "imChats": "Linked IM conversations",
     "imEmpty": "Pair a channel and send it a message to select that conversation here.",
@@ -508,7 +545,22 @@
     "openApproval": "Open member conversation",
     "search": "Search",
     "capabilities": "Capabilities and settings",
-    "groupMemoryPlaceholder": "Notes available to all members of this group"
+    "groupMemoryPlaceholder": "Notes available to all members of this group",
+    "modelVendor": {
+      "deepseek": "DeepSeek",
+      "qwen": "Qwen",
+      "glm": "Zhipu GLM",
+      "kimi": "Kimi",
+      "doubao": "Doubao",
+      "hunyuan": "Tencent Hunyuan",
+      "minimax": "MiniMax",
+      "gemini": "Gemini",
+      "claude": "Claude",
+      "openai": "OpenAI",
+      "mimo": "Xiaomi MiMo",
+      "other": "Other models"
+    },
+    "searchModels": "Search models"
   },
   "app": {
     "pageTitle": "Octop"
@@ -1093,7 +1145,7 @@
     "editDocumentSuccess": "Saved; reindex started",
     "editDocumentFailed": "Failed to save document",
     "filenameRequired": "Please enter a file name",
-    "filenamePlaceholder": "e.g. notes",
+    "filenamePlaceholder": "File name",
     "fileFormat": "Format",
     "fileContent": "Content",
     "fileContentPlaceholder": "Write document content here…",
@@ -1114,7 +1166,6 @@
     "moveSuccess": "Moved",
     "moveSuccessTo": "Moved to “{{name}}”",
     "moveFailed": "Failed to move",
-    "filenamePlaceholder": "File name",
     "pathBreadcrumb": "Path",
     "deleteFolderConfirm": "Delete this folder and everything inside it?",
     "uploaded": "Documents uploaded",
@@ -8665,5 +8716,17 @@
     "nameRequired": "Enter a name first",
     "failed": "Polish failed. Please try again later.",
     "emptyResult": "The model returned an empty result"
+  },
+  "botNotify": {
+    "botReplied": "sent you a new message",
+    "groupFallback": "New messages in the group",
+    "newMessages": "{{count}} new",
+    "unreadCount": "{{count}} unread",
+    "settingsTitle": "Notifications",
+    "systemLabel": "New message notifications",
+    "systemHint": "Show a system notification when a bot or group replies while the window is in the background",
+    "systemBlocked": "Notifications are blocked in this browser. Allow them in the site settings.",
+    "soundLabel": "Sound",
+    "soundHint": "Play a short chime when a new message arrives"
   }
 }

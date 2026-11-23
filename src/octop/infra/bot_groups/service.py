@@ -158,6 +158,30 @@ def set_goal(services: SharedServices, user_id: int, group_id: str, goal: Goal) 
     return goal
 
 
+class GroupActivity(BaseModel):
+    group_id: str
+    unread_count: int = Field(description="Member replies after the owner last read the room.")
+    last_message: Message | None = Field(
+        default=None, description="Latest visible room message, for previews and notifications."
+    )
+
+
+def group_activity(services: SharedServices, user_id: int) -> list[GroupActivity]:
+    return [
+        GroupActivity(
+            group_id=row["group_id"],
+            unread_count=row["unread_count"],
+            last_message=Message.from_record(row["last_message"]) if row["last_message"] else None,
+        )
+        for row in services.repos.bot_group_repo.activity(user_id)
+    ]
+
+
+def mark_group_read(services: SharedServices, user_id: int, group_id: str) -> None:
+    group_row(services, user_id, group_id)
+    services.repos.bot_group_repo.mark_read(group_id, user_id)
+
+
 def list_messages(
     services: SharedServices,
     user_id: int,

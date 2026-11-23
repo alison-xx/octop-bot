@@ -13,40 +13,35 @@ if TYPE_CHECKING:
     from octop.infra.db.repos.agents import AgentRow
     from octop.infra.db.repos.settings import SettingsRepo
 
-Shape = Literal[
-    "octop",
-    "whale",
-    "star",
-    "moon",
-    "wave",
-    "squircle",
-    "zed",
-    "hex",
-    "gumdrop",
-    "peanut",
-    "saucer",
-    "bunny",
-    "kitty",
-    "beacon",
-    "plus",
-    "magnet",
-    "acorn",
-    "pebbles",
-    "cushion",
-    "ring",
-    "gem",
-]
-_DEFAULT_SHAPES: tuple[Shape, ...] = (
-    "star",
-    "moon",
-    "gumdrop",
-    "peanut",
-    "bunny",
-    "kitty",
-    "acorn",
-)
-_DEFAULT_COLORS = ("red", "orange", "yellow", "green", "cyan", "blue", "violet", "magenta")
+Shape = Literal["octop", "whale", "orb", "heart", "sparkle", "drop", "cloud", "bean"]
+# DS Bot shapes from earlier releases, read back as the closest soft character.
+_LEGACY_SHAPES = {
+    "star": "sparkle",
+    "plus": "sparkle",
+    "moon": "bean",
+    "peanut": "bean",
+    "saucer": "bean",
+    "wave": "cloud",
+    "bunny": "cloud",
+    "pebbles": "cloud",
+    "kitty": "heart",
+    "magnet": "heart",
+    "gem": "drop",
+    "zed": "drop",
+    "gumdrop": "drop",
+    "beacon": "drop",
+    "acorn": "drop",
+    "squircle": "orb",
+    "hex": "orb",
+    "cushion": "orb",
+    "ring": "orb",
+}
+_DEFAULT_SHAPES: tuple[Shape, ...] = ("orb", "heart", "sparkle", "drop", "cloud", "bean")
+_DEFAULT_COLORS = ("red", "orange", "green", "blue", "violet")
 _COLORS = {
+    "yellow",
+    "cyan",
+    "magenta",
     "black",
     "brown",
     "gray",
@@ -65,6 +60,11 @@ _COLORS = {
 class Character(BaseModel):
     shape: Shape
     color: str
+
+    @field_validator("shape", mode="before")
+    @classmethod
+    def current_shape(cls, value: object) -> object:
+        return _LEGACY_SHAPES.get(value, value) if isinstance(value, str) else value
 
     @field_validator("color")
     @classmethod
@@ -86,25 +86,25 @@ class _Preference(BaseModel):
 
 _CHIEF_LOOK = Character(shape="octop", color="rose")
 _ROLE_LOOKS = (
-    (("选题", "策划", "制片", "planner", "strategist"), Character(shape="star", color="yellow")),
+    (("选题", "策划", "制片", "planner", "strategist"), Character(shape="sparkle", color="orange")),
     (
         ("文案", "写作", "撰稿", "编辑", "writer", "editor", "copywriter"),
-        Character(shape="moon", color="violet"),
+        Character(shape="heart", color="red"),
     ),
-    (("视觉", "美术", "设计", "design", "illustrat"), Character(shape="gem", color="magenta")),
-    (("数据", "分析", "运营", "analytics", "analyst"), Character(shape="hex", color="cyan")),
+    (("视觉", "美术", "设计", "design", "illustrat"), Character(shape="cloud", color="violet")),
+    (("数据", "分析", "运营", "analytics", "analyst"), Character(shape="orb", color="green")),
     # Later roles only apply when none of the four studio roles above matched.
-    (("调研", "研究", "research"), Character(shape="acorn", color="green")),
+    (("调研", "研究", "research"), Character(shape="bean", color="blue")),
     (
         ("工程", "开发", "程序", "代码", "engineer", "developer", "coder"),
-        Character(shape="beacon", color="cobalt"),
+        Character(shape="drop", color="blue"),
     ),
-    (("客服", "支持", "support", "service"), Character(shape="bunny", color="tangerine")),
-    (("翻译", "译者", "translat"), Character(shape="wave", color="sky")),
-    (("测试", "质检", "tester", "qa"), Character(shape="magnet", color="red")),
-    (("法务", "律师", "合规", "legal", "lawyer"), Character(shape="cushion", color="graphite")),
-    (("财务", "会计", "finance", "account"), Character(shape="pebbles", color="orange")),
-    (("销售", "市场", "营销", "sales", "marketing"), Character(shape="kitty", color="red")),
+    (("客服", "支持", "support", "service"), Character(shape="bean", color="orange")),
+    (("翻译", "译者", "translat"), Character(shape="cloud", color="green")),
+    (("测试", "质检", "tester", "qa"), Character(shape="drop", color="red")),
+    (("法务", "律师", "合规", "legal", "lawyer"), Character(shape="orb", color="black")),
+    (("财务", "会计", "finance", "account"), Character(shape="sparkle", color="green")),
+    (("销售", "市场", "营销", "sales", "marketing"), Character(shape="heart", color="violet")),
 )
 
 

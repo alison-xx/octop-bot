@@ -167,7 +167,10 @@ describe("standalone chat model settings", () => {
     ]);
     openSettings();
     fireEvent.click(
-      screen.getByRole("button", { name: "octopBot.retainedFolders" }),
+      screen.getByRole("button", { name: "botClient.nav.general" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "botClient.nav.manage" }),
     );
     await screen.findByText("/former/files");
     expect(
@@ -181,9 +184,10 @@ describe("standalone chat model settings", () => {
       expect(
         await screen.findByRole("heading", { name: "Catalog" }),
       ).toBeVisible();
-      expect(
-        screen.getByRole("button", { name: "octopBot.retainedFolders" }),
-      ).toBeVisible();
+      fireEvent.click(
+        screen.getByRole("button", { name: "botClient.nav.general" }),
+      );
+      expect(screen.getByText("octopBot.retainedFolders")).toBeVisible();
       expect(lynxceBotApi.status).not.toHaveBeenCalled();
       expect(
         screen.queryByRole("button", { name: "account.checkUpdates" }),
@@ -246,13 +250,13 @@ describe("standalone chat model settings", () => {
     open.mockRestore();
     checkout.mockRestore();
   });
-  it("shows real model and provider, expands connection controls on demand, and returns the selected prompt to its original thread", async () => {
+  it("shows the model by name without the serving channel, expands connection controls on demand, and returns the selected prompt to its original thread", async () => {
     openSettings(thread);
     const list = await screen.findByRole("list", {
       name: "botClient.availableModels",
     });
     expect(within(list).getByText("Draft v2")).toBeInTheDocument();
-    expect(within(list).getByText("Studio")).toBeInTheDocument();
+    expect(within(list).queryByText("Studio")).not.toBeInTheDocument();
     expect(mocks.config).not.toHaveBeenCalled();
     fireEvent.click(
       screen.getByRole("button", { name: "botClient.addConnection" }),
@@ -424,7 +428,7 @@ describe("standalone chat model settings", () => {
     expect(lynxceBotApi.select).toHaveBeenCalledWith("upstream-v2");
     expect(
       await screen.findByRole("list", { name: "botClient.availableModels" }),
-    ).toHaveTextContent("upstream-v2");
+    ).toHaveTextContent("Upstream V2");
     fireEvent.click(
       screen.getByRole("button", { name: "botClient.lynxce.manage" }),
     );
@@ -444,7 +448,9 @@ describe("standalone chat model settings", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "botClient.lynxce.apply" }),
     );
-    expect(await screen.findByText("rapid")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("list", { name: "botClient.availableModels" }),
+    ).toHaveTextContent("Rapid");
     fireEvent.click(
       screen.getByRole("button", { name: "botClient.lynxce.logout" }),
     );

@@ -100,15 +100,21 @@
 .photoChoice {
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 14px;
   cursor: pointer;
   color: inherit;
+  transition:
+    background-color 0.15s ease,
+    transform 0.15s ease;
 }
 .choice {
-  height: 40px;
-  width: 40px;
+  height: 52px;
+  width: 52px;
   display: grid;
   place-items: center;
+}
+.choice:active {
+  transform: scale(0.94);
 }
 .choice:hover,
 .photoChoice:hover {
@@ -117,26 +123,47 @@
 .choice[aria-pressed="true"],
 .photoChoice[aria-pressed="true"] {
   background: var(--fn-bg-active);
-  border-color: var(--fn-color-brand);
+  border-color: transparent;
 }
 .swatch {
-  width: 22px;
-  height: 22px;
-  border: 2px solid var(--fn-bg-elevated);
+  width: 28px;
+  height: 28px;
+  border: 0;
   border-radius: 50%;
   color: var(--bot-color);
   background: currentColor;
   cursor: pointer;
-  box-shadow: 0 0 0 1px var(--fn-border-primary);
+  transition: transform 0.15s ease;
+}
+.swatch:hover {
+  transform: scale(1.08);
 }
 .swatch[aria-pressed="true"] {
-  outline: 2px solid var(--fn-color-brand);
+  box-shadow:
+    0 0 0 2px var(--fn-bg-elevated),
+    0 0 0 4px currentColor;
 }
 .customColor {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  background: conic-gradient(
+    #fb2638,
+    #f58714,
+    #ffd43b,
+    #11af98,
+    #1b7afc,
+    #844ff9,
+    #fb2638
+  );
+  &::-webkit-color-swatch-wrapper {
+    padding: 0;
+    opacity: 0;
+  }
 }
 .libraryItem {
   flex-direction: column;
@@ -190,14 +217,14 @@
     &[data-motion="searching"] > :is(.model, .mascot, .mascotPortrait, .photo) {
       animation: scan 1.8s ease-in-out infinite;
     }
-    &[data-motion="searching"] .pupil {
+    &[data-motion="searching"] .face {
       animation: look 1.8s ease-in-out infinite;
     }
     &[data-motion="waiting"] > :is(.model, .mascot, .mascotPortrait, .photo) {
       animation: nod 2.4s ease-in-out infinite;
     }
   }
-  .mark[data-chief] {
+  .mark {
     > :is(.model, .mascot) {
       animation: breathe var(--bot-breath) ease-in-out var(--bot-phase) infinite;
     }
@@ -216,7 +243,7 @@
     &[data-motion="searching"] > :is(.model, .mascot, .mascotPortrait) {
       animation: scan 2.2s ease-in-out var(--bot-phase) infinite;
     }
-    &[data-motion="searching"] .pupil {
+    &[data-motion="searching"] .face {
       animation: look 2.2s ease-in-out var(--bot-phase) infinite;
     }
     &[data-motion="waiting"] > :is(.model, .mascot, .mascotPortrait) {
@@ -229,7 +256,7 @@
       animation: none;
     }
   }
-  .cluster:not(:hover) .mark[data-chief] :is(.model, .mascot, .eye) {
+  .cluster:not(:hover) .mark :is(.model, .mascot, .eye) {
     animation: none;
   }
   .mascotPortrait .mascot {

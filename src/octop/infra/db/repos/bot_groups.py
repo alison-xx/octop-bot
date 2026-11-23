@@ -10,6 +10,10 @@ from octop.infra.db.repos._base import now_ts
 from octop.infra.utils.ulid import new_ulid
 
 
+def _read_key(user_id: int, group_id: str) -> str:
+    return f"bot-room-read:{user_id}:{group_id}"
+
+
 class BotGroupRepo:
     LEASE_SECONDS = 120
 
@@ -38,7 +42,54 @@ class BotGroupRepo:
                 "created_at) VALUES(?,?,?,?,?,?,?)",
                 (group_id, user_id, name, admin, json.dumps(members), mode, now_ts()),
             )
+            # Groups without a cursor predate read tracking and report nothing unread.
+            conn.execute(
+                "INSERT INTO settings(key,value) VALUES(?,'0') ON CONFLICT(key) DO NOTHING",
+                (_read_key(user_id, group_id),),
+            )
         return group_id
+
+    def activity(self, user_id: int) -> list[dict[str, Any]]:
+        """Replies after the owner's read cursor and the latest visible message, per group."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT g.group_id, (SELECT COUNT(*) FROM bot_group_messages m "
+                "WHERE m.group_id=g.group_id AND m.role IN ('assistant','error') "
+                "AND m.id>CAST(r.value AS INTEGER)) AS unread_count, "
+                "(SELECT MAX(m.id) FROM bot_group_messages m WHERE m.group_id=g.group_id "
+                "AND m.role!='pass') AS last_pk "
+                "FROM bot_groups g LEFT JOIN settings r ON r.key=? || g.group_id "
+                "WHERE g.user_id=? ORDER BY g.id",
+                (_read_key(user_id, ""), user_id),
+            ).fetchall()
+            groups = [dict(row) for row in rows]
+            last_ids = [g["last_pk"] for g in groups if g["last_pk"] is not None]
+            latest: dict[int, dict[str, Any]] = {}
+            if last_ids:
+                marks = ",".join("?" for _ in last_ids)
+                latest = {
+                    int(row["id"]): dict(row)
+                    for row in conn.execute(
+                        "SELECT id,message_id,group_id,request_id,slot,role,agent_id,text,"
+                        f"thread_id,created_at FROM bot_group_messages WHERE id IN ({marks})",
+                        tuple(last_ids),
+                    ).fetchall()
+                }
+        for group in groups:
+            pk = group.pop("last_pk")
+            group["unread_count"] = int(group["unread_count"] or 0)
+            group["last_message"] = latest.get(int(pk)) if pk is not None else None
+        return groups
+
+    def mark_read(self, group_id: str, user_id: int) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "INSERT INTO settings(key,value) SELECT ?, CAST(COALESCE(MAX(m.id),0) AS TEXT) "
+                "FROM bot_groups g LEFT JOIN bot_group_messages m ON m.group_id=g.group_id "
+                "WHERE g.group_id=? AND g.user_id=? GROUP BY g.group_id "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (_read_key(user_id, group_id), group_id, user_id),
+            )
 
     def update(
         self, group_id: str, user_id: int, name: str, admin: str, members: list[str], mode: str
@@ -62,6 +113,11 @@ class BotGroupRepo:
                     group_id,
                     user_id,
                 ),
+            )
+            conn.execute(
+                "DELETE FROM settings WHERE key=? AND EXISTS "
+                "(SELECT 1 FROM bot_groups WHERE group_id=? AND user_id=?)",
+                (_read_key(user_id, group_id), group_id, user_id),
             )
             conn.execute(
                 "DELETE FROM bot_groups WHERE group_id=? AND user_id=?", (group_id, user_id)

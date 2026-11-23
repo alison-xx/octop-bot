@@ -168,6 +168,22 @@
     font-size: 12px;
   }
 }
+.modelSelect,
+.botSelect {
+  min-width: 200px;
+  max-width: 320px;
+}
+.botOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  vertical-align: middle;
+  > span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
 .mobileList {
   display: none !important;
 }

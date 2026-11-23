@@ -1,33 +1,32 @@
 // Scoped to the dedicated desktop workspace and its portal surfaces.
 .surface() {
-  --bot-paper: #fbf9f6;
-  --bot-rail: #f5f1ec;
-  --bot-line: #ded8d1;
-  --bot-ink: #302b29;
-  --bot-muted: #71665f;
-  --bot-incoming: #f1ece5;
-  --bot-outgoing: #493831;
+  --bot-paper: #fcfcfc;
+  --bot-rail: #f3f3f3;
+  --bot-line: #ebebeb;
+  --bot-ink: #181818;
+  --bot-muted: #7f7f7f;
+  --bot-incoming: #f0f0f0;
+  --bot-outgoing: #191919;
   --bot-outgoing-ink: #fff;
-  --bot-accent: #ac4c38;
-  --bot-selection: #f2dfd5;
-  --bot-hover: #ece6df;
+  --bot-accent: #191919;
+  --bot-selection: #e2e2e2;
+  --bot-hover: #e9e9e9;
   --bot-card: #fff;
-  --bot-shadow: 0 2px 5px rgba(36, 32, 28, 0.06),
-    0 1px 2px rgba(36, 32, 28, 0.025);
+  --bot-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   :global(html[data-theme="dark"]) & {
-    --bot-paper: #1f1e21;
-    --bot-rail: #252326;
-    --bot-line: #403b3e;
-    --bot-ink: #f7f0e9;
-    --bot-muted: #b5aaa7;
-    --bot-incoming: #292a2c;
-    --bot-outgoing: #e6e6e3;
-    --bot-outgoing-ink: #171819;
-    --bot-accent: #f2ab91;
-    --bot-selection: #47352f;
-    --bot-hover: #2b2c2e;
-    --bot-card: #232425;
-    --bot-shadow: 0 2px 5px rgba(0, 0, 0, 0.14);
+    --bot-paper: #161616;
+    --bot-rail: #1c1c1c;
+    --bot-line: #2a2a2a;
+    --bot-ink: #f2f2f2;
+    --bot-muted: #8c8c8c;
+    --bot-incoming: #262626;
+    --bot-outgoing: #f2f2f2;
+    --bot-outgoing-ink: #161616;
+    --bot-accent: #f2f2f2;
+    --bot-selection: #2e2e2e;
+    --bot-hover: #262626;
+    --bot-card: #202020;
+    --bot-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
 }
 .shell,
@@ -84,7 +83,6 @@
 }
 .navHeader,
 .roomHeader {
-  border-bottom: 1px solid var(--bot-line);
   -webkit-app-region: drag;
 }
 .navHeader button,
@@ -223,16 +221,16 @@
 .navHeader .iconButton,
 .mobileList,
 .panelActions button {
-  border: 1px solid var(--bot-line);
+  border: 0;
   background: var(--bot-card);
   color: var(--bot-ink);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   padding: 0;
-  border-radius: 10px;
+  border-radius: 50%;
   box-shadow: var(--bot-shadow);
   cursor: pointer;
 }
@@ -255,7 +253,7 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  border-radius: 9px;
+  border-radius: 12px;
   min-height: 51px;
   position: relative;
 }
@@ -266,10 +264,10 @@
   display: flex;
   align-items: baseline;
   gap: 6px;
-  margin: 0 8px 4px;
+  margin: 0 8px 6px;
   color: var(--bot-muted);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 400;
   span + span {
     font-size: 10px;
     font-variant-numeric: tabular-nums;
@@ -285,7 +283,6 @@
 }
 .contact[data-selected="true"] {
   background: var(--bot-selection);
-  box-shadow: inset 3px 0 var(--bot-accent);
 }
 .contactButton {
   display: flex;
@@ -324,6 +321,10 @@
 .contactText small {
   font-size: 12px;
   color: var(--bot-muted);
+}
+/* A conversation with replies the user has not opened reads stronger. */
+.contact[data-unread="true"] .contactText small {
+  color: var(--bot-ink);
 }
 .contact > :global(.octop-btn) {
   position: absolute;
@@ -366,20 +367,20 @@
   color: var(--bot-muted);
 }
 .directory:not([data-collapsed]) .contact[data-chief="true"] {
-  width: auto;
-  min-height: 78px;
-  margin: 10px 2px 18px;
-  border: 1px solid var(--bot-line);
-  border-radius: 16px;
-  background: linear-gradient(115deg, var(--bot-card), var(--bot-selection));
+  width: 96px;
+  min-height: 92px;
+  margin: 8px auto 16px;
+  border-radius: 14px;
   .contactButton {
-    flex-direction: row;
-    justify-content: flex-start;
-    gap: 12px;
-    padding: 10px 12px;
+    gap: 6px;
+    padding: 8px 6px;
   }
-  .contactText {
-    align-items: flex-start;
+  .contactText strong {
+    font-size: 13px;
+    font-weight: 400;
+  }
+  .contactText small {
+    display: none;
   }
 }
 .shell :is(button, a):focus-visible {
@@ -399,13 +400,16 @@
   justify-content: flex-start;
   gap: 9px;
   width: 100%;
-  height: 34px;
-  border: 1px solid var(--bot-line);
-  background: var(--bot-card);
+  height: 36px;
+  border: 0;
+  background: transparent;
   color: var(--bot-ink);
-  border-radius: 11px;
-  font-size: 12px;
-  box-shadow: var(--bot-shadow);
+  border-radius: 12px;
+  font-size: 13px;
+  box-shadow: none;
+  &:hover {
+    background: var(--bot-hover);
+  }
 }
 .roomHeader {
   min-height: 52px;
@@ -422,13 +426,13 @@
   justify-content: center;
   gap: 7px;
   max-width: calc(100% - 96px);
-  height: 34px;
-  padding: 2px 12px 2px 9px;
+  height: 36px;
+  padding: 2px 14px 2px 8px;
   background: var(--bot-card);
   color: var(--bot-ink);
-  border: 1px solid var(--bot-line);
-  border-radius: 13px;
-  box-shadow: var(--bot-shadow);
+  border: 0;
+  border-radius: 18px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   font: inherit;
   cursor: pointer;
 }
@@ -831,4 +835,23 @@
     user-select: none;
     -webkit-user-drag: none;
   }
+}
+
+// macOS: the sidebar and chat run up to the window top and the traffic
+// lights sit inside the sidebar header, instead of above a separate band.
+:global(html[data-octop-desktop-chrome="mac"] [data-bot-client]) .shell {
+  margin-top: calc(-1 * var(--window-chrome-top-band, 28px));
+  height: calc(100% + var(--window-chrome-top-band, 28px));
+}
+:global(html[data-octop-desktop-chrome="mac"])
+  .directory:not([data-collapsed])
+  .navHeader {
+  padding-inline-start: 70px;
+  > [data-shape],
+  > strong {
+    visibility: hidden;
+  }
+}
+:global(html[data-octop-desktop-chrome="mac"]) .directory[data-collapsed] {
+  padding-top: var(--window-chrome-top-band, 28px);
 }

@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import { BOT_CLIENT_FLAG } from "../shared/product";
 import {
   IPC_CHANNELS,
+  type BotNotification,
   type BotShortcut,
   type ClientSettings,
   type IssuedSession,
@@ -34,10 +35,16 @@ let settingsRequestPending = false;
 let openBotSettings: (() => void) | null = null;
 let pendingShortcut: BotShortcut | null = null;
 let botShortcut: ((action: BotShortcut) => void) | null = null;
+let notificationOpen: ((target: string) => void) | null = null;
+let pendingNotificationTarget: string | null = null;
 if (botOnly) {
   ipcRenderer.on(IPC_CHANNELS.botShortcut, (_event, action: BotShortcut) => {
     if (botShortcut) botShortcut(action);
     else pendingShortcut = action;
+  });
+  ipcRenderer.on(IPC_CHANNELS.botNotificationOpen, (_event, target: string) => {
+    if (notificationOpen) notificationOpen(target);
+    else pendingNotificationTarget = target;
   });
   ipcRenderer.on(IPC_CHANNELS.openBotSettings, () => {
     if (openBotSettings) openBotSettings();
@@ -56,6 +63,26 @@ const bridge = {
       callback(action);
     }
     return () => { if (botShortcut === callback) botShortcut = null; };
+  },
+  /** OS notification plus dock bounce / taskbar flash for a new reply. */
+  notify(note: BotNotification): void {
+    if (botOnly) ipcRenderer.send(IPC_CHANNELS.botNotify, note);
+  },
+  /** Unread total on the app icon (macOS, Linux) and in the tray tooltip. */
+  setUnreadBadge(count: number): void {
+    if (botOnly) ipcRenderer.send(IPC_CHANNELS.botUnreadBadge, count);
+  },
+  /** ``bot:<id>`` / ``group:<id>`` of a clicked notification, including one clicked before the page subscribed. */
+  onNotificationOpen(callback: (target: string) => void): () => void {
+    notificationOpen = callback;
+    if (pendingNotificationTarget) {
+      const target = pendingNotificationTarget;
+      pendingNotificationTarget = null;
+      callback(target);
+    }
+    return () => {
+      if (notificationOpen === callback) notificationOpen = null;
+    };
   },
   onOpenBotSettings(callback: () => void): () => void {
     openBotSettings = callback;

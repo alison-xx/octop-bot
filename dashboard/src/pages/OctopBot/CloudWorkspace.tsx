@@ -35,6 +35,7 @@ import LynxceRegistration from "./LynxceRegistration";
 import CloudChat from "./CloudChat";
 import CloudSchedules from "./CloudSchedules";
 import CloudImport from "./CloudImport";
+import ModelSelect from "./ModelSelect";
 import styles from "./cloud.module.less";
 
 export default function CloudWorkspace() {
@@ -433,11 +434,12 @@ function Connected({
                   (active ? t("botCloud.untitled") : t("botCloud.newChat"))}
               </h2>
               {!active && caps?.models.length ? (
-                <Select
+                <ModelSelect
+                  className={styles.modelSelect}
                   aria-label={t("botClient.profile.model")}
                   value={model || undefined}
                   onChange={setModel}
-                  options={caps.models.map((m) => ({ label: m, value: m }))}
+                  items={caps.models.map((id) => ({ value: id, id }))}
                 />
               ) : null}
             </div>
@@ -446,11 +448,37 @@ function Connected({
                 <label htmlFor="cloud-bot">{t("botCloud.bot")}</label>
                 <Select
                   id="cloud-bot"
+                  className={styles.botSelect}
                   value={selectedBot?.agent_id || ""}
                   onChange={(v) => setBot(v || undefined)}
+                  showSearch
+                  optionFilterProp="search"
                   options={[
-                    { value: "", label: t("botCloud.defaultBot") },
-                    ...bots.map((b) => ({ value: b.agent_id, label: b.name })),
+                    {
+                      value: "",
+                      search: t("botCloud.defaultBot"),
+                      label: (
+                        <span className={styles.botOption}>
+                          <BotCharacter
+                            look={{ ...octopCharacter, source: "character" }}
+                            size={20}
+                            badges={false}
+                          />
+                          {t("botCloud.defaultBot")}
+                        </span>
+                      ),
+                    },
+                    ...bots.map((b) => ({
+                      value: b.agent_id,
+                      search: b.name,
+                      title: b.name,
+                      label: (
+                        <span className={styles.botOption}>
+                          <BotCharacter bot={b} size={20} badges={false} />
+                          <span>{b.name}</span>
+                        </span>
+                      ),
+                    })),
                   ]}
                 />
               </div>

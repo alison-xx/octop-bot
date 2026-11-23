@@ -25,6 +25,16 @@ export interface PlatformInfo {
 
 export type BotShortcut = "search" | "newChat" | "cloud";
 
+/** A new-message notification the Octop Bot page asks the shell to show. */
+export interface BotNotification {
+  title: string;
+  body: string;
+  /** Conversation to open on click: ``bot:<agent_id>`` or ``group:<group_id>``. */
+  target: string;
+  /** Skip the OS sound (the page already played one, or sound is off). */
+  silent?: boolean;
+}
+
 export interface UpdateCheckResult {
   status: "update-available" | "up-to-date" | "error";
   currentVersion: string;
@@ -75,6 +85,9 @@ export const IPC_CHANNELS = {
   openBotSettings: "octop:bot:open-settings",
   botShortcut: "octop:bot:shortcut",
   showBotOrb: "octop:bot:show-orb",
+  botNotify: "octop:bot:notify",
+  botNotificationOpen: "octop:bot:notification-open",
+  botUnreadBadge: "octop:bot:unread-badge",
   orbPointer: "octop:orb:pointer",
   /** Linux square caption buttons. No-op on the other platforms. */
   windowMinimize: "octop:window-minimize",

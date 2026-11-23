@@ -320,9 +320,35 @@
     "teamPrompt": "帮我创建一个自媒体群组，邀请一位写手和一位编辑，写手起草内容，编辑负责审稿。",
     "teamLabel": "组建自媒体团队",
     "planPrompt": "帮我把一个想法整理成可执行的计划。请先问我最需要明确的三个问题。",
-    "planLabel": "梳理一个想法"
+    "planLabel": "梳理一个想法",
+    "menu": {
+      "settings": "设置"
+    },
+    "nav": {
+      "general": "通用",
+      "models": "模型",
+      "account": "账号",
+      "appearance": "外观",
+      "floatingButton": "悬浮球",
+      "floatingButtonHint": "桌面上的小章鱼，随时快速对话。",
+      "privacy": "隐私",
+      "signedInAs": "当前账号",
+      "manage": "管理",
+      "language": "语言"
+    },
+    "account": {
+      "local": "本机账号",
+      "lynxce": "灵策智算账号"
+    }
   },
   "octopBot": {
+    "ask": {
+      "somethingElse": "其他想法",
+      "skip": "跳过",
+      "done": "完成",
+      "skipped": "已跳过"
+    },
+    "thinking": "正在思考",
     "avatar": {
       "title": "Bot 头像",
       "characters": "角色",
@@ -339,6 +365,12 @@
       "invalidImage": "请选择 25 MB 以内的 PNG、JPEG、WebP 或 GIF 图片。",
       "shapes": {
         "octop": "Octop 八爪鱼",
+        "orb": "圆球",
+        "heart": "爱心",
+        "sparkle": "星光",
+        "drop": "水滴",
+        "cloud": "云朵",
+        "bean": "豆豆",
         "star": "星星",
         "moon": "月亮",
         "wave": "声波",
@@ -390,7 +422,12 @@
       "apps": "允许访问的运行中应用",
       "takeover": "接管电脑",
       "resume": "交还给 Bot",
-      "unavailable": "请在此主机安装 Octop 的 computer-use 可选依赖以启用应用控制。"
+      "unavailable": "请在此主机安装 Octop 的 computer-use 可选依赖以启用应用控制。",
+      "section": "电脑",
+      "card": "Bot 的电脑",
+      "asleep": "休眠中",
+      "paused": "已由你接管",
+      "using": "正在使用 {{app}}"
     },
     "imChats": "关联 IM 对话",
     "imEmpty": "配对通道并向它发送一条消息后，即可在此选择该对话。",
@@ -508,7 +545,22 @@
     "openApproval": "打开成员会话",
     "search": "搜索",
     "capabilities": "能力与设置",
-    "groupMemoryPlaceholder": "所有成员在此群中可使用的记忆"
+    "groupMemoryPlaceholder": "所有成员在此群中可使用的记忆",
+    "modelVendor": {
+      "deepseek": "DeepSeek",
+      "qwen": "通义千问",
+      "glm": "智谱 GLM",
+      "kimi": "Kimi",
+      "doubao": "豆包",
+      "hunyuan": "腾讯混元",
+      "minimax": "MiniMax",
+      "gemini": "Gemini",
+      "claude": "Claude",
+      "openai": "OpenAI",
+      "mimo": "小米 MiMo",
+      "other": "其他模型"
+    },
+    "searchModels": "搜索模型"
   },
   "app": {
     "pageTitle": "Octop"
@@ -1093,7 +1145,7 @@
     "editDocumentSuccess": "已保存，正在重建索引",
     "editDocumentFailed": "保存文档失败",
     "filenameRequired": "请输入文件名",
-    "filenamePlaceholder": "例如 notes",
+    "filenamePlaceholder": "文件名",
     "fileFormat": "格式",
     "fileContent": "内容",
     "fileContentPlaceholder": "在此编写文档内容…",
@@ -1114,7 +1166,6 @@
     "moveSuccess": "已移动",
     "moveSuccessTo": "已移动到「{{name}}」",
     "moveFailed": "移动失败",
-    "filenamePlaceholder": "文件名",
     "pathBreadcrumb": "路径导航",
     "deleteFolderConfirm": "删除此文件夹及其内部文档？",
     "uploaded": "文档已上传",
@@ -8665,5 +8716,17 @@
     "nameRequired": "请先填写名称",
     "failed": "润色失败，请稍后重试",
     "emptyResult": "模型未返回结果"
+  },
+  "botNotify": {
+    "botReplied": "给你发来了新消息",
+    "groupFallback": "群里有新消息",
+    "newMessages": "{{count}} 条新消息",
+    "unreadCount": "{{count}} 条未读",
+    "settingsTitle": "通知",
+    "systemLabel": "新消息通知",
+    "systemHint": "窗口在后台时，bot 或群聊回复会弹出系统通知",
+    "systemBlocked": "浏览器已拦截通知，请在网站设置里允许",
+    "soundLabel": "提示音",
+    "soundHint": "收到新消息时播放一声短提示音"
   }
 }

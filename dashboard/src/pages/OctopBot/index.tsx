@@ -40,17 +40,12 @@ import {
   BOT_CLOUD,
   BOT_GUIDE,
   BOT_HOME,
-  BOT_SETTINGS,
   botGuideSeenKey,
 } from "../../utils/botClientRoute";
 import { pickPreferredSession, toSession } from "../Chat/hooks/useSessions";
 import { useAgent } from "../../context/AgentContext";
+import { useBotActivity } from "../../hooks/useBotActivity";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import {
-  accountDisplayName,
-  accountInitials,
-} from "../Chat/utils/accountDisplayName";
-import { ProfileAvatar } from "../Admin/Users/ProfileAvatar";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { useListPanelCollapsed } from "../../hooks/useListPanelCollapsed";
 import { apiErrorMessage, parseApiError } from "../../utils/apiError";
@@ -70,6 +65,7 @@ import ManagedDrawer from "../Experts/components/ManagedDrawer";
 import BotChat from "./BotChat";
 import { GroupForm, canInviteBot, type GroupSeed } from "./GroupForms";
 import GroupRoom from "./GroupRoom";
+import AccountMenu from "./AccountMenu";
 import RetainedFolders from "./RetainedFolders";
 import DeleteBotDialog from "./DeleteBotDialog";
 import SectionEditor, {
@@ -232,6 +228,50 @@ export default function OctopBotPage() {
       document.removeEventListener("visibilitychange", focus);
     };
   }, [refresh]);
+  const workspaceRef = useRef(workspace);
+  workspaceRef.current = workspace;
+  const activityNameOf = useCallback((kind: "bot" | "group", id: string) => {
+    const ws = workspaceRef.current;
+    if (!ws) return null;
+    return kind === "bot"
+      ? ws.bots.find((b) => b.agent_id === id)?.name ?? null
+      : ws.groups.find((g) => g.group_id === id)?.name ?? null;
+  }, []);
+  const openFromNotice = useCallback(
+    (target: string) => {
+      const [kind, id] = [
+        target.slice(0, target.indexOf(":")),
+        target.slice(target.indexOf(":") + 1),
+      ];
+      contactRequest.current++;
+      setSearchOpen(false);
+      setShowList(false);
+      navigate(
+        BOT_HOME +
+          (kind === "group" ? "/groups/" : "/bots/") +
+          encodeURIComponent(id),
+      );
+    },
+    [navigate],
+  );
+  const botActivity = useBotActivity({
+    enabled: workspace !== null,
+    openTarget: groupId
+      ? "group:" + groupId
+      : agentId
+      ? "bot:" + agentId
+      : null,
+    nameOf: activityNameOf,
+    onOpen: openFromNotice,
+  });
+  const refreshActivity = botActivity.refresh;
+  useEffect(
+    () =>
+      onStreamEvent((event) => {
+        if (event.kind === "streamEnd") refreshActivity();
+      }),
+    [refreshActivity],
+  );
   const close = useCallback(() => {
     setDialog(null);
     setGroupSeed(undefined);
@@ -519,10 +559,10 @@ export default function OctopBotPage() {
     }
   };
   const activity = new Map(agents.map((a) => [a.agent_id, a]));
-  const countUnread = (it: Item) =>
-    it.bot ? activity.get(it.bot.agent_id)?.unread_count ?? 0 : 0;
+  const countUnread = (it: Item) => botActivity.unread[it.key] ?? 0;
   const recent = (it: Item) =>
-    it.bot ? activity.get(it.bot.agent_id)?.last_active ?? 0 : 0;
+    botActivity.recent[it.key] ??
+    (it.bot ? activity.get(it.bot.agent_id)?.last_active ?? 0 : 0);
   const ordered = (items: Item[]) =>
     items.sort(
       (a, b) =>
@@ -539,9 +579,11 @@ export default function OctopBotPage() {
         t("botDirectory.teammate")
       );
     return (
+      botActivity.groupPreview[item.key] ??
       item.group?.member_ids
         .flatMap((id) => bots.find((b) => b.agent_id === id)?.name ?? [])
-        .join(" · ") ?? ""
+        .join(" · ") ??
+      ""
     );
   };
   const portrait = (item: Item, size: number) =>
@@ -999,34 +1041,7 @@ export default function OctopBotPage() {
             compactDirectory ? directory.railFooter : sectionStyles.footer
           }
         >
-          <Button
-            type="text"
-            className={directory.settings}
-            aria-label={t("botClient.settings")}
-            title={t("botClient.settings")}
-            icon={
-              compactDirectory ? (
-                user?.avatar_url || user?.avatar_icon ? (
-                  <ProfileAvatar
-                    className={directory.accountAvatar}
-                    url={user.avatar_url}
-                    icon={user.avatar_icon}
-                  />
-                ) : (
-                  <span className={directory.accountAvatar}>
-                    {accountInitials(accountDisplayName(user))}
-                  </span>
-                )
-              ) : (
-                <Settings2 size={16} />
-              )
-            }
-            onClick={() =>
-              navigate(BOT_SETTINGS, { state: { from: location.pathname } })
-            }
-          >
-            {!compactDirectory && t("botClient.settings")}
-          </Button>
+          <AccountMenu compact={compactDirectory} />
           {isBotOnlyDesktop() && (
             <Button
               type="text"

@@ -65,14 +65,14 @@ describe("Octop Bot creation dialogs", () => {
       screen.getByRole("button", { name: "botClient.chooseAppearance" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "octopBot.avatar.shapes.kitty" }),
+      screen.getByRole("button", { name: "octopBot.avatar.shapes.heart" }),
     );
     fireEvent.click(
       screen.getByRole("button", { name: /botForms.editor.name/ }),
     );
     expect(choose).toHaveBeenLastCalledWith({
       kind: "character",
-      shape: "kitty",
+      shape: "heart",
       color: "green",
     });
     fireEvent.click(screen.getByRole("button", { name: "common.create" }));

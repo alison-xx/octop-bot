@@ -36,6 +36,7 @@ import {
 import { Tooltip, Popover } from "antd";
 import cx from "classnames";
 import botStyles from "../../OctopBot/botConversation.module.less";
+import ModelName from "../../OctopBot/ModelName";
 import { message } from "@/utils/antdMessage";
 import {
   catalogOffersUnattendedMode,
@@ -1529,7 +1530,7 @@ export default function ChatInputActionsRow({
               title={t("botClient.lynxce.source") + " · " + workspaceModel.name}
               aria-label={t("botClient.lynxce.manage")}
             >
-              <span>{workspaceModel.name}</span>
+              <ModelName id={workspaceModel.name} size={14} />
               <ChevronDown size={12} />
             </button>
           )}
@@ -1553,7 +1554,11 @@ export default function ChatInputActionsRow({
                 title={selectedModelTriggerLabel}
                 aria-label={t("models.chatModelsTab")}
               >
-                <span>{selectedModelTriggerLabel}</span>
+                {selectedModel ? (
+                  <ModelName id={selectedModel} size={14} />
+                ) : (
+                  <span>{selectedModelTriggerLabel}</span>
+                )}
                 <ChevronDown size={12} />
               </button>
             </Popover>

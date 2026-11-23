@@ -8,23 +8,24 @@ import { resolveExpertAvatarUrl } from "../Experts/components/iconForName";
 import octopMascot from "../../assets/avatars/octop-mascot.webp";
 import data from "../../vendor/ds-bot/characters.json";
 import styles from "./characters.module.less";
+import { softInks, softShapes } from "./softShapes";
 
 // Vector geometry and inks from DS Bot. Attribution and Apache license in /licenses/ds-bot.txt.
 type Geometry = {
   body: string;
-  shade: string;
+  shade?: string;
   light?: string;
   eyes: number[][];
   paints?: (string | number)[][];
 };
-const shapes: Record<string, Geometry> = data.shapes;
-const inks: Record<string, string[]> = data.inks;
+const shapes: Record<string, Geometry> = { ...softShapes, ...data.shapes };
+const inks: Record<string, string[]> = { ...data.inks, ...softInks };
 export const octopCharacter = { shape: "octop", color: "rose" } as const;
-export const shapeIds = [octopCharacter.shape, ...Object.keys(shapes)];
-export const inkIds = Object.keys(inks);
+export const shapeIds = [octopCharacter.shape, ...Object.keys(softShapes)];
+export const inkIds = Object.keys(softInks);
 export function appearanceOf(bot?: WorkspaceBot): BotAppearance {
   const appearance: BotAppearance = bot?.avatar ?? {
-    ...(bot?.is_main ? octopCharacter : { shape: "gumdrop", color: "blue" }),
+    ...(bot?.is_main ? octopCharacter : { shape: "orb", color: "blue" }),
     source: bot?.icon_url ? "photo" : "character",
   };
   return visibleAppearance(appearance, bot?.is_main);
@@ -33,7 +34,7 @@ function visibleAppearance(look: BotAppearance, chief = false): BotAppearance {
   if (look.shape === "whale" && chief) return { ...look, ...octopCharacter };
   return {
     ...look,
-    shape: look.shape === "whale" ? "gumdrop" : look.shape,
+    shape: look.shape === "whale" ? "orb" : look.shape,
     color: look.color === "deepseek" ? "blue" : look.color,
   };
 }
@@ -80,7 +81,7 @@ export function BotCharacter({
     (n, c) => (n * 31 + c.charCodeAt(0)) >>> 0,
     0,
   );
-  const def = shapes[look.shape] ?? shapes.gumdrop;
+  const def = shapes[look.shape] ?? shapes.orb;
   const url =
     look.source === "photo"
       ? resolveExpertAvatarUrl(photo ?? bot?.icon_url)
@@ -196,32 +197,19 @@ export function BotCharacter({
                 fillOpacity={opacity}
               />
             ))}
-            <path d={def.shade} fill="#000" fillOpacity=".07" />
-            {def.light && <path d={def.light} fill="#fff" fillOpacity=".36" />}
           </g>
           <g className={styles.face}>
             {def.eyes.map(([x, y, w, h, angle], i) => (
               <g key={i} transform={`translate(${x} ${y}) rotate(${angle})`}>
-                <g className={styles.eye}>
-                  <rect
-                    width={w}
-                    height={h}
-                    x={-w / 2}
-                    y={-h / 2}
-                    rx={w / 2}
-                    fill="#fffcf5"
-                  />
-                  {size >= 24 && (
-                    <ellipse
-                      className={styles.pupil}
-                      cx={w * 0.07}
-                      cy={h * 0.05}
-                      rx={w * 0.28}
-                      ry={h * 0.22}
-                      fill="#2d2833"
-                    />
-                  )}
-                </g>
+                <rect
+                  className={styles.eye}
+                  width={w}
+                  height={h}
+                  x={-w / 2}
+                  y={-h / 2}
+                  rx={w / 2}
+                  fill="#fff"
+                />
               </g>
             ))}
           </g>
