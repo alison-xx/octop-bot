@@ -48,12 +48,12 @@ STORE_FILES = frozenset(
         "/IDENTITY.md",
         "/TOOLS.md",
         "/HEARTBEAT.md",
-        # The bootstrap marker of the older layout (system_files_path unset); checking it must
-        # not start the computer, and it lived in the object store before computers existed.
+        # Older workspaces keep these system files at the root instead of under .octop/.
         "/.bootstrapped",
+        "/manifest.json",
     }
 )
-STORE_DIRS = ("/.octop/", "/memory/", "/memories/", "/skills/", "/inbound/")
+STORE_DIRS = ("/.octop/", "/.octop-auth/", "/memory/", "/memories/", "/skills/", "/inbound/")
 
 
 def on_store(path: str | None) -> bool:

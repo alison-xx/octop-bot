@@ -540,9 +540,11 @@ def test_ags_times_without_a_zone_are_utc() -> None:
     )
 
 
-def test_the_old_layouts_bootstrap_marker_lives_in_the_store() -> None:
+def test_legacy_root_system_files_stay_in_the_store() -> None:
     from octop.infra.cloud.computers.backend import on_store
 
     assert on_store("/.bootstrapped")
-    assert on_store("/.octop/.bootstrapped")
-    assert not on_store("/notes/.bootstrapped")
+    assert on_store("/manifest.json")
+    assert on_store("/.octop-auth/token")
+    assert on_store("/.octop/x")
+    assert not on_store("/notes/manifest.json")
