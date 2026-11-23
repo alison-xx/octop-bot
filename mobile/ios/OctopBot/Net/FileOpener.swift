@@ -175,7 +175,8 @@ enum FileOpener {
         }
     }
 
-    private static func present(_ controller: UIViewController) {
+    /// Presents on top of whatever is showing, sheets included.
+    static func present(_ controller: UIViewController) {
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first { $0.activationState == .foregroundActive }
         guard var top = scene?.keyWindow?.rootViewController else { return }
         while let next = top.presentedViewController { top = next }
