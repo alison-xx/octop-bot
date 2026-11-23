@@ -29,12 +29,14 @@ final class CreditStore {
     enum Delivery: Equatable { case credited, queued, refused(String) }
 
     /// Lynxce error codes for a transaction that can never be credited, whoever reports it:
-    /// bad or foreign signed data, family sharing, a sandbox purchase in production, or a
-    /// transaction already credited to another account.
+    /// bad or foreign signed data, family sharing, a sandbox purchase in production, one already
+    /// credited to another account, or one with no account token (credit packs cannot be
+    /// restored). Not `apple_account_token_mismatch`: that purchase belongs to another account
+    /// that may sign in on this phone, and finishing it would lose its credits.
     nonisolated static let finalRefusals: Set<String> = [
         "apple_jws_malformed", "apple_jws_invalid", "apple_app_mismatch",
         "apple_family_sharing_unsupported", "apple_sandbox_rejected",
-        "apple_transaction_owned_by_other_account",
+        "apple_transaction_owned_by_other_account", "apple_account_token_missing",
     ]
 
     private(set) var phase: Phase = .idle
