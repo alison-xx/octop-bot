@@ -208,6 +208,21 @@ def test_the_agents_root_is_the_workspace_folder(setup: Any) -> None:
         computer.delete_path("/")
 
 
+def test_a_cloud_bot_is_rooted_at_its_workspace_so_the_model_never_sees_host_paths(
+    setup: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    from octop.infra.backend.resolver import resolve_agent_backend_spec
+
+    manager, *_ = setup
+    monkeypatch.setattr(computers, "_manager", manager)
+    monkeypatch.delenv("OCTOP_FILE_STORE_BUCKET", raising=False)
+    spec = {"type": "bot_cloud", "user_id": 7, "agent_id": "bot1"}
+    computer = resolve_agent_backend_spec(spec, repo=None, workspace_dir=tmp_path)
+    assert isinstance(computer, CloudComputer)
+    # The harness shows a virtual backend's workspace relative to root_dir: "/" here.
+    assert computer.virtual_mode and computer.root_dir == tmp_path
+
+
 def test_commands_outlive_the_desktop_servers_request_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
