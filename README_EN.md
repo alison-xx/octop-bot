@@ -16,11 +16,11 @@ Tell Chief, your octopus assistant, what you want done. Chief finds the right Bo
 
 [**Download**](https://octop-bot.lynxce.cn/download.html) · [Website](https://octop-bot.lynxce.cn/) · [Features](https://octop-bot.lynxce.cn/features.html) · [Quick start](https://octop-bot.lynxce.cn/guide.html) · [Changelog](CHANGELOG.md) · [简体中文](README.md)
 
-<a href="https://octop-bot.lynxce.cn/media/promo-en.mp4"><img src="docs/assets/octop-bot/promo-poster.webp" alt="Chief with a few Bot teammates. Click to watch the 30-second promo." width="760" /></a>
-
-<sub>▶ Click the poster for the [30-second promo](https://octop-bot.lynxce.cn/media/promo-en.mp4), or watch Chief's team put together a weekend guide in the [32-second intro film](https://octop-bot.lynxce.cn/media/intro-en.mp4)</sub>
-
 </div>
+
+https://github.com/user-attachments/assets/5e4d2cd3-881b-4f85-8d45-67c7e8c46660
+
+<p align="center"><sub>30-second promo · animated with Lynxce HappyHorse 1.1 · turn the sound on</sub></p>
 
 ## How it works
 
@@ -28,6 +28,12 @@ Tell Chief, your octopus assistant, what you want done. Chief finds the right Bo
 | --- | --- | --- |
 | One sentence, the way you'd brief a colleague. No prompt engineering, no workflow builder. | Chief looks for existing members, creates the specialists that are missing, opens a group chat and assigns each part. | Members hand work to each other in the group, every step in plain view. Chief checks the result against the goal. |
 | *"Let's turn the riverside walk into a weekend guide. 90 minutes, three stops."* | *"Rae checks the walk, Lin writes the opener and Peach draws the route map."* | *"Three shapes mark the market, shipyard and pier, so it still reads in black and white."* |
+
+**32-second intro film:** tell Chief once. Rae walks the route, Lin writes the opener, Peach draws the map, and scheduled work keeps running in the cloud with your computer off.
+
+https://github.com/user-attachments/assets/7da8ded6-3612-43c6-9c3a-3b8ac402f155
+
+<sub>With voice-over; turn the sound on.</sub>
 
 ## Highlights
 

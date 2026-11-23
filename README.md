@@ -16,11 +16,11 @@
 
 [**下载客户端**](https://octop-bot.lynxce.cn/download.html) · [产品官网](https://octop-bot.lynxce.cn/) · [功能一览](https://octop-bot.lynxce.cn/features.html) · [快速上手](https://octop-bot.lynxce.cn/guide.html) · [更新日志](CHANGELOG.md) · [English](README_EN.md)
 
-<a href="https://octop-bot.lynxce.cn/media/promo-zh.mp4"><img src="docs/assets/octop-bot/promo-poster.webp" alt="Chief 和几位 Bot 成员聚在一起。点击观看 30 秒宣传片。" width="760" /></a>
-
-<sub>▶ 点击封面看 [30 秒宣传片](https://octop-bot.lynxce.cn/media/promo-zh.mp4)，或看 Chief 带着团队做一期周末指南的 [32 秒介绍片](https://octop-bot.lynxce.cn/media/intro-zh.mp4)</sub>
-
 </div>
+
+https://github.com/user-attachments/assets/c591e4cd-08b3-424f-b82c-663afdb273c6
+
+<p align="center"><sub>30 秒宣传片 · 动画由灵策智算 HappyHorse 1.1 生成 · 打开声音观看</sub></p>
 
 ## 它是怎么工作的
 
@@ -28,6 +28,12 @@
 | --- | --- | --- |
 | 像跟同事交代工作一样说一句话，不用写提示词，也不用搭流程。 | Chief 查找已有成员，补建缺少的专家，再拉一个群聊，把任务拆给每个人。 | 成员在群里接力，每一步都看得见。最后由 Chief 对照目标逐项验收。 |
 | *「把河岸散步做成一期周末指南。90 分钟，三站就好。」* | *「阿澄核对步程，林墨写开篇，桃子来画地图。」* | *「我来画地图，用三种形状区分市场、船厂和栈桥。」* |
+
+**32 秒介绍片：** 跟 Chief 说一句，阿澄去走路线，林墨写开篇，桃子画地图；定好的任务放到云端，电脑关了也照常跑。
+
+https://github.com/user-attachments/assets/bc79dce7-db0e-4f15-81d4-e76899e68eb9
+
+<sub>有配音，建议打开声音观看。</sub>
 
 ## 亮点
 
