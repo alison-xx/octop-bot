@@ -8,7 +8,9 @@ import StoreKit
 /// the signed transaction goes to Lynxce, which verifies it with Apple and credits the wallet →
 /// only then is the transaction finished. Unfinished transactions (network failure, app killed,
 /// bought while signed in as someone else) stay in StoreKit's queue and are reported again on the
-/// next launch or sign-in.
+/// next launch or sign-in. Lynxce checks that the transaction's account token is the signed-in
+/// account's (`apple_account_token_mismatch` otherwise, which stays queued for that account); a
+/// transaction it can never credit is finished so it is not sent again on every launch.
 @Observable
 final class CreditStore {
     static let shared = CreditStore()
@@ -22,6 +24,18 @@ final class CreditStore {
     enum Phase: Equatable { case idle, loading, ready, unavailable, failed(String) }
 
     enum Outcome: Equatable { case credited, pending, cancelled, failed(String) }
+
+    /// What Lynxce made of one transaction.
+    enum Delivery: Equatable { case credited, queued, refused(String) }
+
+    /// Lynxce error codes for a transaction that can never be credited, whoever reports it:
+    /// bad or foreign signed data, family sharing, a sandbox purchase in production, or a
+    /// transaction already credited to another account.
+    nonisolated static let finalRefusals: Set<String> = [
+        "apple_jws_malformed", "apple_jws_invalid", "apple_app_mismatch",
+        "apple_family_sharing_unsupported", "apple_sandbox_rejected",
+        "apple_transaction_owned_by_other_account",
+    ]
 
     private(set) var phase: Phase = .idle
     private(set) var offers: [Offer] = []
@@ -41,7 +55,7 @@ final class CreditStore {
         updates = Task { [weak self] in
             for await result in Transaction.updates {
                 guard let self else { return }
-                if await self.deliver(result) { await self.credited() }
+                if await self.deliver(result) == .credited { await self.credited() }
             }
         }
     }
@@ -50,7 +64,7 @@ final class CreditStore {
     func flush() async {
         var any = false
         for await result in Transaction.unfinished where Self.isCreditPack(result.unsafePayloadValue.productID) {
-            if await deliver(result) { any = true }
+            if await deliver(result) == .credited { any = true }
         }
         if any { await credited() }
     }
@@ -87,9 +101,15 @@ final class CreditStore {
             let result = try await offer.product.purchase(options: [.appAccountToken(intent.accountToken)])
             switch result {
             case .success(let verification):
-                guard await deliver(verification) else { return .failed(L("credits.deliveryPending")) }
-                await credited()
-                return .credited
+                switch await deliver(verification) {
+                case .credited:
+                    await credited()
+                    return .credited
+                case .queued:
+                    return .failed(L("credits.deliveryPending"))
+                case .refused(let reason):
+                    return .failed(reason)
+                }
             case .pending:
                 return .pending
             case .userCancelled:
@@ -102,22 +122,29 @@ final class CreditStore {
         }
     }
 
-    /// Hand one transaction to Lynxce; finish it only once Lynxce has accepted it.
-    @discardableResult
-    private func deliver(_ result: VerificationResult<Transaction>) async -> Bool {
+    /// Hand one transaction to Lynxce; finish it only once Lynxce has accepted it, or has refused it
+    /// for good.
+    private func deliver(_ result: VerificationResult<Transaction>) async -> Delivery {
         let transaction = result.unsafePayloadValue
-        guard Self.isCreditPack(transaction.productID), let account = account() else { return false }
+        guard Self.isCreditPack(transaction.productID), let account = account() else { return .queued }
         // Lynxce verifies the JWS signature itself; a locally unverified result is still reported
         // so the server makes the call, and is never finished unless the server accepts it.
         do {
             try await account.submitTransaction(result.jwsRepresentation)
+        } catch let error as APIError where Self.isFinalRefusal(error) {
+            await transaction.finish()
+            return .refused(error.localizedDescription)
         } catch {
             // Offline, signed out, or bought for another account on this phone: keep it queued so
             // it is reported again later; Lynxce credits each transaction once however often it arrives.
-            return false
+            return .queued
         }
         await transaction.finish()
-        return true
+        return .credited
+    }
+
+    nonisolated static func isFinalRefusal(_ error: APIError) -> Bool {
+        error.kind == .rejected && error.code.map(finalRefusals.contains) == true
     }
 
     nonisolated static func isCreditPack(_ productId: String) -> Bool {

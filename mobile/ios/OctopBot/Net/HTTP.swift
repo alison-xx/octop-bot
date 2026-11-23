@@ -6,6 +6,8 @@ struct APIError: LocalizedError, Equatable {
     var kind: Kind
     var status: Int
     var message: String?
+    /// The server's machine-readable error code (`{error: {code}}`), when it sent one.
+    var code: String? = nil
 
     var errorDescription: String? {
         if let message, !message.isEmpty { return message }
@@ -18,12 +20,12 @@ struct APIError: LocalizedError, Equatable {
         }
     }
 
-    static func from(status: Int, message: String?) -> APIError {
+    static func from(status: Int, message: String?, code: String? = nil) -> APIError {
         switch status {
-        case 401: APIError(kind: .unauthorized, status: status, message: message)
-        case 402: APIError(kind: .credits, status: status, message: message)
-        case 400..<500: APIError(kind: .rejected, status: status, message: message)
-        default: APIError(kind: .server, status: status, message: message)
+        case 401: APIError(kind: .unauthorized, status: status, message: message, code: code)
+        case 402: APIError(kind: .credits, status: status, message: message, code: code)
+        case 400..<500: APIError(kind: .rejected, status: status, message: message, code: code)
+        default: APIError(kind: .server, status: status, message: message, code: code)
         }
     }
 
@@ -118,6 +120,11 @@ enum HTTP {
     }
 
     /// Pull a human message out of either envelope: Lynxce `{code,message}` or Octop `{error:{message}}`.
+    static func errorCode(_ data: Data) -> String? {
+        let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return (object?["error"] as? [String: Any])?["code"] as? String
+    }
+
     static func errorMessage(_ data: Data) -> String? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         if let error = object["error"] as? [String: Any] { return error["message"] as? String }
