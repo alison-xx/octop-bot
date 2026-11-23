@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Response
@@ -12,6 +14,25 @@ from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled, bot_web_
 from octop.infra.setup.self_update import get_local_version
 
 router = APIRouter()
+
+# get_local_version() can run a subprocess for several seconds (green / fpk
+# installs). This route is public, so read it once per process, off the loop.
+_local_version: str | None = None
+_local_version_lock = threading.Lock()
+
+
+def _read_local_version_once() -> str:
+    global _local_version
+    with _local_version_lock:
+        if _local_version is None:
+            _local_version = get_local_version()
+        return _local_version
+
+
+async def _cached_local_version() -> str:
+    if _local_version is not None:
+        return _local_version
+    return await asyncio.to_thread(_read_local_version_once)
 
 
 class ServerCapabilities(BaseModel):
@@ -65,7 +86,7 @@ async def server_info(response: Response, server: Any = Depends(get_server)) -> 
         "web": ["lynxce", "password"],
     }.get(edition, ["password"])  # type: ignore[assignment]
     return ServerInfo(
-        version=get_local_version(),
+        version=await _cached_local_version(),
         edition=edition,
         # A cloud server is set up by its operator; tenants never see the wizard.
         setup_required=users == 0 and edition != "cloud",

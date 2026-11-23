@@ -1,5 +1,7 @@
 """Octop Bot clients read /api/octop-bot/server-info before anyone signs in."""
 
+import asyncio
+import threading
 from pathlib import Path
 
 import pytest
@@ -38,3 +40,26 @@ async def test_plain_server_signs_in_with_a_password(
         body = (await client.get(INFO)).json()
         assert body["edition"] == "server"
         assert body["sign_in"] == ["password"]
+
+
+async def test_version_is_read_once_and_off_the_event_loop(
+    tmp_octop_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.api.routers import bot_server
+
+    calls: list[int] = []
+
+    def slow_version() -> str:
+        # A green / fpk install runs a subprocess here; it must not hold the loop.
+        calls.append(threading.get_ident())
+        return "9.9.9"
+
+    monkeypatch.setattr(bot_server, "_local_version", None)
+    monkeypatch.setattr(bot_server, "get_local_version", slow_version)
+    async with octop_client(tmp_octop_home) as (client, _srv):
+        loop_thread = threading.get_ident()
+        bodies = await asyncio.gather(*(client.get(INFO) for _ in range(5)))
+        assert {res.json()["version"] for res in bodies} == {"9.9.9"}
+        assert (await client.get(INFO)).json()["version"] == "9.9.9"
+    assert len(calls) == 1
+    assert calls[0] != loop_thread
