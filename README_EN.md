@@ -94,6 +94,10 @@ Open **Cloud workspace** at the bottom of the directory and sign in separately w
 
 The standalone Windows app stores its local workspace in `%USERPROFILE%\.octop-bot` by default. For group files, shared notes, avatar settings, and computer control, see the [user guide in Chinese](docs/octop-bot.md).
 
+## Mobile apps
+
+`mobile/` holds native iOS (SwiftUI) and Android (Jetpack Compose) clients. Home is a Bot directory: Chief first, every Bot an animated character with its own chat, plus group rooms with @mentions. Sign in with a Lynxce account to chat right away, or connect your own NAS/Docker deployment to use its Bots, tools, memory and groups. Chinese/English and dark/light can be switched in the app. Build them yourself for now; see [mobile/README.md](mobile/README.md).
+
 ## Run from source
 
 Install Git, uv, Node.js 24, and pnpm 12.15.0. Run these commands in Windows PowerShell.

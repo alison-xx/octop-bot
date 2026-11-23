@@ -21,9 +21,11 @@ from octop.api.routers.update_store import (
     get_task,
     update_task,
 )
-from octop.infra.desktop import desktop_shell_enabled
+from octop.i18n import tr
+from octop.infra.desktop import bot_web_enabled, desktop_shell_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
+from octop.infra.setup.bot_release import bot_web_status
 from octop.infra.setup.self_update import (
     UpgradeResult,
     fetch_pypi_info,
@@ -195,9 +197,17 @@ async def update_status(
     _: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Return last check result; re-probe PyPI when the server cache TTL expires."""
+    """Return last check result; re-probe PyPI when the server cache TTL expires.
+
+    The Octop Bot web/NAS build reads the signed Octop Bot manifest instead and
+    answers with the new image and upgrade steps (``updates_managed_by_image``).
+    """
     if desktop_shell_enabled():
         return _desktop_shell_status()
+    if bot_web_enabled():
+        return await asyncio.to_thread(
+            bot_web_status, stable_only=_read_stable_only(server), locale=_user_locale(_)
+        )
     stable_only = _read_stable_only(server)
     cached = get_cached_status()
     if cached is not None:
@@ -216,6 +226,10 @@ async def check_for_updates(
 ) -> dict[str, Any]:
     _reject_shell_updates()
     stable_only = _read_stable_only(server)
+    if bot_web_enabled():
+        return await asyncio.to_thread(
+            bot_web_status, stable_only=stable_only, locale=_user_locale(_), refresh=True
+        )
     pypi_info = await asyncio.to_thread(fetch_pypi_info)
     if pypi_info is None:
         return await asyncio.to_thread(
@@ -245,6 +259,11 @@ async def update_settings(
 ) -> dict[str, Any]:
     """Persist whether automatic checks should ignore pre-release versions."""
     _reject_shell_updates()
+    if bot_web_enabled():
+        server.services.settings_repo.set(_STABLE_ONLY_KEY, "true" if body.stable_only else "false")
+        return await asyncio.to_thread(
+            bot_web_status, stable_only=body.stable_only, locale=DEFAULT_LOCALE
+        )
     server.services.settings_repo.set(_STABLE_ONLY_KEY, "true" if body.stable_only else "false")
     cached = get_cached_status()
     if cached is None:
@@ -336,6 +355,11 @@ async def trigger_upgrade(
     _: Any = Depends(require_permission("update")),
 ) -> dict[str, Any]:
     _reject_shell_updates()
+    if bot_web_enabled():
+        locale = resolve_locale(
+            user_locale=getattr(_, "locale", None), explicit=resolve_request_locale(request)
+        )
+        raise OctopError(ErrorCode.FORBIDDEN, tr("update.bot_web.managed", locale))
     if get_editable_path() is not None:
         raise OctopError(
             ErrorCode.FORBIDDEN,
@@ -385,6 +409,10 @@ async def upgrade_progress(
         "error": task.error,
         "mirror_errors": task.mirror_errors,
     }
+
+
+def _user_locale(user: Any) -> str:
+    return resolve_locale(user_locale=getattr(user, "locale", None))
 
 
 def _is_desktop_process() -> bool:

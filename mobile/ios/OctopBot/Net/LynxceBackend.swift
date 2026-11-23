@@ -1,0 +1,376 @@
+import Foundation
+import UIKit
+
+/// Signed in with a personal Lynxce (灵策智算) account: chat goes straight to the Lynxce model gateway and
+/// conversations sync through Lynxce web-chat sessions, so they also appear in Octop Bot on the desktop.
+final class LynxceBackend: ChatBackend {
+    struct Grant: Codable {
+        var accountId: String
+        var displayName: String?
+        var accessToken: String
+        var refreshToken: String
+    }
+
+    static let origin = URL(string: "https://api.lynxce.cn")!
+    /// Same prefix the desktop client uses, so desktop and phone list each other's conversations.
+    static let sessionPrefix = "octop-bot-v1-"
+    private static let grantKey = "lynxce.grant"
+
+    private(set) var grant: Grant
+    private let bots: LocalBots
+    private var refreshing: Task<Grant, Error>?
+
+    var supportsGroups: Bool { false }
+    var accountName: String { grant.displayName ?? grant.accountId }
+
+    init(grant: Grant, bots: LocalBots = .shared) {
+        self.grant = grant
+        self.bots = bots
+    }
+
+    static func restore() -> LynxceBackend? {
+        Keychain.codable(Grant.self, for: grantKey).map { LynxceBackend(grant: $0) }
+    }
+
+    static func signIn(account: String, password: String) async throws -> LynxceBackend {
+        let data = try await call(.post, "/api/auth/password-login", json: ["account": account, "password": password])
+        guard
+            let body = data as? [String: Any],
+            let user = body["user"] as? [String: Any],
+            let id = user["id"] as? String,
+            let access = body["accessToken"] as? String,
+            let refresh = body["refreshToken"] as? String
+        else { throw APIError(kind: .server, status: 502, message: nil) }
+        let grant = Grant(accountId: id, displayName: user["displayName"] as? String, accessToken: access, refreshToken: refresh)
+        Keychain.setCodable(grant, for: grantKey)
+        return LynxceBackend(grant: grant)
+    }
+
+    // MARK: Transport
+
+    private static func headers(_ bearer: String?) -> [String: String] {
+        // 'web' is Lynxce's multi-session channel; signing in here never signs other devices out.
+        var headers = ["X-Lynxce-Client": "web"]
+        if let bearer { headers["Authorization"] = "Bearer \(bearer)" }
+        return headers
+    }
+
+    private static func url(_ path: String, query: [String: String] = [:]) -> URL {
+        var components = URLComponents(url: origin.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+        if !query.isEmpty { components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) } }
+        return components.url!
+    }
+
+    /// Lynxce wraps results as `{code: 0, data}`; anything else is a failure.
+    static func unwrap(_ data: Data, status: Int) throws -> Any {
+        let object = try? JSONSerialization.jsonObject(with: data)
+        guard (200..<300).contains(status) else {
+            throw APIError.from(status: status, message: HTTP.errorMessage(data))
+        }
+        guard let envelope = object as? [String: Any], let code = envelope["code"] as? Int else {
+            throw APIError(kind: .server, status: 502, message: nil)
+        }
+        guard code == 0 else {
+            let status = code == 402 ? 402 : (code == 401 ? 401 : 400)
+            throw APIError.from(status: status, message: envelope["message"] as? String)
+        }
+        return envelope["data"] ?? NSNull()
+    }
+
+    private static func call(
+        _ method: HTTPMethod, _ path: String, bearer: String? = nil,
+        query: [String: String] = [:], json: Any? = nil, form: [FormPart]? = nil
+    ) async throws -> Any {
+        let request = try HTTP.request(url(path, query: query), method: method, headers: headers(bearer), json: json, form: form)
+        let (data, response) = try await HTTP.data(for: request)
+        return try unwrap(data, status: response.statusCode)
+    }
+
+    /// Authenticated call that rotates the access token once on 401.
+    private func call(
+        _ method: HTTPMethod, _ path: String, query: [String: String] = [:], json: Any? = nil, form: [FormPart]? = nil
+    ) async throws -> Any {
+        do {
+            return try await Self.call(method, path, bearer: grant.accessToken, query: query, json: json, form: form)
+        } catch let error as APIError where error.kind == .unauthorized {
+            let fresh = try await refreshed()
+            return try await Self.call(method, path, bearer: fresh.accessToken, query: query, json: json, form: form)
+        }
+    }
+
+    private func refreshed() async throws -> Grant {
+        if let refreshing { return try await refreshing.value }
+        let current = grant
+        let task = Task { () throws -> Grant in
+            let data = try await Self.call(.post, "/api/auth/refresh", json: ["refreshToken": current.refreshToken])
+            guard let body = data as? [String: Any], let access = body["accessToken"] as? String else {
+                throw APIError(kind: .unauthorized, status: 401, message: nil)
+            }
+            var next = current
+            next.accessToken = access
+            if let refresh = body["refreshToken"] as? String { next.refreshToken = refresh }
+            return next
+        }
+        refreshing = task
+        defer { refreshing = nil }
+        do {
+            let next = try await task.value
+            grant = next
+            Keychain.setCodable(next, for: Self.grantKey)
+            return next
+        } catch {
+            throw APIError(kind: .unauthorized, status: 401, message: nil)
+        }
+    }
+
+    // MARK: Bots and conversations
+
+    func bots() async throws -> [BotProfile] { bots.all }
+
+    private var sessionBots: [String: String] {
+        get { UserDefaults.standard.dictionary(forKey: "lynxce.sessionBots") as? [String: String] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: "lynxce.sessionBots") }
+    }
+
+    func conversations(for bot: BotProfile) async throws -> [ConversationSummary] {
+        let data = try await call(.get, "/api/user/web-chat-sessions", query: ["limit": "50"])
+        let items = (data as? [String: Any])?["items"] as? [[String: Any]] ?? []
+        let owners = sessionBots
+        return items.compactMap { item in
+            guard let id = item["id"] as? String, id.hasPrefix(Self.sessionPrefix) else { return nil }
+            let owner = owners[id] ?? LocalBots.chiefId
+            guard owner == bot.id else { return nil }
+            return ConversationSummary(
+                id: id,
+                title: (item["title"] as? String).map { $0.components(separatedBy: "\n")[0] } ?? "",
+                updatedAt: ISO8601.parse(item["updatedAt"] as? String),
+                botId: owner
+            )
+        }
+    }
+
+    func messages(in conversation: ConversationSummary, bot: BotProfile) async throws -> [ChatMessage] {
+        let id = conversation.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? conversation.id
+        let data = try await call(.get, "/api/user/web-chat-sessions/\(id)")
+        let items = (data as? [String: Any])?["items"] as? [[String: Any]] ?? []
+        return items.compactMap { item in
+            guard let role = (item["role"] as? String).flatMap(MessageRole.init(rawValue:)), role != .system else { return nil }
+            var message = ChatMessage(role: role, text: Self.stripRole(item["content"] as? String ?? ""))
+            message.thinking = item["thinking"] as? String ?? ""
+            message.createdAt = ISO8601.parse(item["createdAt"] as? String) ?? .now
+            if item["status"] as? String == "failed" { message.status = .failed(L("chat.failed")) }
+            return message
+        }
+    }
+
+    /// Desktop Bot tags the user's first message with a role block; hide it on the phone too.
+    static func stripRole(_ text: String) -> String {
+        guard let range = text.range(of: "\n\n[Octop Bot role/v1] ", options: .backwards) else { return text }
+        return String(text[..<range.lowerBound])
+    }
+
+    func deleteConversation(_ conversation: ConversationSummary, bot: BotProfile) async throws {
+        let id = conversation.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? conversation.id
+        _ = try await call(.delete, "/api/user/web-chat-sessions/\(id)")
+        sessionBots[conversation.id] = nil
+    }
+
+    func models() async throws -> [ModelOption] {
+        let data = try await call(.get, "/api/models/available")
+        let rows = (data as? [[String: Any]])
+            ?? ((data as? [String: Any])?["items"] as? [[String: Any]])
+            ?? ((data as? [String: Any])?["models"] as? [[String: Any]])
+            ?? []
+        return rows.compactMap { row in
+            guard let id = row["modelId"] as? String else { return nil }
+            return ModelOption(id: id, name: row["modelName"] as? String ?? id, supportsImage: row["supportsImage"] as? Bool ?? false)
+        }
+    }
+
+    // MARK: Chat
+
+    private var running: [String: Task<Void, Never>] = [:]
+
+    func send(
+        _ text: String, images: [Data], to bot: BotProfile, conversation: String?,
+        history: [ChatMessage], model: String?
+    ) -> AsyncThrowingStream<StreamEvent, Error> {
+        let sessionId = conversation ?? Self.sessionPrefix + UUID().uuidString.lowercased()
+        let startedAt = Date()
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                if conversation == nil {
+                    sessionBots[sessionId] = bot.id
+                    continuation.yield(.conversation(sessionId))
+                }
+                var answer = ""
+                var thinking = ""
+                do {
+                    let body = Self.chatBody(text: text, images: images, bot: bot, history: history, sessionId: sessionId, model: model)
+                    try await streamCompletion(body) { event in
+                        switch event {
+                        case .text(let delta): answer += delta
+                        case .thinking(let delta): thinking += delta
+                        default: break
+                        }
+                        continuation.yield(event)
+                    }
+                    continuation.yield(.done)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+                await sync(sessionId: sessionId, user: text, startedAt: startedAt, answer: answer, thinking: thinking, model: model)
+                running[sessionId] = nil
+            }
+            running[sessionId] = task
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    static func chatBody(
+        text: String, images: [Data], bot: BotProfile, history: [ChatMessage], sessionId: String, model: String?
+    ) -> [String: Any] {
+        var messages: [[String: Any]] = []
+        if let prompt = bot.systemPrompt, !prompt.isEmpty {
+            messages.append(["role": "system", "content": prompt])
+        }
+        for message in history.suffix(20) where message.status == .done && !message.text.isEmpty {
+            messages.append(["role": message.role.rawValue, "content": message.text])
+        }
+        if images.isEmpty {
+            messages.append(["role": "user", "content": text])
+        } else {
+            var parts: [[String: Any]] = [["type": "text", "text": text]]
+            for image in images {
+                parts.append(["type": "image_url", "image_url": ["url": "data:image/jpeg;base64," + image.base64EncodedString()]])
+            }
+            messages.append(["role": "user", "content": parts])
+        }
+        var body: [String: Any] = [
+            "messages": messages,
+            "stream": true,
+            "stream_options": ["include_usage": true],
+            "sessionId": sessionId,
+            "metadata": ["client": "octop-bot-ios", "turnId": UUID().uuidString.lowercased()],
+        ]
+        if let model { body["model"] = model }
+        return body
+    }
+
+    private func streamCompletion(_ body: [String: Any], onEvent: (StreamEvent) -> Void) async throws {
+        func open(_ token: String) async throws -> (URLSession.AsyncBytes, HTTPURLResponse) {
+            var request = try HTTP.request(Self.url("/api/proxy/v1/chat/completions"), method: .post, headers: Self.headers(token), json: body)
+            request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+            request.timeoutInterval = 300
+            let (bytes, response): (URLSession.AsyncBytes, URLResponse)
+            do {
+                (bytes, response) = try await HTTP.session.bytes(for: request)
+            } catch {
+                if Task.isCancelled { throw CancellationError() }
+                throw APIError.network
+            }
+            guard let http = response as? HTTPURLResponse else { throw APIError.network }
+            return (bytes, http)
+        }
+        var (bytes, response) = try await open(grant.accessToken)
+        if response.statusCode == 401 {
+            (bytes, response) = try await open(try await refreshed().accessToken)
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            var data = Data()
+            for try await byte in bytes { data.append(byte); if data.count > 16_384 { break } }
+            throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data))
+        }
+        var completed = false
+        for try await event in SSE.events(bytes) {
+            if event.data == "[DONE]" { completed = true; break }
+            for parsed in try Self.parseChunk(event.data) { onEvent(parsed) }
+        }
+        if !completed && !Task.isCancelled { throw APIError.network }
+    }
+
+    /// One OpenAI-style chunk → text / thinking deltas. Error chunks throw.
+    static func parseChunk(_ data: String) throws -> [StreamEvent] {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(data.utf8)) as? [String: Any] else { return [] }
+        if let error = object["error"] {
+            let message = (error as? [String: Any])?["message"] as? String ?? error as? String
+            throw APIError(kind: .server, status: 500, message: message)
+        }
+        guard let choice = (object["choices"] as? [[String: Any]])?.first,
+              let delta = choice["delta"] as? [String: Any] else { return [] }
+        var events: [StreamEvent] = []
+        if let reasoning = (delta["reasoning_content"] ?? delta["reasoning"]) as? String, !reasoning.isEmpty {
+            events.append(.thinking(reasoning))
+        }
+        if let content = delta["content"] as? String, !content.isEmpty {
+            events.append(.text(content))
+        }
+        return events
+    }
+
+    /// Append the finished turn to the synced Lynxce session (idempotent on the server).
+    private func sync(sessionId: String, user: String, startedAt: Date, answer: String, thinking: String, model: String?) async {
+        var items: [[String: Any]] = [["role": "user", "content": String(user.prefix(20_000)), "createdAt": ISO8601.string(startedAt)]]
+        let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            var reply: [String: Any] = ["role": "assistant", "content": String(trimmed.prefix(40_000)), "createdAt": ISO8601.string(.now)]
+            if !thinking.isEmpty { reply["thinking"] = String(thinking.prefix(20_000)) }
+            if let model { reply["model"] = model }
+            items.append(reply)
+        }
+        let title = String(user.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
+        let id = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
+        _ = try? await call(.post, "/api/user/web-chat-sessions/\(id)/items", json: [
+            "title": title.isEmpty ? "Octop Bot" : title,
+            "model": model ?? "auto",
+            "items": items,
+        ])
+    }
+
+    func stop(conversation: String, bot: BotProfile) async {
+        running[conversation]?.cancel()
+    }
+
+    // MARK: Voice, push, account
+
+    func transcribe(_ audio: Data) async throws -> String? {
+        let lang = Preferences.shared.language.isChinese ? "zh" : "en"
+        let data = try await call(.post, "/api/asr/recognize", form: [
+            FormPart(name: "langType", value: lang),
+            FormPart(name: "file", file: audio, filename: "voice.m4a", mimeType: "audio/mp4"),
+        ])
+        let body = data as? [String: Any]
+        return (body?["text"] as? String) ?? (body?["result"] as? [String])?.first
+    }
+
+    func speech(for text: String) async throws -> Data? {
+        let data = try await call(.post, "/api/tts/synthesize", json: ["text": String(text.prefix(600)), "format": "mp3"])
+        return ((data as? [String: Any])?["audioBase64"] as? String).flatMap { Data(base64Encoded: $0) }
+    }
+
+    func registerPush(token: String) async {
+        _ = try? await call(.post, "/api/user/push-devices", json: [
+            "platform": "ios",
+            "token": token,
+            "bundleId": Bundle.main.bundleIdentifier ?? "io.github.alisonxx.octopbot",
+            "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0",
+            "deviceName": UIDevice.current.model,
+        ])
+    }
+
+    func balance() async -> String? {
+        guard let data = try? await call(.get, "/api/user/quota") as? [String: Any] else { return nil }
+        for key in ["balance", "credits", "remaining", "points"] {
+            if let value = data[key] as? NSNumber { return value.stringValue }
+            if let value = data[key] as? String { return value }
+        }
+        return nil
+    }
+
+    func signOut() async {
+        for task in running.values { task.cancel() }
+        _ = try? await Self.call(.post, "/api/auth/logout", bearer: grant.accessToken, json: [:])
+        Keychain.set(nil, for: Self.grantKey)
+    }
+}
