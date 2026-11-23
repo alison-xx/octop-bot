@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.GroupSummary
+import io.github.alisonxx.octopbot.model.HitlTexts
 import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.model.ModelOption
 import io.github.alisonxx.octopbot.net.ApiException
@@ -16,9 +17,14 @@ import androidx.appcompat.app.AppCompatDelegate
 import io.github.alisonxx.octopbot.store.Appearance
 import io.github.alisonxx.octopbot.store.BotPreview
 import io.github.alisonxx.octopbot.store.DirectoryCache
+import io.github.alisonxx.octopbot.store.Previews
+import io.github.alisonxx.octopbot.store.SpeechRate
+import io.github.alisonxx.octopbot.store.TextSize
 import io.github.alisonxx.octopbot.store.UserSettings
 import io.github.alisonxx.octopbot.voice.Speaker
 import io.github.alisonxx.octopbot.voice.VoiceInput
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,11 +35,13 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 sealed interface SessionState {
     data object Loading : SessionState
-    data class SignedOut(val notice: String? = null) : SessionState
+    /** [reopenServer]: "Switch account or server" from a server; the server form opens with its address. */
+    data class SignedOut(val notice: String? = null, val reopenServer: Boolean = false) : SessionState
     data class Ready(val backend: ChatBackend) : SessionState
 }
 
@@ -65,13 +73,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     private val _directoryError = MutableStateFlow<String?>(null)
     /** Why the last directory refresh failed while cached Bots are shown; null when fresh. */
     val directoryError: StateFlow<String?> = _directoryError
+    private val _launchReady = MutableStateFlow(false)
+    /** The launch screen can give way: signed out, or the first directory refresh after sign-in finished. */
+    val launchReady: StateFlow<Boolean> = _launchReady
     private val _lastBotId = MutableStateFlow<String?>(null)
     val lastBotId: StateFlow<String?> = _lastBotId
 
     val previews: StateFlow<Map<String, BotPreview>> =
         store.previews.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     val settings: StateFlow<UserSettings> =
-        store.settings.stateIn(viewModelScope, SharingStarted.Eagerly, UserSettings(readAloud = false, notifications = true, model = null))
+        store.settings.stateIn(viewModelScope, SharingStarted.Eagerly, UserSettings())
+
+    private val _speakingMessage = MutableStateFlow<String?>(null)
+    /** The message being read aloud, so its read-aloud button turns into stop. */
+    val speakingMessage: StateFlow<String?> = _speakingMessage
+    private var readJob: Job? = null
+
+    /** The Bot whose chat is on screen (resumed), if any; replies finishing elsewhere are marked unread. */
+    private var chatOnScreen: String? = null
 
     private val _notices = Channel<String>(Channel.BUFFERED)
     /** One-off messages for a snackbar. */
@@ -86,8 +105,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         viewModelScope.launch {
             val backend = store.lynxceGrant()?.let { LynxceBackend(it, store, app.localBots) }
                 ?: store.serverSession()?.let { ServerBackend(it, store) }
-            if (backend == null) _session.value = SessionState.SignedOut() else enter(backend)
+            if (backend == null) {
+                _session.value = SessionState.SignedOut()
+                _launchReady.value = true
+            } else {
+                enter(backend)
+            }
         }
+        viewModelScope.launch { settings.collect { speaker.rate = it.speechRate.rate } }
     }
 
     // Session
@@ -126,16 +151,27 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         }
     }
 
-    fun signOut(notice: String? = null) {
+    fun signOut(notice: String? = null, reopenServer: Boolean = false) {
         val backend = (session.value as? SessionState.Ready)?.backend ?: return
-        speaker.stop()
+        stopReading()
         voiceInput.cancel()
-        _session.value = SessionState.SignedOut(notice)
         chats.clear()
+        val reopen = reopenServer && backend is ServerBackend
+        if (!reopen) _session.value = SessionState.SignedOut(notice)
         viewModelScope.launch {
+            if (reopen) {
+                // "Switch account or server": the server form opens with this server's full address.
+                store.setLastServer(backend.baseUrl)
+                _session.value = SessionState.SignedOut(notice, reopenServer = true)
+            }
             backend.signOut()
             store.clearAccount()
         }
+    }
+
+    /** Sign out and return to the first screen; from a server, straight to the server form. */
+    fun switchAccount() {
+        signOut(reopenServer = (session.value as? SessionState.Ready)?.backend is ServerBackend)
     }
 
     // Directory
@@ -159,6 +195,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
                 }
             }
             _refreshing.value = false
+            _launchReady.value = true
         }
     }
 
@@ -174,6 +211,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     fun noteBotOpened(botId: String) {
         _lastBotId.value = botId
         viewModelScope.launch { store.setLastBot(botId) }
+    }
+
+    /** The chat screen of [botId] is resumed (or not); opening it clears its unread mark. */
+    fun chatOnScreen(botId: String, visible: Boolean) {
+        if (visible) {
+            chatOnScreen = botId
+            viewModelScope.launch { store.updatePreviews { Previews.markRead(it, botId) } }
+        } else if (chatOnScreen == botId) {
+            chatOnScreen = null
+        }
     }
 
     /**
@@ -241,6 +288,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     }
 
     fun setReadAloud(value: Boolean) = viewModelScope.launch { store.setReadAloud(value) }
+    fun setTextSize(value: TextSize) = viewModelScope.launch { store.setTextSize(value) }
+    fun setHaptics(value: Boolean) = viewModelScope.launch { store.setHaptics(value) }
+    fun setExpandReasoning(value: Boolean) = viewModelScope.launch { store.setExpandReasoning(value) }
+    fun setSpeechRate(value: SpeechRate) = viewModelScope.launch { store.setSpeechRate(value) }
+
+    /** Settings → Storage: previews, unread marks, and temporary voice and image files. Sign-in stays. */
+    fun clearLocalCache(done: String) {
+        viewModelScope.launch {
+            stopReading()
+            store.clearPreviews()
+            withContext(Dispatchers.IO) { app.cacheDir.listFiles()?.forEach { it.deleteRecursively() } }
+            notice(done)
+        }
+    }
     fun setNotifications(value: Boolean) = viewModelScope.launch { store.setNotifications(value) }
     fun setModel(value: String?) = viewModelScope.launch { store.setModel(value) }
 
@@ -252,26 +313,52 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         _replying.update { it + botId }
     }
 
-    override fun replyEnded(bot: BotProfile, text: String?) {
+    override fun replyEnded(bot: BotProfile, messageId: String, text: String?) {
         _replying.update { it - bot.id }
         if (text == null) return
-        val preview = text.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty().take(200)
+        val onScreen = chatOnScreen == bot.id
         viewModelScope.launch {
-            store.setPreview(bot.id, BotPreview(preview, System.currentTimeMillis()))
+            store.updatePreviews { Previews.replyFinished(it, bot.id, text, System.currentTimeMillis(), onScreen) }
             val settings = settings.first()
             if (settings.notifications) app.notifier.replyFinished(bot.id, bot.name, text)
             if (backend.definesBotsLocally) refreshBalance()
             // Voice mode reads its own replies.
-            if (settings.readAloud && voiceBotId != bot.id && app.notifier.isInForeground) speaker.speak(text, backend)
+            if (settings.readAloud && voiceBotId != bot.id && app.notifier.isInForeground) readAloud(messageId, text)
         }
     }
 
-    fun readAloud(text: String) {
-        viewModelScope.launch { speaker.speak(text, backend) }
+    /** Read one message aloud; any other reading stops first. */
+    fun readAloud(messageId: String, text: String) {
+        readJob?.cancel()
+        _speakingMessage.value = messageId
+        readJob = viewModelScope.launch {
+            try {
+                speaker.speak(text, backend)
+            } finally {
+                if (_speakingMessage.value == messageId) _speakingMessage.value = null
+            }
+        }
+    }
+
+    fun stopReading() {
+        readJob?.cancel()
+        readJob = null
+        speaker.stop()
+        _speakingMessage.value = null
     }
 
     /** The Bot whose voice mode is open, if any. */
     var voiceBotId: String? = null
+
+    override val hitlTexts: HitlTexts
+        get() = resources.let { res ->
+            HitlTexts(
+                youDecide = res.getString(R.string.hitl_reply_you_decide),
+                closed = res.getString(R.string.hitl_reply_closed),
+                approved = { res.getString(R.string.hitl_note_approved, it) },
+                declined = { res.getString(R.string.hitl_note_declined, it) },
+            )
+        }
 
     override fun failed(error: Throwable) {
         if (error is ApiException && error.kind == ApiException.Kind.Unauthorized) {

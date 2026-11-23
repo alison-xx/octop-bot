@@ -3,12 +3,18 @@ package io.github.alisonxx.octopbot.net
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
+import io.github.alisonxx.octopbot.model.HitlDecision
+import io.github.alisonxx.octopbot.model.HitlRequest
 import io.github.alisonxx.octopbot.model.ImageAttachment
 import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.model.ModelOption
 import io.github.alisonxx.octopbot.model.StreamEvent
 import io.github.alisonxx.octopbot.model.VoiceSupport
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+
+/** A conversation's messages and its open question or approval, if any. */
+data class Transcript(val messages: List<ChatMessage>, val pending: HitlRequest?)
 
 /** Where this phone talks to: the Lynxce cloud with a personal account, or a self-hosted Octop server. */
 interface ChatBackend {
@@ -22,6 +28,10 @@ interface ChatBackend {
     suspend fun bots(): List<BotProfile>
     suspend fun conversations(bot: BotProfile): List<ConversationSummary>
     suspend fun messages(conversation: ConversationSummary, bot: BotProfile): List<ChatMessage>
+
+    /** Messages plus a question or approval still open in the conversation (server mode only). */
+    suspend fun transcript(conversation: ConversationSummary, bot: BotProfile): Transcript =
+        Transcript(messages(conversation, bot), pending = null)
     suspend fun models(): List<ModelOption>
 
     /** Stream one reply. The first event is [StreamEvent.Conversation] when a new conversation was created. */
@@ -35,6 +45,10 @@ interface ChatBackend {
     ): Flow<StreamEvent>
 
     suspend fun stop(conversation: String, bot: BotProfile)
+
+    /** Server mode: answer a paused turn (one decision per action) and stream the continuation as a new reply. */
+    fun resumeHitl(bot: BotProfile, conversation: String, pendingId: String?, decisions: List<HitlDecision>): Flow<StreamEvent> =
+        emptyFlow()
     suspend fun deleteConversation(conversation: ConversationSummary, bot: BotProfile)
     suspend fun setLook(bot: BotProfile, look: Look)
 

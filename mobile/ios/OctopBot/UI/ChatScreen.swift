@@ -14,19 +14,33 @@ struct ChatScreen: View {
         VStack(spacing: 0) {
             topBar
             ConversationView(chat: chat)
+            if let pause = chat.pause, !chat.isStreaming {
+                HitlCard(chat: chat, pause: pause)
+                    .id(pause.id)
+            }
             Composer(chat: chat)
         }
+        .animation(.snappy, value: chat.pause)
+        .animation(.snappy, value: chat.isStreaming)
         .background(Palette.background.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .tint(chat.bot.accent)
         .sheet(isPresented: $showHistory) { HistorySheet(chat: chat) }
         .sheet(isPresented: $editing) { BotEditor(bot: chat.bot) }
         .fullScreenCover(isPresented: $showVoice) { VoiceModeView(chat: chat) }
-        .onAppear { model.lastBotId = chat.bot.id }
+        .onAppear {
+            model.lastBotId = chat.bot.id
+            model.showing(chat.bot)
+        }
+        .onDisappear { model.hiding(chat.bot) }
+        // A phone-local Bot deleted from its editor closes its chat too.
+        .onChange(of: LocalBots.shared.custom.map(\.id)) { _, ids in
+            if chat.bot.isLocal && !ids.contains(chat.bot.id) { dismiss() }
+        }
         .task { await chat.reloadConversations() }
         // A light tap when a reply starts, a success buzz when it lands.
-        .sensoryFeedback(trigger: chat.isStreaming) { _, streaming in
-            streaming ? .impact(weight: .light) : .success
+        .onChange(of: chat.isStreaming) { _, streaming in
+            streaming ? Haptics.tap() : Haptics.success()
         }
     }
 
@@ -39,16 +53,26 @@ struct ChatScreen: View {
             Spacer(minLength: 0)
             Button { if model.canEdit(chat.bot) { editing = true } } label: {
                 HStack(spacing: 8) {
-                    CharacterView(look: chat.bot.look, size: 28, motion: chat.motion, seed: chat.bot.id)
+                    CharacterView(look: chat.bot.look, size: 30, motion: chat.motion, seed: chat.bot.id)
                     VStack(alignment: .leading, spacing: 0) {
                         Text(chat.bot.name).font(.headline).lineLimit(1)
-                        if chat.isStreaming {
-                            Text(chat.motion == .thinking ? "chat.thinking" : "chat.typing")
-                                .font(.caption2).foregroundStyle(chat.bot.accent)
+                        Group {
+                            if chat.isStreaming {
+                                Text(chat.motion == .thinking ? "chat.thinking" : "chat.typing")
+                                    .foregroundStyle(chat.bot.accent)
+                            } else if let title = chat.title, !title.isEmpty {
+                                Text(title).foregroundStyle(Palette.secondary)
+                            }
                         }
+                        .font(.caption2)
+                        .lineLimit(1)
+                        .transition(.opacity)
                     }
+                    .frame(maxWidth: 180, alignment: .leading)
                 }
+                .animation(.snappy, value: chat.isStreaming)
             }
+            .buttonStyle(.plain)
             .accessibilityIdentifier("botTitle")
             Spacer(minLength: 0)
             Button { showHistory = true } label: {
@@ -59,10 +83,14 @@ struct ChatScreen: View {
                 Image(systemName: "waveform").font(.title3.weight(.medium)).frame(width: 40, height: 44)
             }
             .accessibilityLabel(Text("voice.title"))
-            Button { chat.newChat() } label: {
+            Button {
+                Haptics.tap()
+                withAnimation(.snappy) { chat.newChat() }
+            } label: {
                 Image(systemName: "square.and.pencil").font(.title3.weight(.medium)).frame(width: 40, height: 44)
             }
             .accessibilityLabel(Text("chat.new"))
+            .disabled(chat.messages.isEmpty && !chat.isStreaming)
         }
         .foregroundStyle(Palette.text)
         .padding(.horizontal, 6)
@@ -75,6 +103,7 @@ struct ChatScreen: View {
 struct ConversationView: View {
     let chat: ChatSession
     @State private var atBottom = true
+    @State private var viewing: ImageGallery?
 
     var body: some View {
         Group {
@@ -88,9 +117,19 @@ struct ConversationView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 18) {
-                            ForEach(chat.messages) { message in
-                                MessageRow(chat: chat, message: message, isLast: message.id == chat.messages.last?.id)
-                                    .id(message.id)
+                            ForEach(Array(chat.messages.enumerated()), id: \.element.id) { index, message in
+                                let previous = index > 0 ? chat.messages[index - 1].createdAt : nil
+                                if TimeLabel.needsSeparator(message.createdAt, after: previous) {
+                                    TimeSeparator(date: message.createdAt)
+                                }
+                                MessageRow(
+                                    chat: chat, message: message, isLast: message.id == chat.messages.last?.id,
+                                    onImage: { images, index in viewing = ImageGallery(images: images, index: index) }
+                                )
+                                .id(message.id)
+                            }
+                            ForEach(chat.queued) { queued in
+                                QueuedRow(message: queued) { withAnimation(.snappy) { chat.unqueue(queued) } }
                             }
                             Color.clear.frame(height: 8).id("bottom")
                                 .onAppear { atBottom = true }
@@ -105,7 +144,7 @@ struct ConversationView: View {
                         // Follow the stream only while the reader is at the end.
                         if atBottom { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
-                    .onChange(of: chat.messages.count) {
+                    .onChange(of: chat.messages.count + chat.queued.count) {
                         withAnimation(.snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
                     .overlay(alignment: .bottom) {
@@ -130,17 +169,92 @@ struct ConversationView: View {
                 }
             }
         }
+        .chatTextSize()
         .frame(maxHeight: .infinity)
         .overlay(alignment: .top) {
             if let error = chat.error {
-                Text(error)
-                    .font(.footnote)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(.red.opacity(0.15), in: Capsule())
-                    .padding(.top, 8)
+                ErrorBanner(text: error) { withAnimation { chat.error = nil } }
             }
         }
+        .animation(.snappy, value: chat.error)
+        .task(id: chat.error) {
+            guard chat.error != nil else { return }
+            try? await Task.sleep(for: .seconds(4))
+            withAnimation { chat.error = nil }
+        }
+        .fullScreenCover(item: $viewing) { gallery in ImageViewer(gallery: gallery) }
+    }
+}
+
+/// A message written while the Bot was replying; it goes out when the reply ends.
+private struct QueuedRow: View {
+    var message: ChatMessage
+    var remove: () -> Void
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 48)
+            VStack(alignment: .trailing, spacing: 4) {
+                if !message.text.isEmpty {
+                    Text(message.text)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 11)
+                        .background(Palette.surface.opacity(0.6), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Palette.hairline, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                        .foregroundStyle(Palette.secondary)
+                } else if !message.images.isEmpty {
+                    Label("chat.queued.photos \(message.images.count)", systemImage: "photo")
+                        .font(.footnote).foregroundStyle(Palette.secondary)
+                }
+                Button(action: remove) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock")
+                        Text("chat.queued")
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(Palette.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("chat.queued.cancel"))
+            }
+        }
+        .transition(.opacity)
+    }
+}
+
+/// A short error at the top of a timeline; tap to dismiss.
+struct ErrorBanner: View {
+    var text: String
+    var dismiss: () -> Void
+
+    var body: some View {
+        Button(action: dismiss) {
+            Label(text, systemImage: "exclamationmark.circle.fill")
+                .font(.footnote)
+                .lineLimit(2)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.regularMaterial, in: Capsule())
+                .overlay(Capsule().stroke(.red.opacity(0.35), lineWidth: 0.5))
+                .foregroundStyle(Palette.text)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 8)
+        .padding(.horizontal, 16)
+        .transition(.move(edge: .top).combined(with: .opacity))
+    }
+}
+
+struct TimeSeparator: View {
+    var date: Date
+
+    var body: some View {
+        Text(TimeLabel.text(date))
+            .font(.caption)
+            .foregroundStyle(Palette.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
     }
 }
 
@@ -182,22 +296,27 @@ private struct EmptyChat: View {
 
 struct MessageRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(Preferences.self) private var preferences
     let chat: ChatSession
     var message: ChatMessage
     var isLast: Bool
-    @State private var showThinking = false
+    var onImage: ([Data], Int) -> Void = { _, _ in }
+    @State private var showThinking: Bool?
 
     var body: some View {
         switch message.role {
         case .user: userBubble
-        default: assistant
+        case .system:
+            Text(message.text)
+                .font(.caption)
+                .foregroundStyle(Palette.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+        case .assistant: assistant
         }
     }
 
-    private func copy(_ text: String) {
-        UIPasteboard.general.string = text
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-    }
+    private var thinkingOpen: Bool { showThinking ?? preferences.expandThinking }
 
     private var userBubble: some View {
         HStack {
@@ -205,10 +324,13 @@ struct MessageRow: View {
             VStack(alignment: .trailing, spacing: 6) {
                 if !message.images.isEmpty {
                     HStack(spacing: 6) {
-                        ForEach(Array(message.images.enumerated()), id: \.offset) { _, data in
+                        ForEach(Array(message.images.enumerated()), id: \.offset) { index, data in
                             if let image = UIImage(data: data) {
-                                Image(uiImage: image).resizable().scaledToFill()
-                                    .frame(width: 96, height: 96).clipShape(RoundedRectangle(cornerRadius: 14))
+                                Button { onImage(message.images, index) } label: {
+                                    Image(uiImage: image).resizable().scaledToFill()
+                                        .frame(width: 96, height: 96).clipShape(RoundedRectangle(cornerRadius: 14))
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
@@ -219,11 +341,15 @@ struct MessageRow: View {
                         .padding(.vertical, 11)
                         .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                         .foregroundStyle(Palette.text)
-                        .textSelection(.enabled)
+                        .contextMenu {
+                            Button("common.copy", systemImage: "doc.on.doc") { Clipboard.copy(message.text) }
+                            if !chat.isStreaming {
+                                Button("chat.edit", systemImage: "pencil") { chat.edit(message) }
+                            }
+                        }
                 }
             }
         }
-        .contextMenu { Button("common.copy", systemImage: "doc.on.doc") { copy(message.text) } }
     }
 
     private var assistant: some View {
@@ -232,20 +358,23 @@ struct MessageRow: View {
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 8) {
                 if !message.thinking.isEmpty {
-                    Button { withAnimation(.snappy) { showThinking.toggle() } } label: {
+                    Button { withAnimation(.snappy) { showThinking = !thinkingOpen } } label: {
                         HStack(spacing: 4) {
+                            Image(systemName: "sparkles").font(.caption)
                             Text(message.status == .streaming && message.text.isEmpty ? "chat.thinking" : "chat.thought")
-                            Image(systemName: showThinking ? "chevron.up" : "chevron.down").font(.caption2.weight(.bold))
+                            Image(systemName: thinkingOpen ? "chevron.up" : "chevron.down").font(.caption2.weight(.bold))
                         }
                         .font(.subheadline)
                         .foregroundStyle(Palette.secondary)
                     }
-                    if showThinking {
+                    .buttonStyle(.plain)
+                    if thinkingOpen {
                         Text(message.thinking)
                             .font(.footnote)
                             .foregroundStyle(Palette.secondary)
                             .padding(.leading, 10)
                             .overlay(alignment: .leading) { Capsule().fill(Palette.hairline).frame(width: 2) }
+                            .textSelection(.enabled)
                     }
                 }
                 if !message.tools.isEmpty {
@@ -261,17 +390,79 @@ struct MessageRow: View {
                         Label(reason, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.red)
                         if isLast { Button("chat.retry") { chat.retry() }.font(.footnote.weight(.semibold)) }
                     }
+                } else if message.status == .done && !message.text.isEmpty {
+                    ReplyActions(chat: chat, message: message, isLast: isLast)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .contextMenu {
-            Button("common.copy", systemImage: "doc.on.doc") { copy(message.text) }
-            Button("chat.readAloud", systemImage: "speaker.wave.2") { Speaker.shared.speak(message.text, backend: model.backend) }
+            Button("common.copy", systemImage: "doc.on.doc") { Clipboard.copy(message.text) }
+            Button("chat.readAloud", systemImage: "speaker.wave.2") {
+                Speaker.shared.speak(message.text, backend: model.backend, id: message.id)
+            }
+            ShareLink(item: message.text) { Label("common.share", systemImage: "square.and.arrow.up") }
             if isLast && message.status != .streaming {
                 Button("chat.retry", systemImage: "arrow.clockwise") { chat.retry() }
             }
         }
+    }
+}
+
+/// Copy / read aloud / share / retry under a finished reply.
+private struct ReplyActions: View {
+    @Environment(AppModel.self) private var model
+    let chat: ChatSession
+    var message: ChatMessage
+    var isLast: Bool
+    @State private var copied = false
+    private var speaker: Speaker { Speaker.shared }
+
+    var body: some View {
+        let speaking = speaker.speakingId == message.id
+        HStack(spacing: 2) {
+            action(copied ? "checkmark" : "doc.on.doc", label: "common.copy") {
+                Clipboard.copy(message.text)
+                copied = true
+                Task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    copied = false
+                }
+            }
+            action(speaking ? "stop.circle" : "speaker.wave.2", label: speaking ? "chat.stopReading" : "chat.readAloud") {
+                if speaking {
+                    speaker.stop()
+                } else {
+                    speaker.speak(message.text, backend: model.backend, id: message.id)
+                }
+            }
+            ShareLink(item: message.text) {
+                Image(systemName: "square.and.arrow.up").frame(width: 34, height: 30)
+            }
+            .accessibilityLabel(Text("common.share"))
+            if isLast && !chat.isStreaming {
+                action("arrow.clockwise", label: "chat.retry") { chat.retry() }
+            }
+        }
+        .font(.footnote.weight(.medium))
+        .foregroundStyle(Palette.secondary)
+        .padding(.leading, -8)
+        .contentTransition(.symbolEffect(.replace))
+    }
+
+    private func action(_ symbol: String, label: LocalizedStringKey, perform: @escaping () -> Void) -> some View {
+        Button(action: perform) {
+            Image(systemName: symbol).frame(width: 34, height: 30)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
+    }
+}
+
+enum Clipboard {
+    static func copy(_ text: String) {
+        UIPasteboard.general.string = text
+        Haptics.success()
     }
 }
 
@@ -348,8 +539,7 @@ struct TypingDots: View {
 /// Floating pill composer: photos, text, mic / send / stop.
 struct Composer: View {
     @Environment(AppModel.self) private var model
-    let chat: ChatSession
-    @State private var text = ""
+    @Bindable var chat: ChatSession
     @State private var photos: [PhotosPickerItem] = []
     @State private var images: [Data] = []
     @State private var recorder = VoiceRecorder()
@@ -383,7 +573,7 @@ struct Composer: View {
                 }
                 .foregroundStyle(Palette.text)
                 .accessibilityLabel(Text("chat.attach"))
-                TextField(composerPrompt, text: $text, axis: .vertical)
+                TextField(composerPrompt, text: $chat.draft, axis: .vertical)
                     .lineLimit(1...6)
                     .focused($focused)
                     .padding(.vertical, 10)
@@ -397,6 +587,13 @@ struct Composer: View {
             .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(Palette.hairline, lineWidth: 0.5))
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
+        }
+        .chatTextSize()
+        .onChange(of: chat.focusRequest) { focused = true }
+        .task(id: recorder.failure) {
+            guard recorder.failure != nil else { return }
+            try? await Task.sleep(for: .seconds(4))
+            recorder.clearFailure()
         }
         .onChange(of: photos) {
             let picked = photos
@@ -413,19 +610,22 @@ struct Composer: View {
 
     private var composerPrompt: String {
         if recorder.isRecording { return L("chat.listening") }
+        if let pause = chat.pause { return L(pause.isQuestion ? "hitl.ask.composer" : "hitl.composer") }
+        if chat.isStreaming { return L("chat.placeholder.queue") }
         return recorder.failure ?? L("chat.placeholder")
     }
 
     @ViewBuilder
     private var trailingButton: some View {
-        if chat.isStreaming {
+        let empty = chat.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty
+        if chat.isStreaming && empty {
             Button { chat.stop() } label: {
                 Image(systemName: "stop.fill").font(.callout).frame(width: 36, height: 36)
                     .background(Palette.text, in: Circle()).foregroundStyle(Palette.background)
             }
             .accessibilityLabel(Text("chat.stop"))
             .padding(.bottom, 2)
-        } else if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty {
+        } else if empty {
             Button(action: toggleDictation) {
                 Image(systemName: recorder.isRecording ? "stop.circle.fill" : "mic")
                     .font(.title3)
@@ -444,8 +644,9 @@ struct Composer: View {
     }
 
     private func send() {
-        chat.send(text, images: images)
-        text = ""
+        Haptics.tap()
+        chat.send(chat.draft, images: images)
+        chat.draft = ""
         images = []
     }
 
@@ -453,7 +654,7 @@ struct Composer: View {
         Task {
             if recorder.isRecording {
                 if let heard = await recorder.finish(backend: model.backend), !heard.isEmpty {
-                    text = text.isEmpty ? heard : text + " " + heard
+                    chat.draft = chat.draft.isEmpty ? heard : chat.draft + " " + heard
                     focused = true
                 }
             } else {

@@ -36,7 +36,8 @@ data class ConversationSummary(
     val botId: String?,
 )
 
-enum class MessageRole { User, Assistant }
+/** [Note] is a centered caption in the timeline (e.g. "Approved: …"); it is never sent to a model. */
+enum class MessageRole { User, Assistant, Note }
 
 sealed interface MessageStatus {
     data object Done : MessageStatus
@@ -68,6 +69,8 @@ sealed interface StreamEvent {
     data class Text(val delta: String) : StreamEvent
     data class Thinking(val delta: String) : StreamEvent
     data class Tool(val id: String, val name: String, val done: Boolean) : StreamEvent
+    /** Server mode: the turn paused for a question or an approval. */
+    data class Hitl(val request: HitlRequest) : StreamEvent
 }
 
 data class ModelOption(val id: String, val name: String, val supportsImage: Boolean)
@@ -86,6 +89,8 @@ data class GroupMessage(
     val agentId: String?,
     val text: String,
     val createdAt: Long,
+    /** The `request_id` of the post that produced this row, when the server reports it. */
+    val requestId: String? = null,
 )
 
 data class GroupDraft(val agentId: String, val text: String)

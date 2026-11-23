@@ -12,6 +12,7 @@ struct CharacterView: View {
     var seed: String = ""
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
@@ -53,12 +54,14 @@ struct CharacterView: View {
                 startPoint: CGPoint(x: 18, y: 10), endPoint: CGPoint(x: 78, y: 92)
             ), style: style)
         } else {
-            context.fill(shape.body, with: .color(Characters.ink(look.color)), style: style)
+            context.fill(shape.body, with: .color(Characters.ink(look.color, dark: scheme == .dark)), style: style)
         }
         for paint in shape.paints {
             context.fill(paint.path, with: .color(paint.color.opacity(paint.opacity)), style: style)
         }
-        context.fill(shape.shade, with: .color(.black.opacity(0.07)), style: style)
+        if let shade = shape.shade {
+            context.fill(shade, with: .color(.black.opacity(0.07)), style: style)
+        }
         if let light = shape.light {
             context.fill(light, with: .color(.white.opacity(0.36)), style: style)
         }
@@ -68,8 +71,8 @@ struct CharacterView: View {
             eyeContext.rotate(by: .degrees(eye.angle))
             eyeContext.scaleBy(x: 1, y: pose.blink)
             let white = Path(roundedRect: CGRect(x: -eye.w / 2, y: -eye.h / 2, width: eye.w, height: eye.h), cornerRadius: eye.w / 2)
-            eyeContext.fill(white, with: .color(Color(red: 1, green: 0.988, blue: 0.961)))
-            if size >= 24 {
+            eyeContext.fill(white, with: .color(shape.flat ? .white : Color(red: 1, green: 0.988, blue: 0.961)))
+            if size >= 24 && !shape.flat {
                 let center = CGPoint(x: eye.w * (0.07 + pose.look), y: eye.h * 0.05)
                 let pupil = Path(ellipseIn: CGRect(
                     x: center.x - eye.w * 0.28, y: center.y - eye.h * 0.22, width: eye.w * 0.56, height: eye.h * 0.44

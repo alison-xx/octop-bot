@@ -242,6 +242,7 @@ final class ServerBackend: ChatBackend {
                 try await Task.sleep(for: .seconds(min(max(wait, 0.3), 3)))
                 continue
             }
+            pauses[conversation.id] = HitlPause.parse(body["hitl_pending"], labels: toolLabels)
             return Self.history(body["messages"] as? [[String: Any]] ?? [], labels: toolLabels)
         }
         return []
@@ -274,6 +275,9 @@ final class ServerBackend: ChatBackend {
             }
             // Consecutive assistant segments of one turn read as one reply.
             if role == .assistant, let last = out.last, last.role == .assistant {
+                // A paused turn also stores a summary row repeating its segments; skip what is already there.
+                if Self.contains(last.text, text) { text = "" }
+                if Self.contains(last.thinking, thinking) { thinking = "" }
                 out[out.count - 1].text += (last.text.isEmpty || text.isEmpty ? "" : "\n\n") + text
                 out[out.count - 1].thinking += thinking
                 out[out.count - 1].tools += tools
@@ -288,8 +292,61 @@ final class ServerBackend: ChatBackend {
         return out
     }
 
+    /// Whether `part` (non-empty) already appears in `whole`, ignoring whitespace.
+    static func contains(_ whole: String, _ part: String) -> Bool {
+        let squeeze = { (text: String) in text.filter { !$0.isWhitespace } }
+        let needle = squeeze(part)
+        return !needle.isEmpty && squeeze(whole).contains(needle)
+    }
+
     func deleteConversation(_ conversation: ConversationSummary, bot: BotProfile) async throws {
         _ = try await raw(.delete, "/api/agents/\(bot.id)/threads/\(conversation.id)")
+    }
+
+    // MARK: Questions and approvals
+
+    /// Open pauses seen in the last history load, per conversation.
+    private var pauses: [String: HitlPause] = [:]
+
+    func openPause(in conversation: ConversationSummary) -> HitlPause? { pauses[conversation.id] }
+
+    func resume(
+        _ pause: HitlPause, decisions: [[String: Any]], conversation: String, bot: BotProfile
+    ) -> AsyncThrowingStream<StreamEvent, Error> {
+        pauses[conversation] = nil
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    var body: [String: Any] = ["thread_id": conversation, "decisions": decisions]
+                    if let id = pause.pendingId { body["pending_id"] = id }
+                    var request = try HTTP.request(
+                        url("/api/agents/\(bot.id)/chat/hitl/resume"), method: .post, headers: authHeaders, json: body
+                    )
+                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    request.timeoutInterval = 600
+                    let (bytes, response) = try await HTTP.session.bytes(for: request)
+                    guard let http = response as? HTTPURLResponse else { throw APIError.network }
+                    guard (200..<300).contains(http.statusCode) else {
+                        var data = Data()
+                        for try await byte in bytes { data.append(byte); if data.count > 16_384 { break } }
+                        throw APIError.from(status: http.statusCode, message: HTTP.errorMessage(data))
+                    }
+                    var mapper = ServerFrameMapper(labels: toolLabels, endsOnDone: true)
+                    loop: for try await event in SSE.events(bytes) {
+                        guard let frame = try? JSONSerialization.jsonObject(with: Data(event.data.utf8)) as? [String: Any] else { continue }
+                        switch try mapper.map(frame) {
+                        case .events(let events): events.forEach { continuation.yield($0) }
+                        case .finished: break loop
+                        }
+                    }
+                    continuation.yield(.done)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: Task.isCancelled ? CancellationError() : (error as? APIError ?? APIError.network))
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 
     // MARK: Chat over WebSocket
@@ -492,8 +549,13 @@ struct ServerFrameMapper {
     enum Outcome { case events([StreamEvent]), finished }
     private var toolNames: [String: String] = [:]
     var labels: [String: String] = [:]
+    /// The HITL resume stream ends with `done`; the socket ends with `turn.ended`.
+    var endsOnDone = false
 
-    init(labels: [String: String] = [:]) { self.labels = labels }
+    init(labels: [String: String] = [:], endsOnDone: Bool = false) {
+        self.labels = labels
+        self.endsOnDone = endsOnDone
+    }
 
     mutating func map(_ frame: [String: Any]) throws -> Outcome {
         switch frame["type"] as? String {
@@ -521,7 +583,12 @@ struct ServerFrameMapper {
         case "error":
             throw APIError(kind: .server, status: 500, message: frame["message"] as? String)
         case "hitl_required":
-            throw APIError(kind: .rejected, status: 409, message: L("chat.needsApproval"))
+            guard let pause = HitlPause.parse(frame["request"], labels: labels) else {
+                throw APIError(kind: .rejected, status: 409, message: L("chat.needsApproval"))
+            }
+            return .events([.pause(pause)])
+        case "done" where endsOnDone:
+            return .finished
         case "turn.ended":
             if frame["failed"] as? Bool == true { throw APIError(kind: .server, status: 500, message: nil) }
             return .finished

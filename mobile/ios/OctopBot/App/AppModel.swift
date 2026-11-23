@@ -26,6 +26,12 @@ final class AppModel {
     var loadError: String?
     var isLoading = false
     private(set) var previews: [String: Preview]
+    /// Bots with a reply the user hasn't seen yet.
+    private(set) var unread: Set<String>
+    /// Bots whose chat (or voice mode) is on screen; their replies are seen as they land.
+    private var onScreen: [String: Int] = [:]
+    /// Set by "Switch account or server" so the first screen reopens the server sheet.
+    var reopenServerSheet = false
     private var sessions: [String: ChatSession] = [:]
 
     var selectedModel: String? {
@@ -49,11 +55,29 @@ final class AppModel {
         lastBotId = UserDefaults.standard.string(forKey: "chat.bot")
         previews = UserDefaults.standard.data(forKey: "chat.previews")
             .flatMap { try? JSONDecoder().decode([String: Preview].self, from: $0) } ?? [:]
+        unread = Set(UserDefaults.standard.stringArray(forKey: "chat.unread") ?? [])
     }
 
     var isLynxce: Bool { backend is LynxceBackend }
     var server: ServerBackend? { backend as? ServerBackend }
     var lastBot: BotProfile? { bots.first { $0.id == lastBotId } ?? bots.first { $0.isChief } ?? bots.first }
+
+    /// The directory as shown: Chief pinned, then the newest reply first, then directory order.
+    var orderedBots: [BotProfile] { Self.order(bots, previews: previews) }
+
+    static func order(_ bots: [BotProfile], previews: [String: Preview]) -> [BotProfile] {
+        let chief = bots.filter(\.isChief)
+        let others = bots.enumerated().filter { !$0.element.isChief }.sorted { a, b in
+            let da = previews[a.element.id]?.date, db = previews[b.element.id]?.date
+            switch (da, db) {
+            case let (x?, y?) where x != y: return x > y
+            case (.some, nil): return true
+            case (nil, .some): return false
+            default: return a.offset < b.offset
+            }
+        }
+        return chief + others.map(\.element)
+    }
 
     func start() async {
         if let restored: ChatBackend = LynxceBackend.restore() ?? ServerBackend.restore() {
@@ -66,8 +90,18 @@ final class AppModel {
     func use(_ backend: ChatBackend) async {
         self.backend = backend
         sessions = [:]
+        let first = Task { await refresh() }
+        if phase == .launching {
+            // Keep the launch art up until the directory is in, but never longer than a moment.
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await first.value }
+                group.addTask { try? await Task.sleep(for: .seconds(1.2)) }
+                await group.next()
+                group.cancelAll()
+            }
+        }
         phase = .ready
-        await refresh()
+        await first.value
         if let pushToken { await backend.registerPush(token: pushToken) }
     }
 
@@ -110,6 +144,48 @@ final class AppModel {
         guard !line.isEmpty else { return }
         previews[bot.id] = Preview(text: String(line.prefix(120)), date: .now)
         UserDefaults.standard.set(try? JSONEncoder().encode(previews), forKey: "chat.previews")
+        if (onScreen[bot.id] ?? 0) == 0 || UIApplication.shared.applicationState != .active {
+            unread.insert(bot.id)
+            saveUnread()
+        }
+    }
+
+    /// A chat or voice screen for this Bot appeared; its replies count as read.
+    func showing(_ bot: BotProfile) {
+        onScreen[bot.id, default: 0] += 1
+        markRead(bot)
+    }
+
+    func hiding(_ bot: BotProfile) {
+        onScreen[bot.id] = max(0, (onScreen[bot.id] ?? 1) - 1)
+    }
+
+    func markRead(_ bot: BotProfile) {
+        guard unread.remove(bot.id) != nil else { return }
+        saveUnread()
+    }
+
+    private func saveUnread() {
+        UserDefaults.standard.set(Array(unread), forKey: "chat.unread")
+    }
+
+    /// Settings → Storage: drop reply previews, unread marks and temporary files.
+    func clearCache() {
+        previews = [:]
+        unread = []
+        UserDefaults.standard.removeObject(forKey: "chat.previews")
+        UserDefaults.standard.removeObject(forKey: "chat.unread")
+        let tmp = FileManager.default.temporaryDirectory
+        for file in (try? FileManager.default.contentsOfDirectory(at: tmp, includingPropertiesForKeys: nil)) ?? [] {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+
+    /// Settings → "Switch account or server".
+    func switchAccount() async {
+        // Set first: the first screen reads it as it appears.
+        reopenServerSheet = server != nil
+        await signOut()
     }
 
     func saveLocalBot(_ bot: BotProfile) {
@@ -122,6 +198,7 @@ final class AppModel {
         sessions[bot.id]?.cancel()
         sessions[bot.id] = nil
         previews[bot.id] = nil
+        unread.remove(bot.id)
         Task { await refresh() }
     }
 
@@ -153,7 +230,9 @@ final class AppModel {
         balance = nil
         // Previews belong to the account that wrote them.
         previews = [:]
+        unread = []
         UserDefaults.standard.removeObject(forKey: "chat.previews")
+        UserDefaults.standard.removeObject(forKey: "chat.unread")
         lastBotId = nil
         phase = .signedOut
     }
@@ -161,6 +240,10 @@ final class AppModel {
 
 enum Notifier {
     private static var asked = false
+
+    static func status() async -> UNAuthorizationStatus {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
 
     static func requestPermission() {
         guard !asked else { return }

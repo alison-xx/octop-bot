@@ -2,6 +2,7 @@ package io.github.alisonxx.octopbot.ui.common
 
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -9,7 +10,18 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Icon
@@ -40,7 +52,7 @@ fun relativeTime(millis: Long, now: Long = System.currentTimeMillis()): String =
 @Composable
 fun accentOf(look: Look?): Color {
     if (look == null || look.isOctopus) return DefaultAccent
-    return rememberCharacterLibrary().ink(look.color)
+    return rememberCharacterLibrary().ink(look.color, isSystemInDarkTheme())
 }
 
 @Composable
@@ -87,6 +99,50 @@ fun TopBarTitle(text: String) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
+}
+
+/** A rounded search field ([background] defaults to the surface color). */
+@Composable
+fun SearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    background: Color = LocalPalette.current.surface,
+) {
+    val palette = LocalPalette.current
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(background)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.Search, contentDescription = null, tint = palette.secondary, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Box(Modifier.weight(1f)) {
+            if (query.isEmpty()) {
+                Text(placeholder, style = MaterialTheme.typography.bodyLarge, color = palette.secondary, maxLines = 1)
+            }
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = palette.text),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (query.isNotEmpty()) {
+            Icon(
+                Icons.Rounded.Close,
+                contentDescription = stringResource(R.string.common_close),
+                tint = palette.secondary,
+                modifier = Modifier.size(20.dp).clip(CircleShape).clickable { onQueryChange("") },
+            )
+        }
+    }
 }
 
 /** Fades the content scrolling under a floating bottom bar into the background. */

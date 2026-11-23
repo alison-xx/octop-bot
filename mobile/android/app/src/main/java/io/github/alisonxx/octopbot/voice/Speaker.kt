@@ -25,6 +25,9 @@ class Speaker(private val context: Context) {
     private val _speaking = MutableStateFlow(false)
     val speaking: StateFlow<Boolean> = _speaking
 
+    /** Settings → speaking speed; applies to both the backend voice and the system voice. */
+    @Volatile var rate: Float = 1f
+
     private var player: MediaPlayer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady: CompletableDeferred<Boolean>? = null
@@ -81,6 +84,7 @@ class Speaker(private val context: Context) {
             runCatching {
                 media.setDataSource(file.path)
                 media.prepare()
+                if (rate != 1f) media.playbackParams = media.playbackParams.setSpeed(rate)
                 media.start()
             }.onFailure { if (continuation.isActive) continuation.resume(Unit) }
         }
@@ -97,6 +101,7 @@ class Speaker(private val context: Context) {
     private suspend fun speakOnDevice(text: String) {
         val engine = engine() ?: return
         engine.language = AppLocale.current()
+        engine.setSpeechRate(rate)
         for (chunk in chunks(text, TextToSpeech.getMaxSpeechInputLength() - 1)) {
             suspendCancellableCoroutine { continuation ->
                 val id = UUID.randomUUID().toString()

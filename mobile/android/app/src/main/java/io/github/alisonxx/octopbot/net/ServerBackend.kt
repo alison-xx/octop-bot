@@ -7,6 +7,7 @@ import io.github.alisonxx.octopbot.model.GroupDraft
 import io.github.alisonxx.octopbot.model.GroupGoal
 import io.github.alisonxx.octopbot.model.GroupMessage
 import io.github.alisonxx.octopbot.model.GroupSummary
+import io.github.alisonxx.octopbot.model.HitlDecision
 import io.github.alisonxx.octopbot.model.ImageAttachment
 import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.model.ModelOption
@@ -55,6 +56,8 @@ class ServerBackend(
     override val definesBotsLocally = false
     override val supportsGroups = true
     override val accountName get() = session.displayName
+    /** The full server address, e.g. `http://10.0.2.2:18790`. */
+    val baseUrl: String get() = session.baseUrl
     /** host, plus the port when it isn't the scheme's default (e.g. `10.0.2.2:18790`). */
     override val connectionLabel: String
         get() = session.baseUrl.toHttpUrl().let { url ->
@@ -247,16 +250,19 @@ class ServerBackend(
     override suspend fun conversations(bot: BotProfile): List<ConversationSummary> =
         ServerProtocol.conversations(json("GET", agent(bot) + "/threads", mapOf("limit" to "50")), bot.id)
 
-    override suspend fun messages(conversation: ConversationSummary, bot: BotProfile): List<ChatMessage> {
+    override suspend fun messages(conversation: ConversationSummary, bot: BotProfile): List<ChatMessage> =
+        transcript(conversation, bot).messages
+
+    override suspend fun transcript(conversation: ConversationSummary, bot: BotProfile): Transcript {
         repeat(20) {
             val page = ServerProtocol.historyPage(
                 json("GET", agent(bot) + "/threads/${segment(conversation.id)}/history", mapOf("limit" to "50")),
                 toolLabels(),
             )
-            if (!page.loading) return page.messages
+            if (!page.loading) return Transcript(page.messages, page.pending)
             delay(page.retryAfterMs.coerceIn(300, 3000))
         }
-        return emptyList()
+        return Transcript(emptyList(), pending = null)
     }
 
     override suspend fun deleteConversation(conversation: ConversationSummary, bot: BotProfile) {
@@ -330,6 +336,43 @@ class ServerBackend(
         val name = "photo-${System.currentTimeMillis() / 1000}-${index + 1}.jpg"
         val form = Http.form(listOf(FormPart.File("file", image.jpeg, name, "image/jpeg")))
         return json("POST", agent(bot) + "/upload", body = form, http = slowClient).asObject() ?: throw ApiException.badResponse()
+    }
+
+    /** `POST chat/hitl/resume`; its SSE `chunk` frames have the socket's shapes and end with `done`. */
+    override fun resumeHitl(
+        bot: BotProfile,
+        conversation: String,
+        pendingId: String?,
+        decisions: List<HitlDecision>,
+    ): Flow<StreamEvent> = channelFlow {
+        val request = Http.request(url(agent(bot) + "/chat/hitl/resume"))
+            .header("Accept", "text/event-stream")
+            .post(Http.body(ServerProtocol.hitlResume(conversation, pendingId, decisions)))
+            .build()
+        val call = slowClient.newCall(request)
+        val mapper = ServerProtocol.FrameMapper(toolLabels(), endsOnDone = true)
+        try {
+            // Reading and closing both stay off the main thread: closing a body that still has bytes drains it.
+            withContext(Dispatchers.IO) {
+                call.await().use { response ->
+                    if (!response.isSuccessful) throw ApiException.from(response.code, Http.errorMessage(response.body.string()))
+                    response.body.source().forEachSseEvent { event ->
+                        val frame = Http.parse(event.data).asObject() ?: return@forEachSseEvent true
+                        when (val outcome = mapper.map(frame, conversation)) {
+                            is ServerProtocol.FrameMapper.Outcome.Events -> {
+                                outcome.events.forEach { send(it) }
+                                true
+                            }
+                            ServerProtocol.FrameMapper.Outcome.Finished -> false
+                        }
+                    }
+                    // `done` ends the reply; whatever follows is dropped, not drained.
+                    call.cancel()
+                }
+            }
+        } finally {
+            call.cancel()
+        }
     }
 
     override suspend fun stop(conversation: String, bot: BotProfile) {

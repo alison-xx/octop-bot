@@ -12,11 +12,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,6 +31,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,10 +45,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.model.ConversationSummary
+import io.github.alisonxx.octopbot.model.Timeline
+import io.github.alisonxx.octopbot.ui.common.SearchField
 import io.github.alisonxx.octopbot.ui.common.relativeTime
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
+import java.time.ZoneId
 
-/** The current Bot's conversations: new chat, pick one, swipe to delete. */
+/** The current Bot's conversations: new chat, search titles, grouped by date, swipe to delete. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistorySheet(
@@ -53,6 +63,10 @@ fun HistorySheet(
     onDismiss: () -> Unit,
 ) {
     val palette = LocalPalette.current
+    var query by rememberSaveable { mutableStateOf("") }
+    val sections = remember(conversations, query) {
+        Timeline.group(conversations, query, System.currentTimeMillis(), ZoneId.systemDefault())
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
@@ -78,31 +92,51 @@ fun HistorySheet(
                     Text(stringResource(R.string.chat_new), color = palette.background, style = MaterialTheme.typography.labelLarge)
                 }
             }
-            Text(
-                stringResource(R.string.drawer_recent),
-                style = MaterialTheme.typography.labelLarge,
-                color = palette.secondary,
-                modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp),
-            )
-            if (conversations.isEmpty()) {
+            if (conversations.isNotEmpty()) {
+                SearchField(
+                    query = query,
+                    onQueryChange = { query = it },
+                    placeholder = stringResource(R.string.history_search),
+                    background = palette.raised,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+                )
+            }
+            if (sections.isEmpty()) {
                 Text(
-                    stringResource(R.string.drawer_empty),
+                    stringResource(if (conversations.isEmpty()) R.string.drawer_empty else R.string.history_no_match),
                     color = palette.secondary,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
                 )
             }
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
-                items(conversations, key = { it.id }) { conversation ->
-                    ConversationRow(
-                        conversation,
-                        selected = conversation.id == currentId,
-                        onOpen = { onOpen(conversation) },
-                        onDelete = { onDelete(conversation) },
-                    )
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 560.dp)) {
+                for ((section, items) in sections) {
+                    item(key = "section-" + section.name) {
+                        Text(
+                            stringResource(sectionTitle(section)),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = palette.secondary,
+                            modifier = Modifier.padding(start = 20.dp, top = 14.dp, bottom = 4.dp),
+                        )
+                    }
+                    items(items, key = { it.id }) { conversation ->
+                        ConversationRow(
+                            conversation,
+                            selected = conversation.id == currentId,
+                            onOpen = { onOpen(conversation) },
+                            onDelete = { onDelete(conversation) },
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+private fun sectionTitle(section: Timeline.Section): Int = when (section) {
+    Timeline.Section.Today -> R.string.history_today
+    Timeline.Section.Yesterday -> R.string.history_yesterday
+    Timeline.Section.Previous7Days -> R.string.history_week
+    Timeline.Section.Earlier -> R.string.history_earlier
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -139,8 +173,17 @@ private fun ConversationRow(conversation: ConversationSummary, selected: Boolean
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            conversation.updatedAt?.let {
-                Text(relativeTime(it), style = MaterialTheme.typography.labelMedium, color = palette.secondary)
+            if (selected) {
+                Icon(
+                    Icons.Rounded.Check,
+                    contentDescription = stringResource(R.string.history_current),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+            } else {
+                conversation.updatedAt?.let {
+                    Text(relativeTime(it), style = MaterialTheme.typography.labelMedium, color = palette.secondary)
+                }
             }
         }
     }

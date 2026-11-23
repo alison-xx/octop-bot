@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.model.ImageAttachment
+import io.github.alisonxx.octopbot.ui.common.chatText
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
 
 /** The floating pill: `+` · multiline field · mic / send / stop, with picked photos above the field. */
@@ -119,7 +120,7 @@ fun Composer(
         Row(verticalAlignment = Alignment.Bottom) {
             if (allowPhotos) {
                 Box {
-                    IconButton(onClick = { attachMenu = true }, enabled = !streaming) {
+                    IconButton(onClick = { attachMenu = true }) {
                         Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.chat_attach))
                     }
                     DropdownMenu(expanded = attachMenu, onDismissRequest = { attachMenu = false }) {
@@ -146,7 +147,7 @@ fun Composer(
                 if (text.isEmpty()) {
                     Text(
                         if (dictating) stringResource(R.string.chat_listening) else placeholder,
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = chatText(MaterialTheme.typography.bodyLarge),
                         color = palette.secondary,
                     )
                 }
@@ -156,7 +157,7 @@ fun Composer(
                         field = it
                         if (it.text != text) onTextChange(it.text)
                     },
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = palette.text),
+                    textStyle = chatText(MaterialTheme.typography.bodyLarge).copy(color = palette.text),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     maxLines = 6,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -164,9 +165,10 @@ fun Composer(
                 )
             }
             val hasContent = text.isNotBlank() || images.isNotEmpty()
+            // Sending always works: while a reply streams, text is queued (send) and an empty field stops it.
             when {
-                streaming -> RoundAction(Icons.Rounded.Stop, stringResource(R.string.chat_stop), filled = true, onClick = onStop)
                 hasContent && !dictating -> RoundAction(Icons.Rounded.ArrowUpward, stringResource(R.string.chat_send), filled = true, onClick = onSend)
+                streaming -> RoundAction(Icons.Rounded.Stop, stringResource(R.string.chat_stop), filled = true, onClick = onStop)
                 else -> RoundAction(Icons.Rounded.Mic, stringResource(R.string.chat_dictate), filled = dictating, onClick = onDictate)
             }
         }

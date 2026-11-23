@@ -2,6 +2,7 @@ import Foundation
 import ObjectiveC
 import Observation
 import SwiftUI
+import UIKit
 
 /// The app's own language choice: follow the system, or force Chinese / English.
 enum AppLanguage: String, CaseIterable, Identifiable {
@@ -36,6 +37,34 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     }
 }
 
+/// Chat text size; scales message and composer text.
+enum TextSize: String, CaseIterable, Identifiable {
+    case small, standard, large
+    var id: String { rawValue }
+    var scale: CGFloat {
+        switch self {
+        case .small: 0.9
+        case .standard: 1
+        case .large: 1.15
+        }
+    }
+    /// Body text in points (system body is 17).
+    var body: CGFloat { 17 * scale }
+}
+
+/// How fast replies are read aloud.
+enum SpeechSpeed: String, CaseIterable, Identifiable {
+    case slow, normal, fast
+    var id: String { rawValue }
+    var rate: Float {
+        switch self {
+        case .slow: 0.85
+        case .normal: 1
+        case .fast: 1.2
+        }
+    }
+}
+
 @Observable
 final class Preferences {
     static let shared = Preferences()
@@ -49,11 +78,41 @@ final class Preferences {
     var appearance: AppAppearance {
         didSet { UserDefaults.standard.set(appearance.rawValue, forKey: "app.appearance") }
     }
+    var textSize: TextSize {
+        didSet { UserDefaults.standard.set(textSize.rawValue, forKey: "app.textSize") }
+    }
+    var haptics: Bool {
+        didSet { UserDefaults.standard.set(haptics, forKey: "app.haptics") }
+    }
+    var expandThinking: Bool {
+        didSet { UserDefaults.standard.set(expandThinking, forKey: "chat.expandThinking") }
+    }
+    var speechSpeed: SpeechSpeed {
+        didSet { UserDefaults.standard.set(speechSpeed.rawValue, forKey: "voice.speed") }
+    }
 
     private init() {
-        language = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "app.language") ?? "") ?? .system
-        appearance = AppAppearance(rawValue: UserDefaults.standard.string(forKey: "app.appearance") ?? "") ?? .system
+        let defaults = UserDefaults.standard
+        language = AppLanguage(rawValue: defaults.string(forKey: "app.language") ?? "") ?? .system
+        appearance = AppAppearance(rawValue: defaults.string(forKey: "app.appearance") ?? "") ?? .system
+        textSize = TextSize(rawValue: defaults.string(forKey: "app.textSize") ?? "") ?? .standard
+        haptics = defaults.object(forKey: "app.haptics") as? Bool ?? true
+        expandThinking = defaults.bool(forKey: "chat.expandThinking")
+        speechSpeed = SpeechSpeed(rawValue: defaults.string(forKey: "voice.speed") ?? "") ?? .normal
         LanguageBundle.use(language)
+    }
+}
+
+/// Haptic taps that respect the Settings switch.
+enum Haptics {
+    static func tap() {
+        guard Preferences.shared.haptics else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    static func success() {
+        guard Preferences.shared.haptics else { return }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }
 

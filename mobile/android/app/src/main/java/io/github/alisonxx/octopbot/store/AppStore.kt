@@ -36,11 +36,21 @@ data class LynxceGrant(
 data class ServerSession(val baseUrl: String, val token: String, val displayName: String)
 
 data class UserSettings(
-    val readAloud: Boolean,
-    val notifications: Boolean,
-    val model: String?,
+    val readAloud: Boolean = false,
+    val notifications: Boolean = true,
+    val model: String? = null,
     val appearance: Appearance = Appearance.System,
+    val textSize: TextSize = TextSize.Standard,
+    val haptics: Boolean = true,
+    val expandReasoning: Boolean = false,
+    val speechRate: SpeechRate = SpeechRate.Normal,
 )
+
+/** Chat text size, as a multiple of the body style. */
+enum class TextSize(val scale: Float) { Small(0.9f), Standard(1f), Large(1.15f) }
+
+/** Speaking speed for the backend voice and the system voice. */
+enum class SpeechRate(val rate: Float) { Slow(0.85f), Normal(1f), Fast(1.2f) }
 
 enum class Appearance(val nightMode: Int) {
     System(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM),
@@ -52,9 +62,9 @@ enum class Appearance(val nightMode: Int) {
 @Serializable
 data class DirectoryCache(val bots: List<BotProfile>, val groups: List<GroupSummary>)
 
-/** The last reply of a Bot, shown under its name in the directory. */
+/** The last reply of a Bot, shown under its name in the directory; [unread] until its chat is opened. */
 @Serializable
-data class BotPreview(val text: String, val at: Long)
+data class BotPreview(val text: String, val at: Long, val unread: Boolean = false)
 
 /** App preferences in DataStore; tokens are sealed with [SecretBox] before they touch disk. */
 class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
@@ -74,6 +84,10 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
         val lastServer = stringPreferencesKey("server.lastAddress")
         val appearance = stringPreferencesKey("settings.appearance")
         val directory = stringPreferencesKey("directory.cache")
+        val textSize = stringPreferencesKey("settings.textSize")
+        val haptics = booleanPreferencesKey("settings.haptics")
+        val expandReasoning = booleanPreferencesKey("settings.expandReasoning")
+        val speechRate = stringPreferencesKey("settings.speechRate")
     }
 
     private val stringMap = MapSerializer(String.serializer(), String.serializer())
@@ -85,9 +99,11 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
         prefs[Keys.previews]?.let { runCatching { Http.json.decodeFromString(previewMap, it) }.getOrNull() }.orEmpty()
     }
 
-    suspend fun setPreview(botId: String, preview: BotPreview) = store.edit { prefs ->
+    /** Read-modify-write of the previews (and their unread marks) in one transaction. */
+    suspend fun updatePreviews(change: (Map<String, BotPreview>) -> Map<String, BotPreview>) = store.edit { prefs ->
         val map = prefs[Keys.previews]?.let { runCatching { Http.json.decodeFromString(previewMap, it) }.getOrNull() }.orEmpty()
-        prefs[Keys.previews] = Http.json.encodeToString(previewMap, map + (botId to preview))
+        val next = change(map)
+        if (next != map) prefs[Keys.previews] = Http.json.encodeToString(previewMap, next)
     }
 
     val settings: Flow<UserSettings> = store.data.map {
@@ -96,6 +112,10 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
             notifications = it[Keys.notifications] ?: true,
             model = it[Keys.model],
             appearance = Appearance.entries.firstOrNull { entry -> entry.name == it[Keys.appearance] } ?: Appearance.System,
+            textSize = TextSize.entries.firstOrNull { entry -> entry.name == it[Keys.textSize] } ?: TextSize.Standard,
+            haptics = it[Keys.haptics] ?: true,
+            expandReasoning = it[Keys.expandReasoning] ?: false,
+            speechRate = SpeechRate.entries.firstOrNull { entry -> entry.name == it[Keys.speechRate] } ?: SpeechRate.Normal,
         )
     }
 
@@ -125,6 +145,10 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
     suspend fun setReadAloud(value: Boolean) = store.edit { it[Keys.readAloud] = value }
     suspend fun setNotifications(value: Boolean) = store.edit { it[Keys.notifications] = value }
     suspend fun setAppearance(value: Appearance) = store.edit { it[Keys.appearance] = value.name }
+    suspend fun setTextSize(value: TextSize) = store.edit { it[Keys.textSize] = value.name }
+    suspend fun setHaptics(value: Boolean) = store.edit { it[Keys.haptics] = value }
+    suspend fun setExpandReasoning(value: Boolean) = store.edit { it[Keys.expandReasoning] = value }
+    suspend fun setSpeechRate(value: SpeechRate) = store.edit { it[Keys.speechRate] = value.name }
     suspend fun setModel(value: String?) = store.edit { if (value == null) it.remove(Keys.model) else it[Keys.model] = value }
 
     suspend fun lastBot(): String? = store.data.first()[Keys.lastBot]
@@ -146,6 +170,9 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
         }
         clearCaches()
     }
+
+    /** Settings → Storage: reply previews and unread marks. Sign-in, the directory and the last server stay. */
+    suspend fun clearPreviews() = store.edit { it.remove(Keys.previews) }
 
     /** Previews, the cached directory and per-account choices; used when switching accounts. */
     suspend fun clearCaches() = store.edit {

@@ -13,7 +13,16 @@ final class ChatSession {
     private(set) var isStreaming = false
     private(set) var isLoading = false
     var error: String?
+    /// The composer's unsent text; kept per Bot so leaving the chat doesn't lose it.
+    var draft = ""
+    /// Bumped to ask the composer to take focus (e.g. after "Edit").
+    private(set) var focusRequest = 0
     private var task: Task<Void, Never>?
+    /// A question or approval the Bot is waiting on (server mode).
+    var pause: HitlPause?
+    /// Messages written while a reply was streaming; sent in order when it ends.
+    private(set) var queued: [ChatMessage] = []
+    private var currentRun: UUID?
     /// Called with the finished reply text (voice mode reads it aloud).
     var onReply: ((String) -> Void)?
 
@@ -28,10 +37,23 @@ final class ChatSession {
         return .working
     }
 
+    /// The open conversation's title, once the server has named it.
+    var title: String? {
+        guard let conversationId else { return nil }
+        return conversations.first { $0.id == conversationId }?.title
+    }
+
+    /// Put a sent message back into the composer to edit and send again.
+    func edit(_ message: ChatMessage) {
+        draft = message.text
+        focusRequest += 1
+    }
+
     func newChat() {
         cancel()
         conversationId = nil
         messages = []
+        pause = nil
         error = nil
     }
 
@@ -44,13 +66,17 @@ final class ChatSession {
         cancel()
         conversationId = conversation.id
         messages = []
+        pause = nil
         error = nil
         guard let backend = app?.backend else { return }
         isLoading = true
         defer { isLoading = false }
         do {
             let loaded = try await backend.messages(in: conversation, bot: bot)
-            if conversationId == conversation.id { messages = loaded }
+            if conversationId == conversation.id {
+                messages = loaded
+                pause = backend.openPause(in: conversation)
+            }
         } catch {
             if conversationId == conversation.id { self.error = error.localizedDescription }
         }
@@ -64,23 +90,96 @@ final class ChatSession {
 
     func send(_ text: String, images: [Data] = []) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let backend = app?.backend, !isStreaming, !trimmed.isEmpty || !images.isEmpty else { return }
+        guard let backend = app?.backend, !trimmed.isEmpty || !images.isEmpty else { return }
+        // Never block: while a reply streams, queue the message and send it when the reply ends.
+        if isStreaming {
+            queued.append(ChatMessage(role: .user, text: trimmed, images: images))
+            return
+        }
+        // An open question takes the text as its answer; an open approval is declined with it as the reason.
+        if let pause {
+            if !trimmed.isEmpty {
+                if pause.isQuestion { answer(pause, text: trimmed) } else { decide(pause, approve: false, reason: trimmed) }
+                // Photos can't ride on an answer; they follow as the next message.
+                if !images.isEmpty { queued.append(ChatMessage(role: .user, text: "", images: images)) }
+                return
+            }
+            // Photos alone: close the pause and send them as a normal message.
+            if pause.isQuestion { dismissQuestion(pause) } else { decide(pause, approve: false) }
+            queued.append(ChatMessage(role: .user, text: "", images: images))
+            return
+        }
         if app?.notifyOnReply == true { Notifier.requestPermission() }
-        let bot = bot
         let history = messages
         messages.append(ChatMessage(role: .user, text: trimmed, images: images))
+        let model = app?.isLynxce == true ? app?.selectedModel : nil
+        run(backend.send(trimmed, images: images, to: bot, conversation: conversationId, history: history, model: model))
+    }
+
+    /// Drop a queued message before it is sent.
+    func unqueue(_ message: ChatMessage) {
+        queued.removeAll { $0.id == message.id }
+    }
+
+    /// Send the next queued message once the current reply is over.
+    private func sendQueued() {
+        guard !isStreaming, !queued.isEmpty else { return }
+        let next = queued.removeFirst()
+        send(next.text, images: next.images)
+    }
+
+    /// Reply to an open question with text.
+    func answer(_ pause: HitlPause, text: String) {
+        resume(pause, decisions: pause.actions.map { _ in ["type": "respond", "message": text] }, echo: text)
+    }
+
+    /// Approve or reject an open approval.
+    /// `reason` is the user's own message when they decline by just writing something else.
+    func decide(_ pause: HitlPause, approve: Bool, reason: String? = nil) {
+        let decision: [String: Any] = approve
+            ? ["type": "approve"]
+            : ["type": "reject", "message": reason ?? L("hitl.rejectedMessage")]
+        let names = pause.actions.map(\.label).joined(separator: "、")
+        resume(
+            pause, decisions: pause.actions.map { _ in decision }, echo: reason,
+            note: L(approve ? "hitl.approvedNote %@" : "hitl.rejectedNote %@", names)
+        )
+    }
+
+    /// Close an open question without answering.
+    func dismissQuestion(_ pause: HitlPause) {
+        resume(pause, decisions: pause.actions.map { _ in ["type": "respond", "message": L("hitl.ask.dismissMessage")] }, note: L("hitl.ask.dismissed"))
+    }
+
+    private func resume(_ pause: HitlPause, decisions: [[String: Any]], echo: String? = nil, note: String? = nil) {
+        guard let backend = app?.backend, let conversationId, !isStreaming else { return }
+        self.pause = nil
+        if let note { messages.append(ChatMessage(role: .system, text: note)) }
+        if let echo { messages.append(ChatMessage(role: .user, text: echo)) }
+        run(backend.resume(pause, decisions: decisions, conversation: conversationId, bot: bot))
+    }
+
+    /// Stream one reply into a new assistant message.
+    private func run(_ stream: AsyncThrowingStream<StreamEvent, Error>) {
+        let bot = bot
         var reply = ChatMessage(role: .assistant, text: "", status: .streaming)
         reply.authorId = bot.id
         messages.append(reply)
         error = nil
         isStreaming = true
         let replyId = reply.id
-        let model = app?.isLynxce == true ? app?.selectedModel : nil
-        let stream = backend.send(trimmed, images: images, to: bot, conversation: conversationId, history: history, model: model)
+        let backend = app?.backend
         let background = UIApplication.shared.beginBackgroundTask(withName: "reply")
+        // A cancelled earlier reply must not touch the state of this one.
+        let run = UUID()
+        currentRun = run
         task = Task {
             defer {
-                isStreaming = false
+                if currentRun == run { isStreaming = false }
+                // Nothing keeps spinning once the reply is over.
+                update(replyId) { message in
+                    for index in message.tools.indices { message.tools[index].done = true }
+                }
                 UIApplication.shared.endBackgroundTask(background)
             }
             do {
@@ -88,13 +187,15 @@ final class ChatSession {
                     apply(event, to: replyId)
                 }
                 update(replyId) { $0.status = .done }
+                removeEmptyReply(replyId)
                 let text = messages.first { $0.id == replyId }?.text ?? ""
-                app?.recordPreview(text, for: bot)
-                if app?.notifyOnReply == true { Notifier.replyFinished(bot: bot.name, text: text) }
+                let summary = text.isEmpty ? (pause?.questions.first?.question ?? pause.map { _ in L("hitl.title") } ?? "") : text
+                app?.recordPreview(summary, for: bot)
+                if app?.notifyOnReply == true, !summary.isEmpty { Notifier.replyFinished(bot: bot.name, text: summary) }
                 if let onReply {
                     onReply(text)
-                } else if app?.readAloud == true {
-                    Speaker.shared.speak(text, backend: backend)
+                } else if app?.readAloud == true, !text.isEmpty {
+                    Speaker.shared.speak(text, backend: backend, id: replyId)
                 }
                 await reloadConversations()
             } catch is CancellationError {
@@ -105,6 +206,9 @@ final class ChatSession {
                 update(replyId) { $0.status = .failed(message) }
                 if case .unauthorized = (error as? APIError)?.kind { Task { await self.app?.signOut() } }
             }
+            guard currentRun == run else { return }
+            isStreaming = false
+            sendQueued()
         }
     }
 
@@ -124,6 +228,8 @@ final class ChatSession {
                     message.tools.append(ToolStep(id: toolId, name: name, done: done))
                 }
             }
+        case .pause(let pause):
+            self.pause = pause
         case .done:
             break
         }
@@ -135,7 +241,7 @@ final class ChatSession {
     }
 
     private func removeEmptyReply(_ id: String) {
-        messages.removeAll { $0.id == id && $0.text.isEmpty && $0.tools.isEmpty }
+        messages.removeAll { $0.id == id && $0.text.isEmpty && $0.tools.isEmpty && $0.thinking.isEmpty }
     }
 
     func stop() {
@@ -145,6 +251,8 @@ final class ChatSession {
     }
 
     func cancel() {
+        queued = []
+        currentRun = nil
         task?.cancel()
         task = nil
         isStreaming = false
@@ -152,7 +260,7 @@ final class ChatSession {
 
     /// Re-ask the last question after a failed or unwanted reply.
     func retry() {
-        guard !isStreaming, let lastUser = messages.lastIndex(where: { $0.role == .user }) else { return }
+        guard !isStreaming, pause == nil, let lastUser = messages.lastIndex(where: { $0.role == .user }) else { return }
         let question = messages[lastUser]
         messages.removeSubrange(lastUser...)
         send(question.text, images: question.images)

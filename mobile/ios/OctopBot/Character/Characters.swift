@@ -4,8 +4,10 @@ import SwiftUI
 struct CharacterShape {
     var label: String
     var body: Path
-    var shade: Path
+    var shade: Path?
     var light: Path?
+    /// Soft characters: one flat body and plain white capsule eyes (no shade, light or pupils).
+    var flat = false
     var eyes: [Eye]
     var paints: [(path: Path, color: Color, opacity: Double)]
 
@@ -26,22 +28,48 @@ enum Characters {
     static var shapeIds: [String] { ["octop"] + library.order }
     static var inkIds: [String] { library.inkOrder }
 
+    /// The ink for the current light / dark appearance.
     static func ink(_ color: String) -> Color {
-        if let ink = library.inks[color] { return ink.light }
-        if let hex = Color(hex: color) { return hex }
-        return library.inks["blue"]?.light ?? .blue
+        let pair = inkPair(color)
+        return Color(UIColor { traits in
+            UIColor(traits.userInterfaceStyle == .dark ? pair.dark : pair.light)
+        })
+    }
+
+    static func ink(_ color: String, dark: Bool) -> Color {
+        let pair = inkPair(color)
+        return dark ? pair.dark : pair.light
+    }
+
+    private static func inkPair(_ color: String) -> (light: Color, dark: Color) {
+        if let ink = library.inks[color] { return ink }
+        if let hex = Color(hex: color) { return (hex, hex) }
+        return library.inks["blue"] ?? (.blue, .blue)
     }
 
     static func shape(_ id: String) -> CharacterShape? {
         library.shapes[id] ?? library.shapes["gumdrop"]
     }
 
+    /// DS Bot characters plus the dashboard's soft characters, merged like the dashboard does:
+    /// soft shapes first, soft inks override DS inks of the same name.
     private static func load() -> Library {
-        guard
-            let url = Bundle.main.url(forResource: "characters", withExtension: "json"),
-            let data = try? Data(contentsOf: url)
-        else { return Library(shapes: [:], order: [], inks: [:], inkOrder: [], aurora: []) }
-        return parse(data)
+        func read(_ name: String) -> Data? {
+            Bundle.main.url(forResource: name, withExtension: "json").flatMap { try? Data(contentsOf: $0) }
+        }
+        let ds = read("characters").map(parse) ?? Library(shapes: [:], order: [], inks: [:], inkOrder: [], aurora: [])
+        guard let soft = read("soft-characters").map(parse) else { return ds }
+        return merge(ds: ds, soft: soft)
+    }
+
+    static func merge(ds: Library, soft: Library) -> Library {
+        Library(
+            shapes: soft.shapes.merging(ds.shapes) { _, dsShape in dsShape },
+            order: soft.order + ds.order.filter { !soft.order.contains($0) },
+            inks: ds.inks.merging(soft.inks) { _, softInk in softInk },
+            inkOrder: soft.inkOrder + ds.inkOrder.filter { !soft.inkOrder.contains($0) },
+            aurora: ds.aurora
+        )
     }
 
     static func parse(_ data: Data) -> Library {
@@ -52,7 +80,7 @@ enum Characters {
         let inkOrder = orderedKeys(of: "inks", in: data)
         var shapes: [String: CharacterShape] = [:]
         for (id, value) in root["shapes"] as? [String: [String: Any]] ?? [:] {
-            guard let body = value["body"] as? String, let shade = value["shade"] as? String else { continue }
+            guard let body = value["body"] as? String else { continue }
             let eyes = (value["eyes"] as? [[Double]] ?? []).compactMap { e -> CharacterShape.Eye? in
                 e.count >= 5 ? .init(x: e[0], y: e[1], w: e[2], h: e[3], angle: e[4]) : nil
             }
@@ -63,8 +91,9 @@ enum Characters {
             shapes[id] = CharacterShape(
                 label: value["label"] as? String ?? id,
                 body: SVGPath.parse(body),
-                shade: SVGPath.parse(shade),
+                shade: (value["shade"] as? String).map(SVGPath.parse),
                 light: (value["light"] as? String).map(SVGPath.parse),
+                flat: value["flat"] as? Bool ?? false,
                 eyes: eyes,
                 paints: paints
             )

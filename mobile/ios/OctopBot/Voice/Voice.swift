@@ -72,6 +72,9 @@ final class VoiceRecorder {
         return await Self.onDevice(file)
     }
 
+    /// The failure note is shown briefly, not forever.
+    func clearFailure() { failure = nil }
+
     func cancel() {
         recorder?.stop()
         meter?.cancel()
@@ -109,32 +112,42 @@ final class VoiceRecorder {
 final class Speaker {
     static let shared = Speaker()
     private(set) var isSpeaking = false
+    /// The message being read aloud, so its button can turn into stop.
+    private(set) var speakingId: String?
     private var player: AVAudioPlayer?
     private let synthesizer = AVSpeechSynthesizer()
     private var job: Task<Void, Never>?
 
-    func speak(_ markdown: String, backend: ChatBackend?) {
+    func speak(_ markdown: String, backend: ChatBackend?, id: String? = nil) {
         stop()
         let text = Self.plain(markdown)
         guard !text.isEmpty else { return }
         isSpeaking = true
+        speakingId = id
         job = Task {
             try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
             try? AVAudioSession.sharedInstance().setActive(true)
             for chunk in Self.chunks(text) {
                 if Task.isCancelled { return }
+                let speed = Preferences.shared.speechSpeed.rate
                 if let backend, let audio = try? await backend.speech(for: chunk), let player = try? AVAudioPlayer(data: audio) {
                     self.player = player
+                    player.enableRate = true
+                    player.rate = speed
                     player.play()
                     while player.isPlaying, !Task.isCancelled { try? await Task.sleep(for: .milliseconds(120)) }
                 } else {
                     let utterance = AVSpeechUtterance(string: chunk)
                     utterance.voice = AVSpeechSynthesisVoice(language: Self.voiceLanguage(for: chunk))
+                    utterance.rate = AVSpeechUtteranceDefaultSpeechRate * speed
                     synthesizer.speak(utterance)
                     while synthesizer.isSpeaking, !Task.isCancelled { try? await Task.sleep(for: .milliseconds(120)) }
                 }
             }
+            // A newer speak() may own the state by now.
+            guard !Task.isCancelled else { return }
             isSpeaking = false
+            speakingId = nil
         }
     }
 
@@ -143,6 +156,7 @@ final class Speaker {
         player?.stop()
         synthesizer.stopSpeaking(at: .immediate)
         isSpeaking = false
+        speakingId = nil
     }
 
     /// Read Chinese text with a Chinese voice whatever the UI language, and vice versa.

@@ -67,6 +67,7 @@ struct HomeView: View {
                     }
                 }
             }
+            .animation(.snappy, value: shownBots.map(\.id))
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Palette.background.ignoresSafeArea())
@@ -113,6 +114,8 @@ struct HomeView: View {
                 case .bot(let id):
                     if let bot = model.bots.first(where: { $0.id == id }) {
                         ChatScreen(chat: model.session(for: bot))
+                    } else {
+                        ProgressView()
                     }
                 case .group(let group):
                     GroupRoomView(group: group)
@@ -140,8 +143,8 @@ struct HomeView: View {
 
     private var shownBots: [BotProfile] {
         let text = query.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return model.bots }
-        return model.bots.filter { $0.name.localizedCaseInsensitiveContains(text) || ($0.subtitle ?? "").localizedCaseInsensitiveContains(text) }
+        guard !text.isEmpty else { return model.orderedBots }
+        return model.orderedBots.filter { $0.name.localizedCaseInsensitiveContains(text) || ($0.subtitle ?? "").localizedCaseInsensitiveContains(text) }
     }
 
     private var shownGroups: [GroupSummary] {
@@ -152,6 +155,9 @@ struct HomeView: View {
 
     @ViewBuilder
     private func menu(for bot: BotProfile) -> some View {
+        if model.unread.contains(bot.id) {
+            Button("home.markRead", systemImage: "checkmark.message") { model.markRead(bot) }
+        }
         if model.canEdit(bot) {
             Button("bot.edit", systemImage: "paintpalette") { editing = bot }
         }
@@ -183,6 +189,7 @@ private struct BotRow: View {
     var body: some View {
         let motion = model.motion(of: bot)
         let preview = model.previews[bot.id]
+        let unread = model.unread.contains(bot.id)
         HStack(spacing: 14) {
             CharacterView(look: bot.look, size: 52, motion: motion, seed: bot.id)
             VStack(alignment: .leading, spacing: 3) {
@@ -193,14 +200,20 @@ private struct BotRow: View {
                     }
                     Spacer(minLength: 4)
                     if let date = preview?.date {
-                        Text(date.relative).font(.caption).foregroundStyle(Palette.secondary)
+                        Text(date.relative).font(.caption).foregroundStyle(unread ? bot.accent : Palette.secondary)
+                    }
+                    if unread {
+                        Circle().fill(bot.accent).frame(width: 9, height: 9)
+                            .accessibilityLabel(Text("home.unread"))
                     }
                 }
                 Group {
                     if motion != .idle {
                         Text(motion == .thinking ? "chat.thinking" : "chat.typing").foregroundStyle(bot.accent)
                     } else {
-                        Text(preview?.text ?? bot.subtitle ?? "").foregroundStyle(Palette.secondary)
+                        Text(preview?.text ?? bot.subtitle ?? "")
+                            .foregroundStyle(unread ? Palette.text : Palette.secondary)
+                            .fontWeight(unread ? .semibold : .regular)
                     }
                 }
                 .font(.subheadline)

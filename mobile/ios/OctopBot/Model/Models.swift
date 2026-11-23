@@ -64,6 +64,8 @@ enum StreamEvent {
     case text(String)
     case thinking(String)
     case tool(id: String, name: String, done: Bool)
+    /// The turn paused for a question or an approval (server mode).
+    case pause(HitlPause)
     case done
 }
 
@@ -133,4 +135,21 @@ protocol ChatBackend: AnyObject {
     func speech(for text: String) async throws -> Data?
     func registerPush(token: String) async
     func signOut() async
+
+    /// Answer a paused turn and stream what the Bot does next.
+    func resume(
+        _ pause: HitlPause, decisions: [[String: Any]], conversation: String, bot: BotProfile
+    ) -> AsyncThrowingStream<StreamEvent, Error>
+    /// A pause still open in a conversation just loaded with `messages(in:bot:)`.
+    func openPause(in conversation: ConversationSummary) -> HitlPause?
+}
+
+extension ChatBackend {
+    func resume(
+        _ pause: HitlPause, decisions: [[String: Any]], conversation: String, bot: BotProfile
+    ) -> AsyncThrowingStream<StreamEvent, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+
+    func openPause(in conversation: ConversationSummary) -> HitlPause? { nil }
 }

@@ -40,6 +40,13 @@ struct OnboardingView: View {
         .scrollDismissesKeyboard(.interactively)
         .background(Palette.background.ignoresSafeArea())
         .sheet(isPresented: $showServer) { ServerConnectView() }
+        .onAppear {
+            // "Switch account or server" from Settings lands here with the server sheet open.
+            if model.reopenServerSheet {
+                model.reopenServerSheet = false
+                showServer = true
+            }
+        }
     }
 
     private var hero: some View {

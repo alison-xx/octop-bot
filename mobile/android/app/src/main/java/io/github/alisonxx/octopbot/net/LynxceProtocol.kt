@@ -69,7 +69,7 @@ object LynxceProtocol {
             bot.systemPrompt?.takeIf { it.isNotBlank() }?.let { prompt ->
                 addJsonObject { put("role", "system"); put("content", prompt) }
             }
-            history.filter { it.status == MessageStatus.Done && it.text.isNotEmpty() }.takeLast(20).forEach { message ->
+            history.filter { it.status == MessageStatus.Done && it.text.isNotEmpty() && it.role != MessageRole.Note }.takeLast(20).forEach { message ->
                 addJsonObject {
                     put("role", if (message.role == MessageRole.User) "user" else "assistant")
                     put("content", message.text)

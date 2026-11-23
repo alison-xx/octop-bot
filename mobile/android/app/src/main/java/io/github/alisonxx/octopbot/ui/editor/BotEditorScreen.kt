@@ -3,6 +3,7 @@ package io.github.alisonxx.octopbot.ui.editor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,11 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,6 +63,7 @@ import io.github.alisonxx.octopbot.ui.common.BackButton
 import io.github.alisonxx.octopbot.ui.common.TopBar
 import io.github.alisonxx.octopbot.ui.common.TopBarTitle
 import io.github.alisonxx.octopbot.ui.common.accentOf
+import io.github.alisonxx.octopbot.ui.common.rememberHaptics
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
 import io.github.alisonxx.octopbot.ui.theme.OctopTheme
 import kotlinx.coroutines.launch
@@ -97,6 +104,7 @@ fun BotEditor(
 ) {
     val library = rememberCharacterLibrary()
     val palette = LocalPalette.current
+    val haptics = rememberHaptics()
     val editsText = original == null || original.isLocal
     var name by rememberSaveable { mutableStateOf(original?.name.orEmpty()) }
     var persona by rememberSaveable { mutableStateOf(original?.systemPrompt.orEmpty()) }
@@ -106,6 +114,8 @@ fun BotEditor(
     // The octopus is Chief's; its ink is fixed.
     val look = Look(shape, if (shape == Look.OCTOPUS) Look.chief.color else color)
     val valid = !editsText || name.isNotBlank()
+    // The octopus is Chief's mascot; other Bots pick from the DS Bot shapes.
+    val shapeIds = if (original?.isChief == true) library.shapeIds else library.shapes.keys.toList()
 
     OctopTheme(accent = accentOf(look)) {
         Column(Modifier.fillMaxSize().imePadding()) {
@@ -125,8 +135,25 @@ fun BotEditor(
                     .navigationBarsPadding(),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                Column(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     BotCharacter(look, 132.dp, seed = original?.id ?: "new")
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        Modifier
+                            .clip(CircleShape)
+                            .background(palette.surface)
+                            .clickable {
+                                haptics.tap()
+                                shape = (shapeIds - shape).randomOrNull() ?: shape
+                                color = (library.inkIds - color).randomOrNull() ?: color
+                            }
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Rounded.Shuffle, contentDescription = null, tint = palette.secondary, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.bot_shuffle), style = MaterialTheme.typography.labelLarge)
+                    }
                 }
                 if (editsText) {
                     EditorField(name, { name = it }, stringResource(R.string.bot_name), stringResource(R.string.bot_name_placeholder))
@@ -141,8 +168,6 @@ fun BotEditor(
                     Text(original.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.CenterHorizontally))
                 }
                 Section(stringResource(R.string.bot_shape))
-                // The octopus is Chief's mascot; other Bots pick from the DS Bot shapes.
-                val shapeIds = if (original?.isChief == true) library.shapeIds else library.shapes.keys.toList()
                 AdaptiveGrid(shapeIds, minCell = 52.dp, spacing = 8.dp) { id, cell ->
                     val choice = Look(id, if (id == Look.OCTOPUS) Look.chief.color else color)
                     val selected = id == shape
@@ -169,7 +194,7 @@ fun BotEditor(
                         val fill = if (ink == "aurora" && library.aurora.isNotEmpty()) {
                             Brush.linearGradient(library.aurora.map { it.second })
                         } else {
-                            androidx.compose.ui.graphics.SolidColor(library.ink(ink))
+                            androidx.compose.ui.graphics.SolidColor(library.ink(ink, isSystemInDarkTheme()))
                         }
                         Box(Modifier.size(cell), contentAlignment = Alignment.Center) {
                             Box(
@@ -190,8 +215,20 @@ fun BotEditor(
                     }
                 }
                 if (original?.isLocal == true) {
-                    TextButton(onClick = { confirmDelete = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                        Text(stringResource(R.string.bot_delete), color = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(palette.surface)
+                            .clickable { confirmDelete = true }
+                            .padding(vertical = 15.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.bot_delete), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall)
                     }
                 }
                 Spacer(Modifier.height(24.dp))

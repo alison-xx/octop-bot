@@ -46,19 +46,51 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Group {
+        ZStack {
             switch model.phase {
             case .launching:
-                ZStack {
-                    Palette.background.ignoresSafeArea()
-                    CharacterView(look: .chief, size: 96)
-                }
+                SplashView().transition(.opacity)
             case .signedOut:
-                OnboardingView()
+                OnboardingView().transition(.opacity)
             case .ready:
-                HomeView()
+                HomeView().transition(.opacity)
             }
         }
+        .animation(.easeOut(duration: 0.35), value: model.phase)
         .tint(Palette.text)
+    }
+}
+
+/// Continues the system launch screen: the same art in the same place, then the name fades in.
+struct SplashView: View {
+    static let artSize: CGFloat = 240
+    @State private var shown = false
+
+    var body: some View {
+        ZStack {
+            Color("LaunchBackground").ignoresSafeArea()
+            Image("LaunchArt")
+                .resizable()
+                .scaledToFit()
+                .frame(width: Self.artSize, height: Self.artSize)
+                .scaleEffect(shown ? 1.03 : 1)
+                .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: shown)
+            VStack(spacing: 6) {
+                Text(verbatim: "Octop Bot")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundStyle(Palette.text)
+                Text("onboarding.tagline")
+                    .font(.subheadline)
+                    .foregroundStyle(Palette.secondary)
+            }
+            .offset(y: Self.artSize / 2 + 44)
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown ? 0 : 8)
+            .animation(.easeOut(duration: 0.45).delay(0.1), value: shown)
+        }
+        // The system launch screen centers its image in the whole screen, not the safe area.
+        .ignoresSafeArea()
+        .onAppear { shown = true }
+        .accessibilityElement(children: .combine)
     }
 }

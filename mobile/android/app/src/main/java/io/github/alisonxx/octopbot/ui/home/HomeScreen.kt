@@ -3,21 +3,17 @@ package io.github.alisonxx.octopbot.ui.home
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material.icons.rounded.Palette
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -54,8 +50,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,7 +69,11 @@ import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.GroupSummary
 import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.store.BotPreview
+import io.github.alisonxx.octopbot.store.Previews
+import io.github.alisonxx.octopbot.ui.common.SearchField
+import io.github.alisonxx.octopbot.ui.common.accentOf
 import io.github.alisonxx.octopbot.ui.common.relativeTime
+import io.github.alisonxx.octopbot.ui.common.rememberHaptics
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
 import io.github.alisonxx.octopbot.ui.theme.OctopTheme
 
@@ -151,7 +152,8 @@ fun Directory(
 ) {
     val palette = LocalPalette.current
     var query by rememberSaveable { mutableStateOf("") }
-    val bots = state.bots.filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
+    val bots = Previews.directoryOrder(state.bots, state.previews)
+        .filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
     val groups = state.groups.filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
     var deleting by remember { mutableStateOf<BotProfile?>(null) }
     Box(Modifier.fillMaxSize()) {
@@ -192,7 +194,12 @@ fun Directory(
                 style = MaterialTheme.typography.headlineLarge,
                 modifier = Modifier.padding(start = 20.dp, top = 4.dp, bottom = 8.dp),
             )
-            SearchField(query, onQueryChange = { query = it }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            SearchField(
+                query = query,
+                onQueryChange = { query = it },
+                placeholder = stringResource(R.string.home_search),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
             state.error?.let { ErrorBanner(it, onRetry = onRefresh) }
             PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 112.dp)) {
@@ -263,43 +270,6 @@ fun Directory(
 }
 
 @Composable
-private fun SearchField(query: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier) {
-    val palette = LocalPalette.current
-    Row(
-        modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(palette.surface)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(Icons.Rounded.Search, contentDescription = null, tint = palette.secondary, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(8.dp))
-        Box(Modifier.weight(1f)) {
-            if (query.isEmpty()) {
-                Text(stringResource(R.string.home_search), style = MaterialTheme.typography.bodyLarge, color = palette.secondary)
-            }
-            BasicTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = palette.text),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        if (query.isNotEmpty()) {
-            Icon(
-                Icons.Rounded.Close,
-                contentDescription = stringResource(R.string.common_close),
-                tint = palette.secondary,
-                modifier = Modifier.size(20.dp).clip(CircleShape).clickable { onQueryChange("") },
-            )
-        }
-    }
-}
-
-@Composable
 private fun ErrorBanner(message: String, onRetry: () -> Unit) {
     val palette = LocalPalette.current
     Row(
@@ -330,7 +300,8 @@ private fun BotRow(
     onDelete: (() -> Unit)?,
 ) {
     val palette = LocalPalette.current
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
+    val unread = preview?.unread == true && !replying
     var menu by remember { mutableStateOf(false) }
     Box {
         Row(
@@ -339,7 +310,7 @@ private fun BotRow(
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        haptics.longPress()
                         menu = true
                     },
                 )
@@ -360,11 +331,24 @@ private fun BotRow(
                     preview?.let {
                         Text(relativeTime(it.at), style = MaterialTheme.typography.labelMedium, color = palette.secondary)
                     }
+                    if (unread) {
+                        val label = stringResource(R.string.home_unread)
+                        Spacer(Modifier.width(6.dp))
+                        Box(
+                            Modifier
+                                .size(9.dp)
+                                .clip(CircleShape)
+                                .background(accentOf(bot.look))
+                                .semantics { contentDescription = label },
+                        )
+                    }
                 }
                 Text(
-                    if (replying) stringResource(R.string.chat_thinking) else preview?.text ?: bot.subtitle.orEmpty(),
+                    // Previews saved by older versions may still hold Markdown marks.
+                    if (replying) stringResource(R.string.chat_replying) else preview?.text?.let(Previews::snippet) ?: bot.subtitle.orEmpty(),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = palette.secondary,
+                    color = if (unread) palette.text else palette.secondary,
+                    fontWeight = if (unread) FontWeight.SemiBold else null,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -435,7 +419,7 @@ private fun DirectoryPreview() {
                 groups = listOf(GroupSummary("g1", "Launch crew", "chief", listOf("chief", "researcher", "engineer"))),
                 previews = mapOf(
                     "chief" to BotPreview("Here's a plan for your week, split into three focus blocks.", now - 4 * 60_000),
-                    "engineer" to BotPreview("The crash comes from a null adapter in onResume().", now - 3 * 3_600_000),
+                    "engineer" to BotPreview("The crash comes from a null adapter in onResume().", now - 3 * 3_600_000, unread = true),
                 ),
                 replying = setOf("researcher"),
                 showGroups = true,

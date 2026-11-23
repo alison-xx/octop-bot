@@ -20,7 +20,7 @@ final class CharacterTests: XCTestCase {
             XCTAssertLessThanOrEqual(box.maxY, 101, id)
             XCTAssertFalse(shape.eyes.isEmpty, id)
         }
-        XCTAssertEqual(library.inkOrder.first, "charcoal")
+        XCTAssertEqual(library.inkOrder.first, "red")
         XCTAssertEqual(library.aurora.count, 3)
     }
 
@@ -136,6 +136,58 @@ final class ServerTests: XCTestCase {
         XCTAssertEqual(messages[1].tools.map(\.name), ["联网搜索"])
     }
 
+    func testPausedTurnSummaryRowIsNotRepeated() {
+        func row(_ id: String?, _ text: String) -> [String: Any] {
+            var row: [String: Any] = ["role": "assistant", "content": [["type": "text", "text": text]]]
+            if let id { row["id"] = id }
+            return row
+        }
+        let rows: [[String: Any]] = [
+            ["role": "user", "content": "plan my day"],
+            row("a", "First part."), row("b", "Second part."), row(nil, "First part.Second part."),
+        ]
+        let messages = ServerBackend.history(rows)
+        XCTAssertEqual(messages.count, 2)
+        XCTAssertEqual(messages[1].text, "First part.\n\nSecond part.")
+    }
+
+    func testHitlParsingAndAnswers() throws {
+        let frame: [String: Any] = ["value": [
+            "pending_id": "p1",
+            "action_requests": [[
+                "name": "ask_user_question",
+                "args": #"{"questions":[{"header":"Focus","question":"What matters today?","multi_select":true,"options":[{"label":"Ship"},{"label":"Learn"}]},{"question":"Fixed times?"}]}"#,
+            ]],
+        ]]
+        let pause = try XCTUnwrap(HitlPause.parse(frame))
+        XCTAssertEqual(pause.pendingId, "p1")
+        XCTAssertTrue(pause.isQuestion)
+        XCTAssertEqual(pause.questions.count, 2)
+        XCTAssertTrue(pause.questions[0].multiSelect)
+        XCTAssertEqual(pause.questions[0].options.map(\.label), ["Ship", "Learn"])
+        XCTAssertNil(HitlPause.answerMessage(pause.questions, [.init(picked: ["Ship"]), .init()]))
+        XCTAssertEqual(
+            HitlPause.answerMessage(pause.questions, [.init(picked: ["Ship", "Learn"]), .init(other: "none")]),
+            "Focus: Ship; Learn\nFixed times?: none"
+        )
+
+        let approval = try XCTUnwrap(HitlPause.parse(
+            ["action_requests": [["name": "execute", "args": ["command": "rm -rf build"], "description": "Clean"]]],
+            labels: ["execute": "Run command"]
+        ))
+        XCTAssertFalse(approval.isQuestion)
+        XCTAssertEqual(approval.actions[0].label, "Run command")
+        XCTAssertEqual(approval.actions[0].details, [.init(key: "command", value: "rm -rf build")])
+
+        var mapper = ServerFrameMapper()
+        guard case .events(let events) = try mapper.map(["type": "hitl_required", "request": frame]),
+              case .pause(let mapped)? = events.first else { return XCTFail("expected a pause") }
+        XCTAssertEqual(mapped.pendingId, "p1")
+        guard case .finished = try mapper.map(["type": "turn.ended", "hitl_paused": true]) else { return XCTFail() }
+        var resume = ServerFrameMapper(endsOnDone: true)
+        guard case .finished = try resume.map(["type": "done"]) else { return XCTFail() }
+    }
+
     func testFrameMapping() throws {
         var mapper = ServerFrameMapper()
         guard case .events(let start) = try mapper.map(["type": "tool_call_chunk", "id": "c1", "display_name": "Search"]) else { return XCTFail() }
@@ -196,5 +248,139 @@ final class LanguageTests: XCTestCase {
         preferences.language = .english
         XCTAssertEqual(L("common.copy"), "Copy")
         XCTAssertEqual(LocalBots.builtIns[1].name, "Researcher")
+    }
+}
+
+@MainActor
+final class DirectoryTests: XCTestCase {
+    private func bot(_ id: String, chief: Bool = false) -> BotProfile {
+        BotProfile(id: id, name: id, look: .fallback, isChief: chief)
+    }
+
+    func testChiefPinnedThenNewestReplyThenDirectoryOrder() {
+        let bots = [bot("a"), bot("chief", chief: true), bot("b"), bot("c"), bot("d")]
+        let now = Date()
+        let previews: [String: AppModel.Preview] = [
+            "c": .init(text: "x", date: now.addingTimeInterval(-60)),
+            "d": .init(text: "y", date: now),
+            "chief": .init(text: "z", date: now.addingTimeInterval(10)),
+        ]
+        XCTAssertEqual(AppModel.order(bots, previews: previews).map(\.id), ["chief", "d", "c", "a", "b"])
+    }
+}
+
+@MainActor
+final class TimeTests: XCTestCase {
+    private var calendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        return c
+    }
+
+    private func date(_ y: Int, _ m: Int, _ d: Int, _ h: Int, _ min: Int) -> Date {
+        calendar.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: min))!
+    }
+
+    func testSeparatorGap() {
+        let start = date(2026, 11, 23, 14, 0)
+        XCTAssertTrue(TimeLabel.needsSeparator(start, after: nil))
+        XCTAssertFalse(TimeLabel.needsSeparator(start.addingTimeInterval(600), after: start))
+        XCTAssertTrue(TimeLabel.needsSeparator(start.addingTimeInterval(601), after: start))
+    }
+
+    func testSeparatorText() {
+        let preferences = Preferences.shared
+        let original = preferences.language
+        defer { preferences.language = original }
+        preferences.language = .chinese
+        let now = date(2026, 11, 23, 15, 0)
+        XCTAssertEqual(TimeLabel.text(date(2026, 11, 23, 14, 5), now: now, calendar: calendar), "14:05")
+        XCTAssertEqual(TimeLabel.text(date(2026, 11, 22, 9, 30), now: now, calendar: calendar), "昨天 09:30")
+        XCTAssertTrue(TimeLabel.text(date(2026, 11, 20, 14, 5), now: now, calendar: calendar).contains("11月20日"))
+        XCTAssertTrue(TimeLabel.text(date(2025, 3, 1, 8, 0), now: now, calendar: calendar).contains("2025"))
+        preferences.language = .english
+        XCTAssertEqual(TimeLabel.text(date(2026, 11, 22, 9, 30), now: now, calendar: calendar), "Yesterday 09:30")
+    }
+
+    func testHistoryBuckets() {
+        let now = date(2026, 11, 23, 15, 0)
+        XCTAssertEqual(DateBucket.of(date(2026, 11, 23, 0, 1), now: now, calendar: calendar), .today)
+        XCTAssertEqual(DateBucket.of(date(2026, 11, 22, 23, 0), now: now, calendar: calendar), .yesterday)
+        XCTAssertEqual(DateBucket.of(date(2026, 11, 17, 12, 0), now: now, calendar: calendar), .week)
+        XCTAssertEqual(DateBucket.of(date(2026, 11, 1, 12, 0), now: now, calendar: calendar), .earlier)
+        XCTAssertEqual(DateBucket.of(nil, now: now, calendar: calendar), .earlier)
+    }
+}
+
+/// A backend whose replies the test finishes by hand.
+@MainActor
+private final class FakeBackend: ChatBackend {
+    var supportsGroups: Bool { false }
+    var accountName: String { "tester" }
+    var sent: [String] = []
+    var replies: [AsyncThrowingStream<StreamEvent, Error>.Continuation] = []
+
+    func bots() async throws -> [BotProfile] { [BotProfile(id: "b", name: "B", look: .fallback, isChief: true)] }
+    func conversations(for bot: BotProfile) async throws -> [ConversationSummary] { [] }
+    func messages(in conversation: ConversationSummary, bot: BotProfile) async throws -> [ChatMessage] { [] }
+    func models() async throws -> [ModelOption] { [] }
+    func send(_ text: String, images: [Data], to bot: BotProfile, conversation: String?, history: [ChatMessage], model: String?) -> AsyncThrowingStream<StreamEvent, Error> {
+        sent.append(text)
+        return AsyncThrowingStream { replies.append($0) }
+    }
+    func stop(conversation: String, bot: BotProfile) async {}
+    func deleteConversation(_ conversation: ConversationSummary, bot: BotProfile) async throws {}
+    func transcribe(_ audio: Data) async throws -> String? { nil }
+    func speech(for text: String) async throws -> Data? { nil }
+    func registerPush(token: String) async {}
+    func signOut() async {}
+}
+
+@MainActor
+final class QueueTests: XCTestCase {
+    func testMessagesWrittenDuringAReplyAreSentInOrderAfterIt() async throws {
+        let app = AppModel()
+        let backend = FakeBackend()
+        await app.use(backend)
+        app.notifyOnReply = false
+        let chat = app.session(for: app.bots[0])
+        chat.send("one")
+        XCTAssertTrue(chat.isStreaming)
+        chat.send("two")
+        chat.send("three")
+        XCTAssertEqual(chat.queued.map(\.text), ["two", "three"])
+        XCTAssertEqual(backend.sent, ["one"])
+
+        backend.replies[0].yield(.text("hi"))
+        backend.replies[0].finish()
+        for _ in 0..<50 where backend.sent.count < 2 { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(backend.sent, ["one", "two"])
+        XCTAssertEqual(chat.queued.map(\.text), ["three"])
+
+        chat.unqueue(chat.queued[0])
+        backend.replies[1].finish()
+        for _ in 0..<50 where chat.isStreaming { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(backend.sent, ["one", "two"])
+        XCTAssertEqual(chat.messages.filter { $0.role == .user }.map(\.text), ["one", "two"])
+    }
+}
+
+@MainActor
+final class SoftCharacterTests: XCTestCase {
+    func testSoftCharactersMergeLikeTheDashboard() throws {
+        let url = try XCTUnwrap(Bundle(for: SoftCharacterTests.self).url(forResource: "soft-characters", withExtension: "json")
+            ?? Bundle.main.url(forResource: "soft-characters", withExtension: "json"))
+        let soft = Characters.parse(try Data(contentsOf: url))
+        XCTAssertEqual(soft.order, ["orb", "heart", "sparkle", "drop", "cloud", "bean"])
+        let drop = try XCTUnwrap(soft.shapes["drop"])
+        XCTAssertTrue(drop.flat)
+        XCTAssertNil(drop.shade)
+        XCTAssertEqual(drop.eyes.count, 2)
+        XCTAssertFalse(drop.body.boundingRect.isEmpty)
+        let merged = Characters.library
+        XCTAssertEqual(Array(merged.order.prefix(6)), soft.order)
+        XCTAssertNotNil(merged.shapes["acorn"])
+        XCTAssertEqual(Array(merged.inkOrder.prefix(6)), ["red", "orange", "green", "blue", "violet", "black"])
+        XCTAssertNotEqual(Characters.ink("black", dark: true), Characters.ink("black", dark: false))
     }
 }

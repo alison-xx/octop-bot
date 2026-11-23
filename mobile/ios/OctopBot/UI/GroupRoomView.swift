@@ -10,7 +10,9 @@ final class GroupRoom {
     var drafts: [String: String] = [:]
     var goal: (title: String, status: String)?
     var error: String?
-    var sending = false
+    /// Group posts still waiting for their replies.
+    var inFlight = 0
+    var sending: Bool { inFlight > 0 }
     private var quietPolls = 0
     private var poller: Task<Void, Never>?
 
@@ -36,10 +38,19 @@ final class GroupRoom {
 
     func poll() async {
         do {
-            async let fresh = server.groupMessages(group.id, after: messages.last?.id)
+            // Local echoes are not server ids; page after the last real message.
+            let after = messages.last { !$0.id.hasPrefix("local-") }?.id
+            async let fresh = server.groupMessages(group.id, after: after)
             async let live = server.groupDrafts(group.id)
             let (new, current) = try await (fresh, live)
-            if !new.isEmpty { messages += new.filter { row in !messages.contains { $0.id == row.id } } }
+            if !new.isEmpty {
+                let delivered = Set(new.compactMap(\.requestId))
+                messages.removeAll { $0.id.hasPrefix("local-") && $0.role == "user" && delivered.contains($0.requestId ?? "") }
+                let fresh = new.filter { row in !messages.contains { $0.id == row.id } }
+                // Keep local echoes (still sending or failed) at the end.
+                let local = messages.filter { $0.id.hasPrefix("local-") }
+                messages = messages.filter { !$0.id.hasPrefix("local-") } + fresh + local
+            }
             drafts = Dictionary(current.map { ($0.agentId, $0.text) }, uniquingKeysWith: { _, b in b })
             quietPolls = new.isEmpty && current.isEmpty ? quietPolls + 1 : 0
             error = nil
@@ -52,20 +63,34 @@ final class GroupRoom {
     func send(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let mentions = Self.mentions(in: trimmed, members: group.members)
-        let requestId = UUID().uuidString.lowercased()
-        messages.append(.init(id: "local-" + requestId, role: "user", agentId: nil, text: trimmed, createdAt: .now, requestId: requestId))
-        sending = true
+        post(trimmed, requestId: UUID().uuidString.lowercased())
+    }
+
+    /// Send a failed message again; the same request id keeps the server from doubling it.
+    func retry(_ message: ServerBackend.GroupMessage) {
+        guard let requestId = message.requestId else { return }
+        post(message.text, requestId: requestId)
+    }
+
+    private func post(_ text: String, requestId: String) {
+        let localId = "local-" + requestId
+        let mentions = Self.mentions(in: text, members: group.members)
+        messages.removeAll { $0.id == localId }
+        messages.append(.init(id: localId, role: "user", agentId: nil, text: text, createdAt: .now, requestId: requestId))
+        inFlight += 1
         quietPolls = 0
         start()
         Task {
-            defer { sending = false }
+            defer { inFlight -= 1 }
             do {
-                try await server.postGroupMessage(group.id, text: trimmed, mentions: mentions, requestId: requestId)
+                // Blocks until every reply is done; the poller shows progress meanwhile.
+                try await server.postGroupMessage(group.id, text: text, mentions: mentions, requestId: requestId)
+                messages.removeAll { $0.id == localId }
             } catch {
+                // Keep the text so nothing typed is lost; tap to retry.
+                if let index = messages.firstIndex(where: { $0.id == localId }) { messages[index].role = "failed" }
                 self.error = error.localizedDescription
             }
-            messages.removeAll { $0.id == "local-" + requestId }
             await poll()
         }
     }
@@ -145,7 +170,11 @@ struct GroupRoomView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Palette.surface, in: RoundedRectangle(cornerRadius: 14))
                     }
-                    ForEach(room.messages, id: \.id) { message in
+                    ForEach(Array(room.messages.enumerated()), id: \.element.id) { index, message in
+                        let previous = index > 0 ? room.messages[index - 1].createdAt : nil
+                        if TimeLabel.needsSeparator(message.createdAt, after: previous) {
+                            TimeSeparator(date: message.createdAt)
+                        }
                         row(message, room: room)
                     }
                     ForEach(room.drafts.sorted(by: { $0.key < $1.key }), id: \.key) { agent, draft in
@@ -154,31 +183,45 @@ struct GroupRoomView: View {
                     Color.clear.frame(height: 4).id("end")
                 }
                 .padding(16)
+                .chatTextSize()
             }
             .defaultScrollAnchor(.bottom)
+            .scrollDismissesKeyboard(.interactively)
             .onChange(of: room.messages.count) { withAnimation { proxy.scrollTo("end") } }
             .onChange(of: room.drafts) { proxy.scrollTo("end") }
             .overlay(alignment: .top) {
                 if let error = room.error {
-                    Text(error).font(.footnote).padding(8).background(.red.opacity(0.15), in: Capsule()).padding(8)
+                    ErrorBanner(text: error) { withAnimation { room.error = nil } }
                 }
             }
+            .animation(.snappy, value: room.error)
         }
     }
 
     @ViewBuilder
     private func row(_ message: ServerBackend.GroupMessage, room: GroupRoom) -> some View {
-        if message.role == "user" {
+        if message.role == "user" || message.role == "failed" {
             HStack {
                 Spacer(minLength: 48)
-                Text(message.text)
-                    .padding(.horizontal, 16).padding(.vertical, 11)
-                    .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(message.text)
+                        .padding(.horizontal, 16).padding(.vertical, 11)
+                        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .contextMenu { Button("common.copy", systemImage: "doc.on.doc") { Clipboard.copy(message.text) } }
+                    if message.role == "failed" {
+                        Button { room.retry(message) } label: {
+                            Label("groups.sendFailed", systemImage: "exclamationmark.circle.fill")
+                                .font(.caption).foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
         } else if message.role == "error" {
             Label(message.text, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.red)
         } else {
             botRow(room.member(message.agentId), text: message.text, live: false)
+                .contextMenu { Button("common.copy", systemImage: "doc.on.doc") { Clipboard.copy(message.text) } }
         }
     }
 
@@ -225,21 +268,26 @@ struct GroupRoomView: View {
                     .padding(.vertical, 10)
                     .padding(.leading, 14)
                 Button {
+                    Haptics.tap()
                     room.send(text)
                     text = ""
                 } label: {
-                    Image(systemName: "arrow.up").font(.callout.weight(.bold)).frame(width: 36, height: 36)
+                    Image(systemName: "arrow.up").font(.callout.weight(.bold))
+                        .frame(width: 36, height: 36)
                         .background(Palette.text, in: Circle()).foregroundStyle(Palette.background)
                 }
-                .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .opacity(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 1)
                 .padding(.bottom, 2)
             }
             .padding(.trailing, 5)
             .padding(.vertical, 4)
             .background(Palette.surface, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(Palette.hairline, lineWidth: 0.5))
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
         }
+        .chatTextSize()
     }
 
     /// The partial name after a trailing "@", if the user is typing a mention.

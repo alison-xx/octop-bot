@@ -10,6 +10,12 @@ android="$root/mobile/android/app/src/main"
 mkdir -p "$ios" "$android/assets" "$android/res/drawable-nodpi"
 cp "$src_chars" "$ios/characters.json"
 cp "$src_chars" "$android/assets/characters.json"
+# Soft characters (dashboard/src/pages/OctopBot/softShapes.ts), when this checkout has them.
+src_soft="$root/dashboard/src/pages/OctopBot/softShapes.ts"
+if [[ -f "$src_soft" ]]; then
+  python3 "$root/mobile/scripts/soft-characters.py" "$src_soft" "$ios/soft-characters.json"
+  cp "$ios/soft-characters.json" "$android/assets/soft-characters.json"
+fi
 cp "$src_mascot" "$ios/octop-mascot.webp"
 cp "$src_mascot" "$android/res/drawable-nodpi/octop_mascot.webp"
 if [[ "${1:-}" == "--check" ]]; then

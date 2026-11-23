@@ -117,8 +117,6 @@
         <item>我们来玩个文字游戏吧</item>
     </string-array>
     <string name="chat_photo_failed">这张图片无法读取。</string>
-
-    <string name="drawer_recent">最近</string>
     <string name="drawer_empty">还没有会话</string>
 
     <string name="bot_new">新建 Bot</string>
@@ -163,11 +161,8 @@
     <string name="settings_title">设置</string>
     <string name="settings_account">账号</string>
     <string name="settings_signed_in_as">当前账号</string>
-    <string name="settings_balance">余额</string>
     <string name="settings_connection">连接到</string>
     <string name="settings_lynxce">灵策云端</string>
-    <string name="settings_server">自建服务器</string>
-    <string name="settings_use_lynxce">改用灵策智算账号</string>
     <string name="settings_model">模型</string>
     <string name="settings_model_auto">智能路由</string>
     <string name="settings_model_footer">智能路由会为每个问题自动选择模型。</string>
@@ -177,15 +172,77 @@
     <string name="settings_appearance">外观</string>
     <string name="settings_appearance_dark">深色</string>
     <string name="settings_appearance_light">浅色</string>
-    <string name="settings_voice">语音与通知</string>
     <string name="settings_read_aloud">朗读回复</string>
     <string name="settings_notify">回复完成时通知我</string>
     <string name="settings_about">关于</string>
     <string name="settings_version">版本</string>
-    <string name="settings_github">GitHub 源码</string>
+    <string name="settings_github">GitHub 项目主页</string>
     <string name="settings_sign_out">退出登录</string>
     <string name="settings_sign_out_confirm">要在这台手机上退出 Octop Bot 吗？</string>
 
     <string name="notify_channel">回复</string>
     <string name="notify_channel_description">Octop Bot 在后台时，Bot 完成回复会通知你。</string>
+
+    <!-- Polish: reply actions, history, settings -->
+    <string name="chat_replying">正在回复…</string>
+    <string name="chat_share">分享</string>
+    <string name="chat_stop_reading">停止朗读</string>
+    <string name="chat_edit">编辑</string>
+    <string name="time_yesterday">昨天 %1$s</string>
+    <string name="image_open">查看图片</string>
+    <string name="image_share_failed">无法分享这张图片。</string>
+    <string name="history_search">搜索会话</string>
+    <string name="history_today">今天</string>
+    <string name="history_yesterday">昨天</string>
+    <string name="history_week">过去 7 天</string>
+    <string name="history_earlier">更早</string>
+    <string name="history_no_match">没有匹配的会话</string>
+    <string name="history_current">当前会话</string>
+    <string name="home_unread">未读</string>
+    <string name="bot_shuffle">随机换一个</string>
+    <string name="settings_balance_chip">余额 %1$s</string>
+    <string name="settings_text_size">聊天字号</string>
+    <string name="settings_text_small">小</string>
+    <string name="settings_text_standard">标准</string>
+    <string name="settings_text_large">大</string>
+    <string name="settings_haptics">触感反馈</string>
+    <string name="settings_chat">聊天</string>
+    <string name="settings_expand_reasoning">默认展开思考过程</string>
+    <string name="settings_speech_rate">朗读语速</string>
+    <string name="settings_speed_slow">慢</string>
+    <string name="settings_speed_normal">正常</string>
+    <string name="settings_speed_fast">快</string>
+    <string name="settings_notifications">通知</string>
+    <string name="settings_notify_blocked">系统设置里关闭了 Octop Bot 的通知，回复完成时没法提醒你。</string>
+    <string name="settings_open_system_settings">打开系统设置</string>
+    <string name="settings_storage">存储</string>
+    <string name="settings_clear_cache">清除本地缓存</string>
+    <string name="settings_clear_cache_footer">清除回复预览、未读标记和临时的语音、图片文件，不会退出登录。</string>
+    <string name="settings_clear_cache_confirm">清除本地缓存？</string>
+    <string name="settings_clear">清除</string>
+    <string name="settings_cache_cleared">本地缓存已清除</string>
+    <string name="settings_switch_account">切换账号或服务器</string>
+    <string name="settings_report">反馈问题</string>
+    <string name="settings_lynxce_site">灵策官网</string>
+
+    <!-- Questions and approvals, queued messages -->
+    <string name="hitl_question_title">%1$s 想问你</string>
+    <string name="hitl_approval_title">需要你批准</string>
+    <string name="hitl_something_else">其他回答…</string>
+    <string name="hitl_your_answer">你的回答…</string>
+    <string name="hitl_you_decide">你决定</string>
+    <string name="hitl_approve">批准</string>
+    <string name="hitl_reject">拒绝</string>
+    <string name="hitl_reply_you_decide">你决定吧——按最优默认方案继续，并告诉我你依据的假设。</string>
+    <string name="hitl_reply_closed">用户关闭了这些问题，没有作答。不要再追问，请就此结束本轮。</string>
+    <string name="hitl_note_approved">已批准：%1$s</string>
+    <string name="hitl_note_declined">已拒绝：%1$s</string>
+    <string name="hitl_composer_answer">输入你的回答</string>
+    <string name="hitl_composer_decline">或者直接说你想怎么做</string>
+    <string name="chat_queued">待发送</string>
+    <string name="chat_queued_cancel">取消待发送的消息</string>
+    <string name="groups_not_sent">发送失败，点按重试</string>
+    <string name="hitl_next">下一题</string>
+    <string name="hitl_collapse">收起</string>
+    <string name="hitl_expand">展开</string>
 </resources>

@@ -8,12 +8,16 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-/** One DS Bot character in its 100×100 box (geometry and inks: Apache-2.0, see dashboard/public/licenses/ds-bot.txt). */
+/**
+ * One character in its 100×100 box: a DS Bot shape (geometry and inks: Apache-2.0, see
+ * dashboard/public/licenses/ds-bot.txt) or a [flat] soft shape (body plus white capsule eyes, nothing else).
+ */
 class CharacterShape(
     val id: String,
     val label: String,
@@ -22,42 +26,62 @@ class CharacterShape(
     val light: List<SvgPath.Segment>?,
     val paints: List<Paint>,
     val eyes: List<Eye>,
+    val flat: Boolean = false,
 ) {
     class Paint(val contours: List<SvgPath.Segment>, val color: Color, val opacity: Float)
     class Eye(val x: Float, val y: Float, val w: Float, val h: Float, val angle: Float)
 }
 
-/** `characters.json`: shapes in file order, inks (`[light, dark]`), and the aurora gradient stops. */
+/**
+ * `characters.json` merged with `soft-characters.json` like the dashboard: soft shapes first, then DS shapes;
+ * soft inks override DS inks of the same name and come first. Inks are `[light, dark]` pairs.
+ */
 class CharacterLibrary(
     val shapes: Map<String, CharacterShape>,
     val inks: Map<String, Pair<Color, Color>>,
     val aurora: List<Pair<Float, Color>>,
 ) {
-    /** Every look a Bot can wear: the octopus first, then the DS Bot shapes. */
+    /** Every look a Bot can wear: the octopus first, then the soft and DS shapes. */
     val shapeIds: List<String> get() = listOf("octop") + shapes.keys
     val inkIds: List<String> get() = inks.keys.toList()
 
     fun shape(id: String): CharacterShape? = shapes[id] ?: shapes["gumdrop"]
 
-    /** The Bot's ink (`inks[color][0]`), a literal `#RRGGBB`, or blue. */
-    fun ink(color: String): Color = inks[color]?.first ?: parseHex(color) ?: inks["blue"]?.first ?: Color(0xFF2563EB)
+    /** The Bot's ink: `inks[color]` (its second color in dark mode), a literal `#RRGGBB`, or blue. */
+    fun ink(color: String, dark: Boolean = false): Color {
+        val pair = inks[color] ?: parseHex(color)?.let { it to it } ?: inks["blue"] ?: (Color(0xFF2563EB) to Color(0xFF3B82F6))
+        return if (dark) pair.second else pair.first
+    }
 
     companion object {
-        fun load(assets: AssetManager): CharacterLibrary =
-            parse(assets.open("characters.json").bufferedReader().use { it.readText() })
+        fun load(assets: AssetManager): CharacterLibrary {
+            fun read(name: String) = assets.open(name).bufferedReader().use { it.readText() }
+            return parse(read("characters.json"), runCatching { read("soft-characters.json") }.getOrNull())
+        }
 
-        fun parse(text: String): CharacterLibrary {
+        /** [ds] is `characters.json`; [soft] is `soft-characters.json`, merged in front of it. */
+        fun parse(ds: String, soft: String? = null): CharacterLibrary {
+            val base = parseOne(ds)
+            val extra = soft?.let(::parseOne) ?: return base
+            val shapes = LinkedHashMap(extra.shapes).apply { base.shapes.forEach { (id, shape) -> putIfAbsent(id, shape) } }
+            val inks = LinkedHashMap(extra.inks).apply { base.inks.forEach { (id, ink) -> putIfAbsent(id, ink) } }
+            return CharacterLibrary(shapes, inks, base.aurora)
+        }
+
+        private fun parseOne(text: String): CharacterLibrary {
             val root = Json.parseToJsonElement(text).jsonObject
             val shapes = linkedMapOf<String, CharacterShape>()
             for ((id, element) in root["shapes"]?.jsonObject.orEmpty()) {
                 val value = element.jsonObject
                 val body = value.string("body") ?: continue
-                val shade = value.string("shade") ?: continue
+                val flat = (value["flat"] as? JsonPrimitive)?.booleanOrNull == true
+                val shade = value.string("shade") ?: if (flat) "" else continue
                 shapes[id] = CharacterShape(
                     id = id,
                     label = value.string("label") ?: id,
+                    flat = flat,
                     body = SvgPath.parse(body),
-                    shade = SvgPath.parse(shade),
+                    shade = if (flat) emptyList() else SvgPath.parse(shade),
                     light = value.string("light")?.let(SvgPath::parse),
                     paints = (value["paints"] as? JsonArray).orEmpty().mapNotNull { paint ->
                         val parts = paint.jsonArray

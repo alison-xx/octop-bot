@@ -23,6 +23,14 @@ Grok-style: dark-first, chat-first, one big character.
 - **Colors.** Follow the system theme. Dark: background `#000000`, surface `#141416`, raised
   `#1E1E22`, hairline `#2A2A30`, text `#F4F4F5`, secondary `#9A9AA3`. Light: `#FFFFFF`, `#F4F4F5`,
   `#ECECEF`, `#E4E4E7`, `#111113`, `#6B6B73`. Accent = the current Bot's ink (`inks[color][0]`).
+- **Launch.** One piece of art, `splash_art` (the coral octopus with the built-in role characters
+  around it, generated with Lynxce `gpt-image-2.5`, transparent PNG), on the launch background
+  (black in dark mode, white in light). iOS: `LaunchScreen.storyboard` shows the art at 240 pt,
+  centered in the whole screen (plain bundled `Launch/LaunchSplash@Nx.png`: asset-catalog images did not
+  render into the launch snapshot; the in-app screen uses the `LaunchArt` asset); Android 12+: `core-splashscreen` with `splash_art` as the icon (288 dp canvas, art
+  inside the 192 dp circle, no icon background). The app's first screen then shows the same art in the
+  same place and fades in "Octop Bot" and the tagline below it, while the directory loads (at most
+  1.2 s, never an artificial delay), then crossfades to Home or the sign-in screen.
 - **Home = Bot directory.** Like a messenger full of characters: large title "Octop Bot", account
   button (Settings) on the left, `+` on the right (New Bot; on a server also New group). Chief is
   pinned first, then the other Bots — each row is its animated character (52 pt, `working` while that
@@ -56,17 +64,66 @@ Grok-style: dark-first, chat-first, one big character.
   drafts shown as streaming bubbles, `@` in the composer opens a member list and inserts `@Name`
   (sent as `mention_ids`). Header shows member characters; info sheet shows goal and shared memory.
   New group: name + pick members; Chief (or the first member) is the admin.
-- **Settings.** General: language (follow system / 简体中文 / English — switches live, also drives
-  `Accept-Language` and speech recognition) and appearance (follow system / dark / light). Account
-  (name, Lynxce balance), connection (Lynxce / server host:port), model (Lynxce models; "Auto" = server
-  routing), read replies aloud, notifications, about (version, GitHub link), sign out (also clears the
-  cached reply previews).
+- **Settings.** A grouped list, top to bottom:
+  - *Account card* (not a row): Chief character 56 pt, account name (headline), connection line
+    ("Lynxce cloud" or the server's host:port), and on Lynxce a balance chip.
+  - *General*: language (follow system / 简体中文 / English — switches live, also drives
+    `Accept-Language` and speech recognition), appearance (follow system / dark / light), chat text
+    size (small / standard / large = 0.9 / 1.0 / 1.15 × body), haptics (on by default).
+  - *Chat*: model (Lynxce only; a pushed list with "Auto" first and a checkmark on the current one,
+    each model's name), expand reasoning by default (off), read replies aloud (off), speaking speed
+    (slow / normal / fast = 0.85 / 1.0 / 1.2; applies to the backend voice and the system voice).
+  - *Notifications*: notify when a reply finishes. If the system permission is denied, the footer
+    says so and offers "Open system settings".
+  - *Storage*: "Clear local cache" (reply previews, unread marks, temporary voice and image files;
+    keeps sign-in and the remembered server address), with a confirmation.
+  - *Account*: signed in as, connection (server: full address, tap to copy), "Switch account or
+    server" (signs out and returns to the first screen; for a server, reopens the server sheet with
+    the address filled), "Sign out" (destructive, confirmed; also clears previews and unread marks).
+  - *About*: version "0.1.0 (1)", project page (GitHub), report a problem (GitHub new issue), Lynxce
+    website.
 - **Polish.** Home has a search field and swipe actions (edit look, voice, delete phone-local Bot) and an
   inline banner when a refresh fails. Chat shows a "jump to latest" button when scrolled up, follows the
   stream only while at the bottom, gives built-in Bots their own suggestion chips, collapses more than two
   tool steps into "Used N tools · M steps", and shows the server's localized tool names
   (`GET /api/i18n/tools`). Haptics on send / reply done / copy. The server sheet remembers the last
   address, tries https then http when no scheme is typed, and focuses the next field.
+- **Details.**
+  - *Directory order and unread.* Chief stays pinned; the other Bots sort by their last reply (newest
+    first), then directory order. A reply that finishes while that Bot's chat is not on screen marks
+    it unread: an accent dot after the time and the preview in the primary color, semibold. Opening
+    the chat clears it. Unread marks are kept with the previews.
+  - *Chat top bar.* Under the Bot's name: "Replying…" / "Thinking…" while it works, otherwise the open
+    conversation's title (one line, secondary).
+  - *Reply actions.* Under every finished assistant reply a row of small icon buttons (secondary
+    color): copy, read aloud (becomes stop while speaking), share, and retry on the last reply.
+    Long-press keeps the same menu. A user message long-press offers copy and "Edit" (puts the text
+    back into the composer).
+  - *Time separators.* Before the first message, and before any message more than 10 minutes after
+    the previous one, a centered caption: today "14:05", yesterday "Yesterday 14:05", this year
+    "Nov 20 14:05", older with the year. Same in group rooms.
+  - *Images.* Tapping an image in a message opens a full-screen viewer (pinch to zoom, double-tap to
+    zoom, share, close / swipe down).
+  - *Errors.* The chat error banner hides by itself after 4 s or on tap; a microphone failure shown
+    in the composer clears after 4 s too.
+  - *History sheet.* A search field (titles), conversations grouped into Today / Yesterday / Previous
+    7 days / Earlier, a checkmark on the open one, swipe to delete.
+  - *Group room.* Time separators, long-press copy on any message, haptic on send. Sending is never
+    disabled while earlier posts wait for replies; a post that fails stays in the timeline marked
+    "Not sent — tap to retry" (same `request_id`, so the server never doubles it). Poll with
+    `after_id` = the last server message id, never a local echo's id.
+  - *Never block the user.* Typing and sending always work. While a reply streams, the send button
+    shows when there is text (stop when the field is empty); the message is queued, shown as a dashed
+    "Queued" bubble that can be cancelled, and sent when the reply ends. A newer reply run never lets
+    a cancelled older one change its state.
+  - *Questions and approvals* (server mode; PROTOCOL.md B "Questions and approvals"). A card docks
+    above the composer: question card (choices / multi-choice / free text, "You decide", close) or
+    approval card (action, description, key args, Approve / Reject). Typing in the composer answers an
+    open question, or declines an open approval with that text as the reason. A centered caption notes
+    "Approved: …" / "Declined: …". Paused or finished replies never leave a tool chip spinning.
+  - *Bot editor.* A shuffle button under the preview picks a random shape and color; phone-local Bots
+    get a "Delete Bot" button at the bottom (confirmed).
+  - Text size, reasoning default, haptics and speaking speed from Settings apply everywhere at once.
 - **Notifications.** When a reply finishes while the app is in the background, post a local
   notification with the Bot's name and the first line. iOS registers its APNs token with Lynxce
   (`/api/user/push-devices`); remote delivery needs the Lynxce push service configured with this
@@ -90,6 +147,16 @@ Animations (period, transform-origin 50 % 84 %): breathe 3.8–4.9 s `translateY
 blink every 5.8 s (eyes scaleY → 0.12 for ~120 ms); bob 1.05 s `translateY(-4%) scale(.99,1.025)`;
 think 2.8 s rotate −4°; scan 2.2 s ±3 % x with pupils shifting; nod 3.8 s small rotate.
 Seed the phase from the Bot id so a row of Bots doesn't move in lockstep.
+
+### Soft characters
+
+Servers built from the newer dashboard give Bots soft, flat characters (`orb`, `heart`, `sparkle`,
+`drop`, `cloud`, `bean`, from `dashboard/src/pages/OctopBot/softShapes.ts`). `soft-characters.json`
+(made by `scripts/soft-characters.py`, run by `sync-assets.sh`) holds them as `{shapes: {id: {body, eyes,
+flat: true}}, inks: {id: [light, dark]}}`. Merge like the dashboard: soft shapes first, then DS shapes;
+soft inks override DS inks of the same name and come first in pickers. A flat shape is the body in its
+ink plus plain white capsule eyes (no shade, light or pupils). Every ink uses its second color in dark
+mode (soft `black` is white there).
 
 ### Built-in Bots (Lynxce mode)
 

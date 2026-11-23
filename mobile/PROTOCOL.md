@@ -88,6 +88,32 @@ New Bot: `POST /api/agents {name, description, system_prompt}` → `{agent_id}`,
 - Stop: `{"type":"cancel","thread_id":tid}`. Keep-alive: `{"type":"ping"}` every 25 s.
 - Close codes: 4001 token, 4003 forbidden, 4404 no such Bot.
 
+**Questions and approvals (HITL).** A turn can pause for the user: frame
+`hitl_required {request:{pending_id?, action_requests:[{name, args, description?}], review_configs?:[{action_name, allowed_decisions:[…]}]}}`
+(unwrap `request.value` up to 3 times if `action_requests` is not top-level), then `turn.ended {hitl_paused:true}`.
+This is not a failure: finish the reply normally and show a card.
+- `name == "ask_user_question"` → a question. `args` (object or JSON string) holds `questions` (or is one
+  question): `[{question | prompt | text, header?, options?:[{label, description?}], multi_select?}]`.
+  Card: each question with its options as choices (one, or several when `multi_select`), plus a free-text
+  "Something else" answer; questions without options are free text. Answer text: one line per question,
+  `"{header or question}: {answer}"`, several choices joined with `"; "`. While a question is open, the
+  composer's text is sent as the answer instead of starting a new turn. "You decide" sends
+  "You decide — pick the best default and tell me what you assumed." (zh: "你决定吧——按最优默认方案继续，并告诉我你依据的假设。").
+  Closing the card sends "The user closed these questions without answering. Do not ask again — wrap up this turn."
+  (zh: "用户关闭了这些问题，没有作答。不要再追问，请就此结束本轮。").
+- Any other name → an approval: show each action's name (localized via `/api/i18n/tools`), its `description`
+  if any, and the key args (`command`/`cmd`, `url`, `path`/`file_path`, `query`), with Approve / Reject.
+  Never block the composer: a new message written while an approval is open declines it with
+  `{"type":"reject","message":<that text>}` so the Bot sees what the user wants instead.
+- Answer: `POST /api/agents/{id}/chat/hitl/resume` `{thread_id, pending_id?, decisions:[…]}` with one
+  decision per action: `{"type":"respond","message":answer}` (question), `{"type":"approve"}` or
+  `{"type":"reject","message":"Rejected by user"}` (approval). The response is SSE: `event: chunk` with
+  `data:` frames of the same types as the socket (`token`, `reasoning`, `tool_call_chunk`, `tool_result`,
+  `hitl_required` for a follow-up pause, `error`), ending with `{"type":"done"}` (`hitl_paused:true` if
+  paused again). Stream it into a new assistant reply.
+- After reopening a conversation, `history.hitl_pending` (`{pending_id, action_requests, review_configs}` or
+  null) restores the open card.
+
 **Images.** Upload first: `POST /api/agents/{id}/upload` multipart field `file` →
 `{workspace_path, url, filename, media_type}`. Then content blocks
 `[{"type":"text","text":…},{"type":"image","source":{"type":"url","url":url,"media_type":mt},"workspace_path":wp,"filename":fn}]`.

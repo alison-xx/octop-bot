@@ -78,10 +78,12 @@ struct VoiceModeView: View {
         }
         .onAppear {
             firstMessage = chat.messages.count
+            model.showing(chat.bot)
             chat.onReply = { text in speaker.speak(text, backend: model.backend) }
         }
         .onDisappear {
             chat.onReply = nil
+            model.hiding(chat.bot)
             recorder.cancel()
             speaker.stop()
         }
@@ -97,6 +99,7 @@ struct VoiceModeView: View {
             chat.stop()
             return
         }
+        Haptics.tap()
         Task {
             if recorder.isRecording {
                 transcribing = true

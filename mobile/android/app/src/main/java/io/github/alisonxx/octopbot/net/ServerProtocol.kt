@@ -7,6 +7,11 @@ import io.github.alisonxx.octopbot.model.GroupDraft
 import io.github.alisonxx.octopbot.model.GroupGoal
 import io.github.alisonxx.octopbot.model.GroupMessage
 import io.github.alisonxx.octopbot.model.GroupSummary
+import io.github.alisonxx.octopbot.model.HitlAction
+import io.github.alisonxx.octopbot.model.HitlDecision
+import io.github.alisonxx.octopbot.model.HitlOption
+import io.github.alisonxx.octopbot.model.HitlQuestion
+import io.github.alisonxx.octopbot.model.HitlRequest
 import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.model.MessageRole
 import io.github.alisonxx.octopbot.model.MessageStatus
@@ -93,7 +98,13 @@ object ServerProtocol {
     fun toolLabels(body: JsonElement): Map<String, String> =
         body.asObject()?.obj("labels")?.mapNotNull { (name, label) -> label.asString()?.let { name to it } }?.toMap().orEmpty()
 
-    data class HistoryPage(val messages: List<ChatMessage>, val loading: Boolean, val retryAfterMs: Long)
+    data class HistoryPage(
+        val messages: List<ChatMessage>,
+        val loading: Boolean,
+        val retryAfterMs: Long,
+        /** `hitl_pending`: a question or approval still open in this thread. */
+        val pending: HitlRequest? = null,
+    )
 
     fun historyPage(body: JsonElement, toolLabels: Map<String, String> = emptyMap()): HistoryPage {
         val obj = body.asObject() ?: return HistoryPage(emptyList(), false, 0)
@@ -101,6 +112,7 @@ object ServerProtocol {
             messages = history(obj.arr("messages") ?: JsonArray(emptyList()), toolLabels),
             loading = obj.bool("history_loading") == true,
             retryAfterMs = obj.long("history_retry_after_ms") ?: 800,
+            pending = hitlRequest(obj["hitl_pending"], toolLabels),
         )
     }
 
@@ -194,10 +206,109 @@ object ServerProtocol {
     }
 
     /**
+     * A HITL request (`hitl_required.request` or `history.hitl_pending`). The payload may be wrapped in
+     * `value` up to three times. Returns null when there is nothing to answer.
+     */
+    fun hitlRequest(raw: JsonElement?, toolLabels: Map<String, String> = emptyMap()): HitlRequest? {
+        var obj = raw.asObject() ?: return null
+        repeat(3) {
+            if (obj["action_requests"] == null) obj = obj.obj("value") ?: return@repeat
+        }
+        val allowed = obj.arr("review_configs")?.objects().orEmpty().mapNotNull { config ->
+            val name = config.str("action_name") ?: return@mapNotNull null
+            name to config.arr("allowed_decisions")?.mapNotNull { it.asString() }.orEmpty().toSet()
+        }.toMap()
+        val actions = obj.arr("action_requests")?.objects().orEmpty().mapNotNull { action ->
+            val name = action.str("name") ?: return@mapNotNull null
+            val args = argsObject(action["args"])
+            HitlAction(
+                name = name,
+                label = toolLabels[name] ?: name,
+                description = action.str("description")?.takeIf { it.isNotBlank() },
+                details = if (name == ASK_USER_QUESTION) emptyList() else keyArgs(args),
+                questions = if (name == ASK_USER_QUESTION) questions(args) else null,
+                allowedDecisions = allowed[name]?.takeIf { it.isNotEmpty() },
+            )
+        }
+        if (actions.isEmpty()) return null
+        return HitlRequest(obj.idString("pending_id"), actions)
+    }
+
+    const val ASK_USER_QUESTION = "ask_user_question"
+
+    /** `args` comes as an object or as a JSON string. */
+    private fun argsObject(raw: JsonElement?): JsonObject? = raw.asObject()
+        ?: raw.asString()?.let { text -> runCatching { Http.parse(text).asObject() }.getOrNull() }
+
+    private fun questions(args: JsonObject?): List<HitlQuestion> {
+        args ?: return emptyList()
+        val list = when (val raw = args["questions"]) {
+            is JsonArray -> raw.objects()
+            is JsonPrimitive -> raw.asString()?.let { text -> runCatching { Http.parse(text).asArray()?.objects() }.getOrNull() }.orEmpty()
+            else -> listOf(args)
+        }
+        return list.mapNotNull { row ->
+            val text = (row.str("question") ?: row.str("prompt") ?: row.str("text"))?.trim()?.takeIf { it.isNotEmpty() }
+                ?: return@mapNotNull null
+            HitlQuestion(
+                text = text,
+                header = row.str("header")?.trim()?.takeIf { it.isNotEmpty() },
+                options = row.arr("options").orEmpty().mapNotNull { option ->
+                    when (option) {
+                        is JsonObject -> option.str("label")?.takeIf { it.isNotBlank() }?.let {
+                            HitlOption(it, option.str("description")?.takeIf { d -> d.isNotBlank() })
+                        }
+                        else -> option.asString()?.takeIf { it.isNotBlank() }?.let { HitlOption(it, null) }
+                    }
+                },
+                multiSelect = row.bool("multi_select") == true || row.bool("multiSelect") == true,
+            )
+        }
+    }
+
+    private fun keyArgs(args: JsonObject?): List<Pair<String, String>> {
+        args ?: return emptyList()
+        return listOf(listOf("command", "cmd"), listOf("url"), listOf("path", "file_path"), listOf("query")).mapNotNull { keys ->
+            keys.firstNotNullOfOrNull { key ->
+                when (val value = args[key]) {
+                    is JsonPrimitive -> value.content.takeIf { it.isNotBlank() && value !is JsonNull }?.let { key to it }
+                    is JsonArray -> value.mapNotNull { it.asString() }.joinToString(" ").takeIf { it.isNotBlank() }?.let { key to it }
+                    else -> null
+                }
+            }
+        }
+    }
+
+    /** `POST chat/hitl/resume` body: one decision per action. */
+    fun hitlResume(threadId: String, pendingId: String?, decisions: List<HitlDecision>): JsonObject = buildJsonObject {
+        put("thread_id", threadId)
+        pendingId?.let { put("pending_id", it) }
+        putJsonArray("decisions") {
+            for (decision in decisions) addJsonObject {
+                when (decision) {
+                    is HitlDecision.Respond -> {
+                        put("type", "respond")
+                        put("message", decision.message)
+                    }
+                    HitlDecision.Approve -> put("type", "approve")
+                    is HitlDecision.Reject -> {
+                        put("type", "reject")
+                        put("message", decision.message)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Maps chat WebSocket frames to stream events; remembers tool names so results can be labelled.
      * Tools without a `display_name` are named through [toolLabels].
      */
-    class FrameMapper(private val toolLabels: Map<String, String> = emptyMap()) {
+    class FrameMapper(
+        private val toolLabels: Map<String, String> = emptyMap(),
+        /** The `hitl/resume` SSE stream ends with `{"type":"done"}` instead of `turn.ended`. */
+        private val endsOnDone: Boolean = false,
+    ) {
         sealed interface Outcome {
             data class Events(val events: List<StreamEvent>) : Outcome
             data object Finished : Outcome
@@ -224,7 +335,10 @@ object ServerProtocol {
                         toolNames[id]?.let { StreamEvent.Tool(id, it, done = true) }
                     },
                 )
+                // A pause for the user is not a failure: the reply ends normally and the card opens.
+                "hitl_required" -> Outcome.Events(listOfNotNull(hitlRequest(frame["request"], toolLabels)?.let { StreamEvent.Hitl(it) }))
                 "error" -> throw ApiException(ApiException.Kind.Server, 500, frame.str("message"))
+                "done" -> if (endsOnDone) Outcome.Finished else Outcome.Events(emptyList())
                 "turn.ended" -> {
                     if (frame.bool("failed") == true) throw ApiException(ApiException.Kind.Server, 500)
                     Outcome.Finished
@@ -253,6 +367,7 @@ object ServerProtocol {
             agentId = row.str("agent_id"),
             text = row.str("text").orEmpty(),
             createdAt = row.double("created_at")?.let(Times::epochMillis) ?: Times.parseIso(row.str("created_at")) ?: 0L,
+            requestId = row.str("request_id")?.takeIf { it.isNotBlank() },
         )
     }
 

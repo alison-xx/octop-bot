@@ -9,6 +9,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
@@ -58,6 +59,7 @@ private class ShapePaths(shape: CharacterShape) {
     val light: Path? = shape.light?.toComposePath()
     val paints: List<Triple<Path, Color, Float>> = shape.paints.map { Triple(it.contours.toComposePath(), it.color, it.opacity) }
     val eyes = shape.eyes
+    val flat = shape.flat
 }
 
 /**
@@ -125,7 +127,9 @@ private fun CharacterFrame(
             val library = rememberCharacterLibrary()
             val shape = library.shape(look.shape) ?: return@Box
             val paths = remember(shape) { ShapePaths(shape) }
-            val fill: Brush = remember(look.color, library) {
+            // Every ink uses its second color in dark mode (the soft black turns white).
+            val dark = isSystemInDarkTheme()
+            val fill: Brush = remember(look.color, library, dark) {
                 if (look.color == "aurora" && library.aurora.isNotEmpty()) {
                     Brush.linearGradient(
                         colorStops = library.aurora.toTypedArray(),
@@ -133,10 +137,10 @@ private fun CharacterFrame(
                         end = Offset(78f, 92f),
                     )
                 } else {
-                    androidx.compose.ui.graphics.SolidColor(library.ink(look.color))
+                    androidx.compose.ui.graphics.SolidColor(library.ink(look.color, dark))
                 }
             }
-            val pupils = size >= 24.dp
+            val pupils = size >= 24.dp && !shape.flat
             Canvas(Modifier.fillMaxSize().then(layer)) {
                 val pose = pose()
                 drawCharacter(paths, fill, pupils, pose.blink, pose.look)
@@ -149,9 +153,11 @@ private fun DrawScope.drawCharacter(paths: ShapePaths, fill: Brush, pupils: Bool
     val unit = size.minDimension / 100f
     scale(unit, unit, pivot = Offset.Zero) {
         drawPath(paths.body, fill)
-        for ((path, color, opacity) in paths.paints) drawPath(path, color, alpha = opacity)
-        drawPath(paths.shade, Color.Black, alpha = 0.07f)
-        paths.light?.let { drawPath(it, Color.White, alpha = 0.36f) }
+        if (!paths.flat) {
+            for ((path, color, opacity) in paths.paints) drawPath(path, color, alpha = opacity)
+            drawPath(paths.shade, Color.Black, alpha = 0.07f)
+            paths.light?.let { drawPath(it, Color.White, alpha = 0.36f) }
+        }
         for (eye in paths.eyes) {
             withTransform({
                 translate(eye.x, eye.y)
@@ -159,7 +165,7 @@ private fun DrawScope.drawCharacter(paths: ShapePaths, fill: Brush, pupils: Bool
                 scale(1f, blink, pivot = Offset.Zero)
             }) {
                 drawRoundRect(
-                    color = EyeWhite,
+                    color = if (paths.flat) Color.White else EyeWhite,
                     topLeft = Offset(-eye.w / 2, -eye.h / 2),
                     size = Size(eye.w, eye.h),
                     cornerRadius = CornerRadius(eye.w / 2),
