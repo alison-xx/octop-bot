@@ -1664,11 +1664,14 @@ app.on("before-quit", (event) => {
   destroySystemTray();
   const sidecar = supervisor;
   const relay = wsRelay;
+  // Set before any return: a server-window close handler reads it, and with
+  // closeBehavior "tray" it would otherwise hide the window and cancel the
+  // quit (remote mode has neither a sidecar nor a relay).
+  quitting = true;
   if (!sidecar && !relay) return;
   // §3.4: the sidecar runs in its own process group, so quitting without
   // waiting would orphan Python. Give it the grace window, then really quit.
   event.preventDefault();
-  quitting = true;
   // Close the relay first: nothing may attach to a sidecar that is shutting
   // down, and its listening socket would keep the process alive otherwise.
   void (async () => {

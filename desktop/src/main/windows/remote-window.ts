@@ -2,10 +2,8 @@ import { BrowserWindow, session } from "electron";
 
 import { BOT_HOME_PATH, BOT_PRODUCT_NAME } from "../../shared/product";
 import { installDashboardGuards } from "./main-window";
+import { allowRemotePermission } from "./remote-permissions";
 import { DEFAULT_WINDOW_SIZE, minimumWindowSize } from "./size";
-
-/** What a self-hosted server's page may use: notifications, the microphone for voice input, copying. */
-const REMOTE_PERMISSIONS = new Set(["notifications", "media", "clipboard-sanitized-write", "fullscreen"]);
 
 /**
  * The Bot web app of a self-hosted server, shown in a normal window. It gets no
@@ -22,14 +20,11 @@ export function createRemoteWindow(options: {
 }): BrowserWindow {
   const minimum = minimumWindowSize(true);
   session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {
-    const origin = (() => {
-      try {
-        return new URL(details.requestingUrl).origin;
-      } catch {
-        return "";
-      }
-    })();
-    callback(origin === options.origin && REMOTE_PERMISSIONS.has(permission) && !contents.isDestroyed());
+    const mediaTypes = "mediaTypes" in details ? details.mediaTypes : undefined;
+    callback(
+      !contents.isDestroyed() &&
+        allowRemotePermission({ origin: options.origin, requestingUrl: details.requestingUrl, permission, mediaTypes }),
+    );
   });
   const win = new BrowserWindow({
     title: BOT_PRODUCT_NAME,
