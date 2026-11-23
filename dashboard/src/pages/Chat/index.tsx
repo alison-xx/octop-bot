@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useParams, useLocation } from "react-router-dom";
 import { useLynxceStatus } from "../../hooks/useLynxceStatus";
+import { useBotServerInfo } from "../OctopBot/useBotServerInfo";
 import { isBotClient, isBotOnlyDesktop } from "../../utils/desktopBridge";
 import { BOT_SETTINGS } from "../../utils/botClientRoute";
 import BotClientWelcome, {
@@ -160,7 +161,12 @@ function ChatPageInner() {
   const chatHistoryRail = useChatHistoryRail();
   const embedded = useEmbeddedChat();
   const focused = Boolean(embedded) && isBotClient();
-  const account = useLynxceStatus(focused && isBotOnlyDesktop());
+  // The desktop app's Lynxce model link; other Bot builds have no such check to wait for.
+  const accountChecked = focused && isBotOnlyDesktop();
+  const account = useLynxceStatus(accountChecked);
+  // Octop Bot cloud: every tenant chats with their own Lynxce account's model.
+  const cloudServer = useBotServerInfo();
+  const cloudModel = focused && cloudServer?.edition === "cloud";
   const canConfigureModels = focused
     ? isBotOnlyDesktop() ||
       userCan(user, "providers") ||
@@ -659,10 +665,14 @@ function ChatPageInner() {
   const defaultModel = personalModel
     ? null
     : activeAgent?.default_model ?? null;
-  const hasChatModel = Boolean(personalModel || availableModels.length);
+  const hasChatModel = Boolean(
+    personalModel || cloudModel || availableModels.length,
+  );
   const modelsReady = Boolean(
     personalModel ||
-      (sharedModelsReady && (!focused || account.status || account.error)),
+      cloudModel ||
+      (sharedModelsReady &&
+        (!accountChecked || account.status || account.error)),
   );
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(
     messages,

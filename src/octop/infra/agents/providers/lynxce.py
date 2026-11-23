@@ -11,6 +11,7 @@ from uuid import uuid4
 import httpx
 from octop_harness.config import HarnessAgentConfig, ModelConfig, ProviderConfig
 
+from octop.infra.agents.providers.presets import lynxce_model_input
 from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -129,7 +130,13 @@ class CloudAccountModel(AccountModel):
             protocol="openai",
             base_url=GATEWAY_URL,
             api_key=cast("str", key_for_request),
-            models=[ModelConfig(id=self.model_id, name=self.model_id)],
+            models=[
+                ModelConfig(
+                    id=self.model_id,
+                    name=self.model_id,
+                    input=lynxce_model_input(self.model_id),
+                )
+            ],
         )
 
 
