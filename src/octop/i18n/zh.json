@@ -430,6 +430,9 @@
   "errors": {
     "BOT_CLOUD_ACCOUNT_REQUIRED": "请登录灵策云账号。切换账号后，请重新打开此操作。",
     "LYNXCE_OWNER_MISMATCH": "这台 Octop Bot 已绑定其他灵策账号。请使用首次登录时的灵策账号。",
+    "LYNXCE_CODE_INVALID": "验证码错误或已过期，请重新获取。",
+    "LYNXCE_CODE_TARGET_INVALID": "请输入正确的手机号或邮箱。",
+    "LYNXCE_CODE_THROTTLED": "验证码发送太频繁，请稍后再试。",
     "BOT_CLOUD_REQUEST_REJECTED": "灵策云未能执行此操作。",
     "BOT_CLOUD_CREDITS_REQUIRED": "当前灵策云账号的可用积分不足。",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "请补充授权灵策充值。当前聊天连接可继续使用。",

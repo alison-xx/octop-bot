@@ -136,6 +136,17 @@ class ServerBackend(
             return finish(base, anonymous(base, "POST", "/api/auth/lynxce/login", body), store)
         }
 
+        /** Ask the server to send its Lynxce owner a sign-in code (it relays to Lynxce and rate-limits). */
+        suspend fun requestLynxceCode(base: String, target: String) {
+            anonymous(base, "POST", "/api/auth/lynxce/code", ServerProtocol.lynxceCodeBody(target, Http.isChinese()))
+        }
+
+        /** Owner sign-in with a Lynxce code; works for Lynxce accounts that never set a password. */
+        suspend fun signInWithLynxceCode(base: String, target: String, code: String, store: AppStore): ServerBackend {
+            val body = ServerProtocol.lynxceCodeLoginBody(target, code, Http.isChinese())
+            return finish(base, anonymous(base, "POST", "/api/auth/lynxce/code-login", body), store)
+        }
+
         /** Password sign-in; the Bot web build's local account is always `local`. */
         suspend fun signIn(base: String, username: String, password: String, store: AppStore): SignIn {
             val body = anonymous(base, "POST", "/api/auth/login", buildJsonObject {

@@ -30,40 +30,50 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import io.github.alisonxx.octopbot.R
-import io.github.alisonxx.octopbot.app.describe
 import io.github.alisonxx.octopbot.character.BotCharacter
 import io.github.alisonxx.octopbot.model.BotMotion
 import io.github.alisonxx.octopbot.model.Look
+import io.github.alisonxx.octopbot.net.LynxceProtocol
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
 import io.github.alisonxx.octopbot.ui.theme.OctopTheme
 import kotlinx.coroutines.launch
 
-/** Lynxce account sign-in (the default path) with a way to a self-hosted server instead. */
+/**
+ * Lynxce account sign-in (the default path) with a way to a self-hosted server instead. A verification code is the
+ * default because new Lynxce accounts have no password; password sign-in stays one tap away.
+ */
 @Composable
-fun OnboardingScreen(notice: String?, onSignIn: suspend (String, String) -> Unit, onServer: () -> Unit) {
+fun OnboardingScreen(
+    notice: String?,
+    onSignIn: suspend (String, String) -> Unit,
+    onRequestCode: suspend (LynxceProtocol.Target) -> Unit,
+    onCodeSignIn: suspend (LynxceProtocol.Target, String) -> Unit,
+    onServer: () -> Unit,
+) {
     val palette = LocalPalette.current
     val resources = LocalResources.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var account by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
+    val form = rememberLynxceSignInState()
     var busy by rememberSaveable { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf(notice) }
-    val ready = account.isNotBlank() && password.isNotEmpty() && !busy
 
     fun submit() {
-        if (!ready) return
+        if (busy || !form.canSubmit) return
         busy = true
         error = null
         scope.launch {
-            runCatching { onSignIn(account.trim(), password) }.onFailure { error = resources.describe(it) }
+            runCatching {
+                if (form.useCode) onCodeSignIn(form.target!!, form.code) else onSignIn(form.account.trim(), form.password)
+            }.onFailure {
+                error = resources.describeLynxce(it)
+                form.signInFailed(it)
+            }
             busy = false
         }
     }
@@ -91,34 +101,36 @@ fun OnboardingScreen(notice: String?, onSignIn: suspend (String, String) -> Unit
         Spacer(Modifier.height(36.dp))
         Column(Modifier.widthIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.onboarding_lynxce), style = MaterialTheme.typography.titleMedium)
-            FormField(
-                value = account,
-                onValueChange = { account = it },
-                label = stringResource(R.string.onboarding_account),
-                keyboardType = KeyboardType.Email,
-                enabled = !busy,
+            LynxceSignInFields(
+                state = form,
+                busy = busy,
+                error = error,
+                onError = { error = it },
+                onRequestCode = onRequestCode,
+                onSubmit = ::submit,
             )
-            FormField(
-                value = password,
-                onValueChange = { password = it },
-                label = stringResource(R.string.onboarding_password),
-                password = true,
-                imeAction = ImeAction.Go,
-                onDone = ::submit,
-                enabled = !busy,
-            )
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-            Button(onClick = ::submit, enabled = ready, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+            Button(onClick = ::submit, enabled = !busy && form.canSubmit, modifier = Modifier.fillMaxWidth().height(52.dp)) {
                 if (busy) {
                     CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                 } else {
                     Text(stringResource(R.string.onboarding_sign_in), style = MaterialTheme.typography.titleMedium)
                 }
             }
-            TextButton(
-                onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, "https://lynxce.cn".toUri())) },
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-            ) { Text(stringResource(R.string.onboarding_register), color = palette.secondary) }
+            LynxceModeSwitch(form, busy, onSwitched = { error = null }, modifier = Modifier.align(Alignment.CenterHorizontally))
+            if (form.useCode) {
+                Text(
+                    stringResource(R.string.onboarding_code_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.secondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                TextButton(
+                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, "https://lynxce.cn".toUri())) },
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) { Text(stringResource(R.string.onboarding_register), color = palette.secondary) }
+            }
         }
         Spacer(Modifier.height(32.dp))
         TextButton(onClick = onServer, enabled = !busy) {
@@ -137,5 +149,5 @@ fun OnboardingScreen(notice: String?, onSignIn: suspend (String, String) -> Unit
 @Preview(showBackground = true, backgroundColor = 0xFF000000)
 @Composable
 private fun OnboardingPreview() {
-    OctopTheme(dark = true) { OnboardingScreen(notice = null, onSignIn = { _, _ -> }, onServer = {}) }
+    OctopTheme(dark = true) { OnboardingScreen(notice = null, onSignIn = { _, _ -> }, onRequestCode = {}, onCodeSignIn = { _, _ -> }, onServer = {}) }
 }

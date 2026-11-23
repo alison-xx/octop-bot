@@ -105,6 +105,18 @@ export const botCloudApi = {
       root + "/account",
       json("POST", { account, password }),
     ),
+  /** Ask Lynxce to text or email a one-time sign-in code. */
+  sendCode: (target: string, locale?: string) =>
+    request<{ channel: "phone" | "email" }>(
+      root + "/account/code",
+      json("POST", { target, locale }),
+    ),
+  /** Sign in with the one-time code (also works for password-less accounts). */
+  codeLogin: (target: string, code: string) =>
+    request<CloudAccount>(
+      root + "/account/code-login",
+      json("POST", { target, code }),
+    ),
   loginWorkbuddy: (handoffCode: string) =>
     request<CloudAccount>(
       root + "/account/workbuddy",

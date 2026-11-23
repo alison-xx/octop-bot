@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -59,6 +60,7 @@ fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit
     var base by rememberSaveable { mutableStateOf("") }
     var unclaimed by rememberSaveable { mutableStateOf(false) }
     var account by rememberSaveable { mutableStateOf("") }
+    val lynxce = rememberLynxceSignInState()
     var password by rememberSaveable { mutableStateOf("") }
     var mfaToken by rememberSaveable { mutableStateOf("") }
     var code by rememberSaveable { mutableStateOf("") }
@@ -74,12 +76,12 @@ fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit
         if (step != Step.Address) runCatching { focus.requestFocus() }
     }
 
-    fun run(action: suspend () -> Unit) {
+    fun run(describe: (Throwable) -> String = { resources.describe(it) }, action: suspend () -> Unit) {
         if (busy) return
         busy = true
         error = null
         scope.launch {
-            runCatching { action() }.onFailure { error = resources.describe(it) }
+            runCatching { action() }.onFailure { error = describe(it) }
             busy = false
         }
     }
@@ -96,6 +98,7 @@ fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit
                     store.setLastServer(address.trim())
                     base = probe.base
                     password = ""
+                    lynxce.password = ""
                     step = when (val mode = probe.mode) {
                         is ServerBackend.Companion.SignInMode.Lynxce -> {
                             unclaimed = !mode.claimed
@@ -106,7 +109,19 @@ fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit
                     }
                 }
             }
-            Step.Lynxce -> run { onConnected(ServerBackend.signInWithLynxce(base, account.trim(), password, store)) }
+            // The server localizes its own errors (wrong code, owner mismatch, throttling), so its message wins.
+            Step.Lynxce -> run({ failure ->
+                lynxce.signInFailed(failure)
+                resources.describeLynxce(failure, serverMessageFirst = true)
+            }) {
+                if (!lynxce.canSubmit) return@run
+                val backend = if (lynxce.useCode) {
+                    ServerBackend.signInWithLynxceCode(base, lynxce.account, lynxce.code, store)
+                } else {
+                    ServerBackend.signInWithLynxce(base, lynxce.account.trim(), lynxce.password, store)
+                }
+                onConnected(backend)
+            }
             Step.LocalPassword, Step.Password -> run {
                 val username = if (step == Step.LocalPassword) "local" else account.trim()
                 when (val result = ServerBackend.signIn(base, username, password, store)) {
@@ -123,7 +138,8 @@ fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit
 
     val ready = !busy && when (step) {
         Step.Address -> address.isNotBlank()
-        Step.Lynxce, Step.Password -> account.isNotBlank() && password.isNotEmpty()
+        Step.Lynxce -> lynxce.canSubmit
+        Step.Password -> account.isNotBlank() && password.isNotEmpty()
         Step.LocalPassword -> password.isNotEmpty()
         Step.Mfa -> code.trim().length >= 6
     }
@@ -158,19 +174,29 @@ fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit
                     )
                     Hint(stringResource(R.string.server_address_footer))
                 }
-                Step.Lynxce, Step.Password -> {
+                Step.Lynxce -> {
                     Text(base, style = MaterialTheme.typography.titleMedium)
-                    if (step == Step.Lynxce) {
-                        Hint(stringResource(R.string.server_sign_in_lynxce))
-                        if (unclaimed) Hint(stringResource(R.string.server_unclaimed))
-                    } else {
-                        Hint(stringResource(R.string.server_sign_in_password))
-                    }
+                    Hint(stringResource(R.string.server_sign_in_lynxce))
+                    if (unclaimed) Hint(stringResource(R.string.server_unclaimed))
+                    LynxceSignInFields(
+                        state = lynxce,
+                        busy = busy,
+                        error = error,
+                        onError = { error = it },
+                        onRequestCode = { ServerBackend.requestLynxceCode(base, it.value) },
+                        onSubmit = ::next,
+                        modifier = Modifier.focusRequester(focus),
+                        serverMessageFirst = true,
+                    )
+                    LynxceModeSwitch(lynxce, busy, onSwitched = { error = null }, modifier = Modifier.align(Alignment.CenterHorizontally))
+                }
+                Step.Password -> {
+                    Text(base, style = MaterialTheme.typography.titleMedium)
+                    Hint(stringResource(R.string.server_sign_in_password))
                     FormField(
                         value = account,
                         onValueChange = { account = it },
-                        label = stringResource(if (step == Step.Lynxce) R.string.onboarding_account else R.string.server_username),
-                        keyboardType = if (step == Step.Lynxce) KeyboardType.Email else KeyboardType.Text,
+                        label = stringResource(R.string.server_username),
                         enabled = !busy,
                         modifier = Modifier.focusRequester(focus),
                     )
@@ -212,7 +238,8 @@ fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit
                     )
                 }
             }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            // The Lynxce fields show their own error line.
+            if (step != Step.Lynxce) error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         }
         Button(
             onClick = ::next,

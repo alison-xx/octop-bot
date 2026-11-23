@@ -108,6 +108,85 @@ final class StreamTests: XCTestCase {
 }
 
 @MainActor
+final class LynxceCodeLoginTests: XCTestCase {
+    func testTargetIsEmailWithAtSignOtherwisePhone() {
+        XCTAssertEqual(LynxceBackend.CodeTarget("  a@b.cn \n"), .email("a@b.cn"))
+        XCTAssertEqual(LynxceBackend.CodeTarget(" 138 0013 8000 "), .phone("138 0013 8000"))
+        XCTAssertEqual(LynxceBackend.CodeTarget("+8613800138000"), .phone("+8613800138000"))
+        XCTAssertNil(LynxceBackend.CodeTarget("   "))
+        XCTAssertTrue(LynxceBackend.CodeTarget("a@b.cn")!.isEmail)
+        XCTAssertFalse(LynxceBackend.CodeTarget("13800138000")!.isEmail)
+    }
+
+    func testCodeMustBeSixDigits() {
+        XCTAssertTrue(LynxceBackend.isCode("012345"))
+        XCTAssertFalse(LynxceBackend.isCode("12345"))
+        XCTAssertFalse(LynxceBackend.isCode("1234567"))
+        XCTAssertFalse(LynxceBackend.isCode("12a456"))
+        XCTAssertFalse(LynxceBackend.isCode("١٢٣٤٥٦"))
+    }
+
+    func testRequestBodies() {
+        let phone = LynxceBackend.CodeTarget.phone("13800138000")
+        let email = LynxceBackend.CodeTarget.email("a@b.cn")
+        XCTAssertEqual(phone.codeRequest(chinese: true).path, "/api/auth/phone-code")
+        XCTAssertEqual(phone.codeRequest(chinese: true).body, ["phone": "13800138000"])
+        XCTAssertEqual(email.codeRequest(chinese: true).path, "/api/auth/email-code")
+        XCTAssertEqual(email.codeRequest(chinese: true).body, ["email": "a@b.cn", "locale": "zh-CN"])
+        XCTAssertEqual(email.codeRequest(chinese: false).body["locale"], "en")
+        XCTAssertEqual(phone.loginRequest(code: "123456").path, "/api/auth/phone-login")
+        XCTAssertEqual(phone.loginRequest(code: "123456").body, ["phone": "13800138000", "code": "123456"])
+        XCTAssertEqual(email.loginRequest(code: "123456").path, "/api/auth/email-login")
+        XCTAssertEqual(email.loginRequest(code: "123456").body, ["email": "a@b.cn", "code": "123456"])
+    }
+
+    func testServerCodeBodies() {
+        XCTAssertEqual(ServerBackend.lynxceCodeBody(target: " a@b.cn ", chinese: true), ["target": "a@b.cn", "locale": "zh"])
+        XCTAssertEqual(
+            ServerBackend.lynxceCodeBody(target: "13800138000", code: "123456", chinese: false),
+            ["target": "13800138000", "code": "123456", "locale": "en"]
+        )
+    }
+
+    func testCodeEntryCountsDownOnlyAfterASuccessfulSend() async {
+        let entry = CodeEntry()
+        XCTAssertFalse(entry.canSend(to: "  "))
+        XCTAssertTrue(entry.canSend(to: "13800138000"))
+        let failure = await entry.send { throw APIError(kind: .rejected, status: 429, message: nil) }
+        XCTAssertEqual((failure as? APIError)?.status, 429)
+        XCTAssertEqual(entry.countdown, 0)
+        XCTAssertFalse(entry.sent)
+        let none = await entry.send {}
+        XCTAssertNil(none)
+        XCTAssertEqual(entry.countdown, 60)
+        XCTAssertFalse(entry.canSend(to: "13800138000"))
+        entry.reset()
+        XCTAssertTrue(entry.canSend(to: "13800138000"))
+    }
+
+    func testErrorMapping() throws {
+        let preferences = Preferences.shared
+        let original = preferences.language
+        defer { preferences.language = original }
+        preferences.language = .chinese
+        func error(_ status: Int, _ body: String) -> Error {
+            do { _ = try LynxceBackend.unwrap(Data(body.utf8), status: status) } catch { return error }
+            XCTFail("expected a throw")
+            return APIError.network
+        }
+        let wrong = error(401, #"{"error":{"code":"email_code_invalid","message":"邮箱验证码错误或已失效,请重新获取。"},"statusCode":401}"#)
+        XCTAssertEqual(LynxceBackend.codeMessage(for: wrong), "验证码错误或已过期，请重新获取")
+        let tooMany = error(429, #"{"error":{"code":"rate_limited","message":"Too Many Requests"}}"#)
+        XCTAssertEqual(LynxceBackend.codeMessage(for: tooMany), "发送太频繁，请稍后再试")
+        let invalid = error(400, #"{"error":{"code":"validation_error","message":"手机号：至少需要 6 个字符"},"message":"手机号：至少需要 6 个字符"}"#)
+        XCTAssertEqual(LynxceBackend.codeMessage(for: invalid), "手机号：至少需要 6 个字符")
+        XCTAssertEqual(LynxceBackend.codeMessage(for: APIError.network), APIError.network.localizedDescription)
+        preferences.language = .english
+        XCTAssertEqual(LynxceBackend.codeMessage(for: wrong), "The code is wrong or has expired. Please get a new one.")
+    }
+}
+
+@MainActor
 final class ServerTests: XCTestCase {
     func testAddressNormalization() {
         XCTAssertEqual(ServerBackend.normalize("nas.local:8080/")?.absoluteString, "https://nas.local:8080")

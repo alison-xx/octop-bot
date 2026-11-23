@@ -1,14 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Alert,
-  Button,
-  Empty,
-  Form,
-  Input,
-  Segmented,
-  Select,
-  Spin,
-} from "antd";
+import { Alert, Button, Empty, Segmented, Select, Spin } from "antd";
 import {
   ArrowLeft,
   CalendarClock,
@@ -33,6 +24,7 @@ import { getDesktopBridge } from "../../utils/desktopBridge";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
 import WalletBalance from "./WalletBalance";
 import LynxceRegistration from "./LynxceRegistration";
+import LynxceSignInForm from "./LynxceSignInForm";
 import CloudChat from "./CloudChat";
 import CloudSchedules from "./CloudSchedules";
 import CloudImport from "./CloudImport";
@@ -40,7 +32,7 @@ import ModelSelect from "./ModelSelect";
 import styles from "./cloud.module.less";
 
 export default function CloudWorkspace() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const state = location.state as {
@@ -74,11 +66,11 @@ export default function CloudWorkspace() {
       window.removeEventListener("focus", loadAccount);
     };
   }, [loadAccount]);
-  async function login({ user, password }: { user: string; password: string }) {
+  async function signIn(attempt: () => Promise<CloudAccount>) {
     setBusy(true);
     setError("");
     try {
-      const next = await botCloudApi.login(user.trim(), password);
+      const next = await attempt();
       ++seq.current;
       setAccount(next);
     } catch (err) {
@@ -182,40 +174,29 @@ export default function CloudWorkspace() {
             />
             <h2>{t("botCloud.signInTitle")}</h2>
             <p>{t("botCloud.intro")}</p>
-            <Form<{ user: string; password: string }>
-              layout="vertical"
-              requiredMark={false}
-              onFinish={login}
-            >
-              <Form.Item
-                name="user"
-                label={t("botCloud.account")}
-                rules={[
-                  {
-                    required: true,
-                    whitespace: true,
-                    message: t("botCloud.accountRequired"),
-                  },
-                ]}
-              >
-                <Input autoComplete="username" maxLength={200} />
-              </Form.Item>
-              <Form.Item
-                name="password"
-                label={t("botCloud.password")}
-                rules={[
-                  { required: true, message: t("botCloud.passwordRequired") },
-                ]}
-              >
-                <Input.Password
-                  autoComplete="current-password"
-                  maxLength={256}
-                />
-              </Form.Item>
-              <Button type="primary" htmlType="submit" block loading={busy}>
-                {t("botCloud.signIn")}
-              </Button>
-            </Form>
+            <LynxceSignInForm
+              idPrefix="bot-cloud"
+              busy={busy}
+              submitLabel={t("botCloud.signIn")}
+              sendCode={async (target) =>
+                (
+                  await botCloudApi.sendCode(
+                    target,
+                    i18n.language.startsWith("en") ? "en" : "zh",
+                  )
+                ).channel
+              }
+              onCode={(target, code) =>
+                signIn(() => botCloudApi.codeLogin(target, code))
+              }
+              onPassword={(account, password) =>
+                signIn(() => botCloudApi.login(account, password))
+              }
+              onError={(err) =>
+                setError(apiErrorMessage(err, t("octopBot.failed"), t))
+              }
+              onClearError={() => setError("")}
+            />
             {workbuddyLogin && (
               <div className={styles.altLogin}>
                 <Button

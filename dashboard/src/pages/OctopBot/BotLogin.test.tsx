@@ -62,18 +62,53 @@ describe("Bot web sign-in", () => {
       .spyOn(authApi, "lynxceLogin")
       .mockResolvedValue(session as never);
     open();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "lynxceSignIn.usePassword" }),
+    );
     await userEvent.type(
-      await screen.findByLabelText("botOnboarding.account"),
+      screen.getByLabelText("lynxceSignIn.account"),
       "alice",
     );
     await userEvent.type(
-      screen.getByLabelText("botOnboarding.password"),
+      screen.getByLabelText("lynxceSignIn.password"),
       "secret-pass{Enter}",
     );
     expect(
       await screen.findByRole("heading", { name: "Workspace" }),
     ).toBeInTheDocument();
     expect(login).toHaveBeenCalledWith("alice", "secret-pass", "en");
+    expect(getAuthToken()).toBe("issued");
+  });
+
+  it("signs in with a one-time code by default", async () => {
+    vi.spyOn(authApi, "getLynxceIdentityStatus").mockResolvedValue({
+      enabled: true,
+      claimed: true,
+    });
+    const send = vi
+      .spyOn(authApi, "lynxceSendCode")
+      .mockResolvedValue({ channel: "phone" });
+    const login = vi
+      .spyOn(authApi, "lynxceCodeLogin")
+      .mockResolvedValue(session as never);
+    open();
+    await userEvent.type(
+      await screen.findByLabelText("lynxceSignIn.target"),
+      " 13800000000 ",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "lynxceSignIn.send" }),
+    );
+    expect(send).toHaveBeenCalledWith("13800000000", "en");
+    expect(
+      await screen.findByText("lynxceSignIn.sentPhone"),
+    ).toBeInTheDocument();
+    // The sixth digit submits on its own.
+    await userEvent.type(screen.getByLabelText("lynxceSignIn.code"), "12a3456");
+    expect(
+      await screen.findByRole("heading", { name: "Workspace" }),
+    ).toBeInTheDocument();
+    expect(login).toHaveBeenCalledWith("13800000000", "123456", "en");
     expect(getAuthToken()).toBe("issued");
   });
 
@@ -93,7 +128,7 @@ describe("Bot web sign-in", () => {
     expect(
       await screen.findByRole("heading", { name: "Workspace" }),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText("botOnboarding.account")).toBeNull();
+    expect(screen.queryByLabelText("lynxceSignIn.target")).toBeNull();
     expect(login).toHaveBeenCalledWith("local", "own-pass");
   });
 

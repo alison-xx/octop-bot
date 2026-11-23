@@ -12,6 +12,7 @@ import io.github.alisonxx.octopbot.model.ModelOption
 import io.github.alisonxx.octopbot.net.ApiException
 import io.github.alisonxx.octopbot.net.ChatBackend
 import io.github.alisonxx.octopbot.net.LynxceBackend
+import io.github.alisonxx.octopbot.net.LynxceProtocol
 import io.github.alisonxx.octopbot.net.ServerBackend
 import androidx.appcompat.app.AppCompatDelegate
 import io.github.alisonxx.octopbot.store.Appearance
@@ -128,6 +129,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     suspend fun signInLynxce(account: String, password: String) {
         enter(LynxceBackend.signIn(account, password, store, app.localBots))
+    }
+
+    suspend fun requestLynxceCode(target: LynxceProtocol.Target) = LynxceBackend.requestCode(target)
+
+    suspend fun signInLynxceCode(target: LynxceProtocol.Target, code: String) {
+        enter(LynxceBackend.signIn(target, code, store, app.localBots))
     }
 
     /** Called after the server form finished signing in. Replaces whatever account was active. */

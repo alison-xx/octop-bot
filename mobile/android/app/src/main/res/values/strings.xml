@@ -47,6 +47,16 @@
     <string name="onboarding_register">No account? Sign up at lynxce.cn</string>
     <string name="onboarding_server">Connect my own server</string>
     <string name="onboarding_footnote">Your own Octop Bot server works too: Bots, tools, memory and groups from your NAS.</string>
+    <string name="onboarding_code">Verification code</string>
+    <string name="onboarding_get_code">Get code</string>
+    <string name="onboarding_resend_code">Resend</string>
+    <string name="onboarding_code_countdown">%1$ds</string>
+    <string name="onboarding_code_sent">Code sent. It may take a minute to arrive.</string>
+    <string name="onboarding_code_hint">New to Lynxce? Signing in with a code creates your account.</string>
+    <string name="onboarding_use_password">Sign in with password</string>
+    <string name="onboarding_use_code">Sign in with a code</string>
+    <string name="error_code_invalid">The code is wrong or expired. Please get a new one.</string>
+    <string name="error_code_too_frequent">Too many requests. Please try again later.</string>
     <string name="password_show">Show password</string>
     <string name="password_hide">Hide password</string>
 

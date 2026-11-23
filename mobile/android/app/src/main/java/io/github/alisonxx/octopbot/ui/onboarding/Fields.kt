@@ -39,6 +39,7 @@ fun FormField(
     placeholder: String? = null,
     password: Boolean = false,
     enabled: Boolean = true,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     var reveal by rememberSaveable { mutableStateOf(false) }
     val palette = LocalPalette.current
@@ -66,7 +67,7 @@ fun FormField(
                     )
                 }
             }
-        } else null,
+        } else trailing,
         colors = OutlinedTextFieldDefaults.colors(
             unfocusedContainerColor = palette.surface,
             focusedContainerColor = palette.surface,

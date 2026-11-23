@@ -137,4 +137,68 @@ class LynxceProtocolTest {
         assertEquals("12.5", LynxceProtocol.balance(Http.parse("""{"credits":12.5,"balance":null}""")))
         assertNull(LynxceProtocol.balance(Http.parse("""{"plan":"free"}""")))
     }
+
+    @Test
+    fun codeTargetIsEmailWhenItHasAnAt() {
+        assertEquals(LynxceProtocol.Target.Phone("13800138000"), LynxceProtocol.Target.of("  13800138000 "))
+        assertEquals(LynxceProtocol.Target.Phone("+86 138 0013 8000"), LynxceProtocol.Target.of("+86 138 0013 8000"))
+        assertEquals(LynxceProtocol.Target.Email("a@b.cn"), LynxceProtocol.Target.of(" a@b.cn"))
+        assertNull(LynxceProtocol.Target.of("   "))
+        assertTrue(LynxceProtocol.isValidCode("012345"))
+        assertFalse(LynxceProtocol.isValidCode("12345"))
+        assertFalse(LynxceProtocol.isValidCode("1234567"))
+        assertFalse(LynxceProtocol.isValidCode("12a456"))
+        assertFalse(LynxceProtocol.isValidCode("１２３４５６"))
+    }
+
+    @Test
+    fun codeRequestAndLoginBodies() {
+        val phone = LynxceProtocol.Target.Phone("13800138000")
+        val email = LynxceProtocol.Target.Email("a@b.cn")
+        assertEquals("/api/auth/phone-code", LynxceProtocol.codeRequestPath(phone))
+        assertEquals("/api/auth/email-code", LynxceProtocol.codeRequestPath(email))
+        assertEquals("/api/auth/phone-login", LynxceProtocol.codeLoginPath(phone))
+        assertEquals("/api/auth/email-login", LynxceProtocol.codeLoginPath(email))
+        assertEquals("""{"phone":"13800138000"}""", LynxceProtocol.codeRequestBody(phone, chinese = true).toString())
+        assertEquals("""{"email":"a@b.cn","locale":"zh-CN"}""", LynxceProtocol.codeRequestBody(email, chinese = true).toString())
+        assertEquals("""{"email":"a@b.cn","locale":"en"}""", LynxceProtocol.codeRequestBody(email, chinese = false).toString())
+        assertEquals("""{"phone":"13800138000","code":"123456"}""", LynxceProtocol.codeLoginBody(phone, "123456").toString())
+        assertEquals("""{"email":"a@b.cn","code":"000000"}""", LynxceProtocol.codeLoginBody(email, "000000").toString())
+    }
+
+    @Test
+    fun codeLoginGrantMatchesPasswordLogin() {
+        val data = LynxceProtocol.unwrap(
+            200,
+            """{"code":0,"data":{"accessToken":"a","refreshToken":"r","user":{"id":42,"displayName":" "}}}""",
+        )
+        val grant = LynxceProtocol.grant(data)
+        assertEquals("42", grant.accountId)
+        assertNull(grant.displayName)
+        assertEquals("a", grant.accessToken)
+        assertEquals("r", grant.refreshToken)
+        assertFailure(ApiException.Kind.Server, 502) { LynxceProtocol.grant(Http.parse("""{"accessToken":"a","refreshToken":"r"}""")) }
+    }
+
+    @Test
+    fun codeFailuresMapToFriendlyKinds() {
+        fun failure(status: Int, body: String): ApiException =
+            try {
+                LynxceProtocol.unwrap(status, body)
+                throw AssertionError("expected failure")
+            } catch (error: ApiException) {
+                error
+            }
+        val wrong = failure(401, """{"error":{"code":"sms_code_invalid","message":"验证码错误"},"message":"验证码错误"}""")
+        assertEquals(LynxceProtocol.CodeFailure.InvalidCode, LynxceProtocol.codeFailure(wrong))
+        val often = failure(429, """{"error":{"code":"rate_limited","message":"请求过于频繁"}}""")
+        assertEquals(LynxceProtocol.CodeFailure.TooFrequent, LynxceProtocol.codeFailure(often))
+        // Malformed input keeps the server's readable message.
+        val invalid = failure(400, """{"error":{"code":"validation_error","message":"手机号格式不正确"},"message":"手机号格式不正确"}""")
+        assertNull(LynxceProtocol.codeFailure(invalid))
+        assertEquals(ApiException.Kind.Rejected, invalid.kind)
+        assertEquals("手机号格式不正确", invalid.message)
+        assertNull(LynxceProtocol.codeFailure(ApiException.network()))
+        assertNull(LynxceProtocol.codeFailure(IllegalStateException()))
+    }
 }

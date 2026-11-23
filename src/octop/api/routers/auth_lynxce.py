@@ -6,7 +6,8 @@ import asyncio
 import logging
 import secrets
 import time
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -27,6 +28,10 @@ router = APIRouter()
 _MAX_FAILURES = 5
 _FAILURE_WINDOW_SECONDS = 300
 _failures: dict[str, list[float]] = {}
+# Code sends per client address: Lynxce pays for the SMS, so a public instance must not relay floods.
+_MAX_SENDS = 5
+_SEND_WINDOW_SECONDS = 600
+_sends: dict[str, list[float]] = {}
 # One process serves an instance; serialize the "first sign-in claims it" step.
 _claim_lock = asyncio.Lock()
 
@@ -34,6 +39,21 @@ _claim_lock = asyncio.Lock()
 class LynxceLoginBody(BaseModel):
     account: str = Field(min_length=1, max_length=200, description="Lynxce phone or email.")
     password: str = Field(min_length=1, max_length=4096)
+    locale: str | None = Field(default=None, max_length=16)
+
+
+class LynxceCodeBody(BaseModel):
+    target: str = Field(min_length=1, max_length=256, description="Lynxce phone or email.")
+    locale: str | None = Field(default=None, max_length=16)
+
+
+class LynxceCodeSent(BaseModel):
+    channel: Literal["phone", "email"] = Field(description="Where Lynxce sent the code.")
+
+
+class LynxceCodeLoginBody(BaseModel):
+    target: str = Field(min_length=1, max_length=256, description="Lynxce phone or email.")
+    code: str = Field(min_length=1, max_length=16, description="Six-digit code Lynxce sent.")
     locale: str | None = Field(default=None, max_length=16)
 
 
@@ -112,18 +132,78 @@ async def lynxce_login(
     Lynxce account can sign in here. The Lynxce password is forwarded to Lynxce
     once and never stored.
     """
+    return await _sign_in(
+        server,
+        request,
+        body.locale,
+        lambda: lynxce_cloud.verify_account(body.account, body.password),
+    )
+
+
+@router.post(
+    "/lynxce/code",
+    summary="Send a Lynxce sign-in code",
+    response_model=LynxceCodeSent,
+    description=(
+        "Lynxce texts or emails a six-digit code to the phone number or email. "
+        "New Lynxce accounts are created on first sign-in and need no password. "
+        "Rate-limited per client address."
+    ),
+)
+async def lynxce_send_code(
+    body: LynxceCodeBody, request: Request, server: Any = Depends(get_server)
+) -> LynxceCodeSent:
+    _require_enabled()
+    require_database(server)
+    ip = _client_ip(request)
+    now = time.time()
+    recent = [t for t in _sends.get(ip, []) if now - t < _SEND_WINDOW_SECONDS]
+    if len(recent) >= _MAX_SENDS:
+        _sends[ip] = recent
+        raise OctopError.localized(ErrorCode.LYNXCE_CODE_THROTTLED, status=429)
+    _sends[ip] = [*recent, now]
+    locale = body.locale or resolve_request_locale(request)
+    return LynxceCodeSent(channel=await lynxce_cloud.request_login_code(body.target, locale))
+
+
+@router.post("/lynxce/code-login", summary="Sign in with a Lynxce one-time code")
+async def lynxce_code_login(
+    body: LynxceCodeLoginBody, request: Request, server: Any = Depends(get_server)
+) -> dict[str, Any]:
+    """Same as ``/lynxce/login``, proved with the code from ``/lynxce/code``.
+
+    Works for Lynxce accounts that never set a password.
+    """
+    return await _sign_in(
+        server,
+        request,
+        body.locale,
+        lambda: lynxce_cloud.verify_account_code(body.target, body.code),
+    )
+
+
+async def _sign_in(
+    server: Any,
+    request: Request,
+    requested_locale: str | None,
+    verify: Callable[[], Awaitable[lynxce_cloud.CloudAccountStatus]],
+) -> dict[str, Any]:
     _require_enabled()
     require_database(server)
     ip = _client_ip(request)
     _raise_if_throttled(ip)
     try:
-        identity = await lynxce_cloud.verify_account(body.account, body.password)
+        identity = await verify()
     except OctopError as exc:
-        if exc.code in {ErrorCode.AUTH_FAILED, ErrorCode.SLASH_BAD_ARGS}:
+        if exc.code in {
+            ErrorCode.AUTH_FAILED,
+            ErrorCode.SLASH_BAD_ARGS,
+            ErrorCode.LYNXCE_CODE_INVALID,
+        }:
             _failures.setdefault(ip, []).append(time.time())
         raise
     assert identity.account_id is not None
-    locale = normalize_locale(body.locale or resolve_request_locale(request))
+    locale = normalize_locale(requested_locale or resolve_request_locale(request))
     async with _claim_lock:
         settings = server.services.settings_repo
         binding = await asyncio.to_thread(owner_binding, settings)

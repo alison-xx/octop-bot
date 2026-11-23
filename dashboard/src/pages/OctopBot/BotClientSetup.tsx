@@ -20,6 +20,7 @@ import {
 import PasswordStep from "../Setup/steps/PasswordStep";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
 import LynxceRegistration from "./LynxceRegistration";
+import LynxceSignInForm from "./LynxceSignInForm";
 import styles from "./index.module.less";
 import intro from "./BotClientSetup.module.less";
 
@@ -36,8 +37,6 @@ export default function BotClientSetup() {
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [verified, setVerified] = useState(false);
   const [password, setPassword] = useState("");
-  const [account, setAccount] = useState("");
-  const [lynxcePassword, setLynxcePassword] = useState("");
   const [webMode, setWebMode] = useState<WebMode>("lynxce");
   const [busy, setBusy] = useState<Choice | WebMode | null>(null);
   const [error, setError] = useState("");
@@ -167,17 +166,15 @@ export default function BotClientSetup() {
     }
   };
 
-  const signInWithLynxce = async () => {
+  const signInWithLynxce = async (
+    attempt: () => Promise<{ access_token: string }>,
+  ) => {
     if (!status || busy) return;
     setBusy("lynxce");
     setError("");
     try {
       await bindDatabase(status);
-      const session = await authApi.lynxceLogin(
-        account.trim(),
-        lynxcePassword,
-        locale,
-      );
+      const session = await attempt();
       setAuthToken(session.access_token);
       wizardSession.clearAll();
       // Lynxce's model authorization needs the desktop client; on the web
@@ -256,48 +253,36 @@ export default function BotClientSetup() {
         ]}
       />
       {webMode === "lynxce" ? (
-        <form
-          className={intro.form}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void signInWithLynxce();
+        <LynxceSignInForm
+          idPrefix="bot-lynxce"
+          autoFocus
+          busy={busy === "lynxce"}
+          submitLabel={
+            <>
+              {t("botOnboarding.lynxceSubmit")}
+              <ArrowRight size={16} aria-hidden="true" />
+            </>
+          }
+          passwordHint={t("botOnboarding.lynxceHint")}
+          sendCode={async (target) => {
+            if (status) await bindDatabase(status);
+            return (await authApi.lynxceSendCode(target, locale)).channel;
           }}
+          onCode={(target, code) =>
+            signInWithLynxce(() =>
+              authApi.lynxceCodeLogin(target, code, locale),
+            )
+          }
+          onPassword={(account, password) =>
+            signInWithLynxce(() =>
+              authApi.lynxceLogin(account, password, locale),
+            )
+          }
+          onError={(e) => setError(apiErrorMessage(e, t("octopBot.failed"), t))}
+          onClearError={() => setError("")}
         >
-          <label htmlFor="bot-lynxce-account">
-            {t("botOnboarding.account")}
-          </label>
-          <Input
-            id="bot-lynxce-account"
-            autoComplete="username"
-            autoFocus
-            required
-            value={account}
-            onChange={(e) => setAccount(e.target.value)}
-            placeholder={t("botOnboarding.accountPlaceholder")}
-          />
-          <label htmlFor="bot-lynxce-password">
-            {t("botOnboarding.password")}
-          </label>
-          <Input.Password
-            id="bot-lynxce-password"
-            autoComplete="current-password"
-            required
-            value={lynxcePassword}
-            onChange={(e) => setLynxcePassword(e.target.value)}
-          />
-          <small>{t("botOnboarding.lynxceHint")}</small>
-          <Button
-            type="primary"
-            size="large"
-            htmlType="submit"
-            loading={busy === "lynxce"}
-            disabled={!account.trim() || !lynxcePassword}
-          >
-            {t("botOnboarding.lynxceSubmit")}
-            <ArrowRight size={16} aria-hidden="true" />
-          </Button>
           <LynxceRegistration />
-        </form>
+        </LynxceSignInForm>
       ) : (
         <form
           className={intro.form}

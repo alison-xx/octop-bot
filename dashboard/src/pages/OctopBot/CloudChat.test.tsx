@@ -84,7 +84,7 @@ describe("the hosted Bot chat", () => {
       expect.any(AbortSignal),
     );
     fireEvent.click(screen.getByRole("button", { name: "botCloud.signOut" }));
-    await screen.findByRole("textbox", { name: "botCloud.account" });
+    await screen.findByRole("textbox", { name: "lynxceSignIn.target" });
     expect(screen.queryByText("77")).toBeNull();
     expect(screen.queryByText("botWallet.recharge")).toBeNull();
   });
@@ -105,13 +105,48 @@ describe("the hosted Bot chat", () => {
     });
     expect(registration).toHaveAttribute("target", "_blank");
     expect(registration).toHaveAttribute("rel", "noopener noreferrer");
-    const input = screen.getByRole("textbox", { name: "botCloud.account" });
+    const input = screen.getByRole("textbox", { name: "lynxceSignIn.target" });
     fireEvent.change(input, { target: { value: "example@account.test" } });
     // The system browser returning focus refreshes cloud status.
     fireEvent.focus(window);
     await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
     expect(input).toHaveValue("example@account.test");
     expect(login).not.toHaveBeenCalled();
+  });
+  it("signs in to the cloud with a code sent to the phone", async () => {
+    vi.spyOn(botCloudApi, "account").mockResolvedValue({
+      connected: false,
+      account_id: null,
+      display_name: null,
+    });
+    const send = vi
+      .spyOn(botCloudApi, "sendCode")
+      .mockResolvedValue({ channel: "phone" });
+    const login = vi.spyOn(botCloudApi, "codeLogin").mockResolvedValue({
+      connected: true,
+      account_id: "cloud",
+      display_name: "Cloud",
+    });
+    render(
+      <MemoryRouter>
+        <CloudWorkspace />
+      </MemoryRouter>,
+    );
+    fireEvent.change(
+      await screen.findByRole("textbox", { name: "lynxceSignIn.target" }),
+      { target: { value: "13800000000" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "lynxceSignIn.send" }));
+    await waitFor(() => expect(send).toHaveBeenCalledWith("13800000000", "zh"));
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "lynxceSignIn.code" }),
+      {
+        target: { value: "123456" },
+      },
+    );
+    await waitFor(() =>
+      expect(login).toHaveBeenCalledWith("13800000000", "123456"),
+    );
   });
   it("signs in with the WorkBuddy hand-off code from the desktop window", async () => {
     vi.spyOn(botCloudApi, "account").mockResolvedValue({

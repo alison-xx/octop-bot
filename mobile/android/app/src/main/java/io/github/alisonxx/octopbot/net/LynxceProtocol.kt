@@ -8,6 +8,7 @@ import io.github.alisonxx.octopbot.model.MessageStatus
 import io.github.alisonxx.octopbot.model.ModelOption
 import io.github.alisonxx.octopbot.model.StreamEvent
 import io.github.alisonxx.octopbot.model.Times
+import io.github.alisonxx.octopbot.store.LynxceGrant
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -184,6 +185,76 @@ object LynxceProtocol {
     fun loginBody(account: String, password: String) = buildJsonObject {
         put("account", account)
         put("password", password)
+    }
+
+    /** Where a verification code goes: an email when the text has "@", otherwise a phone (Lynxce normalizes numbers). */
+    sealed interface Target {
+        val value: String
+
+        data class Phone(override val value: String) : Target
+        data class Email(override val value: String) : Target
+
+        companion object {
+            fun of(typed: String): Target? {
+                val value = typed.trim()
+                return when {
+                    value.isEmpty() -> null
+                    "@" in value -> Email(value)
+                    else -> Phone(value)
+                }
+            }
+        }
+    }
+
+    const val CODE_LENGTH = 6
+
+    fun isValidCode(code: String) = code.length == CODE_LENGTH && code.all { it in '0'..'9' }
+
+    fun codeRequestPath(target: Target) = when (target) {
+        is Target.Phone -> "/api/auth/phone-code"
+        is Target.Email -> "/api/auth/email-code"
+    }
+
+    /** The email follows the app language; the response may carry a dev code that must never be shown. */
+    fun codeRequestBody(target: Target, chinese: Boolean) = buildJsonObject {
+        when (target) {
+            is Target.Phone -> put("phone", target.value)
+            is Target.Email -> {
+                put("email", target.value)
+                put("locale", if (chinese) "zh-CN" else "en")
+            }
+        }
+    }
+
+    fun codeLoginPath(target: Target) = when (target) {
+        is Target.Phone -> "/api/auth/phone-login"
+        is Target.Email -> "/api/auth/email-login"
+    }
+
+    fun codeLoginBody(target: Target, code: String) = buildJsonObject {
+        put(if (target is Target.Phone) "phone" else "email", target.value)
+        put("code", code)
+    }
+
+    /** Verification-code failures that get their own wording; others use the server's message or generic text. */
+    enum class CodeFailure { InvalidCode, TooFrequent }
+
+    fun codeFailure(error: Throwable): CodeFailure? = when ((error as? ApiException)?.status) {
+        401 -> CodeFailure.InvalidCode
+        429 -> CodeFailure.TooFrequent
+        else -> null
+    }
+
+    /** The account from a password or code sign-in (`{accessToken, refreshToken, user}`). */
+    fun grant(data: JsonElement): LynxceGrant {
+        val body = data.asObject() ?: throw ApiException.badResponse()
+        val user = body.obj("user")
+        return LynxceGrant(
+            accountId = user?.idString("id") ?: throw ApiException.badResponse(),
+            displayName = user.str("displayName")?.takeIf { it.isNotBlank() },
+            accessToken = body.str("accessToken") ?: throw ApiException.badResponse(),
+            refreshToken = body.str("refreshToken") ?: throw ApiException.badResponse(),
+        )
     }
 
     fun refreshBody(refreshToken: String) = buildJsonObject { put("refreshToken", refreshToken) }

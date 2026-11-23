@@ -144,6 +144,8 @@ private fun SignedOutNav(model: AppViewModel, notice: String?, reopenServer: Boo
             OnboardingScreen(
                 notice = notice,
                 onSignIn = model::signInLynxce,
+                onRequestCode = model::requestLynxceCode,
+                onCodeSignIn = model::signInLynxceCode,
                 onServer = { nav.navigate(Routes.SERVER) },
             )
         }

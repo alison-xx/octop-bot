@@ -82,6 +82,27 @@ final class ServerBackend: ChatBackend {
         return try finish(base, body)
     }
 
+    /// Body for `/api/auth/lynxce/code` (no code) and `/api/auth/lynxce/code-login`; the server tells
+    /// phone from email itself.
+    static func lynxceCodeBody(target: String, code: String? = nil, chinese: Bool) -> [String: String] {
+        var body = ["target": target.trimmingCharacters(in: .whitespacesAndNewlines), "locale": chinese ? "zh" : "en"]
+        if let code { body["code"] = code }
+        return body
+    }
+
+    /// Ask the server to have Lynxce text or email the owner a sign-in code.
+    static func sendLynxceCode(_ base: URL, target: String) async throws {
+        let chinese = Preferences.shared.language.isChinese
+        _ = try await anonymous(base, .post, "/api/auth/lynxce/code", json: lynxceCodeBody(target: target, chinese: chinese))
+    }
+
+    static func signInWithLynxceCode(_ base: URL, target: String, code: String) async throws -> ServerBackend {
+        guard LynxceBackend.isCode(code) else { throw APIError(kind: .rejected, status: 400, message: L("error.codeFormat")) }
+        let chinese = Preferences.shared.language.isChinese
+        let body = try await anonymous(base, .post, "/api/auth/lynxce/code-login", json: lynxceCodeBody(target: target, code: code, chinese: chinese))
+        return try finish(base, body)
+    }
+
     static func signIn(_ base: URL, username: String, password: String) async throws -> SignInResult {
         let body = try await anonymous(base, .post, "/api/auth/login", json: ["username": username, "password": password])
         if body["mfa_required"] as? Bool == true, let token = body["mfa_token"] as? String {

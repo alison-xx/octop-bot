@@ -35,6 +35,19 @@ import java.util.UUID
 
 /** Pure Octop server wire mapping (no I/O), shared by [ServerBackend] and unit tests. */
 object ServerProtocol {
+    /** `POST /api/auth/lynxce/code`: the server tells phone from email itself and texts or emails the owner. */
+    fun lynxceCodeBody(target: String, chinese: Boolean) = buildJsonObject {
+        put("target", target.trim())
+        put("locale", if (chinese) "zh" else "en")
+    }
+
+    /** `POST /api/auth/lynxce/code-login`: answers like `/api/auth/lynxce/login`. */
+    fun lynxceCodeLoginBody(target: String, code: String, chinese: Boolean) = buildJsonObject {
+        put("target", target.trim())
+        put("code", code)
+        put("locale", if (chinese) "zh" else "en")
+    }
+
     /** Accepts "nas.local:8080" as well as a full URL; returns the origin without a trailing slash. */
     fun normalizeUrl(text: String): String? {
         var raw = text.trim().trimEnd('/')
