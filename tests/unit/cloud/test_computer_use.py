@@ -39,7 +39,8 @@ def test_keys_and_actions_become_pyautogui_calls() -> None:
 def test_non_ascii_text_is_pasted_and_ascii_is_typed() -> None:
     assert "pyautogui.write" in cu.type_script("hello")
     pasted = cu.type_script("你好，云电脑")
-    assert "xclip" in pasted and "hotkey('ctrl', 'v')" in pasted
+    assert "xclip" in pasted and "pyautogui.press('v')" in pasted
+    assert "keyDown('ctrl')" in pasted
     # The text travels JSON-quoted, so quotes in it cannot break the script.
     assert 'pyautogui.write("say \\"hi\\""' in cu.type_script('say "hi"')
 
@@ -81,6 +82,9 @@ class FakeManager:
 
     def taken_over(self, agent_id: str, user_id: int) -> bool:
         return self.taken
+
+    def note(self, agent_id: str, kind: str) -> None:
+        self.noted = kind
 
     def use(self, agent_id: str, user_id: int, work: Any) -> Any:
         return work(self.driver, "ins-1")

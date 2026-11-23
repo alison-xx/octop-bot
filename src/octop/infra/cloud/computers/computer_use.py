@@ -41,6 +41,9 @@ VIEW = (1280, 720)
 SCALE = SCREEN[0] / VIEW[0]
 # Let the desktop catch up (menus open, pages paint) before the screenshot after an action.
 SETTLE_SECONDS = 0.8
+# Clicks and Enter often start a navigation: give the page time to change before the screenshot,
+# or the model concludes its action "did not work" and repeats it.
+NAVIGATION_SETTLE_SECONDS = 2.0
 MAX_ELEMENTS = 150
 
 Action = Literal[
@@ -145,7 +148,9 @@ def type_script(text: str) -> str:
         f"input={json.dumps(text)}.encode(), stdout=subprocess.DEVNULL, "
         "stderr=subprocess.DEVNULL, check=True)\n"
         "time.sleep(0.2)\n"
-        "pyautogui.hotkey('ctrl', 'v')\n"
+        # Chrome misses a Ctrl+V pressed in one go (gedit does not): hold Ctrl a moment.
+        "pyautogui.keyDown('ctrl'); time.sleep(0.1); pyautogui.press('v'); "
+        "time.sleep(0.1); pyautogui.keyUp('ctrl')\n"
     )
 
 
@@ -199,7 +204,7 @@ def action_script(  # noqa: PLR0911 - one branch per action
         if not keys:
             raise ValueError("key needs keys, e.g. 'enter' or 'ctrl+l'")
         names = ", ".join(json.dumps(k) for k in parse_keys(keys))
-        return f"pyautogui.hotkey({names})\n"
+        return f"pyautogui.hotkey({names}, interval=0.05)\n"
     raise ValueError(f"unknown action {action!r}")
 
 
@@ -352,6 +357,7 @@ def computer_use_tool(manager: ComputerManager, agent_id: str, user_id: int) -> 
             return TAKEN_OVER
 
         def work(driver: ComputerDriver, instance: str) -> Command[Any] | str:
+            manager.note(agent_id, action)
             if action == "elements":
                 return summarize_elements(driver.accessibility(instance))
             if action == "zoom":
@@ -379,7 +385,11 @@ def computer_use_tool(manager: ComputerManager, agent_id: str, user_id: int) -> 
                     amount=amount,
                     button=button,
                 )
-                script += f"time.sleep({SETTLE_SECONDS})\n"
+                navigates = action in ("click", "double_click") or (
+                    action == "key" and "enter" in parse_keys(keys or "x")
+                )
+                settle = NAVIGATION_SETTLE_SECONDS if navigates else SETTLE_SECONDS
+                script += f"time.sleep({settle})\n"
                 done = f"Did {action}."
             image = snapshot(driver, instance, script)
             return _with_image(

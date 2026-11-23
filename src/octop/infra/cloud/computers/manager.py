@@ -50,6 +50,43 @@ class Reservation:
     minutes: int
 
 
+@dataclass(frozen=True)
+class Glance:
+    window: str | None
+    # Base64 JPEG, 320 px wide.
+    thumbnail: str | None
+
+
+# The Bot counts as "on the computer" for this long after its last action (screenshots and
+# model turns sit between actions).
+BUSY_AFTER_ACTION_SECONDS = 20
+GLANCE_CACHE_SECONDS = 5
+GLANCE_SCRIPT = """
+import base64, io, subprocess
+def _run(*args):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=3).stdout
+    except Exception:
+        return ""
+win = _run("xprop", "-root", "_NET_ACTIVE_WINDOW").split()[-1:] or [""]
+title = ""
+if win[0].startswith("0x") and win[0] != "0x0":
+    raw = _run("xprop", "-id", win[0], "_NET_WM_NAME")
+    if "=" in raw:
+        title = raw.split("=", 1)[1].strip().strip('"')
+print("WINDOW:" + title.replace("\\n", " "))
+try:
+    import pyautogui
+    shot = pyautogui.screenshot().convert("RGB")
+    shot.thumbnail((320, 180))
+    buf = io.BytesIO()
+    shot.save(buf, "JPEG", quality=60)
+    print("THUMB:" + base64.b64encode(buf.getvalue()).decode())
+except Exception:
+    pass
+"""
+
+
 @dataclass
 class Unsettled:
     """A settle Lynxce did not take yet; retried by the reaper (an unsettled chunk is charged
@@ -209,6 +246,10 @@ class ComputerManager:
         self._guard = threading.Lock()
         self._reaper: threading.Thread | None = None
         self._stopping = threading.Event()
+        # What the Bot last did on each computer, for the chat's floating screen: (kind, time).
+        self._activity: dict[str, tuple[str, float]] = {}
+        # Short-lived glances (window title + thumbnail) so several viewers share one request.
+        self._glances: dict[str, tuple[float, Glance]] = {}
         self._last_orphan_scan = 0.0
 
     # Records
@@ -580,6 +621,7 @@ class ComputerManager:
         instance = self.ensure_running(agent_id, user_id, seed)
         with self._guard:
             self._busy[agent_id] = self._busy.get(agent_id, 0) + 1
+        self.note(agent_id, "command")
         try:
             return self._driver.run(instance, command, timeout)
         except Exception:
@@ -591,6 +633,40 @@ class ComputerManager:
             with self._guard:
                 self._busy[agent_id] -= 1
             self.touch(agent_id, user_id)
+
+    def note(self, agent_id: str, kind: str) -> None:
+        """Remember the Bot's latest action on its computer (click, type, command, …)."""
+        self._activity[agent_id] = (kind, self._clock())
+
+    def activity(self, agent_id: str) -> tuple[str, float] | None:
+        return self._activity.get(agent_id)
+
+    def busy(self, agent_id: str) -> bool:
+        """The Bot is working on the computer right now (mid-command or just acted)."""
+        if self._busy.get(agent_id, 0) > 0:
+            return True
+        last = self._activity.get(agent_id)
+        return last is not None and self._clock() - last[1] < BUSY_AFTER_ACTION_SECONDS
+
+    def glance(self, agent_id: str, user_id: int) -> Glance | None:
+        """Front window title and a small thumbnail of a running computer; never starts it."""
+        record = self.record(agent_id, user_id)
+        if not (record.running and record.instance_id):
+            return None
+        now = self._clock()
+        cached = self._glances.get(agent_id)
+        if cached is not None and now - cached[0] < GLANCE_CACHE_SECONDS:
+            return cached[1]
+        output = self._driver.run_python(record.instance_id, GLANCE_SCRIPT)
+        window, thumbnail = None, None
+        for line in output.splitlines():
+            if line.startswith("WINDOW:"):
+                window = line[len("WINDOW:") :].strip() or None
+            elif line.startswith("THUMB:"):
+                thumbnail = line[len("THUMB:") :].strip() or None
+        glance = Glance(window=window, thumbnail=thumbnail)
+        self._glances[agent_id] = (now, glance)
+        return glance
 
     def use[T](
         self,

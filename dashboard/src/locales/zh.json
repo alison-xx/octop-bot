@@ -8809,6 +8809,31 @@
     "copyBlocked": "云电脑里已复制，但浏览器不允许网页写你的剪贴板，请点「取回云电脑剪贴板」。",
     "macShortcuts": "Mac 上 ⌘C / ⌘V 在这台 Mac 和云电脑之间复制粘贴，其他 ⌘ 快捷键按 Ctrl 处理。",
     "handoffOpen": "接管云电脑",
-    "handoffHint": "完成后关掉画面，在对话里选「我完成了」，Bot 会接着干。"
+    "handoffHint": "完成后关掉画面，在对话里选「我完成了」，Bot 会接着干。",
+    "float": {
+      "open": "打开云电脑画面",
+      "fit": "切换画面比例",
+      "expand": "放大",
+      "collapse": "收起",
+      "takeOverHint": "点此接管",
+      "youControl": "你在操作",
+      "working": "正在操作电脑",
+      "idle": "Bot 暂时没在操作",
+      "activity": {
+        "screenshot": "正在看屏幕",
+        "click": "正在点击",
+        "double_click": "正在双击",
+        "right_click": "正在右键点击",
+        "move": "正在移动鼠标",
+        "drag": "正在拖动",
+        "scroll": "正在滚动页面",
+        "type": "正在输入文字",
+        "key": "正在按键",
+        "wait": "正在等页面",
+        "elements": "正在读取界面",
+        "zoom": "正在放大查看",
+        "command": "正在运行命令"
+      }
+    }
   }
 }

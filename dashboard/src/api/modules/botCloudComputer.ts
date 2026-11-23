@@ -21,6 +21,18 @@ export interface CloudComputerStatus {
   running_since: number | null;
   paid_until: number | null;
   takeover: boolean;
+  /** The Bot is working on the computer right now. */
+  busy?: boolean;
+  /** Its latest action: click, type, key, scroll, screenshot, command, … */
+  activity?: string | null;
+  activity_at?: number | null;
+}
+
+/** Front window title and a small thumbnail of a running computer. */
+export interface CloudComputerGlance {
+  window: string | null;
+  /** Base64 JPEG, 320 px wide. */
+  thumbnail: string | null;
 }
 
 export interface ScreenTicket {
@@ -47,6 +59,9 @@ export const botCloudComputerApi = {
       method: "POST",
       body: JSON.stringify({ active }),
     }),
+  /** Never starts the computer; 404 while it is off. */
+  glance: (id: string) =>
+    request<CloudComputerGlance>(endpoint(id) + "/glance"),
   openScreen: (id: string) =>
     request<ScreenTicket>(endpoint(id) + "/screen", { method: "POST" }),
   /** Types text (any language) at the taken-over desktop's cursor. */

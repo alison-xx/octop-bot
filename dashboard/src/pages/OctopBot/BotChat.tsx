@@ -44,6 +44,8 @@ import AppearanceModal from "./AppearancePicker";
 import { BotCharacter, type BotMotion } from "./BotCharacter";
 import RoomIdentity from "./RoomIdentity";
 import BotDetailsPanel from "./BotDetailsPanel";
+import CloudComputerFloat from "./CloudComputerFloat";
+import { useBotServerInfo } from "./useBotServerInfo";
 import directory from "./directory.module.less";
 
 function ThreadHistory({
@@ -285,6 +287,8 @@ export default function BotChat({
   );
   const standalone = isBotClient();
   const agent = agents.find((a) => a.agent_id === bot.agent_id);
+  // Octop Bot cloud: a floating live screen while the Bot works on its cloud computer.
+  const serverInfo = useBotServerInfo();
   const capabilityLinks = [
     ["/personalization/memory", "nav.memory"],
     ["/workbench/browser", "chat.openBrowser"],
@@ -408,6 +412,15 @@ export default function BotChat({
               <ChatPage />
             </ChatRouteContext.Provider>
           </div>
+          {serverInfo?.capabilities.cloud_computer &&
+            agent &&
+            !agent.is_shared && (
+              <CloudComputerFloat
+                key={bot.agent_id}
+                botId={bot.agent_id}
+                botName={bot.name}
+              />
+            )}
         </div>
         {standalone && details && (
           <BotDetailsPanel

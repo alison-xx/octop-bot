@@ -600,3 +600,25 @@ def test_billing_is_lynxce_credits_in_the_cloud_unless_turned_off(
     monkeypatch.delenv("OCTOP_BOT_CLOUD")
     monkeypatch.delenv("OCTOP_BOT_COMPUTE_BILLING")
     assert isinstance(computers.billing_for(Services()), computers.FreeBilling)  # type: ignore[arg-type]
+
+
+def test_the_floating_screen_knows_what_the_bot_is_doing(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    assert manager.glance("bot1", 7) is None  # off: a glance never starts the computer
+    assert driver.calls == []
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    assert manager.activity("bot1") == ("command", clock.now)
+    assert manager.busy("bot1")
+    clock.now += computers.BUSY_AFTER_ACTION_SECONDS + 1
+    assert not manager.busy("bot1")
+    scripts: list[str] = []
+
+    def glance_script(instance: str, code: str) -> str:
+        scripts.append(code)
+        return "WINDOW:Sign in to GitHub - Google Chrome\nTHUMB:abc"
+
+    driver.run_python = glance_script  # type: ignore[attr-defined]
+    glance = manager.glance("bot1", 7)
+    assert glance == computers.Glance(window="Sign in to GitHub - Google Chrome", thumbnail="abc")
+    manager.glance("bot1", 7)
+    assert len(scripts) == 1  # cached for a few seconds, shared by every viewer

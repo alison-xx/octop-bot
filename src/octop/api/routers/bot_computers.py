@@ -52,6 +52,20 @@ class ComputerStatus(BaseModel):
     takeover: bool = Field(
         default=False, description="The user has the mouse and keyboard; the Bot waits."
     )
+    busy: bool = Field(default=False, description="The Bot is working on the computer right now.")
+    activity: str | None = Field(
+        default=None,
+        description="The Bot's latest action: screenshot, click, double_click, right_click, "
+        "move, drag, scroll, type, key, wait, elements, zoom or command.",
+    )
+    activity_at: float | None = Field(default=None, description="Unix time of that action.")
+
+
+class ComputerGlance(BaseModel):
+    window: str | None = Field(default=None, description="Title of the front window, if any.")
+    thumbnail: str | None = Field(
+        default=None, description="The screen as a base64 JPEG, 320 px wide."
+    )
 
 
 def _owned(server: Any, user: User, agent_id: str) -> Any:
@@ -70,12 +84,16 @@ def _status(manager: Any, agent_id: str, user_id: int) -> ComputerStatus:
         return ComputerStatus(
             state="none", spec=record.spec, takeover=record.controlled(time.time())
         )
+    last = manager.activity(agent_id)
     return ComputerStatus(
         state="running" if record.running else "paused",
         spec=record.spec,
         running_since=record.started_at or record.running_since,
         paid_until=record.paid_until if record.running else None,
         takeover=record.controlled(time.time()),
+        busy=record.running and manager.busy(agent_id),
+        activity=last[0] if last else None,
+        activity_at=last[1] if last else None,
     )
 
 
@@ -85,6 +103,23 @@ async def computer_status(
 ) -> ComputerStatus:
     manager = _owned(server, user, agent_id)
     return await asyncio.to_thread(_status, manager, agent_id, user.id)
+
+
+@router.get(
+    "/{agent_id}/glance",
+    summary="Glance at a Bot's running cloud computer",
+    description="Front window title and a small thumbnail, for the chat's floating screen. "
+    "Never starts or resumes the computer: 404 while it is off.",
+    response_model=ComputerGlance,
+)
+async def computer_glance(
+    agent_id: str, user: User = Depends(current_user), server: Any = Depends(get_server)
+) -> ComputerGlance:
+    manager = _owned(server, user, agent_id)
+    glance = await asyncio.to_thread(manager.glance, agent_id, user.id)
+    if glance is None:
+        raise OctopError.localized(ErrorCode.NOT_FOUND)
+    return ComputerGlance(window=glance.window, thumbnail=glance.thumbnail)
 
 
 @router.post(

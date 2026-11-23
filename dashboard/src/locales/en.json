@@ -8809,6 +8809,31 @@
     "copyBlocked": "Copied on the cloud computer; this browser would not let the page write your clipboard. Use \"Get the cloud computer's clipboard\".",
     "macShortcuts": "On a Mac, ⌘C / ⌘V copy and paste between this Mac and the cloud computer; other ⌘ shortcuts work like Ctrl.",
     "handoffOpen": "Take over the cloud computer",
-    "handoffHint": "When you're done, close the screen and choose Done in the chat; the Bot carries on."
+    "handoffHint": "When you're done, close the screen and choose Done in the chat; the Bot carries on.",
+    "float": {
+      "open": "Open the cloud computer screen",
+      "fit": "Switch aspect ratio",
+      "expand": "Expand",
+      "collapse": "Collapse",
+      "takeOverHint": "Click to take over",
+      "youControl": "You're in control",
+      "working": "Working on the computer",
+      "idle": "The Bot isn't using it right now",
+      "activity": {
+        "screenshot": "Looking at the screen",
+        "click": "Clicking",
+        "double_click": "Double-clicking",
+        "right_click": "Right-clicking",
+        "move": "Moving the pointer",
+        "drag": "Dragging",
+        "scroll": "Scrolling",
+        "type": "Typing",
+        "key": "Pressing keys",
+        "wait": "Waiting for the page",
+        "elements": "Reading the interface",
+        "zoom": "Zooming in",
+        "command": "Running a command"
+      }
+    }
   }
 }
