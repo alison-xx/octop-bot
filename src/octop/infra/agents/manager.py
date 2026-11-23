@@ -2254,17 +2254,31 @@ class AgentManager:
         repo = getattr(getattr(self, "_repos", None), "settings_repo", None)
         if repo is None:
             return None
+        from octop.infra.desktop import bot_cloud_enabled  # noqa: PLC0415
+
+        cloud = bot_cloud_enabled()
         thread = self._repos.thread_repo.get(thread_id) if thread_id else None
-        if thread is None or thread.channel_type not in {"dashboard", "octop_bot_group"}:
+        # Cloud mode bills every turn of a tenant's Bot to the tenant (IM channels included);
+        # the desktop app only routes its own chats and groups through the personal account.
+        if thread is None or (
+            not cloud and thread.channel_type not in {"dashboard", "octop_bot_group"}
+        ):
             return None
         selected = account_selection(self._account_services(), thread.user_id)
         if selected is not None:
             row = self.get_row(agent_id)
+            # IM turns carry the sender's platform id, not an Octop user; ownership of the
+            # thread and the Bot is what binds the turn to the tenant there.
+            check_request = not cloud or thread.channel_type in {"dashboard", "octop_bot_group"}
             if (
                 row is None
                 or row.user_id != selected.user_id
                 or thread.agent_id != agent_id
-                or (request is not None and str(request.get("user")) != str(selected.user_id))
+                or (
+                    check_request
+                    and request is not None
+                    and str(request.get("user")) != str(selected.user_id)
+                )
             ):
                 raise OctopError.localized(ErrorCode.FORBIDDEN)
             if row.kind == "managed":
@@ -4748,7 +4762,13 @@ class AgentManager:
         if room_workspace is not None:
             from octop.infra.users.resource_policy import raise_if_backend_types_disallowed
 
-            original = self._backend_spec_for_row(row, cfg=cfg, workspace_dir=room_workspace)
+            stored_backend = cfg.get("backend")
+            if isinstance(stored_backend, dict) and stored_backend.get("type") == "bot_cloud":
+                # Cloud tenants: the group's shared room lives in Octop's own data directory,
+                # file tools only (no shell), like the object-store workspace it stands beside.
+                original: Any = {"type": "filesystem"}
+            else:
+                original = self._backend_spec_for_row(row, cfg=cfg, workspace_dir=room_workspace)
             if not isinstance(original, dict) or original.get("type") not in {
                 "filesystem",
                 "local_shell",

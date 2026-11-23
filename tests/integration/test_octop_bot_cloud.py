@@ -204,3 +204,44 @@ async def test_tenants_buy_credits_and_delete_their_account_through_the_server(
         assert srv.services.user_repo.get(uid).disabled
         assert accounts.load_model_key(srv.services, uid) is None
         assert cloud.cloud_status(srv.services, uid).connected is False
+
+
+async def test_review_fixes_locale_probe_policy_and_im_billing(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from octop.infra.users.resource_policy import backend_policy_types_in
+
+    assert backend_policy_types_in(
+        cloud_files.agent_backend(1, "abc"), named_kind=lambda _: None
+    ) == {"s3"}
+    async with octop_client(tmp_octop_home) as (client, srv):
+        # A new tenant starts in the language of their first sign-in, then keeps it.
+        first = await client.post(
+            CODE_LOGIN, json={"target": "13800000010", "code": "123456", "locale": "en"}
+        )
+        assert first.json()["user"]["locale"] == "en"
+        again = await client.post(
+            CODE_LOGIN, json={"target": "13800000010", "code": "123456", "locale": "zh"}
+        )
+        assert srv.services.user_repo.get(again.json()["user"]["id"]).locale == "en"
+
+        auth = {"Authorization": f"Bearer {first.json()['access_token']}"}
+        probe = await client.post(
+            "/api/connectors/custom-mcp/test",
+            headers=auth,
+            json={"server": {"transport": "stdio", "command": "touch", "args": ["/tmp/x"]}},
+        )
+        assert probe.status_code == 403
+
+        # IM threads of a tenant's Bot bill the tenant too.
+        uid = first.json()["user"]["id"]
+        registry = srv.app_runtime.agent_registry
+        from octop.infra.agents.manager import AgentCreateSpec
+
+        row = await registry.create(AgentCreateSpec(user_id=uid, name="Desk"), defer_bootstrap=True)
+        thread = SimpleNamespace(channel_type="telegram", user_id=uid, agent_id=row.agent_id)
+        monkeypatch.setattr(registry._repos.thread_repo, "get", lambda _id: thread)
+        selected = registry._account_for_bot_turn(row.agent_id, "t1", {"user": "tg:42"})
+        assert selected is not None and selected.user_id == uid
