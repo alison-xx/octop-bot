@@ -96,6 +96,7 @@ async def _project_chunks(
     loc = normalize_locale(str(locale))
     tool_state = _ToolProjectionState()
     harness_workspace = harness_workspace_for_agent(agent_manager, agent_id)
+    host_files = agent_manager.host_files_allowed(agent_id)
 
     def _tool_label(raw: str) -> str:
         return tool_display_name(raw, loc)
@@ -189,6 +190,7 @@ async def _project_chunks(
                     async for media_event in media_events_from_tool_result(
                         chunk_for_media,
                         workspace=harness_workspace,
+                        host_files=host_files,
                     ):
                         yield media_event
             tool_state.current_node = node

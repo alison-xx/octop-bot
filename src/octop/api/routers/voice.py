@@ -23,6 +23,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.websockets import WebSocketState
 
+from octop.api.common.bot_cloud import is_cloud_tenant, no_cloud_tenant
 from octop.api.deps import (
     current_user,
     get_server,
@@ -177,9 +178,10 @@ async def transcribe_audio(
     audio: UploadFile = File(...),
     language: str = Form(default="zh-CN"),
     provider: str | None = Form(default=None),
-    _: Any = Depends(current_user),
+    _: Any = Depends(no_cloud_tenant),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
+    """Transcribe with the server's voice providers (not for Octop Bot cloud tenants)."""
     data = await audio.read()
     if not data:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "audio file is empty")
@@ -196,9 +198,10 @@ async def transcribe_audio(
 @router.post("/tts")
 async def synthesize_speech(
     body: TTSBody,
-    _: Any = Depends(current_user),
+    _: Any = Depends(no_cloud_tenant),
     server: Any = Depends(get_server),
 ) -> StreamingResponse:
+    """Synthesize with the server's voice providers (not for Octop Bot cloud tenants)."""
     mgr = _voice_manager(server)
 
     async def _stream() -> AsyncIterator[bytes]:
@@ -298,9 +301,13 @@ async def stream_transcription(
         await websocket.close(code=4001, reason="missing token")
         return
     try:
-        resolve_user_from_token(server, token)
+        user = resolve_user_from_token(server, token)
     except OctopError as exc:
         await websocket.close(code=4001, reason=f"auth failed: {exc.code.value}")
+        return
+    if is_cloud_tenant(user):
+        # The server's voice providers are the operator's; cloud tenants do not use them.
+        await websocket.close(code=4003, reason="forbidden")
         return
 
     await websocket.accept()

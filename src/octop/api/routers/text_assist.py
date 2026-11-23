@@ -9,7 +9,12 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_access
 from octop.api.deps import current_user, get_server
-from octop.infra.text_assist import AssistKind, require_host_models, run_text_assist
+from octop.infra.text_assist import (
+    AssistKind,
+    assist_models,
+    run_text_assist,
+    server_agent_registry,
+)
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
@@ -58,19 +63,24 @@ async def text_assist(
 
     Prompts live in backend i18n (`text_assist.kinds.*`). An explicit
     ``default_model`` is forwarded to harness; omit it or pass ``auto`` and
-    harness selects the model. Does not touch thread history.
+    harness selects the model. Does not touch thread history. In Octop Bot cloud mode a
+    tenant's call runs on their own Lynxce key and model; ``default_model`` is ignored.
     """
     agent_id = (body.agent_id or "").strip()
     if agent_id:
         assert_agent_access(server, agent_id, user)
 
     locale = (body.locale or "").strip() or resolve_request_locale(request)
-    text = await run_text_assist(
-        models=require_host_models(server),
-        kind=body.kind,
-        text=body.text,
-        context=body.context,
-        locale=locale,
-        default_model=body.default_model,
-    )
+    async with assist_models(server_agent_registry(server), user.id, body.default_model) as (
+        models,
+        model,
+    ):
+        text = await run_text_assist(
+            models=models,
+            kind=body.kind,
+            text=body.text,
+            context=body.context,
+            locale=locale,
+            default_model=model,
+        )
     return TextAssistResponse(text=text)
