@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { ASK_USER_TOOL_NAME } from "../../api/types/hitl";
 import type { ChatMessage } from "../Chat/hooks/useChat";
 import { useEmbeddedChat } from "../Chat/ChatRouteContext";
 import { useToolDisplayNames } from "../Chat/hooks/toolDisplayNames";
@@ -31,7 +32,12 @@ export default function BotWorkingLine({
     if (step) return step.content;
     const tool = [...turn]
       .reverse()
-      .find((m) => m.toolData && m.toolData.output === undefined);
+      .find(
+        (m) =>
+          m.toolData &&
+          m.toolData.output === undefined &&
+          m.toolData.name !== ASK_USER_TOOL_NAME,
+      );
     if (tool?.toolData)
       return t("chat.processRunningTool", {
         name: tool.toolData.displayName || toolName(tool.toolData.name),

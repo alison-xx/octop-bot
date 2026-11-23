@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import type { AskQuestion } from "../../api/types/hitl";
 import styles from "./botAskCard.module.less";
 
 const LETTERS = "ABCDEFGH";
+/** How long a picked single-choice row stays on screen before moving on. */
+const FLASH_MS = 220;
 
 /** What the user gave for one question. `null` means skipped. */
 type Given = { picked: string[]; other: string };
@@ -75,6 +78,8 @@ export default function BotAskCard({
   const [sent, setSent] = useState(false);
   const [typing, setTyping] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const flash = useRef<number>();
+  useEffect(() => () => window.clearTimeout(flash.current), []);
   const review = sent || !onSubmit;
 
   useEffect(() => {
@@ -86,6 +91,7 @@ export default function BotAskCard({
   const isLast = page === total - 1;
 
   const go = (next: number) => {
+    window.clearTimeout(flash.current);
     setTyping(false);
     setPage(Math.max(0, Math.min(total - 1, next)));
   };
@@ -107,10 +113,14 @@ export default function BotAskCard({
     else go(page + 1);
   };
 
-  const update = (answer: BotAskAnswer, then?: "advance") => {
+  const update = (answer: BotAskAnswer, then?: "advance" | "after-flash") => {
     const next = answers.map((a, i) => (i === page ? answer : a));
     setAnswers(next);
-    if (then) advance(next);
+    window.clearTimeout(flash.current);
+    if (then === "advance") advance(next);
+    // Let the picked row show as selected for a beat before moving on.
+    if (then === "after-flash")
+      flash.current = window.setTimeout(() => advance(next), FLASH_MS);
   };
 
   const pick = (label: string) => {
@@ -123,7 +133,7 @@ export default function BotAskCard({
         : [...current.picked, label];
       update({ ...current, picked });
     } else {
-      update({ picked: [label], other: "" }, isLast ? undefined : "advance");
+      update({ picked: [label], other: "" }, "after-flash");
     }
   };
 
@@ -137,13 +147,9 @@ export default function BotAskCard({
     const options = question.options ?? [];
     const answer = answers[index] ?? empty();
     const openEnded = options.length === 0;
-    const otherOn = openEnded || (index === page && typing) || !!answer.other;
+    const otherOn = openEnded || typing || !!answer.other;
     return (
-      <div
-        key={index}
-        className={cx(styles.page, (review || index !== page) && styles.hidden)}
-        aria-hidden={review || index !== page}
-      >
+      <div key={index}>
         <div className={styles.title}>{question.question}</div>
         <div
           className={styles.options}
@@ -168,10 +174,11 @@ export default function BotAskCard({
                     <span className={styles.desc}>{option.description}</span>
                   ) : null}
                 </span>
+                {on ? <Check className={styles.check} size={16} /> : null}
               </button>
             );
           })}
-          {otherOn && index === page ? (
+          {otherOn ? (
             <label className={cx(styles.row, styles.rowOn)}>
               {tile(options.length, true)}
               <input
@@ -227,11 +234,7 @@ export default function BotAskCard({
     }));
     if (answer?.other) rows.push({ label: answer.other, at: options.length });
     return (
-      <div
-        key={`review-${index}`}
-        className={cx(styles.page, index !== page && styles.hidden)}
-        aria-hidden={index !== page}
-      >
+      <div key={`review-${index}`}>
         <div className={cx(styles.title, styles.titleDone)}>
           {question.question}
         </div>
@@ -259,10 +262,9 @@ export default function BotAskCard({
       aria-label={t("chat.ask.title")}
       data-bot-ask={review ? "review" : "open"}
     >
-      <div className={styles.pages}>
-        {questions.map(questionPage)}
-        {review ? questions.map(reviewPage) : null}
-      </div>
+      {review
+        ? reviewPage(questions[page], page)
+        : questionPage(questions[page], page)}
       <footer className={styles.footer}>
         <span
           className={styles.dots}

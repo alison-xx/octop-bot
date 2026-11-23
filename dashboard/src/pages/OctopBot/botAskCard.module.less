@@ -13,20 +13,6 @@
   color: var(--bot-ink, var(--fn-text-primary));
 }
 
-// Every page shares one grid cell, so the card keeps the height of its
-// tallest question and does not jump while paging.
-.pages {
-  display: grid;
-  min-height: 236px;
-}
-.page {
-  grid-area: 1 / 1;
-  min-width: 0;
-}
-.hidden {
-  visibility: hidden;
-}
-
 .title {
   margin: 0 8px 10px;
   font-size: 15px;
@@ -76,7 +62,13 @@
 }
 .rowOn {
   background: var(--bot-incoming, var(--fn-bg-secondary));
+  font-weight: 500;
   cursor: text;
+}
+.check {
+  flex: none;
+  margin-inline-start: auto;
+  color: var(--bot-ink, var(--fn-text-primary));
 }
 button.rowOn {
   cursor: pointer;
@@ -153,7 +145,7 @@ button.rowOn {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--bot-line, var(--fn-border-secondary));
+  background: color-mix(in srgb, var(--bot-muted, #7f7f7f) 35%, transparent);
 }
 .dotOn {
   background: var(--bot-muted, var(--fn-text-tertiary));
