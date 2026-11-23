@@ -1,7 +1,8 @@
 .frame {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 10;
+  // The desktop is 1920x1080: a 16:9 frame shows it edge to edge.
+  aspect-ratio: 16 / 9;
   border-radius: 12px;
   overflow: hidden;
   background: #111;
@@ -27,14 +28,19 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  justify-content: center;
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 12px;
   background: #0d0e12;
   color: #f3f1ec;
 
-  .frame {
-    aspect-ratio: auto;
-    flex: 1;
+  // As wide as the window allows while the whole 16:9 frame and its hint stay in view.
+  .frame,
+  > p {
+    align-self: center;
+    width: min(100%, calc((100vh - 64px) * 16 / 9));
+    width: min(100%, calc((100dvh - 64px) * 16 / 9));
   }
 
   p {
