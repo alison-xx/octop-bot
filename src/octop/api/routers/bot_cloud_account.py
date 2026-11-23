@@ -11,7 +11,7 @@ from pydantic import BaseModel, SecretStr
 from octop.api.common.bot_desktop import Owner, Services
 from octop.infra.auth.lynxce_cloud import (
     CloudAccountStatus,
-    cloud_status,
+    cloud_account,
     login_cloud,
     logout_cloud,
 )
@@ -41,8 +41,9 @@ class CloudLogin(BaseModel):
 
 
 @router.get("/account", summary="Read my saved Lynxce Cloud identity")
-def status(user: Owner, services: Services) -> CloudAccountStatus:
-    return cloud_status(services, user.id)
+async def status(user: Owner, services: Services) -> CloudAccountStatus:
+    """Name and avatar of the signed-in Lynxce account (avatar read from Lynxce once if missing)."""
+    return await cloud_account(services, user.id)
 
 
 @router.post("/account", summary="Sign in to Lynxce Cloud with my existing account")

@@ -9,6 +9,7 @@ export interface CloudAccount {
   connected: boolean;
   account_id: string | null;
   display_name: string | null;
+  avatar_url?: string | null;
 }
 export interface CloudCapabilities {
   enabled: boolean;

@@ -322,7 +322,10 @@
     "planPrompt": "Help me turn an idea into an actionable plan. Ask me the three most important questions first.",
     "planLabel": "Explore an idea",
     "menu": {
-      "settings": "Settings"
+      "settings": "Settings",
+      "settingsHint": "Models, appearance, language, notifications",
+      "capabilitiesHint": "Skills, connectors, knowledge and more",
+      "cloudHint": "Tasks that keep running with your computer off"
     },
     "nav": {
       "general": "General",

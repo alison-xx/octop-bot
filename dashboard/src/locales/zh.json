@@ -322,7 +322,10 @@
     "planPrompt": "帮我把一个想法整理成可执行的计划。请先问我最需要明确的三个问题。",
     "planLabel": "梳理一个想法",
     "menu": {
-      "settings": "设置"
+      "settings": "设置",
+      "settingsHint": "模型、外观、语言和通知",
+      "capabilitiesHint": "技能、连接器、知识库等",
+      "cloudHint": "电脑关机也能继续跑的任务"
     },
     "nav": {
       "general": "通用",

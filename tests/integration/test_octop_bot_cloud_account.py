@@ -55,6 +55,7 @@ class Upstream:
                         "user": {
                             "id": uid,
                             "displayName": "Name " + uid,
+                            "avatarUrl": f"https://cdn.avatars.test/{uid}.jpg",
                             "email": "private@example.invalid",
                         },
                         "apiKey": {"secretFull": "sensitive-api-key"},
@@ -86,7 +87,11 @@ class Upstream:
                 200,
                 json={
                     "code": 0,
-                    "data": {"id": self.refreshed_account or bearer.removeprefix("renewed-")},
+                    "data": {
+                        "id": self.refreshed_account
+                        or bearer.removeprefix("renewed-").removeprefix("access-"),
+                        "avatarUrl": "https://cdn.avatars.test/profile.jpg",
+                    },
                 },
             )
         return httpx.Response(
@@ -117,7 +122,7 @@ async def test_password_login_encrypted_grants_are_local_owner_only(
     assert server.services is not None
     services = server.services
     aid = server.user_manager.get("alice").id
-    blank = {"connected": False, "account_id": None, "display_name": None}
+    blank = {"connected": False, "account_id": None, "display_name": None, "avatar_url": None}
     assert (await client.get(API)).status_code == 401
     assert (await client.get(API, headers=alice)).json() == blank
     malformed = await client.post(
@@ -132,7 +137,12 @@ async def test_password_login_encrypted_grants_are_local_owner_only(
         API, headers=alice, json={"account": "a", "password": "test-password"}
     )
     result.raise_for_status()
-    assert result.json() == {"connected": True, "account_id": "a", "display_name": "Name a"}
+    assert result.json() == {
+        "connected": True,
+        "account_id": "a",
+        "display_name": "Name a",
+        "avatar_url": "https://cdn.avatars.test/a.jpg",
+    }
     assert (await client.get(API, headers=admin)).json() == blank
     assert not model_connected(services, aid)
     raw = services.secret_repo.get(cloud._key(aid))
@@ -343,3 +353,42 @@ async def test_cancelled_login_finishes_saving_before_another_account_can_switch
         await old
     await cloud.login_cloud(services, uid, "new", "test-password")
     assert cloud.cloud_status(services, uid).account_id == "new"
+
+
+async def test_saved_login_without_avatar_reads_it_once(
+    env_admin_alice: Env, upstream: Upstream
+) -> None:
+    client, server, _admin, alice = env_admin_alice
+    assert server.services is not None
+    services = server.services
+    aid = server.user_manager.get("alice").id
+    assert (
+        await client.post(API, headers=alice, json={"account": "a", "password": "test-password"})
+    ).status_code == 200
+    # A login saved before avatars were kept has no avatar field at all.
+    old = cloud._load(services, aid)
+    assert old is not None
+    cloud._save(services, aid, cloud._Grant(**{**cloud.asdict(old), "avatar_url": None}))
+
+    first = (await client.get(API, headers=alice)).json()
+    second = (await client.get(API, headers=alice)).json()
+    assert first == second and first["avatar_url"] == "https://cdn.avatars.test/profile.jpg"
+    assert upstream.counts["/api/user/profile"] == 1
+
+
+async def test_avatar_lookup_failure_still_returns_the_account(
+    env_admin_alice: Env, upstream: Upstream
+) -> None:
+    client, server, _admin, alice = env_admin_alice
+    assert server.services is not None
+    services = server.services
+    aid = server.user_manager.get("alice").id
+    await client.post(API, headers=alice, json={"account": "a", "password": "test-password"})
+    old = cloud._load(services, aid)
+    assert old is not None
+    cloud._save(services, aid, cloud._Grant(**{**cloud.asdict(old), "avatar_url": None}))
+    upstream.expired.add("access-a")
+
+    body = (await client.get(API, headers=alice)).json()
+    assert body["connected"] and body["account_id"] == "a" and body["avatar_url"] is None
+    assert cloud._load(services, aid) == cloud._Grant(**{**cloud.asdict(old), "avatar_url": None})

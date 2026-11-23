@@ -6,7 +6,7 @@ import asyncio
 import re
 from collections.abc import Coroutine, Mapping
 from contextlib import suppress
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 from uuid import uuid4
 
@@ -40,6 +40,7 @@ class CloudAccountStatus(BaseModel):
     connected: bool = False
     account_id: str | None = None
     display_name: str | None = None
+    avatar_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -49,10 +50,15 @@ class _Grant:
     binding: str
     access_token: str = field(repr=False)
     refresh_token: str = field(repr=False)
+    # None: not read from Lynxce yet (logins saved before the avatar was kept); "": no avatar.
+    avatar_url: str | None = None
 
     def status(self) -> CloudAccountStatus:
         return CloudAccountStatus(
-            connected=True, account_id=self.account_id, display_name=self.display_name
+            connected=True,
+            account_id=self.account_id,
+            display_name=self.display_name,
+            avatar_url=self.avatar_url or None,
         )
 
 
@@ -83,6 +89,34 @@ def cloud_status(services: SharedServices, user_id: int) -> CloudAccountStatus:
     """Read the locally saved identity without contacting the cloud."""
     grant = _load(services, user_id) if bot_desktop_enabled() else None
     return grant.status() if grant else CloudAccountStatus()
+
+
+def _avatar(profile: dict[str, Any]) -> str:
+    value = profile.get("avatarUrl")
+    if isinstance(value, str) and value.startswith("https://") and len(value) <= 2048:
+        return value
+    return ""
+
+
+async def cloud_account(services: SharedServices, user_id: int) -> CloudAccountStatus:
+    """The saved identity; a login saved before avatars were kept reads its avatar once."""
+    grant = await asyncio.to_thread(_load, services, user_id) if bot_desktop_enabled() else None
+    if grant is None or grant.avatar_url is not None:
+        return grant.status() if grant else CloudAccountStatus()
+    async with _lock(services, user_id):
+        current = await asyncio.to_thread(_load, services, user_id)
+        if current is None or current.binding != grant.binding or current.avatar_url is not None:
+            return current.status() if current else CloudAccountStatus()
+        try:
+            profile = await _send("GET", "/api/user/profile", bearer=current.access_token)
+        except _UpstreamFailure:
+            # An expired token is renewed by the next cloud request; show initials until then.
+            return current.status()
+        if not isinstance(profile, dict) or profile.get("id") != current.account_id:
+            return current.status()
+        updated = replace(current, avatar_url=_avatar(profile))
+        await _finish(asyncio.to_thread(_save, services, user_id, updated))
+        return updated.status()
 
 
 def _lock(services: SharedServices, user_id: int) -> AsyncFileLock:
@@ -195,6 +229,7 @@ async def _password_login(account: str, password: str) -> _Grant:
         uuid4().hex,
         _token(data, "accessToken"),
         _token(data, "refreshToken"),
+        _avatar(profile),
     )
 
 
@@ -258,7 +293,9 @@ async def _refresh(services: SharedServices, user_id: int, grant: _Grant) -> _Gr
             raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED) from None
         raise _rejected(exc.status) from None
     refresh = _token(data, "refreshToken") if "refreshToken" in data else grant.refresh_token
-    updated = _Grant(grant.account_id, grant.display_name, grant.binding, access, refresh)
+    updated = replace(
+        grant, access_token=access, refresh_token=refresh, avatar_url=_avatar(profile)
+    )
     await asyncio.to_thread(_save, services, user_id, updated)
     return updated
 
