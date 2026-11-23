@@ -242,6 +242,9 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @State private var confirmSignOut = false
+    @State private var confirmDelete = false
+    @State private var deleting = false
+    @State private var deleteError: String?
     @State private var confirmClear = false
     @State private var cleared = false
     @State private var copied = false
@@ -347,6 +350,16 @@ struct SettingsView: View {
                     LabeledContent { Text(model.backend?.accountName ?? "") } label: {
                         row("settings.signedInAs", "person", .blue)
                     }
+                    if model.isLynxce {
+                        NavigationLink {
+                            CreditsView()
+                        } label: {
+                            LabeledContent {
+                                Text(verbatim: model.balance ?? "")
+                            } label: { row("credits.title", "creditcard", .orange) }
+                        }
+                        .accessibilityIdentifier("credits")
+                    }
                     if let server = model.server {
                         Button {
                             UIPasteboard.general.string = server.session.baseURL.absoluteString
@@ -398,6 +411,26 @@ struct SettingsView: View {
                         .frame(maxWidth: .infinity)
                         .accessibilityIdentifier("signOut")
                 }
+
+                if model.isLynxce {
+                    Section {
+                        Button(role: .destructive) { confirmDelete = true } label: {
+                            HStack {
+                                Spacer()
+                                if deleting { ProgressView() } else { Text("settings.deleteAccount") }
+                                Spacer()
+                            }
+                        }
+                        .disabled(deleting)
+                        .accessibilityIdentifier("deleteAccount")
+                    } footer: {
+                        if let deleteError {
+                            Text(deleteError).foregroundStyle(.red)
+                        } else {
+                            Text("settings.deleteAccount.footer")
+                        }
+                    }
+                }
             }
             // Chosen values read as quiet grey; switches use the system green.
             .tint(Palette.secondary)
@@ -411,6 +444,12 @@ struct SettingsView: View {
                     dismiss()
                     Task { await model.signOut() }
                 }
+            }
+            .alert("settings.deleteAccount.confirm", isPresented: $confirmDelete) {
+                Button("settings.deleteAccount", role: .destructive) { deleteAccount() }
+                Button("common.cancel", role: .cancel) {}
+            } message: {
+                Text("settings.deleteAccount.message")
             }
             .confirmationDialog("settings.clearCache.confirm", isPresented: $confirmClear, titleVisibility: .visible) {
                 Button("settings.clearCache", role: .destructive) {
@@ -429,6 +468,20 @@ struct SettingsView: View {
                     notifications = await Notifier.status()
                 }
             }
+        }
+    }
+
+    private func deleteAccount() {
+        deleting = true
+        deleteError = nil
+        Task {
+            do {
+                _ = try await model.deleteAccount()
+                dismiss()
+            } catch {
+                deleteError = error.localizedDescription
+            }
+            deleting = false
         }
     }
 

@@ -21,10 +21,12 @@
 		2B28871028EA4B40CBC4DAEE /* OctopBotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 185F69E704AE68F0C0ED11C1 /* OctopBotTests.swift */; };
 		2CCBCC317754D53E26034F28 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15BBCE5B206951E544D4FD60 /* Keychain.swift */; };
 		41B9ABBCAFF713FEA04C284C /* HTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1E4C98857F2A9A92FA53F6 /* HTTP.swift */; };
+		4BACAF514D63D9CBB1311E3D /* CreditStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BFCE63FDD2FE3C02C5B5158 /* CreditStore.swift */; };
 		50D8356BA21790C2FFF46F1D /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2022CECD87289127591F30D /* AppUpdater.swift */; };
 		5E31F9FF32F06FBE952A0A9F /* octop-mascot.webp in Resources */ = {isa = PBXBuildFile; fileRef = 7B4198C3433D9E46B368560D /* octop-mascot.webp */; };
 		670A22CF3CD26D0459F1C862 /* GroupRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3673E4497A330EC42D8B0AE4 /* GroupRoomView.swift */; };
 		701243634B93B3D55795922A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CF6F0F3501DAF6D838B0A354 /* LaunchScreen.storyboard */; };
+		7D0158402BB9F1236A22B6A9 /* CreditsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60FE975D80457770F2B56FE7 /* CreditsView.swift */; };
 		8330BE0127CCDC3E8975B833 /* Characters.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27E10E2BDC532D8A8733A20 /* Characters.swift */; };
 		871A5E282D3F9B836B3A0901 /* ServerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 853AB250E633AC85F64B4B8E /* ServerBackend.swift */; };
 		8AD1B6205CE7292AE3297C8A /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B26B5219B243FA949E1B4CC /* MarkdownText.swift */; };
@@ -59,6 +61,7 @@
 		07983C65452A324E84BBF59A /* LocalBots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalBots.swift; sourceTree = "<group>"; };
 		15BBCE5B206951E544D4FD60 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		185F69E704AE68F0C0ED11C1 /* OctopBotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OctopBotTests.swift; sourceTree = "<group>"; };
+		1BFCE63FDD2FE3C02C5B5158 /* CreditStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditStore.swift; sourceTree = "<group>"; };
 		1C21A989B7260F2117C40E87 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		273BA3F6AD10D4A909CDADE6 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
 		2B36A66B6B51F3F46A0C5001 /* VoiceModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceModeView.swift; sourceTree = "<group>"; };
@@ -69,6 +72,7 @@
 		485730F843527F6DB74B2288 /* LaunchSplash@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LaunchSplash@3x.png"; sourceTree = "<group>"; };
 		4B26B5219B243FA949E1B4CC /* MarkdownText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownText.swift; sourceTree = "<group>"; };
 		5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LynxceBackend.swift; sourceTree = "<group>"; };
+		60FE975D80457770F2B56FE7 /* CreditsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditsView.swift; sourceTree = "<group>"; };
 		64A1DD83356759A7465B69ED /* HitlCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitlCard.swift; sourceTree = "<group>"; };
 		6F77470F5AE016E9DEF759F6 /* LaunchSplash@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LaunchSplash@2x.png"; sourceTree = "<group>"; };
 		7280A8EE1534AA92B85CF8D7 /* characters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = characters.json; sourceTree = "<group>"; };
@@ -187,6 +191,7 @@
 			isa = PBXGroup;
 			children = (
 				C2022CECD87289127591F30D /* AppUpdater.swift */,
+				1BFCE63FDD2FE3C02C5B5158 /* CreditStore.swift */,
 				15BBCE5B206951E544D4FD60 /* Keychain.swift */,
 				07983C65452A324E84BBF59A /* LocalBots.swift */,
 				273BA3F6AD10D4A909CDADE6 /* Preferences.swift */,
@@ -198,6 +203,7 @@
 			isa = PBXGroup;
 			children = (
 				FB0D4BB60CF5FB920280CF55 /* ChatScreen.swift */,
+				60FE975D80457770F2B56FE7 /* CreditsView.swift */,
 				3673E4497A330EC42D8B0AE4 /* GroupRoomView.swift */,
 				64A1DD83356759A7465B69ED /* HitlCard.swift */,
 				CB2E4DD3683D12292D912221 /* HomeView.swift */,
@@ -348,6 +354,8 @@
 				8330BE0127CCDC3E8975B833 /* Characters.swift in Sources */,
 				94F0BEE560698A2E757BFE90 /* ChatScreen.swift in Sources */,
 				ABC1C4B78D4E12D40A46D64A /* ChatSession.swift in Sources */,
+				4BACAF514D63D9CBB1311E3D /* CreditStore.swift in Sources */,
+				7D0158402BB9F1236A22B6A9 /* CreditsView.swift in Sources */,
 				670A22CF3CD26D0459F1C862 /* GroupRoomView.swift in Sources */,
 				41B9ABBCAFF713FEA04C284C /* HTTP.swift in Sources */,
 				DEC5AC974DAE214BF6C67D43 /* Hitl.swift in Sources */,

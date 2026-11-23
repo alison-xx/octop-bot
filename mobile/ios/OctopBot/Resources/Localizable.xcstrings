@@ -2234,13 +2234,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No account? Sign up at lynxce.cn"
+            "value": "No account? Sign in with a code to create one"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有账号？去 lynxce.cn 注册"
+            "value": "还没有账号？用验证码登录即可注册"
           }
         }
       }
@@ -3681,6 +3681,262 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在识别…"
+          }
+        }
+      }
+    },
+    "credits.amount %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ credits"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 积分"
+          }
+        }
+      }
+    },
+    "credits.balance": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lynxce credits"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "灵策积分余额"
+          }
+        }
+      }
+    },
+    "credits.deliveryPending": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Payment received. The credits will be added shortly."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已付款，积分稍后自动到账"
+          }
+        }
+      }
+    },
+    "credits.done": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credits added."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "积分已到账"
+          }
+        }
+      }
+    },
+    "credits.footer": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paid with your Apple ID. Credits go to the Lynxce account you're signed in with."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通过 Apple ID 付款，积分充入当前登录的灵策账号"
+          }
+        }
+      }
+    },
+    "credits.packs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credit packs"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "积分包"
+          }
+        }
+      }
+    },
+    "credits.pending": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for approval. Credits arrive once it's approved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待批准，批准后积分自动到账"
+          }
+        }
+      }
+    },
+    "credits.shared": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shared with Octop Bot on desktop and lynxce.cn."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与桌面端和灵策官网共用同一个积分账户"
+          }
+        }
+      }
+    },
+    "credits.signInFirst": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in with Lynxce first."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先登录灵策账号"
+          }
+        }
+      }
+    },
+    "credits.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credits"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "积分与充值"
+          }
+        }
+      }
+    },
+    "credits.unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credit packs can't be bought in the app yet."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App 内购买暂未开放"
+          }
+        }
+      }
+    },
+    "onboarding.agreement": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By continuing you agree to the [Lynxce User Agreement](https://admin.lynxce.cn/legal/app/user-agreement) and the [Privacy Policy](https://octop-bot.lynxce.cn/privacy.html)."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "继续即表示同意[《灵策用户协议》](https://admin.lynxce.cn/legal/app/user-agreement)和[《隐私政策》](https://octop-bot.lynxce.cn/privacy.html)"
+          }
+        }
+      }
+    },
+    "settings.deleteAccount": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注销账号"
+          }
+        }
+      }
+    },
+    "settings.deleteAccount.confirm": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete your Lynxce account?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确定注销灵策账号吗？"
+          }
+        }
+      }
+    },
+    "settings.deleteAccount.footer": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deletes this Lynxce account everywhere, including lynxce.cn and Octop Bot on other devices."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注销的是灵策账号，官网和其他设备上的 Octop Bot 都将无法再使用。"
+          }
+        }
+      }
+    },
+    "settings.deleteAccount.message": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You'll be signed out on every device and can't sign in again. Your data is erased after a 7-day cooling-off period; contact Lynxce support within that time to restore the account."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账号会立即在所有设备上退出，且无法再登录。7 天冷静期后数据将被删除，冷静期内可联系灵策客服恢复。"
           }
         }
       }

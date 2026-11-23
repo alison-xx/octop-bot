@@ -30,7 +30,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
@@ -126,11 +131,26 @@ fun OnboardingScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             } else {
+                // New accounts have no password: the code sign-in creates them.
                 TextButton(
-                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, "https://lynxce.cn".toUri())) },
+                    onClick = {
+                        form.useCode = true
+                        error = null
+                    },
+                    enabled = !busy,
                     modifier = Modifier.align(Alignment.CenterHorizontally),
                 ) { Text(stringResource(R.string.onboarding_register), color = palette.secondary) }
             }
+            Text(
+                AnnotatedString.fromHtml(
+                    stringResource(R.string.onboarding_agreement),
+                    linkStyles = TextLinkStyles(SpanStyle(color = palette.text, textDecoration = TextDecoration.Underline)),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.secondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
         Spacer(Modifier.height(32.dp))
         TextButton(onClick = onServer, enabled = !busy) {

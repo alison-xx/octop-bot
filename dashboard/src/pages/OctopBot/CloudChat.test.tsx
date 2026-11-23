@@ -88,7 +88,7 @@ describe("the hosted Bot chat", () => {
     expect(screen.queryByText("77")).toBeNull();
     expect(screen.queryByText("botWallet.recharge")).toBeNull();
   });
-  it("keeps the cloud sign-in form and its typed account while registration opens separately", async () => {
+  it("signs up in the cloud sign-in form itself and keeps the typed account", async () => {
     const status = vi.spyOn(botCloudApi, "account").mockResolvedValue({
       connected: false,
       account_id: null,
@@ -100,12 +100,14 @@ describe("the hosted Bot chat", () => {
         <CloudWorkspace />
       </MemoryRouter>,
     );
-    const registration = await screen.findByRole("link", {
-      name: "botClient.lynxce.register",
+    // A code sign-in creates the account, so there is no separate sign-up page to visit.
+    const input = await screen.findByRole("textbox", {
+      name: "lynxceSignIn.target",
     });
-    expect(registration).toHaveAttribute("target", "_blank");
-    expect(registration).toHaveAttribute("rel", "noopener noreferrer");
-    const input = screen.getByRole("textbox", { name: "lynxceSignIn.target" });
+    expect(screen.getByText("lynxceSignIn.newAccountHint")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "botClient.lynxce.register" }),
+    ).toBeNull();
     fireEvent.change(input, { target: { value: "example@account.test" } });
     // The system browser returning focus refreshes cloud status.
     fireEvent.focus(window);

@@ -44,7 +44,7 @@
     <string name="onboarding_account">Phone or email</string>
     <string name="onboarding_password">Password</string>
     <string name="onboarding_sign_in">Sign in</string>
-    <string name="onboarding_register">No account? Sign up at lynxce.cn</string>
+    <string name="onboarding_register">No account? Sign in with a code to create one</string>
     <string name="onboarding_server">Connect my own server</string>
     <string name="onboarding_footnote">Your own Octop Bot server works too: Bots, tools, memory and groups from your NAS.</string>
     <string name="onboarding_code">Verification code</string>
@@ -294,4 +294,11 @@
     <string name="update_permission_title">Allow installing the update</string>
     <string name="update_permission_text">To install updates, allow Octop Bot to install unknown apps on the next screen, then come back. The update continues by itself.</string>
     <string name="update_permission_open">Open settings</string>
+    <string name="settings_recharge">Recharge credits</string>
+    <string name="settings_delete_account">Delete account</string>
+    <string name="settings_delete_account_footer">Deletes this Lynxce account everywhere, including lynxce.cn and Octop Bot on other devices.</string>
+    <string name="settings_delete_account_confirm">Delete your Lynxce account?</string>
+    <string name="settings_delete_account_message">You\'ll be signed out on every device and can\'t sign in again. Your data is erased after a 7-day cooling-off period; contact Lynxce support within that time to restore the account.</string>
+    <string name="settings_delete_account_done">Account deletion requested. You have been signed out.</string>
+    <string name="onboarding_agreement"><![CDATA[By continuing you agree to the <a href="https://admin.lynxce.cn/legal/app/user-agreement">Lynxce User Agreement</a> and the <a href="https://octop-bot.lynxce.cn/privacy.html">Privacy Policy</a>.]]></string>
 </resources>

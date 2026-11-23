@@ -134,8 +134,24 @@ class LynxceProtocolTest {
         assertTrue(models.single().supportsImage)
         assertEquals(1, LynxceProtocol.models(Http.parse("""[{"modelId":"b"}]""")).size)
 
-        assertEquals("12.5", LynxceProtocol.balance(Http.parse("""{"credits":12.5,"balance":null}""")))
-        assertNull(LynxceProtocol.balance(Http.parse("""{"plan":"free"}""")))
+        // The wallet, not an enterprise member's monthly allowance.
+        assertEquals("12,800.5", LynxceProtocol.balance(Http.parse("""{"creditsRemaining":12800.5,"effectiveCreditsRemaining":3}""")))
+        assertNull(LynxceProtocol.balance(Http.parse("""{"plan":"free","credits":12}""")))
+    }
+
+    @Test
+    fun checkoutOnlyOpensTheOfficialRechargePage() {
+        val now = java.time.Instant.parse("2026-11-24T00:00:00Z")
+        val ticket = "x." + "a".repeat(43)
+        fun link(url: String, expires: String = "2026-11-24T00:15:00Z", token: String = ticket) =
+            Http.parse("""{"url":"$url","token":"$token","expiresAt":"$expires"}""")
+        val good = LynxceProtocol.CHECKOUT_PORTAL + ticket
+        assertEquals(good, LynxceProtocol.checkoutUrl(link(good), now))
+        assertNull(LynxceProtocol.checkoutUrl(link("https://evil.example/recharge?token=$ticket"), now))
+        assertNull(LynxceProtocol.checkoutUrl(link(LynxceProtocol.CHECKOUT_PORTAL + "mcrt1." + "a".repeat(43)), now))
+        assertNull(LynxceProtocol.checkoutUrl(link(good, token = "x." + "b".repeat(43)), now))
+        assertNull(LynxceProtocol.checkoutUrl(link(good, expires = "2026-11-24T01:00:00Z"), now))
+        assertNull(LynxceProtocol.checkoutUrl(link(good, expires = "2026-11-23T23:59:00Z"), now))
     }
 
     @Test

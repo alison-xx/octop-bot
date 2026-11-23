@@ -19,7 +19,11 @@ JSON responses are wrapped: `{"code": 0, "data": …}`. `code != 0` or a non-2xx
 | Sign in with password | `POST /api/auth/password-login` `{account, password}` (account = phone or email) | `{accessToken, refreshToken, user:{id, displayName?}}` |
 | Refresh (on any 401, once) | `POST /api/auth/refresh` `{refreshToken}` | `{accessToken, refreshToken?}` |
 | Sign out | `POST /api/auth/logout` `{}` | — |
-| Balance | `GET /api/user/quota` | object; show the first numeric of `balance`/`credits`/`remaining`/`points` |
+| Balance | `GET /api/user/quota` | show `creditsRemaining` (the wallet a recharge adds to; `effectiveCreditsRemaining` can be an enterprise member's monthly allowance), up to 2 decimals |
+| Recharge (Android) | `POST /api/billing/recharge/checkout-link` `{}` | `{url, token, expiresAt}`; open only if `url` is exactly `https://admin.lynxce.cn/recharge?token=<token>`, the token matches `x.`-style ticket shape and expires within 16 min; system browser; refresh balance on return |
+| Credit packs (iOS) | `GET /api/billing/app/recharge-packages`, header `X-Lynxce-Iap-App: cn.lynxce.octopbot` | `{packages:[{id,name,credits,appleProductId?}], balance, payment:{apple:{enabled}}}`; list only packs with `appleProductId` |
+| Buy a pack (iOS) | `POST /api/billing/apple/purchase-intents` `{packageId}` (same header) → StoreKit 2 `purchase(appAccountToken)` → `POST /api/billing/apple/transactions` `{signedTransaction}` | intent `{productId, appAccountToken}`; finish the transaction only after Lynxce accepts it; resend unfinished ones on launch |
+| Delete account | `POST /api/user/account/deletion-request` `{confirm:"注销账号"}` | `{status:"deactivated", coolingDays}`; signed out everywhere, then sign out locally |
 | Models | `GET /api/models/available` | array (or `{items}`/`{models}`) of `{modelId, modelName, supportsImage?}`; no model = server routing ("智能路由") |
 | Chat (stream) | `POST /api/proxy/v1/chat/completions` (see below) | raw SSE, not wrapped |
 | List conversations | `GET /api/user/web-chat-sessions?limit=50` | `{items:[{id,title,model,updatedAt,messageCount}], nextCursor}` |
@@ -58,6 +62,7 @@ Base URL typed by the user (e.g. `https://nas.local:8080`). Errors are
 
 | Purpose | Request | Response |
 |---|---|---|
+| Describe (public) | `GET /api/octop-bot/server-info` | `{product:"octop-bot", version, edition:"desktop"\|"web"\|"server", setup_required, sign_in:["lynxce"?,"password"], capabilities:{wallet, cloud_computer, file_store}}`; older servers 404 |
 | Probe | `GET /api/setup/status` | `{setup_required, lynxce_login, local_account, …}` |
 | Lynxce identity state | `GET /api/auth/lynxce/status` | `{enabled, claimed}` |
 | Send Lynxce sign-in code (web build) | `POST /api/auth/lynxce/code` `{target, locale?}` (target = phone or email) | `{channel:"phone"\|"email"}`; 422 `LYNXCE_CODE_TARGET_INVALID`, 429 `LYNXCE_CODE_THROTTLED` (5 sends / 10 min per IP, plus Lynxce's own limit) |

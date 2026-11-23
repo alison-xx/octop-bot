@@ -276,7 +276,7 @@
     },
     "lynxce": {
       "register": "Create a Lynxce account",
-      "registerHint": "Choose Register (注册) on the official site, then return here to sign in.",
+      "registerHint": "On the Lynxce site, sign in with a texted or emailed code and the account is created for you. Then come back here.",
       "source": "Lynxce account",
       "other": "Other model sources",
       "hint": "Sign in to Lynxce in your browser to choose a chat model. Lynxce deducts credits from this account when you use the model.",

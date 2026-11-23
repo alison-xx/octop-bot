@@ -59,6 +59,12 @@ final class LocalBots {
         persist()
     }
 
+    /// The account was deleted: its phone-local Bots go with it.
+    func deleteAll() {
+        custom = []
+        persist()
+    }
+
     private func persist() {
         UserDefaults.standard.set(try? JSONEncoder().encode(custom), forKey: Self.key)
     }

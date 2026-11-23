@@ -1,0 +1,20 @@
+:root { color-scheme: light dark; --bg: #fbfaf7; --text: #1f1e1c; --muted: #6f6c66; --line: #dedbd3; --field: #ffffff; --accent: #1f1e1c; --on-accent: #ffffff; --danger: #c2410c; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1c1b19; --text: #f3f1ec; --muted: #a29f98; --line: #3a3834; --field: #262522; --accent: #f3f1ec; --on-accent: #1c1b19; --danger: #fb923c; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+main { padding: 28px 28px 22px; -webkit-app-region: drag; }
+input, button, ul { -webkit-app-region: no-drag; }
+h1 { font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+#hint { color: var(--muted); margin: 0 0 16px; }
+input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--text); font: inherit; outline: none; }
+input:focus { border-color: var(--accent); }
+#error { min-height: 20px; margin: 6px 0 4px; color: var(--danger); font-size: 13px; }
+#recent { list-style: none; margin: 0 0 12px; padding: 0; }
+#recent button { width: 100%; text-align: left; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+#recent button:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.actions { display: flex; gap: 8px; align-items: center; }
+.spacer { flex: 1; }
+button { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+button.link { border: 0; padding: 8px 0; color: var(--muted); text-decoration: underline; }
+button:disabled { opacity: 0.5; cursor: default; }
