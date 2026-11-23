@@ -57,7 +57,6 @@ dependencies = [
     "tencentcloud-sdk-python>=3.1.166",
     "pyotp>=2.10.0",
     "webauthn>=3.0.1",
-    "e2b>=2.0",
 ]
 
 [project.optional-dependencies]

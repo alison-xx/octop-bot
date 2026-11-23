@@ -361,17 +361,18 @@ P1 的实际做法与上文设计有三处不同，以本节为准：
 - 配置了 AGS 后，云模式租户的每个 Bot 都用自己的 AGS 沙箱作为工作区：执行命令、读写文件都在这台电脑上，暂停后磁盘保留。没有配置 AGS 时，回退到 P1 的对象存储工作区（不能运行命令）。
 - 生命周期：第一次用到工具时开机（`StartSandboxInstance`）；已暂停的就恢复（`ResumeSandboxInstance`）；空闲 10 分钟暂停（`PauseSandboxInstance`）；暂停失败就停止。状态存在 settings 表 `octop_bot:computer:<agent_id>`。
 - 计费：开机或恢复前先向灵策预扣 5 分钟；运行中在当前时段用完前 1 分钟续购下一段；暂停时按实际秒数逐段结算，多退少不补。续购失败（余额不足或灵策不可用）就暂停；开机失败退回预扣。积分单价、预扣和结算接口在灵策后台（`/api/billing/octop-bot/compute/reserve|settle`），由云 Octop 用租户自己的灵策登录态调用。
-- 命令和文件走 AGS 的 E2B 兼容接口（`e2b` SDK，`Sandbox.connect(instance_id)`），开机、暂停、恢复走腾讯云 AGS 云 API。这一层先放在 Octop Bot（`infra/cloud/computers/`），之后作为通用 E2B 后端提交给 octop-harness 上游。
+- 开机、暂停、恢复走腾讯云 AGS 云 API。命令和文件走沙箱桌面自带的 HTTP 服务：`https://5000-<实例>.<region>.tencentags.com` 的 `/execute`、`/setup/upload`、`/file`，请求头 `X-Access-Token` 用 `AcquireSandboxInstanceToken` 返回的 `Token`（`TrafficToken` 会被拒，返回 401）。OSWorld 类型的沙箱不提供 AGS 的 E2B 兼容数据面（报 310508），所以不用 `e2b` SDK。
+- 实测（2026-11-24，广州，OSWorld 4C8G）：沙箱里一律以 `user` 身份运行，没有免密 sudo，所以 Bot 的工作区放在 `/home/user/workspace`，Agent 看到的 `/` 就是这个目录，路径映射照搬 octop-harness 的 Docker 沙箱。`/execute` 单次请求 120 秒就会被杀掉，所以命令一律后台脱离运行（`setsid`），每次请求最多等 90 秒再取结果，长命令可以跑到 Agent 给的超时为止，超时就杀掉整个进程组。开机加第一条命令约 3 秒，暂停约 15 秒，恢复约 5 秒，暂停后文件都在。
+- 这一层先放在 Octop Bot（`infra/cloud/computers/`）。等 octop-harness 有了通用的远程沙箱后端再迁过去。
 - 客户端：桌面网页版、iOS、Android 的 Bot 资料里有「云电脑」卡片，显示未开机、运行中或已暂停，以及本次运行时长，可以立即暂停（`GET /api/octop-bot/computers/{agent_id}`、`POST …/pause`）。
 
 | 变量 | 说明 |
 |---|---|
 | `OCTOP_AGS_SECRET_ID` / `OCTOP_AGS_SECRET_KEY` | 只授予 AGS 权限的 CAM 子账号密钥 |
 | `OCTOP_AGS_REGION` | 默认 `ap-guangzhou` |
-| `OCTOP_AGS_API_KEY` | AGS 控制台创建的 API Key（E2B SDK 使用） |
 | `OCTOP_AGS_DOMAIN` | 默认 `<region>.tencentags.com` |
-| `OCTOP_AGS_TOOL` / `OCTOP_AGS_TOOL_PRO` | 标准、专业规格对应的沙箱工具名（在 AGS 控制台创建，例如基于 `osworld` 或 `aio` 类型） |
-| `OCTOP_AGS_TIMEOUT` | 实例最长运行时长，默认 `6h` |
+| `OCTOP_AGS_TOOL` / `OCTOP_AGS_TOOL_PRO` | 标准、专业规格对应的沙箱工具名，在 AGS 控制台用 `osworld` 类型创建，选常驻 |
+| `OCTOP_AGS_TIMEOUT` | 只用于限时工具：实例最长运行时长，例如 `6h`。常驻工具不填，由空闲回收负责暂停 |
 
 ## 13. 合规提醒
 

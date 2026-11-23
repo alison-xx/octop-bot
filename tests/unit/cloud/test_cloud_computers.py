@@ -7,9 +7,10 @@ from typing import Any
 
 import pytest
 
+from octop.infra.cloud.computers import driver as ags
 from octop.infra.cloud.computers import manager as computers
 from octop.infra.cloud.computers.backend import CloudComputer
-from octop.infra.cloud.computers.driver import AgsConfig, State, state_of
+from octop.infra.cloud.computers.driver import WORKSPACE, AgsConfig, State, state_of
 from octop.infra.errors import ErrorCode, OctopError
 
 
@@ -158,6 +159,49 @@ def test_a_paused_computer_resumes_with_its_files(setup: Any) -> None:
     assert computer.download_files(["/root/notes.md"])[0].content == b"hi"
     assert driver.calls == [("start", "bot1"), ("pause", "ins-1"), ("resume", "ins-1")]
     assert computer.download_files(["/missing"])[0].error == "file_not_found"
+    assert driver.files == {f"{WORKSPACE}/root/notes.md": b"hi"}
+
+
+def test_the_agents_root_is_the_workspace_folder(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1")
+    assert computer._map_path("/") == WORKSPACE
+    assert computer._map_path("SOUL.md") == f"{WORKSPACE}/SOUL.md"
+    assert computer._map_path(f"{WORKSPACE}/a/b") == f"{WORKSPACE}/a/b"
+    assert computer._map_path("/../../etc/passwd") == WORKSPACE
+    assert computer._to_virtual_path(f"{WORKSPACE}/a/b.md") == "/a/b.md"
+    assert computer._to_virtual_path(WORKSPACE) == "/"
+    with pytest.raises(OSError):
+        computer.delete_path("/")
+
+
+def test_commands_outlive_the_desktop_servers_request_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = AgsConfig.from_env(
+        {"OCTOP_AGS_SECRET_ID": "id", "OCTOP_AGS_SECRET_KEY": "key", "OCTOP_AGS_TOOL": "t"}
+    )
+    assert config is not None
+    scripts: list[str] = []
+    replies = [ags._PENDING + "\n", "3\nout\nerr\n"]
+
+    def execute(instance_id: str, script: str) -> str:
+        scripts.append(script)
+        return replies.pop(0)
+
+    driver = ags.AgsDriver(config)
+    monkeypatch.setattr(driver, "_execute", execute)
+    assert driver.run("ins", "make build", 600) == (3, "out\nerr\n")
+    # The first request launches it detached in the workspace; the second only waits.
+    assert "setsid bash -c" in scripts[0] and f"cd {WORKSPACE}" in scripts[0]
+    assert "make build" in scripts[0] and "setsid" not in scripts[1]
+
+    replies[:] = [ags._PENDING, "partial"]
+    clock = iter([0.0, 0.0, 10.0])
+    monkeypatch.setattr(ags.time, "monotonic", lambda: next(clock))
+    code, output = driver.run("ins", "sleep 999", 5)
+    assert code == 124 and output.startswith("partial") and "timed out" in output
+    assert "kill -KILL" in scripts[-1]
 
 
 def test_busy_computers_buy_the_next_chunk_or_pause_without_credits(setup: Any) -> None:
@@ -192,13 +236,13 @@ def test_ags_config_and_states() -> None:
         {
             "OCTOP_AGS_SECRET_ID": "id",
             "OCTOP_AGS_SECRET_KEY": "key",
-            "OCTOP_AGS_API_KEY": "e2b_x",
             "OCTOP_AGS_TOOL": "octop-bot-desktop",
         }
     )
     assert config is not None
     assert config.domain == "ap-guangzhou.tencentags.com"
     assert config.tools == {"standard": "octop-bot-desktop", "pro": "octop-bot-desktop"}
+    assert config.timeout is None  # persistent tools take none
     assert state_of("RUNNING") == "running" and state_of("PAUSED") == "paused"
     assert state_of("STOPPED") == "gone" and state_of(None) == "gone"
 
