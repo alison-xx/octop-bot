@@ -1065,7 +1065,13 @@
     "fpk_target_missing": "FPK site-packages 目录不存在：{path}",
     "version_unavailable": "安装程序已结束，但无法确认已安装的 Octop 版本。",
     "version_mismatch": "安装程序已结束，但已安装版本 {actual} 与目标版本 {expected} 不一致。",
-    "version_not_newer": "安装程序已结束，但已安装版本 {actual} 不高于原版本 {previous}。"
+    "version_not_newer": "安装程序已结束，但已安装版本 {actual} 不高于原版本 {previous}。",
+    "bot_web": {
+      "managed": "Octop Bot 网页版通过新镜像或飞牛应用包更新，不从 PyPI 升级。",
+      "check_failed": "暂时无法检查 Octop Bot 更新，请稍后再试。",
+      "step_fnos": "飞牛 fnOS：在应用中心更新 Octop Bot，然后在那里重启应用。",
+      "step_docker": "Docker：执行 `docker pull {image}`，把 compose 文件里的镜像改成它，再执行 `docker compose up -d`。"
+    }
   },
   "ldap": {
     "test": {

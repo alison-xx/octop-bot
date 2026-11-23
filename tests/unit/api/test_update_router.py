@@ -623,3 +623,42 @@ async def test_upgrade_worker_falls_back_to_pinned_version(
     assert stored is not None
     assert stored.status == UpgradeTaskStatus.COMPLETE
     assert stored.new_version == "0.9.33"
+
+
+@pytest.mark.asyncio
+async def test_bot_web_status_uses_the_bot_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OCTOP_DESKTOP_SHELL", raising=False)
+    monkeypatch.setenv("OCTOP_BOT_WEB", "1")
+    calls: list[dict[str, object]] = []
+
+    def fake_status(**kwargs: object) -> dict[str, object]:
+        calls.append(kwargs)
+        return {"has_update": True, "updates_managed_by_image": True}
+
+    def no_pypi() -> None:
+        raise AssertionError("PyPI must not be probed for Octop Bot web")
+
+    monkeypatch.setattr(update_router, "bot_web_status", fake_status)
+    monkeypatch.setattr(update_router, "fetch_pypi_info", no_pypi)
+    monkeypatch.setattr(update_router, "_build_status", no_pypi)
+    server = _settings_server(stable_only=False)
+    status = await update_router.update_status(_=None, server=server)
+    assert status["updates_managed_by_image"] is True
+    await update_router.check_for_updates(_=None, server=server)
+    assert calls[0]["stable_only"] is False
+    assert calls[1]["refresh"] is True
+
+
+@pytest.mark.asyncio
+async def test_bot_web_rejects_pypi_upgrade(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OCTOP_DESKTOP_SHELL", raising=False)
+    monkeypatch.setenv("OCTOP_BOT_WEB", "1")
+    scope = {"type": "http", "headers": [], "method": "POST", "path": "/api/update/upgrade"}
+    with pytest.raises(OctopError) as caught:
+        await update_router.trigger_upgrade(
+            request=Request(scope),
+            body=update_router.UpgradeBody(),
+            server=_settings_server(),
+            _=None,
+        )
+    assert caught.value.code == ErrorCode.FORBIDDEN

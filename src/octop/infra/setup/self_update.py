@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from octop.i18n import lookup, tr
-from octop.infra.desktop import desktop_shell_enabled
+from octop.infra.desktop import bot_web_enabled, desktop_shell_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import DEFAULT_LOCALE
 from octop.infra.utils.paths import PathLayout
@@ -990,6 +990,10 @@ def run_upgrade(
     # owns the runtime and upgrades it atomically with the shell release.
     if desktop_shell_enabled():
         return UpgradeResult(success=False, error="updates are managed by the desktop shell")
+    # The Bot web/NAS build ships as an image or fnOS package; PyPI ``octop`` is
+    # the upstream product and must never replace it.
+    if bot_web_enabled():
+        return UpgradeResult(success=False, error=tr("update.bot_web.managed", locale))
     try:
         validate_upgrade_target(version, get_local_version())
     except OctopError as exc:
