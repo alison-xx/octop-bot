@@ -821,5 +821,45 @@ final class DeviceConnectorTests: XCTestCase {
             DateInterval(start: t0.addingTimeInterval(6 * 3600), duration: 3600),
         ]) / 3600
         XCTAssertEqual(hours, 5)
+final class BotActivityTests: XCTestCase {
+    func testUpcomingKeepsServerOrderAndSchedules() {
+        let jobs = ServerBackend.UpcomingJob.parse([
+            "timezone": "Asia/Shanghai",
+            "jobs": [
+                ["id": "a", "name": "Morning brief", "enabled": true, "schedule": "工作日 8:50", "can_toggle": true],
+                ["id": "b", "name": "Script", "enabled": false, "schedule": "自定义", "can_toggle": false],
+                ["name": "no id"],
+            ],
+        ])
+        XCTAssertEqual(jobs.map(\.id), ["a", "b"])
+        XCTAssertEqual(jobs[0].schedule, "工作日 8:50")
+        XCTAssertTrue(jobs[0].enabled && jobs[0].canToggle)
+        XCTAssertFalse(jobs[1].canToggle)
+        XCTAssertFalse(jobs[0].with(enabled: false).enabled)
+    }
+
+    func testLibraryGroupsByRecencyInServerOrder() {
+        func row(_ name: String, _ period: String) -> [String: Any] {
+            ["name": name, "path": "outbound/" + name, "period": period, "mime": NSNull(),
+             "url": "/api/agents/A/workspace/download?path=outbound%2F" + name]
+        }
+        let files = ServerBackend.LibraryFile.parse(["files": [
+            row("new.pdf", "today"), row("old.xlsx", "older"), row("mid.md", "week"), row("b.png", "today"),
+        ]])
+        let groups = ServerBackend.LibraryFile.grouped(files)
+        XCTAssertEqual(groups.map(\.0), [.today, .week, .older])
+        XCTAssertEqual(groups[0].1.map(\.name), ["new.pdf", "b.png"])
+        XCTAssertTrue(ServerBackend.isWorkspaceDownload(URL(string: files[0].url)!))
+        XCTAssertEqual(ServerBackend.LibraryFile.grouped([]).count, 0)
+    }
+
+    func testLibraryIcons() {
+        func file(_ name: String, _ mime: String? = nil) -> ServerBackend.LibraryFile {
+            .init(name: name, path: name, mime: mime, period: .today, url: "")
+        }
+        XCTAssertEqual(file("a.png", "image/png").symbol, "photo")
+        XCTAssertEqual(file("deck.KEY").symbol, "rectangle.on.rectangle")
+        XCTAssertEqual(file("sheet.csv").symbol, "tablecells")
+        XCTAssertEqual(file("blob.bin").symbol, "doc")
     }
 }

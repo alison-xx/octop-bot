@@ -845,6 +845,38 @@
       "failed": "Script failed (exit {code}): {detail}",
       "unreadable": "Could not read workspace script {path}.",
       "needs_cloud_computer": "This Bot has no cloud computer yet, so the script cannot run."
+    },
+    "schedule": {
+      "daily": "Daily at {what}",
+      "any_day": "{what}",
+      "weekdays": "Weekdays, {what}",
+      "weekends": "Weekends, {what}",
+      "weekly": "{day}s, {what}",
+      "days": "{days}, {what}",
+      "join": ", ",
+      "day": {
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday",
+        "sun": "Sunday"
+      },
+      "every_minute": "Every minute",
+      "every_minutes": "Every {count} min",
+      "every_hour": "Every hour",
+      "every_hours": "Every {count} hours",
+      "every_day": "Every day",
+      "every_days": "Every {count} days",
+      "every_seconds": "Every {count} s",
+      "window": "{every}, {start} – {end}",
+      "hourly_at": "Hourly at :{minute}",
+      "once": "Once · {date}",
+      "date": "{month}/{day} {time}",
+      "date_year": "{month}/{day}/{year} {time}",
+      "mail": "When new mail arrives",
+      "custom": "Custom"
     }
   },
   "agents": {

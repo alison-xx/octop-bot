@@ -344,4 +344,15 @@
     <string name="device_save">Save</string>
     <string name="health_rationale_title">How Octop Bot uses your health data</string>
     <string name="health_rationale_text">When you turn on Settings → Device connectors → Health, Octop Bot reads daily totals and averages (steps, active energy, exercise minutes, sleep, heart rate, resting heart rate and weight) from Health Connect, only when a Bot asks for them in a chat. The values are sent with that chat to the model that answers you, and are not stored anywhere else by Octop Bot. Octop Bot never writes health data. Turn the switch off, or revoke access in Health Connect, at any time.</string>
+    <string name="profile_entry">Activity and library</string>
+    <string name="profile_activity">Activity</string>
+    <string name="profile_library">Library</string>
+    <string name="profile_upcoming">Upcoming</string>
+    <string name="profile_no_upcoming">No scheduled tasks yet. Ask this Bot to do something on a schedule.</string>
+    <string name="profile_show_more">Show more</string>
+    <string name="profile_toggle">Run %1$s on schedule</string>
+    <string name="profile_no_files">Files this Bot makes for you will show up here.</string>
+    <string name="profile_today">Today</string>
+    <string name="profile_week">This week</string>
+    <string name="profile_older">Older</string>
 </resources>

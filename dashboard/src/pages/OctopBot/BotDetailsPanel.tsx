@@ -43,6 +43,7 @@ import { BotCharacter, type BotMotion } from "./BotCharacter";
 import { useLynxceStatus } from "../../hooks/useLynxceStatus";
 import { isBotOnlyDesktop } from "../../utils/desktopBridge";
 import styles from "./BotDetailsPanel.module.less";
+import BotActivityLibrary from "./BotActivityLibrary";
 import BotComputerCard from "./BotComputerCard";
 import BotSchedulesDialog from "./BotSchedulesDialog";
 import BotUsageDialog from "./BotUsageDialog";
@@ -290,6 +291,14 @@ export default function BotDetailsPanel({
           <section className={styles.block}>
             <h4>{t("botClient.profile.role")}</h4>
             <p>{bot.description}</p>
+          </section>
+        )}
+        {agent?.is_owner === true && !agent.bridge && (
+          <section className={styles.block}>
+            <BotActivityLibrary
+              agentId={bot.agent_id}
+              canToggle={canManageSchedules}
+            />
           </section>
         )}
         <section className={styles.block}>

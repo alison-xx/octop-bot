@@ -8846,5 +8846,18 @@
       "close": "关闭浮窗",
       "show": "显示云电脑画面"
     }
+  },
+  "botProfile": {
+    "activity": "动态",
+    "library": "资料库",
+    "upcoming": "即将运行",
+    "noUpcoming": "还没有定时任务。可以让这个 Bot 按时帮你做事。",
+    "showMore": "显示更多",
+    "toggle": "按计划运行 {{name}}",
+    "noFiles": "这个 Bot 为你生成的文件会显示在这里。",
+    "today": "今天",
+    "week": "本周",
+    "older": "更早",
+    "download": "下载 {{name}}"
   }
 }

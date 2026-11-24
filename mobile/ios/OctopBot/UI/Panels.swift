@@ -164,6 +164,16 @@ struct BotEditor: View {
                         .padding(.vertical, 8)
                     }
                 }
+                if !isNew, let server = model.server {
+                    Section {
+                        NavigationLink {
+                            BotActivityView(server: server, bot: bot)
+                        } label: {
+                            Label("profile.entry", systemImage: "clock.arrow.circlepath")
+                        }
+                        .accessibilityIdentifier("botActivity")
+                    }
+                }
                 if !isNew, let server = model.server, server.isCloud {
                     CloudComputerSection(server: server, botId: bot.id)
                 }

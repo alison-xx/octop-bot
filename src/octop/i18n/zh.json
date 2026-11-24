@@ -845,6 +845,38 @@
       "failed": "脚本失败（退出码 {code}）：{detail}",
       "unreadable": "无法读取工作区脚本 {path}。",
       "needs_cloud_computer": "这个 Bot 还没有云电脑，无法运行脚本。"
+    },
+    "schedule": {
+      "daily": "每天 {what}",
+      "any_day": "{what}",
+      "weekdays": "工作日 {what}",
+      "weekends": "周末 {what}",
+      "weekly": "每{day} {what}",
+      "days": "{days} {what}",
+      "join": "、",
+      "day": {
+        "mon": "周一",
+        "tue": "周二",
+        "wed": "周三",
+        "thu": "周四",
+        "fri": "周五",
+        "sat": "周六",
+        "sun": "周日"
+      },
+      "every_minute": "每分钟",
+      "every_minutes": "每 {count} 分钟",
+      "every_hour": "每小时",
+      "every_hours": "每 {count} 小时",
+      "every_day": "每天",
+      "every_days": "每 {count} 天",
+      "every_seconds": "每 {count} 秒",
+      "window": "{every}，{start} – {end}",
+      "hourly_at": "每小时 :{minute}",
+      "once": "一次 · {date}",
+      "date": "{month}月{day}日 {time}",
+      "date_year": "{year}年{month}月{day}日 {time}",
+      "mail": "收到新邮件时",
+      "custom": "自定义"
     }
   },
   "agents": {
