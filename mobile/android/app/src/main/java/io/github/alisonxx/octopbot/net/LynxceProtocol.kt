@@ -35,6 +35,8 @@ import java.util.UUID
 /** Pure Lynxce wire mapping (no I/O), shared by [LynxceBackend] and unit tests. */
 object LynxceProtocol {
     const val ORIGIN = "https://api.lynxce.cn"
+    /** Lynxce's Octop Bot line: every model it offers Octop Bot is named `tencent/…`. */
+    const val MODEL_PREFIX = "tencent/"
     /** Same prefix the desktop client uses, so desktop and phone list each other's conversations. */
     const val SESSION_PREFIX = "octop-bot-v1-"
     private const val ROLE_MARKER = "\n\n[Octop Bot role/v1] "
@@ -131,7 +133,8 @@ object LynxceProtocol {
         put("stream", true)
         putJsonObject("stream_options") { put("include_usage", true) }
         put("sessionId", sessionId)
-        model?.let { put("model", it) }
+        // A choice saved before Lynxce moved Octop Bot to its Tencent line falls back to the default.
+        model?.takeIf { it.startsWith(MODEL_PREFIX) }?.let { put("model", it) }
         putJsonObject("metadata") {
             put("client", "octop-bot-android")
             put("turnId", turnId)

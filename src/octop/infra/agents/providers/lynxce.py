@@ -15,6 +15,7 @@ from octop_harness.config import HarnessAgentConfig, ModelConfig, ProviderConfig
 
 from octop.infra.agents.providers.lynxce_media import LYNXCE_HOSTS, LynxceMediaAuth
 from octop.infra.agents.providers.presets import lynxce_model_input
+from octop.infra.auth.lynxce_cloud import LYNXCE_APP_HEADERS
 from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -74,6 +75,7 @@ class AccountModel:
             protocol="openai",
             base_url=BASE_URL,
             api_key=cast("str", token_for_request),
+            headers=dict(LYNXCE_APP_HEADERS),
             models=[ModelConfig(id=self.model_id, name=self.model_id)],
         )
 
@@ -131,6 +133,7 @@ class CloudAccountModel(AccountModel):
             protocol="openai",
             base_url=GATEWAY_URL,
             api_key=cast("str", key_for_request),
+            headers=dict(LYNXCE_APP_HEADERS),
             models=[
                 ModelConfig(
                     id=self.model_id,
@@ -201,7 +204,8 @@ async def _cloud_models(services: SharedServices, user_id: int) -> list[dict[str
     try:
         async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
             reply = await client.get(
-                GATEWAY_URL + "/models", headers={"Authorization": f"Bearer {secret}"}
+                GATEWAY_URL + "/models",
+                headers={**LYNXCE_APP_HEADERS, "Authorization": f"Bearer {secret}"},
             )
         reply.raise_for_status()
         return lynxce_chat_models(reply.json())
@@ -292,7 +296,7 @@ async def personal_gateway(
             reply = await client.request(
                 "POST" if endpoint == "account/recharge-link" else "GET",
                 BASE_URL + "/" + endpoint,
-                headers={"Authorization": f"Bearer {bearer}"},
+                headers={**LYNXCE_APP_HEADERS, "Authorization": f"Bearer {bearer}"},
             )
         reply.raise_for_status()
         return reply.json()
@@ -363,18 +367,20 @@ def account_selection(services: SharedServices, user_id: int) -> AccountModel | 
         return None
     if _is_own(data.get("connection")):
         return _own(services, user_id, data)
+    from octop.infra.cloud.bot_cloud.accounts import lynxce_chat_model  # noqa: PLC0415
+
     if data.get("connection") == CLOUD_CONNECTION:
         if _cloud_key_secret(services, user_id) is None:
             raise _auth_required()
-        return CloudAccountModel(user_id, CLOUD_CONNECTION, data["model"])
+        return CloudAccountModel(user_id, CLOUD_CONNECTION, lynxce_chat_model(data["model"]))
     if _connection(services, user_id) != data["connection"]:
         raise _auth_required()
-    return AccountModel(user_id, data["connection"], data["model"])
+    return AccountModel(user_id, data["connection"], lynxce_chat_model(data["model"]))
 
 
 def _cloud_selection(services: SharedServices, user_id: int) -> AccountModel | None:
     """Every tenant chats through their own key; admins keep the server's shared providers."""
-    from octop.infra.cloud.bot_cloud.accounts import cloud_model_id  # noqa: PLC0415
+    from octop.infra.cloud.bot_cloud.accounts import lynxce_chat_model  # noqa: PLC0415
 
     user = services.user_repo.get(user_id)
     if user is None or str(user.role) == "admin":
@@ -386,8 +392,7 @@ def _cloud_selection(services: SharedServices, user_id: int) -> AccountModel | N
         if own is not None:
             return own
     chosen = None if _is_own(data.get("connection")) else data.get("model")
-    model = chosen if isinstance(chosen, str) and chosen else cloud_model_id()
-    return CloudAccountModel(user_id, "cloud", model)
+    return CloudAccountModel(user_id, "cloud", lynxce_chat_model(chosen))
 
 
 def _is_own(connection: object) -> bool:
