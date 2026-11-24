@@ -27,6 +27,7 @@ import base64
 import datetime as dt
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 import ssl
@@ -39,11 +40,21 @@ from typing import Any
 
 from octop.infra.cloud.computers.driver import AgsDriver, Instance, Spec, State
 
+logger = logging.getLogger(__name__)
+
 MANAGED_TAG = "octop-computer"
 REF_TAG = "octop-ref"
 # Where the image's nginx sends each local port.
 _GATEWAY = "/p/{port}"
-_STOCK_ERRORS = ("ResourceInsufficient", "ResourcesSoldOut", "InstancesSoldOut", "NoAvailableZone")
+# Errors that mean "not in this zone": no stock there, or the account's instance quota for that
+# zone is used up. Either way the next zone may still take the computer.
+_ZONE_ERRORS = (
+    "ResourceInsufficient",
+    "ResourcesSoldOut",
+    "InstancesSoldOut",
+    "NoAvailableZone",
+    "LimitExceeded.InstanceQuota",
+)
 
 
 @dataclass(frozen=True)
@@ -273,9 +284,10 @@ class CvmDriver(AgsDriver):
             run.TagSpecification = [spec_tags]
             try:
                 instance_id = str(self._api().RunInstances(run).InstanceIdSet[0])
-            except Exception as exc:  # noqa: BLE001 - try the next zone when this one has no stock
-                if not any(code in str(exc) for code in _STOCK_ERRORS):
+            except Exception as exc:  # noqa: BLE001 - try the next zone when this one can't
+                if not any(code in str(exc) for code in _ZONE_ERRORS):
                     raise
+                logger.warning("zone %s refused a %s: %s", zone, run.InstanceType, exc)
                 last = exc
                 continue
             with self._addr_lock:

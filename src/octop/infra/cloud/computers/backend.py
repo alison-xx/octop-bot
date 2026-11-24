@@ -134,6 +134,14 @@ def computer_off(workspace: Any, path: str, *, search: bool = False) -> bool:
     return isinstance(backend, CloudComputer) and backend.would_wake(path, search=search)
 
 
+def left_on_computer(workspace: Any, path: str) -> bool:
+    """``path`` is a deliverable the store lacks, and this Bot's computer, which may still hold
+    it (made before deliverables were mirrored into the store), is off: once the computer
+    starts, its deliverables are copied into the store."""
+    backend = getattr(workspace, "backend", None)
+    return isinstance(backend, CloudComputer) and backend.may_hold(path)
+
+
 class CloudComputer(BaseSandbox):
     def __init__(
         self,
@@ -173,6 +181,18 @@ class CloudComputer(BaseSandbox):
         if self._stored(path) or (not search and self._map_path(path) == WORKSPACE):
             return False
         return not self._manager.is_running(self._agent_id, self._user_id)
+
+    def may_hold(self, path: str | None) -> bool:
+        """See :func:`left_on_computer`."""
+        if self._store is None:
+            return False
+        raw = posixpath.normpath("/" + (path or "").strip().replace("\\", "/").lstrip("/"))
+        if raw.startswith(WORKSPACE + "/"):
+            raw = raw[len(WORKSPACE) :]
+        if not any(raw.startswith(folder) for folder in SHARED_DIRS):
+            return False
+        record = self._manager.record(self._agent_id, self._user_id)
+        return bool(record.instance_id) and not record.running
 
     # -- deliverables: the store's copy and the computer's --------------------
 

@@ -9058,6 +9058,7 @@
       "open": "Open the cloud computer screen",
       "starting": "Starting the computer…",
       "startFailed": "The computer could not start. Try again in a moment.",
+      "retry": "Retry",
       "fit": "Switch aspect ratio",
       "expand": "Expand",
       "collapse": "Collapse",

@@ -41,12 +41,13 @@ class FakeCvm:
         self.runs: list[Any] = []
         self.calls: list[tuple[str, Any]] = []
         self.sold_out: set[str] = set()
+        self.refusal = "ResourceInsufficient.SpecifiedInstanceType"
         self.instances: dict[str, Any] = {}
 
     def RunInstances(self, req: Any) -> Any:  # noqa: N802 - SDK method name
         self.runs.append(req)
         if req.Placement.Zone in self.sold_out:
-            raise TencentCloudSDKException("ResourceInsufficient.SpecifiedInstanceType", "sold out")
+            raise TencentCloudSDKException(self.refusal, "sold out")
         instance_id = f"ins-{len(self.runs)}"
         self.instances[instance_id] = SimpleNamespace(
             InstanceId=instance_id,
@@ -147,6 +148,14 @@ def test_a_zone_without_stock_falls_through_to_the_next(cvm: Any) -> None:
     fake.sold_out = {"ap-guangzhou-6", "ap-guangzhou-7"}
     with pytest.raises(RuntimeError, match="no zone"):
         driver.start(spec="standard", labels={})
+
+
+def test_a_zone_at_its_instance_quota_falls_through_to_the_next(cvm: Any) -> None:
+    driver, fake = cvm
+    fake.sold_out = {"ap-guangzhou-6"}
+    fake.refusal = "LimitExceeded.InstanceQuota"
+    driver.start(spec="standard", labels={})
+    assert [r.Placement.Zone for r in fake.runs] == ["ap-guangzhou-6", "ap-guangzhou-7"]
 
 
 def test_pause_stops_charging_and_resume_finds_the_new_address(cvm: Any) -> None:

@@ -842,6 +842,20 @@ async def test_only_the_bots_work_or_its_screen_start_a_cloud_computer(
         assert shot.status_code == 409
         assert shot.json()["error"]["code"] == "BOT_COMPUTER_OFF"
         assert started == []
+        # A deliverable the store lacks: not found, unless a paused computer may still hold it
+        # (made before deliverables were mirrored); starting the computer brings it back.
+        old = {"path": "/generated/old.md"}
+        gone = await client.head(base + "/workspace/download", params=old, headers=auth)
+        assert gone.status_code == 404
+        manager = computers.current_manager()
+        assert manager is not None
+        paused = manager.record(aid, signed["user"]["id"])
+        paused.instance_id = "ins-old"
+        manager._save(paused)
+        kept = await client.get(base + "/workspace/download", params=old, headers=auth)
+        assert kept.status_code == 409
+        assert kept.json()["error"]["code"] == "BOT_COMPUTER_OFF"
+        assert started == []
 
         # The user opening its screen starts it.
         screen = await client.post(f"/api/octop-bot/computers/{aid}/screen", headers=auth)
