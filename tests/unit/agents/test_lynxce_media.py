@@ -18,7 +18,10 @@ from octop_harness.media import (
     VideoGenerationRequest,
 )
 
+from octop.infra.agents.providers import lynxce_media
 from octop.infra.agents.providers.lynxce_media import (
+    IMAGE_MODEL,
+    VIDEO_MODEL,
     LynxceMediaAuth,
     LynxceMediaProvider,
     lynxce_media_tools,
@@ -29,6 +32,24 @@ MP4 = b"\x00\x00\x00\x18ftypmp42" + b"0" * 32
 BASE = "https://api.lynxce.cn/api/v1"
 
 
+# Lynxce's catalog order: the first image and the first video model are its defaults.
+MODELS = {
+    "object": "list",
+    "data": [
+        {"id": "deepseek-v4", "modality": "chat"},
+        {"id": "gpt-image-2.6-flare", "modality": "image"},
+        {"id": "gpt-image-2.5", "modality": "image"},
+        {"id": "ucloud/MiniMax-H3", "modality": "video"},
+        {"id": "seedance", "modality": "video"},
+    ],
+}
+
+
+@pytest.fixture(autouse=True)
+def _fresh_defaults() -> None:
+    lynxce_media._defaults_cache.clear()
+
+
 async def _auth() -> LynxceMediaAuth:
     return LynxceMediaAuth(BASE, "sk-test")
 
@@ -37,6 +58,8 @@ class Gateway:
     def __init__(self) -> None:
         self.posts: list[tuple[str, dict[str, Any], httpx.Headers]] = []
         self.polls = 0
+        self.model_reads = 0
+        self.models: httpx.Response = httpx.Response(200, json=MODELS)
         self.fail: httpx.Response | None = None
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
@@ -44,6 +67,9 @@ class Gateway:
             assert "Authorization" not in req.headers  # signed links get no credential
             return httpx.Response(200, content=MP4 if req.url.path.endswith(".mp4") else PNG)
         assert req.headers["Authorization"] == "Bearer sk-test"
+        if req.method == "GET" and req.url.path == "/api/v1/models":
+            self.model_reads += 1
+            return self.models
         if self.fail is not None:
             return self.fail
         if req.method == "POST":
@@ -84,7 +110,8 @@ async def test_an_image_is_submitted_polled_and_downloaded(tmp_path: Path) -> No
     result = await manager.generate_image(ImageGenerationRequest(prompt="一只猫", count=1))
     path, body, headers = gateway.posts[0]
     assert path == "/api/v1/images/generations"
-    assert body == {"model": "doubao-seedream-5-0-260128", "prompt": "一只猫", "n": 1}
+    assert body == {"model": "gpt-image-2.6-flare", "prompt": "一只猫", "n": 1}
+    assert result.model == "gpt-image-2.6-flare"
     assert headers["Idempotency-Key"]
     assert result.artifacts[0].media_type == "image/png"
     assert (tmp_path / result.artifacts[0].path).read_bytes() == PNG
@@ -98,7 +125,7 @@ async def test_a_video_request_and_its_result() -> None:
     )
     assert submission.task is not None and submission.task.task_id == "video-1"
     assert gateway.posts[0][1] == {
-        "model": "doubao-seedance-2-0-mini-260615",
+        "model": "ucloud/MiniMax-H3",
         "prompt": "海浪",
         "duration": 5,
         "resolution": "720p",
@@ -203,3 +230,55 @@ async def test_a_result_still_being_labelled_is_not_done_yet() -> None:
         },
     )
     assert (await provider.poll(submission.task)).status == "succeeded"
+
+
+async def test_lynxces_defaults_are_read_once_and_follow_its_admin() -> None:
+    gateway = Gateway()
+    provider = _provider(gateway)
+    await provider.submit_image(ImageGenerationRequest(prompt="猫"))
+    await provider.submit_video(VideoGenerationRequest(prompt="海浪"))
+    assert [body["model"] for _, body, _ in gateway.posts] == [
+        "gpt-image-2.6-flare",
+        "ucloud/MiniMax-H3",
+    ]
+    assert gateway.model_reads == 1  # one read serves both kinds for a while
+    assert (provider.image_model, provider.video_model) == (
+        "gpt-image-2.6-flare",
+        "ucloud/MiniMax-H3",
+    )
+
+    # Lynxce's admin moves another model to the top: the next read after the cache picks it up.
+    gateway.models = httpx.Response(200, json={"data": [{"id": "qwen-image", "modality": "image"}]})
+    lynxce_media._defaults_cache.clear()
+    await provider.submit_image(ImageGenerationRequest(prompt="狗"))
+    assert gateway.posts[-1][1]["model"] == "qwen-image"
+
+
+@pytest.mark.parametrize(
+    "models",
+    [
+        httpx.Response(503, json={"error": {"code": "unavailable"}}),
+        httpx.Response(200, text="not json"),
+        httpx.Response(200, json={"data": [{"id": "deepseek-v4", "modality": "chat"}]}),
+    ],
+)
+async def test_an_unreadable_model_list_falls_back_and_says_so(
+    models: httpx.Response, caplog: pytest.LogCaptureFixture
+) -> None:
+    gateway = Gateway()
+    gateway.models = models
+    provider = _provider(gateway)
+    await provider.submit_image(ImageGenerationRequest(prompt="猫"))
+    await provider.submit_video(VideoGenerationRequest(prompt="海浪"))
+    assert [body["model"] for _, body, _ in gateway.posts] == [IMAGE_MODEL, VIDEO_MODEL]
+    assert "No Lynxce default image model" in caplog.text
+    assert gateway.model_reads == 1  # the failure is cached briefly too, not retried per call
+
+
+async def test_a_pinned_model_skips_lynxces_list() -> None:
+    gateway = Gateway()
+    client = httpx.AsyncClient(transport=httpx.MockTransport(gateway))
+    provider = LynxceMediaProvider(_auth, image_model="wan2.7-image", client=client)
+    await provider.submit_image(ImageGenerationRequest(prompt="猫"))
+    assert gateway.posts[0][1]["model"] == "wan2.7-image"
+    assert gateway.model_reads == 0
