@@ -35,6 +35,8 @@ IDLE_PAUSE_SECONDS = 10 * 60
 # A screen viewer reports in every 30 s; miss a few and the computer can idle again, and a
 # takeover with no one watching is handed back to the Bot.
 VIEWER_GRACE_SECONDS = 90
+# A conversation that stopped using a computer's screen this long ago lets another one use it.
+SCREEN_HOLD_SECONDS = 120
 CHUNK_MINUTES = 5
 # Reaper passes (30 s apart) a failing settle is retried; Lynxce settles a reservation itself
 # 15 minutes after it expires, so an hour is plenty.
@@ -291,6 +293,8 @@ class ComputerManager:
         self._activity: dict[str, tuple[str, float]] = {}
         # Short-lived glances (window title + thumbnail) so several viewers share one request.
         self._glances: dict[str, tuple[float, Glance]] = {}
+        # Which conversation drives each computer's screen, and when it last did: (thread, time).
+        self._screen_holders: dict[str, tuple[str, float]] = {}
         self._last_orphan_scan = 0.0
 
     # Records
@@ -744,6 +748,20 @@ class ComputerManager:
     def note(self, agent_id: str, kind: str) -> None:
         """Remember the Bot's latest action on its computer (click, type, command, …)."""
         self._activity[agent_id] = (kind, self._clock())
+
+    def claim_screen(self, agent_id: str, holder: str) -> bool:
+        """One conversation at a time points and types on a computer's screen.
+
+        A private chat and a group can both reach the same Bot's computer; the other waits
+        until the holder has left the screen alone for SCREEN_HOLD_SECONDS.
+        """
+        now = self._clock()
+        with self._guard:
+            current = self._screen_holders.get(agent_id)
+            if current and current[0] != holder and now - current[1] < SCREEN_HOLD_SECONDS:
+                return False
+            self._screen_holders[agent_id] = (holder, now)
+            return True
 
     def activity(self, agent_id: str) -> tuple[str, float] | None:
         return self._activity.get(agent_id)

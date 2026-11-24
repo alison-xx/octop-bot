@@ -11,8 +11,14 @@ from langgraph.config import get_config
 
 
 class BotWorkspaceTools(AgentMiddleware[Any, Any]):
-    def __init__(self, tools: Sequence[BaseTool]) -> None:
-        self.tools = tuple(tools)
+    """``tools`` show only on Octop Bot client turns; ``anywhere`` show on every turn.
+
+    A cloud tenant's computer tools are ``anywhere``: the Bot works on its cloud computer
+    whether the turn came from the web, the phone apps, an IM channel or a schedule.
+    """
+
+    def __init__(self, tools: Sequence[BaseTool], anywhere: Sequence[BaseTool] = ()) -> None:
+        self.tools = (*tools, *anywhere)
         self._names = {tool.name for tool in tools}
 
     def _scope(self, request: ModelRequest[Any]) -> ModelRequest[Any]:

@@ -40,6 +40,27 @@
       "question": "{reason}\n请打开这个 Bot 的云电脑画面，点「接管」完成这一步，完成后选「我完成了」。",
       "done": "我完成了",
       "cannot": "我做不了"
+    },
+    "approval": {
+      "title": "需要你确认",
+      "header": "确认",
+      "question": "Bot 想要{action}：{target}\n{detail}",
+      "irreversible": "这一步无法撤销。",
+      "once": "允许一次",
+      "always": "总是允许",
+      "deny": "拒绝",
+      "category": {
+        "send": "发送",
+        "publish": "发布",
+        "submit": "提交",
+        "delete": "删除或覆盖",
+        "permissions": "修改权限或安全设置",
+        "production": "修改线上系统",
+        "terms": "接受条款",
+        "upload": "上传文件到外部网站",
+        "other": "执行一项操作",
+        "click": "点击按钮"
+      }
     }
   },
   "slash": {
@@ -885,6 +906,10 @@
       "date_year": "{year}年{month}月{day}日 {time}",
       "mail": "收到新邮件时",
       "custom": "自定义"
+    },
+    "waiting": {
+      "needs_you": "定时任务「{name}」需要你处理，打开这个 Bot 的对话继续（24 小时内有效）。",
+      "still": "定时任务「{name}」上一次运行还在等你处理，这次没有执行。"
     }
   },
   "agents": {

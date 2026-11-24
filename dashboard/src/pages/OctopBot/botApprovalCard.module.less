@@ -1,0 +1,74 @@
+// Approval card: same family as the question card, with the amber "needs you" edge.
+.card {
+  --approval-edge: #d97706;
+  :global(html[data-theme="dark"]) & {
+    --approval-edge: #fbbf24;
+  }
+  box-sizing: border-box;
+  width: 100%;
+  max-width: min(94%, 680px);
+  margin: 2px 0 13px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--bot-line, var(--fn-border-secondary));
+  border-left: 3px solid var(--approval-edge);
+  border-radius: 20px;
+  background: var(--bot-card, var(--fn-bg-elevated));
+  color: var(--bot-ink, var(--fn-text-primary));
+}
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  svg {
+    color: var(--approval-edge);
+  }
+}
+.question {
+  margin: 8px 0 12px;
+  font-size: 14px;
+  line-height: 21px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.action {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--bot-line, var(--fn-border-secondary));
+  border-radius: 18px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  &:hover:not(:disabled) {
+    background: var(--bot-incoming, var(--fn-bg-secondary));
+  }
+  &:focus-visible {
+    outline: 2px solid var(--bot-outgoing, var(--fn-text-primary));
+    outline-offset: 2px;
+  }
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .card {
+    animation: approvalEnter 200ms cubic-bezier(0.2, 0, 0, 1);
+  }
+  @keyframes approvalEnter {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+}

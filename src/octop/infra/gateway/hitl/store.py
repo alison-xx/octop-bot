@@ -62,6 +62,10 @@ class HitlPendingRecord:
     # Resume still targets the member agent and ``room~member`` thread.
     resume_agent_id: str | None = None
     resume_thread_id: str | None = None
+    # Who opened the pause when no one was chatting (``cron:<id>``), and how long it may wait
+    # for an answer instead of the store's default.
+    origin: str | None = None
+    ttl_seconds: float | None = None
 
 
 @dataclass
@@ -82,6 +86,8 @@ class HitlPendingStore:
         action_requests: list[dict[str, Any]],
         review_configs: list[dict[str, Any]] | None,
         resume_agent_id: str | None = None,
+        origin: str | None = None,
+        ttl_seconds: float | None = None,
     ) -> HitlPendingRecord:
         self._gc()
         # A new pause replaces only the same slot. Two team members share the
@@ -122,6 +128,8 @@ class HitlPendingStore:
             review_configs=list(review_configs) if review_configs else None,
             created_at=time.time(),
             resume_agent_id=resume_agent_id,
+            origin=origin,
+            ttl_seconds=ttl_seconds,
         )
         self._records[pending_id] = record
         return record
@@ -133,7 +141,7 @@ class HitlPendingStore:
             return None
         if record.status != "pending":
             return record
-        if time.time() - record.created_at > self.ttl_seconds:
+        if self._stale(record, time.time()):
             record.status = "expired"
             return record
         return record
@@ -173,7 +181,7 @@ class HitlPendingStore:
                 continue
             if agent_id is not None and record.agent_id != agent_id:
                 continue
-            if time.time() - record.created_at > self.ttl_seconds:
+            if self._stale(record, time.time()):
                 record.status = "expired"
                 continue
             if latest is None or record.created_at > latest.created_at:
@@ -241,7 +249,7 @@ class HitlPendingStore:
             return False
         if user_id is not None and record.user_id != user_id:
             return False
-        if time.time() - record.created_at > self.ttl_seconds:
+        if self._stale(record, time.time()):
             record.status = "expired"
             return False
         return True
@@ -283,7 +291,7 @@ class HitlPendingStore:
                 continue
             if not any_user and record.user_id != user_id:
                 continue
-            if now - record.created_at > self.ttl_seconds:
+            if self._stale(record, now):
                 continue
             if record.agent_id == agent_id:
                 tid = (record.thread_id or "").strip()
@@ -331,14 +339,37 @@ class HitlPendingStore:
         record.ask_question_index += 1
         return record
 
+    def _stale(self, record: HitlPendingRecord, now: float) -> bool:
+        ttl = record.ttl_seconds if record.ttl_seconds is not None else self.ttl_seconds
+        return now - record.created_at > ttl
+
+    def pending_for_user(self, user_id: int) -> list[HitlPendingRecord]:
+        """Every pause still waiting for this user, newest first (the Bot client's inbox)."""
+        self._gc()
+        now = time.time()
+        rows = [
+            r
+            for r in self._records.values()
+            if r.user_id == user_id and r.status == "pending" and not self._stale(r, now)
+        ]
+        rows.sort(key=lambda r: r.created_at, reverse=True)
+        return rows
+
+    def pending_with_origin(self, origin: str) -> HitlPendingRecord | None:
+        """The pause a background run (``cron:<id>``) left waiting for the user, if any."""
+        self._gc()
+        for record in self._records.values():
+            if record.origin == origin and record.status == "pending":
+                return record
+        return None
+
     def _gc(self) -> None:
         now = time.time()
         stale_ids: list[str] = []
         for pending_id, record in self._records.items():
-            age = now - record.created_at
-            if record.status == "pending" and age > self.ttl_seconds:
+            if record.status == "pending" and self._stale(record, now):
                 record.status = "expired"
-            if record.status != "pending" and age > self.ttl_seconds:
+            if record.status != "pending" and self._stale(record, now):
                 stale_ids.append(pending_id)
         for pending_id in stale_ids:
             del self._records[pending_id]

@@ -40,6 +40,27 @@
       "question": "{reason}\nOpen this Bot's cloud computer screen, choose Take over and do this step, then choose Done.",
       "done": "Done",
       "cannot": "I can't do it"
+    },
+    "approval": {
+      "title": "Needs your OK",
+      "header": "Confirm",
+      "question": "The Bot wants to {action}: {target}\n{detail}",
+      "irreversible": "This cannot be undone.",
+      "once": "Allow once",
+      "always": "Always allow",
+      "deny": "Deny",
+      "category": {
+        "send": "send",
+        "publish": "publish",
+        "submit": "submit",
+        "delete": "delete or overwrite",
+        "permissions": "change permissions or security settings",
+        "production": "change a live system",
+        "terms": "accept terms",
+        "upload": "upload files to another site",
+        "other": "do something",
+        "click": "click"
+      }
     }
   },
   "slash": {
@@ -885,6 +906,10 @@
       "date_year": "{month}/{day}/{year} {time}",
       "mail": "When new mail arrives",
       "custom": "Custom"
+    },
+    "waiting": {
+      "needs_you": "The scheduled task “{name}” needs you. Open this Bot's chat to continue (within 24 hours).",
+      "still": "The scheduled task “{name}” is still waiting for you from its last run, so this run was skipped."
     }
   },
   "agents": {

@@ -333,8 +333,15 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
         logger.warning("screen relay for %s ended with an error", agent_id, exc_info=True)
     finally:
         # Leaving the screen in control (closed tab, lost network, crash) hands the computer back.
-        with contextlib.suppress(Exception):
-            if holds["control"] and await asyncio.to_thread(manager.taken_over, agent_id, user_id):
-                await asyncio.to_thread(manager.set_takeover, agent_id, user_id, False)
+        # Shielded: when the connection's task is being cancelled (client gone, server
+        # stopping), the hand-back still runs to the end instead of dying at its first await.
+        if holds["control"]:
+
+            def hand_back() -> None:
+                if manager.taken_over(agent_id, user_id):
+                    manager.set_takeover(agent_id, user_id, False)
+
+            with contextlib.suppress(Exception):
+                await asyncio.shield(asyncio.to_thread(hand_back))
         with contextlib.suppress(Exception):
             await websocket.close()

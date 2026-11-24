@@ -783,3 +783,15 @@ def test_ags_times_without_a_zone_are_utc() -> None:
     assert driver_module._timestamp("2026-11-24T09:44:02+08:00") == driver_module._timestamp(
         "2026-11-24T01:44:02Z"
     )
+
+
+def test_one_conversation_at_a_time_drives_the_screen(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    assert manager.claim_screen("bot1", "private")
+    # A group turn of the same Bot waits while the private chat is still using the screen.
+    assert not manager.claim_screen("bot1", "room~bot1")
+    assert manager.claim_screen("bot2", "room~bot2")
+    clock.now += computers.SCREEN_HOLD_SECONDS - 1
+    assert manager.claim_screen("bot1", "private")  # still the holder; its clock restarts
+    clock.now += computers.SCREEN_HOLD_SECONDS
+    assert manager.claim_screen("bot1", "room~bot1")

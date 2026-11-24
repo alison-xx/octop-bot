@@ -308,3 +308,67 @@ async def test_no_host_run_without_a_sandbox(tmp_path: Path) -> None:
         )
     assert caught.value.code == "needs_cloud_computer"
     assert not marker.exists()
+
+
+class _ComputerWorkspace(_Sandbox):
+    """A cloud tenant's workspace: the shell runs on the cloud computer."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.dirs: list[str] = []
+        self.files = {"skills/report/run.py": "print('skill')"}
+
+    async def amkdir(self, path: str) -> None:
+        self.dirs.append(path)
+
+    async def aexists(self, path: str) -> bool:
+        return path in self.files or path in self.written
+
+    async def aread_text(self, path: str) -> str | None:
+        return self.files.get(path)
+
+
+def _cloud_computer() -> object:
+    from octop.infra.cloud.computers.backend import CloudComputer
+
+    return CloudComputer(SimpleNamespace(), user_id=7, agent_id="bot-1")  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_cloud_computer_runs_a_tenant_script() -> None:
+    """A cloud tenant's script runs on its cloud computer, outside the object-store .octop/."""
+    workspace = _ComputerWorkspace()
+    result = await run_cron_script(
+        host=False,
+        lang="python",
+        source="inline",
+        body="print('sandbox-ok')",
+        path=None,
+        workspace=workspace,
+        backend_spec=_cloud_computer(),
+    )
+    assert result.stdout.strip() == "sandbox-ok"
+    path = next(iter(workspace.written))
+    assert path.startswith(".cron-scripts/")
+    assert workspace.dirs == [".cron-scripts"]
+    assert path in workspace.commands[0]
+    assert workspace.deleted == [path]
+
+
+@pytest.mark.asyncio
+async def test_cloud_computer_copies_a_context_script_onto_the_computer() -> None:
+    """skills/ lives in the object store; its script is copied to the computer to run."""
+    workspace = _ComputerWorkspace()
+    await run_cron_script(
+        host=False,
+        lang="python",
+        source="file",
+        body="",
+        path="skills/report/run.py",
+        workspace=workspace,
+        backend_spec=_cloud_computer(),
+    )
+    ((path, body),) = workspace.written.items()
+    assert path.startswith(".cron-scripts/")
+    assert body == "print('skill')"
+    assert "skills/report" not in workspace.commands[0]

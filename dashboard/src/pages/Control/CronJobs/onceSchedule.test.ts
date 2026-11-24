@@ -7,6 +7,7 @@ import {
   formatTriggerText,
   isFutureWallClock,
   oneShotPhase,
+  lastRunStatusTag,
   scheduleFieldFromTrigger,
 } from "./onceSchedule";
 
@@ -60,8 +61,21 @@ describe("onceSchedule", () => {
     expect(oneShotPhase("date:2026-10-18T09:00:00", false, "missed")).toBe(
       "missed",
     );
+    expect(oneShotPhase("date:2026-10-18T09:00:00", false, "waiting")).toBe(
+      "waiting",
+    );
     expect(oneShotPhase("date:2026-10-18T09:00:00", false, null)).toBe(
       "paused",
     );
+  });
+});
+
+describe("lastRunStatusTag", () => {
+  it("shows a run waiting for the user as a warning, not a failure", () => {
+    expect(lastRunStatusTag("waiting")).toEqual({
+      color: "warning",
+      labelKey: "cronJobs.lastStatusWaiting",
+    });
+    expect(lastRunStatusTag("error")?.color).toBe("error");
   });
 });

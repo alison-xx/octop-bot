@@ -3379,10 +3379,12 @@
     "oneShotDone": "Completed",
     "oneShotFailed": "Failed",
     "oneShotMissed": "Missed",
+    "oneShotWaiting": "Needs you",
     "oneShotPaused": "Paused",
     "lastStatusOk": "Succeeded",
     "lastStatusError": "Failed",
     "lastStatusMissed": "Missed",
+    "lastStatusWaiting": "Needs you",
     "oneShotEnableBlocked": "That time has already passed. Pick a future time before enabling it again.",
     "form": {
       "sectionBasic": "Basic Info",
@@ -9028,5 +9030,55 @@
       "later": "Choose later",
       "useModel": "Use this model"
     }
+  },
+  "botTask": {
+    "label": "Task: {{goal}}",
+    "deep": "Deep",
+    "steps": "{{done}}/{{total}} steps",
+    "seconds": "{{count}}s",
+    "minutes": "{{count}} min",
+    "criteria": "Acceptance criteria ({{count}})",
+    "acceptance": "Acceptance",
+    "openIssues": "Not done",
+    "assumptions": "Decided on my own",
+    "reportDone": "Done: {{goal}}",
+    "reportPartial": "Partly done: {{goal}}",
+    "duration": "Took {{time}}",
+    "phase": {
+      "live": "Working",
+      "waiting": "Needs you",
+      "paused": "Paused",
+      "done": "Done",
+      "partial": "Partly done",
+      "stopped": "Stopped"
+    },
+    "check": {
+      "pending": "To check",
+      "passed": "Passed",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "review": "Independent review",
+    "showReview": "Show the review",
+    "hideReview": "Hide",
+    "deliverables": "Deliverables",
+    "checked": "Checked: {{facts}}",
+    "opens": "opens",
+    "fact": {
+      "pages": "{{count}} pages",
+      "rows": "{{count}} data rows",
+      "sheets": "{{count}} sheets",
+      "slides": "{{count}} slides",
+      "chars": "{{count}} characters",
+      "lines": "{{count}} lines",
+      "files": "{{count}} files",
+      "pixels": "{{w}}×{{h}}"
+    }
+  },
+  "botInbox": {
+    "needsYou": "Needs you"
+  },
+  "botApproval": {
+    "title": "Needs your OK"
   }
 }

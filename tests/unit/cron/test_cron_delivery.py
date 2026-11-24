@@ -11,7 +11,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.infra.agents.security.hitl_session import HitlSessionPolicy, HitlSessionPolicyStore
-from octop.infra.cron.delivery import CronDeliveryCommand, CronDeliveryService
+from octop.infra.cron.delivery import CronDeliveryCommand, CronDeliveryService, CronWaitingForUser
 from octop.infra.cron.script_run import ScriptRunError, ScriptRunResult
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -310,7 +310,7 @@ async def test_allow_all_off_keeps_the_saved_policy() -> None:
 
 
 @pytest.mark.asyncio
-async def test_managed_allow_all_still_fails_when_the_run_asks() -> None:
+async def test_managed_allow_all_still_waits_when_the_run_asks() -> None:
     store, repo = _policy_store()
 
     async def _stream(_aid: str, _request: dict):
@@ -318,9 +318,11 @@ async def test_managed_allow_all_still_fails_when_the_run_asks() -> None:
         yield {"type": "hitl_required"}
 
     service, gateway = _agent_delivery(_stream, store=store, kind="managed")
-    with pytest.raises(RuntimeError, match="interaction"):
+    with pytest.raises(CronWaitingForUser):
         await service.deliver(_command(task_type="agent", prompt="run", allow_all=True))
-    gateway.push_session_text.assert_not_awaited()
+    # The IM chat hears that the task needs the user, not the half-finished answer.
+    (_session_arg, text), _ = gateway.push_session_text.await_args
+    assert "喝水提醒" in text and "partial" not in text
     repo.update_composer.assert_not_called()
 
 
@@ -445,7 +447,7 @@ async def test_cloud_tenant_script_needs_a_cloud_computer(monkeypatch: pytest.Mo
 
 
 @pytest.mark.asyncio
-async def test_agent_hitl_does_not_push() -> None:
+async def test_agent_hitl_waits_for_the_user_without_pushing_text() -> None:
     session = _session(channel_type=ThreadRegistry.CHANNEL_DASHBOARD)
 
     async def _stream(_aid: str, _request: dict):
@@ -469,7 +471,7 @@ async def test_agent_hitl_does_not_push() -> None:
         agent_manager=agent_manager,
         repos=repos,
     )
-    with pytest.raises(RuntimeError, match="interaction"):
+    with pytest.raises(CronWaitingForUser):
         await service.deliver(_command(task_type="agent", prompt="run"))
     gateway.push_session_text.assert_not_awaited()
     projected = repos.thread_message_repo.append_if_ready.call_args.args[1]
@@ -946,3 +948,85 @@ async def test_telegram_cron_reloads_topic_routing_from_persisted_session(tmp_pa
     assert subject.metadata["channel_id"] == "telegram-bot"
     assert "message_id" not in subject.metadata
     db.close()
+
+
+def _waiting_service(
+    stream: Any, *, channel_type: str = ThreadRegistry.CHANNEL_DASHBOARD
+) -> tuple[CronDeliveryService, MagicMock, Any]:
+    from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator
+
+    session = _session(channel_type=channel_type)
+    agent_manager = MagicMock()
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = stream
+    agent_manager.get_row = MagicMock(return_value=None)
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
+    gateway.processor.hitl_coordinator = HitlChannelCoordinator()
+    repos = MagicMock()
+    repos.user_repo.get.return_value = MagicMock(locale="zh")
+    service = CronDeliveryService(gateway=gateway, agent_manager=agent_manager, repos=repos)
+    return service, gateway, gateway.processor.hitl_coordinator.store
+
+
+_TAKEOVER = {
+    "action_requests": [
+        {
+            "name": "ask_user_question",
+            "description": "需要你接管",
+            "args": {"questions": [{"question": "请登录招商银行网银", "options": []}]},
+        }
+    ],
+    "review_configs": [{"action_name": "ask_user_question", "allowed_decisions": ["respond"]}],
+}
+
+
+@pytest.mark.asyncio
+async def test_a_scheduled_run_that_needs_the_user_leaves_an_answerable_card() -> None:
+    """A takeover or approval in a scheduled run waits a day for the user instead of failing."""
+    from octop.infra.cron.delivery import WAIT_FOR_USER_SECONDS
+
+    calls = 0
+
+    async def _stream(_aid: str, _request: dict):
+        nonlocal calls
+        calls += 1
+        yield {"type": "hitl_required", "request": _TAKEOVER}
+
+    service, gateway, store = _waiting_service(_stream)
+    with pytest.raises(CronWaitingForUser, match="请登录招商银行网银"):
+        await service.deliver(_command(task_type="agent", prompt="查账单"))
+    record = store.resolve_pending_for_thread("thr1", agent_id="a1", user_id=1)
+    assert record is not None and record.origin == "cron:j1"
+    assert record.ttl_seconds == WAIT_FOR_USER_SECONDS
+    # The card is in the conversation already: a notification points at it, no extra text.
+    gateway.notify_dashboard_push.assert_awaited_once()
+    gateway.push_session_text.assert_not_awaited()
+
+    # The next run is skipped while the user has not answered; it does not ask again.
+    with pytest.raises(CronWaitingForUser, match="还在等你"):
+        await service.deliver(_command(task_type="agent", prompt="查账单", fresh_thread=True))
+    assert calls == 1
+    gateway.notify_dashboard_push.assert_awaited_once()
+    gateway.thread_registry.reset_by_session_key.assert_not_called()
+
+    # Answered (or expired): the job runs again.
+    store.mark_resolved(record.pending_id, "approved")
+    with pytest.raises(CronWaitingForUser):
+        await service.deliver(_command(task_type="agent", prompt="查账单"))
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_an_im_scheduled_run_that_needs_the_user_says_so_in_the_chat() -> None:
+    async def _stream(_aid: str, _request: dict):
+        yield {"type": "hitl_required", "request": _TAKEOVER}
+
+    service, gateway, _store = _waiting_service(_stream, channel_type="feishu")
+    with pytest.raises(CronWaitingForUser):
+        await service.deliver(_command(task_type="agent", prompt="查账单"))
+    text = gateway.push_session_text.await_args.args[1]
+    assert "需要你处理" in text and "请登录招商银行网银" in text

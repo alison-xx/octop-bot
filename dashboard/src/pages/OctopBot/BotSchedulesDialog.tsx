@@ -475,9 +475,9 @@ export default function BotSchedulesDialog({
                             {status && " · " + t(status.labelKey)}
                           </small>
                         )}
-                        {job.last_status === "error" && job.last_error && (
-                          <small>{job.last_error}</small>
-                        )}
+                        {(job.last_status === "error" ||
+                          job.last_status === "waiting") &&
+                          job.last_error && <small>{job.last_error}</small>}
                       </div>
                       {onOpenCloud &&
                         !job.enabled &&

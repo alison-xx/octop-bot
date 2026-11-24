@@ -3378,10 +3378,12 @@
     "oneShotDone": "已完成",
     "oneShotFailed": "已失败",
     "oneShotMissed": "已错过",
+    "oneShotWaiting": "等你处理",
     "oneShotPaused": "已停用",
     "lastStatusOk": "成功",
     "lastStatusError": "失败",
     "lastStatusMissed": "已错过",
+    "lastStatusWaiting": "等你处理",
     "oneShotEnableBlocked": "执行时间已过，请改到将来的时间后再启用",
     "form": {
       "sectionBasic": "基础信息",
@@ -9028,5 +9030,55 @@
       "later": "稍后再选",
       "useModel": "使用这个模型"
     }
+  },
+  "botTask": {
+    "label": "任务：{{goal}}",
+    "deep": "深度",
+    "steps": "{{done}}/{{total}} 步",
+    "seconds": "{{count}} 秒",
+    "minutes": "{{count}} 分钟",
+    "criteria": "验收条件 {{count}} 条",
+    "acceptance": "验收",
+    "openIssues": "没做完的",
+    "assumptions": "我自己定的",
+    "reportDone": "已完成：{{goal}}",
+    "reportPartial": "部分完成：{{goal}}",
+    "duration": "用时 {{time}}",
+    "phase": {
+      "live": "进行中",
+      "waiting": "等你处理",
+      "paused": "已暂停",
+      "done": "已完成",
+      "partial": "部分完成",
+      "stopped": "已停止"
+    },
+    "check": {
+      "pending": "待核对",
+      "passed": "通过",
+      "failed": "未通过",
+      "skipped": "跳过"
+    },
+    "review": "独立复核",
+    "showReview": "展开复核结论",
+    "hideReview": "收起",
+    "deliverables": "产物",
+    "checked": "已检查：{{facts}}",
+    "opens": "能打开",
+    "fact": {
+      "pages": "{{count}} 页",
+      "rows": "{{count}} 行数据",
+      "sheets": "{{count}} 个工作表",
+      "slides": "{{count}} 页幻灯片",
+      "chars": "{{count}} 字",
+      "lines": "{{count}} 行",
+      "files": "{{count}} 个文件",
+      "pixels": "{{w}}×{{h}}"
+    }
+  },
+  "botInbox": {
+    "needsYou": "等你处理"
+  },
+  "botApproval": {
+    "title": "需要你确认"
   }
 }
