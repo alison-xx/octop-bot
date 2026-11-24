@@ -438,6 +438,21 @@
       "autoDownloadHint": "在后台下载新版本，准备好后提示你重启",
       "beta": "接收测试版",
       "betaHint": "提前体验新功能，可能不太稳定"
+    },
+    "settingsGroups": {
+      "account": "账号",
+      "ai": "AI",
+      "other": "其他"
+    },
+    "settingsDescriptions": {
+      "account": "管理账号、积分和用量。",
+      "models": "选择和管理用于对话的模型。",
+      "general": "调整界面外观和语言。",
+      "notifications": "选择接收通知和提示音的方式。",
+      "privacy": "管理桌面功能、隐私和本机导入。",
+      "about": "查看版本、更新和服务信息。",
+      "appearanceHint": "选择界面的显示主题。",
+      "languageHint": "选择界面使用的语言。"
     }
   },
   "octopBot": {

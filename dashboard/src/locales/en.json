@@ -438,6 +438,21 @@
       "autoDownloadHint": "Get new versions in the background and ask to restart when ready",
       "beta": "Receive beta versions",
       "betaHint": "Try new features early; may be less stable"
+    },
+    "settingsGroups": {
+      "account": "Account",
+      "ai": "AI",
+      "other": "Other"
+    },
+    "settingsDescriptions": {
+      "account": "Manage your account, credits and usage.",
+      "models": "Choose and manage models for conversations.",
+      "general": "Adjust the appearance and language.",
+      "notifications": "Choose how to receive notifications and sounds.",
+      "privacy": "Manage desktop features, privacy and local import.",
+      "about": "View version, updates and server information.",
+      "appearanceHint": "Choose the interface theme.",
+      "languageHint": "Choose the interface language."
     }
   },
   "octopBot": {

@@ -31,6 +31,9 @@ export default function BotAboutPanel({ returnTo }: { returnTo: string }) {
   return (
     <div className={settings.page}>
       <h2>{t("botAbout.title")}</h2>
+      <p className={settings.description}>
+        {t("botClient.settingsDescriptions.about")}
+      </p>
       <div className={settings.group}>
         <div className={settings.row}>
           <span className={settings.who}>

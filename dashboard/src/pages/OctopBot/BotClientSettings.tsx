@@ -3,12 +3,15 @@ import { Alert, Button, Select, Spin } from "antd";
 import {
   ArrowLeft,
   Blocks,
+  Bell,
+  Monitor,
+  Palette,
+  ExternalLink,
   Check,
   Cpu,
   FolderLock,
   Info,
   LogOut,
-  SlidersHorizontal,
   UserRound,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -44,9 +47,13 @@ import {
   signOutBotClient,
   useLanguage,
 } from "./AccountMenu";
-import { CreditsPanel, LYNXCE_ACCOUNT_SITE } from "./CreditsWidgets";
+import {
+  CreditsPanel,
+  LYNXCE_ACCOUNT_SITE,
+  useRecharge,
+} from "./CreditsWidgets";
 import BotAboutPanel from "./BotAboutPanel";
-import { useLynxceCredits } from "./useLynxceCredits";
+import { formatCredits, useLynxceCredits } from "./useLynxceCredits";
 import { useBotServerInfo } from "./useBotServerInfo";
 import { accountInitials } from "../Chat/utils/accountDisplayName";
 import styles from "./index.module.less";
@@ -55,8 +62,19 @@ import ModelName from "./ModelName";
 import OwnKeysSection from "./OwnKeysSection";
 import type { OwnKeyList } from "../../api/modules/ownModelKeys";
 import sourcesUi from "./modelSources.module.less";
+import menuStyles from "./accountMenu.module.less";
+import lynxceLogo from "../../assets/providers/lynxce.png";
+import { botCloudApi } from "../../api/modules/botCloud";
+import { ProfileAvatar } from "../Admin/Users/ProfileAvatar";
+import { BotCharacter, octopCharacter } from "./BotCharacter";
 
-type SettingsTab = "account" | "models" | "general" | "about";
+type SettingsTab =
+  | "account"
+  | "models"
+  | "general"
+  | "notifications"
+  | "privacy"
+  | "about";
 
 /** This computer's Ollama, through the existing service card (install, start, models). */
 function LocalModels({ onSaved }: { onSaved: () => void }) {
@@ -93,7 +111,7 @@ function LocalModels({ onSaved }: { onSaved: () => void }) {
 }
 
 export default function BotClientSettings() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const user = useCurrentUser();
   const navigate = useNavigate();
   const location = useLocation();
@@ -110,8 +128,30 @@ export default function BotClientSettings() {
   const account = useLynxceStatus(!web);
   const credits = useLynxceCredits();
   const cloudEdition = useBotServerInfo()?.edition === "cloud";
-  const displayName = botAccountName(user, t("botClient.account.lynxceUser"));
-  const lynxceSignedIn = credits.status !== "none" && credits.status !== "idle";
+  const [cloudAccount, setCloudAccount] = useState<{
+    display_name: string | null;
+    account_id: string | null;
+    avatar_url?: string | null;
+  } | null>(null);
+  useEffect(() => {
+    if (web) return;
+    let active = true;
+    botCloudApi
+      .account()
+      .then((result) => {
+        if (active && result.connected) setCloudAccount(result);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [web]);
+  const displayName =
+    cloudAccount?.display_name ||
+    cloudAccount?.account_id ||
+    botAccountName(user, t("botClient.account.lynxceUser"));
+  const { recharge, opening } = useRecharge();
+  const lynxceSignedIn = web || Boolean(cloudAccount);
   const [ownKeys, setOwnKeys] = useState<OwnKeyList | null>(null);
   const [localOpen, setLocalOpen] = useState(false);
   const [switchError, setSwitchError] = useState("");
@@ -152,6 +192,8 @@ export default function BotClientSettings() {
   const [language, setLanguage] = useLanguage();
   const [tab, setTab] = useState<SettingsTab>(
     location.state?.tab === "general" ||
+      location.state?.tab === "notifications" ||
+      location.state?.tab === "privacy" ||
       location.state?.tab === "account" ||
       location.state?.tab === "about"
       ? location.state.tab
@@ -223,34 +265,77 @@ export default function BotClientSettings() {
       <div className={settings.layout}>
         <nav className={settings.nav} aria-label={t("botClient.menu.settings")}>
           <h1>{t("botClient.menu.settings")}</h1>
-          {navItem("account", "botClient.nav.account", UserRound)}
-          {navItem("models", "botClient.nav.models", Cpu)}
-          {showCapabilities && (
-            <button
-              type="button"
-              onClick={() =>
-                navigate(BOT_CAPABILITIES, { state: { from: back } })
-              }
-            >
-              <Blocks size={16} />
-              {t("botCapabilities.title")}
-            </button>
-          )}
-          {navItem("general", "botClient.nav.general", SlidersHorizontal)}
-          {navItem("about", "botAbout.title", Info)}
+          <div
+            className={settings.navGroup}
+            aria-label={t("botClient.settingsGroups.account")}
+          >
+            <h2>{t("botClient.settingsGroups.account")}</h2>
+            {navItem("account", "botClient.nav.account", UserRound)}
+          </div>
+          <div
+            className={settings.navGroup}
+            aria-label={t("botClient.settingsGroups.ai")}
+          >
+            <h2>{t("botClient.settingsGroups.ai")}</h2>
+            {navItem("models", "botClient.nav.models", Cpu)}
+            {showCapabilities && (
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(BOT_CAPABILITIES, { state: { from: back } })
+                }
+              >
+                <Blocks size={16} />
+                {t("botCapabilities.title")}
+                <ExternalLink
+                  className={settings.external}
+                  size={14}
+                  aria-hidden="true"
+                />
+              </button>
+            )}
+          </div>
+          <div
+            className={settings.navGroup}
+            aria-label={t("botClient.nav.general")}
+          >
+            <h2>{t("botClient.nav.general")}</h2>
+            {navItem("general", "botClient.nav.lookAndLanguage", Palette)}
+            {navItem("notifications", "botNotify.settingsTitle", Bell)}
+            {navItem("privacy", "botClient.nav.desktopAndPrivacy", Monitor)}
+          </div>
+          <div
+            className={settings.navGroup}
+            aria-label={t("botClient.settingsGroups.other")}
+          >
+            <h2>{t("botClient.settingsGroups.other")}</h2>
+            {navItem("about", "botAbout.title", Info)}
+          </div>
         </nav>
         <div className={settings.content}>
           {tab === "general" ? (
             <div className={settings.page}>
-              <h2>{t("botClient.nav.general")}</h2>
-              <h3>{t("botClient.nav.lookAndLanguage")}</h3>
+              <h2>{t("botClient.nav.lookAndLanguage")}</h2>
+              <p className={settings.description}>
+                {t("botClient.settingsDescriptions.general")}
+              </p>
               <div className={settings.group}>
                 <div className={settings.row}>
-                  <span>{t("botClient.nav.appearance")}</span>
+                  <span>
+                    {t("botClient.nav.appearance")}
+                    <small>
+                      {t("botClient.settingsDescriptions.appearanceHint")}
+                    </small>
+                  </span>
                   <ThemeSwitcher compact />
                 </div>
                 <div className={settings.row}>
-                  <span>{t("botClient.nav.language")}</span>
+                  <span>
+                    {t("botClient.nav.language")}
+                    <small>
+                      {t("botClient.settingsDescriptions.languageHint")}
+                    </small>
+                  </span>
                   <Select
                     className={settings.select}
                     value={language}
@@ -262,8 +347,21 @@ export default function BotClientSettings() {
                   />
                 </div>
               </div>
+            </div>
+          ) : tab === "notifications" ? (
+            <div className={settings.page}>
+              <h2>{t("botNotify.settingsTitle")}</h2>
+              <p className={settings.description}>
+                {t("botClient.settingsDescriptions.notifications")}
+              </p>
               <BotNotifySettings />
-              <h3>{t("botClient.nav.desktopAndPrivacy")}</h3>
+            </div>
+          ) : tab === "privacy" ? (
+            <div className={settings.page}>
+              <h2>{t("botClient.nav.desktopAndPrivacy")}</h2>
+              <p className={settings.description}>
+                {t("botClient.settingsDescriptions.privacy")}
+              </p>
               <div className={settings.group}>
                 {getDesktopBridge()?.showBotOrb && (
                   <div className={settings.row}>
@@ -296,21 +394,110 @@ export default function BotClientSettings() {
           ) : tab === "account" ? (
             <div className={`${settings.page} ${settings.wide}`}>
               <h2>{t("botClient.nav.account")}</h2>
+              <p className={settings.description}>
+                {t("botClient.settingsDescriptions.account")}
+              </p>
+              <div
+                className={`${menuStyles.card} ${settings.accountCard}`}
+                data-local={!(lynxceSignedIn || cloudEdition) || undefined}
+              >
+                <div className={menuStyles.cardWho}>
+                  <span className={menuStyles.avatarWrap} data-size="large">
+                    {lynxceSignedIn || cloudEdition ? (
+                      cloudAccount?.avatar_url ||
+                      user?.avatar_url ||
+                      user?.avatar_icon ? (
+                        <ProfileAvatar
+                          className={menuStyles.avatar}
+                          url={cloudAccount?.avatar_url || user?.avatar_url}
+                          icon={user?.avatar_icon}
+                        />
+                      ) : (
+                        <span className={menuStyles.avatar}>
+                          {accountInitials(displayName)}
+                        </span>
+                      )
+                    ) : (
+                      <span className={menuStyles.avatar} data-chief>
+                        <BotCharacter
+                          look={{ ...octopCharacter, source: "character" }}
+                          size={26}
+                          badges={false}
+                        />
+                      </span>
+                    )}
+                    {(lynxceSignedIn || cloudEdition) && (
+                      <img
+                        className={menuStyles.badge}
+                        src={lynxceLogo}
+                        alt=""
+                      />
+                    )}
+                  </span>
+                  <span className={menuStyles.who}>
+                    <strong className={menuStyles.name}>{displayName}</strong>
+                    <small>
+                      {t(
+                        lynxceSignedIn || cloudEdition
+                          ? "botClient.account.lynxce"
+                          : "botClient.account.local",
+                      )}
+                    </small>
+                  </span>
+                </div>
+                {lynxceSignedIn || cloudEdition ? (
+                  <>
+                    {credits.wallet && (
+                      <div className={menuStyles.balance}>
+                        <strong>
+                          {formatCredits(
+                            credits.wallet.credits,
+                            i18n?.language,
+                          )}
+                          <small>{t("botClient.menu.credits")}</small>
+                        </strong>
+                      </div>
+                    )}
+                    <div className={menuStyles.cardActions}>
+                      <Button
+                        type="primary"
+                        disabled={!credits.wallet}
+                        loading={opening}
+                        onClick={() => void recharge()}
+                      >
+                        {t("botCredits.recharge")}
+                      </Button>
+                      <Button
+                        onClick={() =>
+                          document
+                            .getElementById("bot-usage-title")
+                            ?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            })
+                        }
+                      >
+                        {t("botClient.menu.usage")}
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p>{t("botClient.menu.localHint")}</p>
+                    <Button
+                      type="primary"
+                      onClick={() =>
+                        void signOutBotClient(user?.username, navigate)
+                      }
+                    >
+                      {t("botClient.menu.lynxceSignIn")}
+                    </Button>
+                  </>
+                )}
+              </div>
               <div className={settings.group}>
                 <div className={settings.row}>
-                  <span className={settings.who}>
-                    <span className={settings.initials}>
-                      {accountInitials(displayName)}
-                    </span>
-                    <span>
-                      {displayName}
-                      <small>
-                        {lynxceSignedIn || cloudEdition
-                          ? t("botClient.account.lynxce")
-                          : t("botClient.account.localHint")}
-                      </small>
-                    </span>
-                  </span>
+                  <span>{t("botClient.nav.account")}</span>
                   <span className={settings.rowActions}>
                     {(lynxceSignedIn || cloudEdition) && (
                       <a
@@ -375,7 +562,13 @@ export default function BotClientSettings() {
               )}
             </div>
           ) : web && !cloudEdition && (cloud || local) ? (
-            <ModelsPage chatOnly onConnectionSaved={refreshBotModels} />
+            <div className={settings.page}>
+              <h2>{t("botClient.nav.models")}</h2>
+              <p className={settings.description}>
+                {t("botClient.settingsDescriptions.models")}
+              </p>
+              <ModelsPage chatOnly onConnectionSaved={refreshBotModels} />
+            </div>
           ) : full ? (
             <>
               <div className={styles.catalogBack}>
@@ -408,9 +601,11 @@ export default function BotClientSettings() {
               <div className={sourcesUi.page} data-bot-connect>
                 <header className={sourcesUi.head}>
                   <div>
-                    <h1>
+                    <h1>{t("botClient.nav.models")}</h1>
+                    <p>{t("botClient.settingsDescriptions.models")}</p>
+                    <h2>
                       {t(ready ? "botModels.title" : "botModels.setupTitle")}
-                    </h1>
+                    </h2>
                     <p>{t(ready ? "botModels.body" : "botModels.setupBody")}</p>
                   </div>
                   {currentModel && (
