@@ -148,6 +148,8 @@
     "retryMember": "请这位成员重试"
   },
   "botDirectory": {
+    "preparing": "准备中",
+    "preparingHint": "正在准备，马上就好",
     "newPrivateChat": "开始新私聊",
     "newGroupWithMembers": "沿用成员另开群聊",
     "groupHistoryHelp": "每个群保留一条连续的历史。另开群聊会沿用成员、管理员和回复方式，消息、文件、群笔记和 Goal 都从空白开始。",
@@ -9356,6 +9358,7 @@
     "routinesPick": "同时开启这些例行任务",
     "integrationsAfter": "导入后可以在“能力 → 连接器”里连接{{names}}。",
     "listJoin": "、",
+    "importedPreparing": "已添加 {{name}}，正在准备",
     "imported": "已导入 {{name}}",
     "entry": "Bot 市场",
     "menuEntry": "从 Bot 市场添加",

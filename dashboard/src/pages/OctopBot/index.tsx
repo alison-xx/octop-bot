@@ -241,6 +241,16 @@ export default function OctopBotPage() {
       document.removeEventListener("visibilitychange", focus);
     };
   }, [refresh]);
+  const hasPreparingBot = workspace?.bots.some((bot) => bot.preparing) ?? false;
+  useEffect(() => {
+    if (!hasPreparingBot) return;
+    const timer = window.setInterval(() => {
+      void refresh();
+      void refreshAgents({ silent: true, force: true });
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [hasPreparingBot, refresh, refreshAgents]);
+
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
   const activityNameOf = useCallback((kind: "bot" | "group", id: string) => {
@@ -587,6 +597,7 @@ export default function OctopBotPage() {
         recent(b) - recent(a),
     );
   const previewFor = (item: Item) => {
+    if (item.bot?.preparing) return t("botDirectory.preparing");
     if (previews[item.key]) return previews[item.key];
     if (item.bot?.is_main) return t("botDirectory.coordinator");
     if (item.bot)
