@@ -595,6 +595,28 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 
 - App Store 版不放网页充值链接（规则 3.1.1，见 §8.3）：积分不足卡片只有 App 内购的「充值」和「继续」，提示文字也不带网址。每日上限卡片保留账户中心链接，那是调上限，不是购买。
 
+## 12.9 自己的厂商 Key（2026-11-24）
+
+用户可以填自己在腾讯云、阿里云百炼、火山方舟、智谱、Kimi、MiniMax、DeepSeek、硅基流动等厂商的 API Key，Bot 就用这把 Key 聊天。灵策云端的用户也可以，用自己的 Key 聊天时由厂商计费，不扣灵策积分，用完额度也不会出现「积分不足」的充值卡片。
+
+- 厂商列表来自内置的提供商目录（octop-harness 预置，共 40 多家），每家都是官方 HTTPS 地址。灵策（另有登录）、本地服务（Ollama、ONNX、Magpie）和 OAuth 登录类（ChatGPT）不在列表里。
+- Key 按用户加密保存在 `secret_repo`（`octop_bot:own_model_keys:{user_id}`），不进全局 `providers` 表，别的用户看不到也用不了。接口只返回 `****` 加末四位。
+- 添加时先用这把 Key 请求厂商的 `/models`。厂商返回 401 或 403 就拒绝，报 `BOT_MODEL_KEY_INVALID`。厂商没有模型列表时，用目录里的推荐模型。
+- 选用后，个人模型选择记成 `{"connection": "own:<key id>", "model": ...}`。云端租户、桌面端、群聊、IM 和定时任务都走同一个 `account_selection`，所以都会用上这把 Key。删掉正在用的 Key 后，云端回到灵策模型；桌面端如果登录了灵策，也回到灵策模型，否则回到本机配置。
+- 安全：灵策云端只能选列表里的厂商，不能填自定义地址，否则租户可以让服务器去访问内网地址（127.0.0.1、云厂商元数据服务等）。桌面端可以填任意 OpenAI 兼容地址（`vendor: "custom"`）。每人最多 20 把 Key。
+
+接口（`/api/octop-bot/model-keys`，云端任何租户可用，桌面端只限本机）：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/vendors` | 可填 Key 的厂商目录，带 `custom_allowed` |
+| GET | `` | 我的 Key（不含 Key 本身）、正在用的 Key 和模型 |
+| POST | `` | 添加：`{vendor, api_key, name?, base_url?, protocol?}`，后两项只用于 `custom` |
+| PUT | `/{id}/model` | 用这把 Key 的某个模型聊天：`{model_id}` |
+| DELETE | `/{id}` | 删除；正在用的话回到默认模型 |
+
+新增错误码：`BOT_MODEL_KEY_INVALID`、`BOT_MODEL_VENDOR_UNSUPPORTED`、`BOT_MODEL_KEY_LIMIT`（都是 400）。界面（设置 → 模型 →「我的 API Key」和添加弹窗）由桌面客户端改版那边按这套接口做。
+
 ## 14. 待你拍板
 
 - **Q1** 云电脑形态：每个 Bot 一台 AGS 沙箱（推荐，前提是暂停不收计算费），还是学 Grok 每人一台、Bot 分屏？
