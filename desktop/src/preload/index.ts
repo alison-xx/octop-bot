@@ -92,6 +92,15 @@ const bridge = {
     if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" });
     return ipcRenderer.invoke(IPC_CHANNELS.botWorkbuddyLogin);
   },
+  /** Ask macOS for ``screen_recording`` or ``accessibility``; resolves true when already granted. */
+  requestComputerPermission(kind: "screen_recording" | "accessibility"): Promise<boolean> {
+    if (!botOnly) return Promise.resolve(false);
+    return ipcRenderer.invoke(IPC_CHANNELS.botComputerPermission, kind);
+  },
+  /** Quit and start Octop Bot again. */
+  relaunch(): void {
+    if (botOnly) ipcRenderer.send(IPC_CHANNELS.botRelaunch);
+  },
   /** Restart on the Octop Bot cloud, signed in with ``accessToken`` (from the local move). */
   useLynxceCloud(accessToken: string): Promise<boolean> {
     if (!botOnly) return Promise.resolve(false);
