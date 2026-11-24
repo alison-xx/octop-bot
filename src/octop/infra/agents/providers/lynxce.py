@@ -361,6 +361,8 @@ def account_selection(services: SharedServices, user_id: int) -> AccountModel | 
     data = json.loads(raw)
     if not data.get("model"):
         return None
+    if _is_own(data.get("connection")):
+        return _own(services, user_id, data)
     if data.get("connection") == CLOUD_CONNECTION:
         if _cloud_key_secret(services, user_id) is None:
             raise _auth_required()
@@ -378,24 +380,91 @@ def _cloud_selection(services: SharedServices, user_id: int) -> AccountModel | N
     if user is None or str(user.role) == "admin":
         return None
     raw = services.settings_repo.get(_key(user_id))
-    chosen = json.loads(raw).get("model") if isinstance(raw, str) and raw else None
+    data = json.loads(raw) if isinstance(raw, str) and raw else {}
+    if _is_own(data.get("connection")) and data.get("model"):
+        own = _own(services, user_id, data)
+        if own is not None:
+            return own
+    chosen = None if _is_own(data.get("connection")) else data.get("model")
     model = chosen if isinstance(chosen, str) and chosen else cloud_model_id()
     return CloudAccountModel(user_id, "cloud", model)
 
 
-def pays_with_account_credits(settings_repo: Any, user_repo: Any, user_id: int) -> bool:
-    """Whether this user's chats are billed to their own Lynxce wallet (credits, not a key)."""
-    if bot_cloud_enabled():
-        user = user_repo.get(user_id)
-        return user is not None and str(user.role) != "admin"
-    if not bot_desktop_enabled() or settings_repo is None:
-        return False
-    raw = settings_repo.get(_key(user_id))
+def _is_own(connection: object) -> bool:
+    from octop.infra.agents.providers.own_keys import OWN_PREFIX  # noqa: PLC0415
+
+    return isinstance(connection, str) and connection.startswith(OWN_PREFIX)
+
+
+def _own(services: SharedServices, user_id: int, data: dict[str, Any]) -> AccountModel | None:
+    """The user's own vendor key; ``None`` once it was removed (back to the default)."""
+    from octop.infra.agents.providers.own_keys import own_selection  # noqa: PLC0415
+
+    return own_selection(services, user_id, data["connection"], data["model"])
+
+
+def _selection_data(settings_repo: Any, user_id: int) -> dict[str, Any]:
+    raw = settings_repo.get(_key(user_id)) if settings_repo is not None else None
     try:
         data = json.loads(raw) if isinstance(raw, str) and raw else {}
     except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def pays_with_account_credits(settings_repo: Any, user_repo: Any, user_id: int) -> bool:
+    """Whether this user's chats are billed to their own Lynxce wallet (credits, not a key).
+
+    Chats on the user's own vendor key are billed by that vendor instead.
+    """
+    data = _selection_data(settings_repo, user_id)
+    if bot_cloud_enabled():
+        user = user_repo.get(user_id)
+        return (
+            user is not None
+            and str(user.role) != "admin"
+            and not (_is_own(data.get("connection")) and data.get("model"))
+        )
+    if not bot_desktop_enabled() or settings_repo is None:
         return False
-    return isinstance(data, dict) and bool(data.get("model"))
+    return bool(data.get("model")) and not _is_own(data.get("connection"))
+
+
+async def select_own_model(
+    services: SharedServices, user_id: int, key_id: str, model_id: str
+) -> str:
+    """Chat on one of the user's own vendor keys from now on."""
+    from octop.infra.agents.providers.own_keys import OWN_PREFIX, get_key  # noqa: PLC0415
+
+    own = await asyncio.to_thread(get_key, services, user_id, key_id)
+    if own is None or not any(mid == model_id for mid, _ in own.models):
+        raise OctopError.localized(ErrorCode.NOT_FOUND)
+    saved = json.dumps(
+        {"connection": OWN_PREFIX + key_id, "model": model_id, "revision": uuid4().hex}
+    )
+    await asyncio.to_thread(services.settings_repo.set, _key(user_id), saved)
+    return model_id
+
+
+def leave_own_key(services: SharedServices, user_id: int) -> None:
+    """Stop chatting on a removed own key: back to the Lynxce model when signed in, else none."""
+    from octop.infra.cloud.bot_cloud.accounts import cloud_model_id  # noqa: PLC0415
+
+    if not bot_cloud_enabled() and _cloud_key_secret(services, user_id) is not None:
+        saved = {"connection": CLOUD_CONNECTION, "model": cloud_model_id(), "revision": uuid4().hex}
+        services.settings_repo.set(_key(user_id), json.dumps(saved))
+        return
+    clear_account_model(services, user_id)
+
+
+def own_key_in_use(services: SharedServices, user_id: int) -> str | None:
+    """The id of the own key the user currently chats on, if any."""
+    from octop.infra.agents.providers.own_keys import OWN_PREFIX  # noqa: PLC0415
+
+    connection = _selection_data(services.settings_repo, user_id).get("connection")
+    if not isinstance(connection, str) or not _is_own(connection):
+        return None
+    return connection.removeprefix(OWN_PREFIX)
 
 
 def selected_account_model(services: SharedServices, user_id: int) -> str | None:

@@ -18,6 +18,7 @@ from octop.api.routers.bot_computer import router as computer_router
 from octop.api.routers.bot_computers import router as computers_router
 from octop.api.routers.bot_computers import session_router as screen_session_router
 from octop.api.routers.bot_lynxce import router as lynxce_router
+from octop.api.routers.bot_own_keys import router as own_keys_router
 from octop.api.routers.bot_profile import router as profile_router
 from octop.api.routers.bot_server import router as server_router
 from octop.api.routers.bot_wallet import router as wallet_router
@@ -54,6 +55,7 @@ router.include_router(cloud_work_router)
 router.include_router(computer_router)
 router.include_router(lynxce_router)
 router.include_router(profile_router)
+router.include_router(own_keys_router)
 router.include_router(wallet_router)
 
 
