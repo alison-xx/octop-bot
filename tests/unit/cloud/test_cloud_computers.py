@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Mapping
 from typing import Any
 
@@ -53,7 +54,10 @@ class Driver:
         self.files: dict[str, bytes] = {}
         self.fail_start = False
         self.broken: set[str] = set()
+        self.readied: list[str] = []
+        self.clipboard = ""
         self.stopped: dict[str, float] = {}
+
         self.listed: list[driver_module.Instance] = []
 
     def start(self, *, spec: str, labels: Mapping[str, str]) -> str:
@@ -76,6 +80,9 @@ class Driver:
         self.states[instance_id] = "gone"
         self.calls.append(("stop", instance_id))
 
+    def wait_ready(self, instance_id: str, timeout: float = 90.0) -> None:
+        self.readied.append(instance_id)
+
     def state(self, instance_id: str) -> State:
         if instance_id in self.broken:
             raise RuntimeError("provider error")
@@ -96,6 +103,15 @@ class Driver:
 
     def read(self, instance_id: str, path: str) -> bytes | None:
         return self.files.get(path)
+
+    def screen(self, instance_id: str) -> tuple[str, dict[str, str]]:
+        return f"wss://6080-{instance_id}.test/websockify", {"X-Access-Token": "t"}
+
+    def paste_text(self, instance_id: str, text: str) -> None:
+        self.clipboard = text
+
+    def read_clipboard(self, instance_id: str) -> str:
+        return self.clipboard
 
 
 class Billing:
@@ -173,6 +189,8 @@ def test_a_paused_computer_resumes_with_its_files(setup: Any) -> None:
     clock.now += 60
     assert computer.download_files(["/root/notes.md"])[0].content == b"hi"
     assert driver.calls == [("start", "bot1"), ("pause", "ins-1"), ("resume", "ins-1")]
+    # Both the start and the resume waited for the desktop to come up.
+    assert driver.readied == ["ins-1", "ins-1"]
     assert computer.download_files(["/missing"])[0].error == "file_not_found"
     assert driver.files == {f"{WORKSPACE}/root/notes.md": b"hi"}
 
@@ -188,6 +206,21 @@ def test_the_agents_root_is_the_workspace_folder(setup: Any) -> None:
     assert computer._to_virtual_path(WORKSPACE) == "/"
     with pytest.raises(OSError):
         computer.delete_path("/")
+
+
+def test_a_cloud_bot_is_rooted_at_its_workspace_so_the_model_never_sees_host_paths(
+    setup: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    from octop.infra.backend.resolver import resolve_agent_backend_spec
+
+    manager, *_ = setup
+    monkeypatch.setattr(computers, "_manager", manager)
+    monkeypatch.delenv("OCTOP_FILE_STORE_BUCKET", raising=False)
+    spec = {"type": "bot_cloud", "user_id": 7, "agent_id": "bot1"}
+    computer = resolve_agent_backend_spec(spec, repo=None, workspace_dir=tmp_path)
+    assert isinstance(computer, CloudComputer)
+    # The harness shows a virtual backend's workspace relative to root_dir: "/" here.
+    assert computer.virtual_mode and computer.root_dir == tmp_path
 
 
 def test_commands_outlive_the_desktop_servers_request_limit(
@@ -334,6 +367,101 @@ def test_one_broken_computer_does_not_hold_up_the_others(setup: Any) -> None:
     assert billing.reserved == [5, 5, 5]  # bot2 still bought its next chunk
 
 
+def test_a_taken_over_computer_turns_the_bot_away_and_stays_awake(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1")
+    computer.execute("ls")
+    manager.set_takeover("bot1", 7, True)
+    blocked = computer.execute("rm -rf /tmp/x")
+    assert blocked.exit_code == 1 and "taken over" in blocked.output
+    # Files the Bot writes onto the computer wait too.
+    assert computer.upload_files([("/notes.md", b"x")])[0].error == blocked.output
+    for _ in range(int(computers.IDLE_PAUSE_SECONDS * 2 / 30)):
+        clock.now += 30
+        manager.viewing("bot1", 7)  # the open screen's heartbeat
+        manager.tick()
+    assert ("pause", "ins-1") not in driver.calls
+    manager.set_takeover("bot1", 7, False)
+    assert computer.execute("ls").exit_code == 0
+
+
+def test_a_takeover_no_one_watches_goes_back_to_the_bot(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1")
+    computer.execute("ls")
+    manager.set_takeover("bot1", 7, True)  # e.g. a phone took over, then left the page
+    clock.now += computers.VIEWER_GRACE_SECONDS + 1
+    assert not manager.taken_over("bot1", 7)
+    assert computer.execute("ls").exit_code == 0
+    manager.tick()
+    assert manager.record("bot1", 7).takeover is False
+
+
+def test_a_watched_screen_keeps_the_computer_running(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    url, headers = manager.screen("bot1", 7)
+    assert url == "wss://6080-ins-1.test/websockify" and headers == {"X-Access-Token": "t"}
+    clock.now += computers.IDLE_PAUSE_SECONDS + 10
+    manager.viewing("bot1", 7)
+    manager.tick()
+    assert ("pause", "ins-1") not in driver.calls
+    clock.now += computers.VIEWER_GRACE_SECONDS + computers.IDLE_PAUSE_SECONDS
+    manager.tick()
+    assert driver.calls[-1] == ("pause", "ins-1")
+
+
+def test_the_screen_starts_the_vnc_bridge_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = AgsConfig.from_env(
+        {"OCTOP_AGS_SECRET_ID": "id", "OCTOP_AGS_SECRET_KEY": "key", "OCTOP_AGS_TOOL": "t"}
+    )
+    assert config is not None
+    driver = ags.AgsDriver(config)
+    scripts: list[str] = []
+    uploads: list[str] = []
+    listening = ["down"]
+    monkeypatch.setattr(driver, "_execute", lambda i, s: scripts.append(s) or listening[0])
+    monkeypatch.setattr(driver, "write", lambda i, path, data: uploads.append(path))
+    monkeypatch.setattr(driver, "token", lambda i, fresh=False: "tok")
+    url, headers = driver.screen("ins")
+    assert url == "wss://8080-ins.ap-guangzhou.tencentags.com/websockify"
+    assert headers == {"X-Access-Token": "tok"}
+    assert uploads == [ags._BRIDGE] and "nohup python3" in scripts[-1]
+    listening[0] = "up"
+    driver.screen("ins")
+    assert uploads == [ags._BRIDGE]  # already running: nothing uploaded or started
+
+
+def test_typing_and_the_clipboard_need_takeover(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    with pytest.raises(OctopError) as refused:
+        manager.paste_text("bot1", 7, "你好")
+    assert refused.value.code == ErrorCode.BOT_COMPUTER_NOT_TAKEN_OVER
+    manager.set_takeover("bot1", 7, True)
+    manager.paste_text("bot1", 7, "你好，云电脑")
+    assert manager.read_clipboard("bot1", 7) == "你好，云电脑"
+
+
+def test_pasting_sends_text_as_base64_and_presses_the_paste_shortcut(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = AgsConfig.from_env(
+        {"OCTOP_AGS_SECRET_ID": "id", "OCTOP_AGS_SECRET_KEY": "key", "OCTOP_AGS_TOOL": "t"}
+    )
+    assert config is not None
+    driver = ags.AgsDriver(config)
+    scripts: list[str] = []
+    monkeypatch.setattr(driver, "_execute", lambda i, s: scripts.append(s) or "pasted\n")
+    driver.paste_text("ins", "你好'; rm -rf ~")
+    encoded = base64.b64encode("你好'; rm -rf ~".encode()).decode()
+    assert f"printf %s {encoded} | base64 -d | xclip -selection clipboard -i" in scripts[0]
+    assert "rm -rf" not in scripts[0] and "xtest.fake_input" in scripts[0]
+    # The clipboard is read back before the paste key is pressed; a miss is an error.
+    monkeypatch.setattr(driver, "_execute", lambda i, s: "")
+    with pytest.raises(RuntimeError):
+        driver.paste_text("ins", "你好")
+
+
 # -- review fixes (PR #22) -------------------------------------------------------------------
 
 
@@ -478,6 +606,53 @@ def test_compute_billing_carries_the_cloud_server_key(monkeypatch: pytest.Monkey
     assert lynxce_cloud._service_headers("/api/user/personal-api-keys") == {}
 
 
+def test_billing_is_lynxce_credits_in_the_cloud_unless_turned_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OCTOP_BOT_CLOUD", "1")
+    monkeypatch.delenv("OCTOP_BOT_COMPUTE_BILLING", raising=False)
+    assert isinstance(computers.billing_for(Services()), computers.Billing)  # type: ignore[arg-type]
+    monkeypatch.setenv("OCTOP_BOT_COMPUTE_BILLING", "off")
+    free = computers.billing_for(Services())  # type: ignore[arg-type]
+    assert isinstance(free, computers.FreeBilling)
+    record = computers.ComputerRecord(agent_id="bot1", user_id=7)
+    free.settle(record, free.reserve(record, 5), 300)
+    # A self-hosted server (not the cloud) never bills Lynxce for its own AGS account.
+    monkeypatch.delenv("OCTOP_BOT_CLOUD")
+    monkeypatch.delenv("OCTOP_BOT_COMPUTE_BILLING")
+    assert isinstance(computers.billing_for(Services()), computers.FreeBilling)  # type: ignore[arg-type]
+
+
+def test_the_floating_screen_knows_what_the_bot_is_doing(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    assert manager.glance("bot1", 7) is None  # off: a glance never starts the computer
+    assert driver.calls == []
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    assert manager.activity("bot1") == ("command", clock.now)
+    assert manager.busy("bot1")
+    clock.now += computers.BUSY_AFTER_ACTION_SECONDS + 1
+    assert not manager.busy("bot1")
+    scripts: list[str] = []
+
+    def glance_script(instance: str, code: str) -> str:
+        scripts.append(code)
+        return "WINDOW:Sign in to GitHub - Google Chrome\nTHUMB:abc"
+
+    driver.run_python = glance_script  # type: ignore[attr-defined]
+    glance = manager.glance("bot1", 7)
+    assert glance == computers.Glance(window="Sign in to GitHub - Google Chrome", thumbnail="abc")
+    manager.glance("bot1", 7)
+    assert len(scripts) == 1  # cached for a few seconds, shared by every viewer
+
+
+def test_legacy_root_system_files_stay_in_the_store() -> None:
+    from octop.infra.cloud.computers.backend import on_store
+
+    for path in ("/.bootstrapped", "/manifest.json", "/.octop-auth/token", "/.octop/x"):
+        assert on_store(path), path
+    assert not on_store("/notes/manifest.json")
+
+
 def test_a_computer_stopped_while_the_server_was_down_is_billed_until_it_stopped(
     setup: Any,
 ) -> None:
@@ -538,13 +713,3 @@ def test_ags_times_without_a_zone_are_utc() -> None:
     assert driver_module._timestamp("2026-11-24T09:44:02+08:00") == driver_module._timestamp(
         "2026-11-24T01:44:02Z"
     )
-
-
-def test_legacy_root_system_files_stay_in_the_store() -> None:
-    from octop.infra.cloud.computers.backend import on_store
-
-    assert on_store("/.bootstrapped")
-    assert on_store("/manifest.json")
-    assert on_store("/.octop-auth/token")
-    assert on_store("/.octop/x")
-    assert not on_store("/notes/manifest.json")

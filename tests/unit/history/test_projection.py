@@ -184,3 +184,24 @@ async def test_backfill_queue_runs_one_job_at_a_time_and_dedupes() -> None:
     assert queue.available_slots == 2
     assert queue.contains("thr-1") is False
     await queue.close()
+
+
+def test_images_a_tool_attaches_neither_start_a_turn_nor_show_in_the_chat() -> None:
+    tracker = TurnHistoryTracker.from_request(
+        {"messages": [{"role": "user", "content": "open the page", "id": "u1"}]}
+    )
+    screenshot = {
+        "role": "user",
+        "content": "Cloud computer screen after click",
+        "id": "shot1",
+        "additional_kwargs": {"lc_source": "cloud_computer"},
+    }
+    state = [
+        {"role": "user", "content": "open the page", "id": "u1"},
+        {"role": "assistant", "content": "clicking", "id": "a1"},
+        screenshot,
+        {"role": "assistant", "content": "done", "id": "a2"},
+    ]
+    tracker.observe({"type": "state_snapshot", "data": {"messages": state}})
+    # The whole turn stays one turn, from the user's message, without the screenshot.
+    assert [item.message_id for item in tracker.inputs] == ["u1", "a1", "a2"]

@@ -33,9 +33,16 @@ from deepagents.backends.sandbox import BaseSandbox
 from octop.infra.cloud.computers.driver import WORKSPACE
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from octop.infra.cloud.computers.manager import ComputerManager
 
 DEFAULT_COMMAND_TIMEOUT = 30 * 60
+TAKEN_OVER = (
+    "The user has taken over this computer (for example to sign in or solve a check). "
+    "Do not use it now; tell the user what you need and wait until they hand it back."
+)
+
 # Context the harness reads on every start: kept in the object store, never on the computer.
 STORE_FILES = frozenset(
     {
@@ -73,6 +80,7 @@ class CloudComputer(BaseSandbox):
         user_id: int,
         agent_id: str,
         store: BackendProtocol | None = None,
+        root_dir: Path | None = None,
     ) -> None:
         self._manager = manager
         self._user_id = user_id
@@ -80,6 +88,9 @@ class CloudComputer(BaseSandbox):
         self._store = store
         self.sandbox_fs: bool = True
         self.virtual_mode: bool = True
+        # The agent's host workspace: the harness then shows the model "/" as its
+        # working directory (the computer's workspace), never the host path.
+        self.root_dir: Path | None = root_dir
 
     def _stored(self, path: str | None) -> bool:
         return self._store is not None and on_store(path)
@@ -102,6 +113,9 @@ class CloudComputer(BaseSandbox):
         return f"computer-{self._agent_id}"
 
     def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
+        if self._manager.taken_over(self._agent_id, self._user_id):
+            # Agent-facing: the user is signing in or solving a check on this computer.
+            return ExecuteResponse(output=TAKEN_OVER, exit_code=1, truncated=False)
         exit_code, output = self._manager.run(
             self._agent_id,
             self._user_id,
@@ -313,6 +327,9 @@ class CloudComputer(BaseSandbox):
             if self._stored(path):
                 assert self._store is not None
                 responses.extend(self._store.upload_files([(path, content)]))
+                continue
+            if self._manager.taken_over(self._agent_id, self._user_id):
+                responses.append(FileUploadResponse(path=path, error=TAKEN_OVER))
                 continue
             try:
                 self._manager.write(

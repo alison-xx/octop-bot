@@ -160,6 +160,8 @@ export const octopBotApi = {
     request<BotGroup>(root + "/groups", body("POST", group)),
   updateGroup: (id: string, group: Omit<BotGroup, "group_id">) =>
     request<BotGroup>(groupPath(id), body("PATCH", group)),
+  deleteGroup: (id: string) =>
+    request<void>(groupPath(id), { method: "DELETE" }),
   messages: (id: string, after?: string) =>
     request<GroupMessage[]>(
       groupPath(id) +

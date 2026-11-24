@@ -32,6 +32,9 @@ Seeder = Callable[[Callable[[str, bytes], None]], None]
 logger = logging.getLogger(__name__)
 
 IDLE_PAUSE_SECONDS = 10 * 60
+# A screen viewer reports in every 30 s; miss a few and the computer can idle again, and a
+# takeover with no one watching is handed back to the Bot.
+VIEWER_GRACE_SECONDS = 90
 CHUNK_MINUTES = 5
 # Reaper passes (30 s apart) a failing settle is retried; Lynxce settles a reservation itself
 # 15 minutes after it expires, so an hour is plenty.
@@ -48,6 +51,43 @@ SERVER_ID_KEY = "octop_bot:computers:server_id"
 class Reservation:
     id: str
     minutes: int
+
+
+@dataclass(frozen=True)
+class Glance:
+    window: str | None
+    # Base64 JPEG, 320 px wide.
+    thumbnail: str | None
+
+
+# The Bot counts as "on the computer" for this long after its last action (screenshots and
+# model turns sit between actions).
+BUSY_AFTER_ACTION_SECONDS = 20
+GLANCE_CACHE_SECONDS = 5
+GLANCE_SCRIPT = """
+import base64, io, subprocess
+def _run(*args):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=3).stdout
+    except Exception:
+        return ""
+win = _run("xprop", "-root", "_NET_ACTIVE_WINDOW").split()[-1:] or [""]
+title = ""
+if win[0].startswith("0x") and win[0] != "0x0":
+    raw = _run("xprop", "-id", win[0], "_NET_WM_NAME")
+    if "=" in raw:
+        title = raw.split("=", 1)[1].strip().strip('"')
+print("WINDOW:" + title.replace("\\n", " "))
+try:
+    import pyautogui
+    shot = pyautogui.screenshot().convert("RGB")
+    shot.thumbnail((320, 180))
+    buf = io.BytesIO()
+    shot.save(buf, "JPEG", quality=60)
+    print("THUMB:" + base64.b64encode(buf.getvalue()).decode())
+except Exception:
+    pass
+"""
 
 
 @dataclass
@@ -74,9 +114,18 @@ class ComputerRecord:
     active_at: float = 0.0
     paid_until: float = 0.0
     reservations: list[Reservation] = field(default_factory=list)
+    # The user has the mouse and keyboard; the Bot waits until it is handed back. It only
+    # holds while the screen is watched (see ``controlled``).
+    takeover: bool = False
+    # Last time someone was watching the screen; a watched computer is not idle.
+    viewed_at: float = 0.0
     unsettled: list[Unsettled] = field(default_factory=list)
     # The Bot's object-store files were copied onto its computer once.
     seeded: bool = False
+
+    def controlled(self, now: float) -> bool:
+        """Taken over and still watched: a closed tab or a phone that left hands it back."""
+        return self.takeover and now - self.viewed_at < VIEWER_GRACE_SECONDS
 
     @classmethod
     def load(cls, raw: str) -> ComputerRecord:
@@ -146,6 +195,29 @@ class Billing:
         )
 
 
+class FreeBilling:
+    """No Lynxce billing: a self-hosted server on its own AGS account, or a local test run
+    (``OCTOP_BOT_COMPUTE_BILLING=off``). The operator pays AGS directly."""
+
+    def reserve(self, record: ComputerRecord, minutes: int) -> Reservation:
+        return Reservation(f"free-{uuid.uuid4().hex[:12]}", minutes)
+
+    def settle(self, record: ComputerRecord, reservation: Reservation, used_seconds: int) -> None:
+        return None
+
+
+def billing_for(services: SharedServices) -> Billing | FreeBilling:
+    """Lynxce credits in Octop Bot cloud, unless the operator turned billing off."""
+    import os  # noqa: PLC0415
+
+    from octop.infra.desktop import bot_cloud_enabled  # noqa: PLC0415
+
+    off = (os.environ.get("OCTOP_BOT_COMPUTE_BILLING") or "").strip().lower() in {"off", "0"}
+    if off or not bot_cloud_enabled():
+        return FreeBilling()
+    return Billing(services)
+
+
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     """Run a coroutine to completion from sync code, even on a thread that has a loop."""
     try:
@@ -174,7 +246,7 @@ class ComputerManager:
         services: SharedServices,
         driver: ComputerDriver,
         *,
-        billing: Billing | None = None,
+        billing: Billing | FreeBilling | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._services = services
@@ -187,6 +259,10 @@ class ComputerManager:
         self._guard = threading.Lock()
         self._reaper: threading.Thread | None = None
         self._stopping = threading.Event()
+        # What the Bot last did on each computer, for the chat's floating screen: (kind, time).
+        self._activity: dict[str, tuple[str, float]] = {}
+        # Short-lived glances (window title + thumbnail) so several viewers share one request.
+        self._glances: dict[str, tuple[float, Glance]] = {}
         self._last_orphan_scan = 0.0
 
     # Records
@@ -265,6 +341,11 @@ class ComputerManager:
                 self._settle_one(record, reservation, 0)
                 self._save(record)
                 raise
+            # AGS says RUNNING before the desktop listens; wait so the first command works.
+            try:
+                self._driver.wait_ready(record.instance_id or "")
+            except Exception:  # noqa: BLE001 - commands will report the failure themselves
+                logger.warning("computer %s is slow to come up", agent_id)
             record.running = True
             record.running_since = now
             record.started_at = now
@@ -406,8 +487,11 @@ class ComputerManager:
         if record.instance_id and self._driver.state(record.instance_id) == "gone":
             self._lost(record.agent_id, record.user_id)
             return
+        if record.takeover and not record.controlled(now):
+            self.set_takeover(record.agent_id, record.user_id, False)  # no one is watching
         busy = self._busy.get(record.agent_id, 0) > 0
-        if not busy and now - record.active_at >= IDLE_PAUSE_SECONDS:
+        watched = now - record.viewed_at < VIEWER_GRACE_SECONDS
+        if not (busy or watched) and now - record.active_at >= IDLE_PAUSE_SECONDS:
             self.pause(record.agent_id, record.user_id)
             return
         self._settle_elapsed(record.agent_id, record.user_id, now)
@@ -505,6 +589,50 @@ class ComputerManager:
             self._reaper = threading.Thread(target=loop, name="octop-computer-reaper", daemon=True)
             self._reaper.start()
 
+    # Screen and takeover
+
+    def screen(self, agent_id: str, user_id: int) -> tuple[str, dict[str, str]]:
+        """Where to reach the running computer's desktop (VNC over WebSocket)."""
+        instance = self.ensure_running(agent_id, user_id)
+        self.viewing(agent_id, user_id)
+        return self._driver.screen(instance)
+
+    def viewing(self, agent_id: str, user_id: int) -> None:
+        with self._lock(agent_id):
+            record = self.record(agent_id, user_id)
+            record.viewed_at = record.active_at = self._clock()
+            self._save(record)
+
+    def set_takeover(self, agent_id: str, user_id: int, active: bool) -> ComputerRecord:
+        with self._lock(agent_id):
+            record = self.record(agent_id, user_id)
+            record.takeover = active
+            record.active_at = self._clock()
+            if active:
+                # The screen opens right after; its heartbeat keeps the takeover from here.
+                record.viewed_at = record.active_at
+            self._save(record)
+            return record
+
+    def taken_over(self, agent_id: str, user_id: int) -> bool:
+        return self.record(agent_id, user_id).controlled(self._clock())
+
+    def _controlled(self, agent_id: str, user_id: int) -> str:
+        """The instance the user has taken over; typing and the clipboard need takeover."""
+        record = self.record(agent_id, user_id)
+        if not (record.controlled(self._clock()) and record.running and record.instance_id):
+            raise OctopError.localized(ErrorCode.BOT_COMPUTER_NOT_TAKEN_OVER)
+        return record.instance_id
+
+    def paste_text(self, agent_id: str, user_id: int, text: str) -> None:
+        self._driver.paste_text(self._controlled(agent_id, user_id), text)
+        self.viewing(agent_id, user_id)
+
+    def read_clipboard(self, agent_id: str, user_id: int) -> str:
+        text = self._driver.read_clipboard(self._controlled(agent_id, user_id))
+        self.viewing(agent_id, user_id)
+        return text
+
     def close(self) -> None:
         """Stop the reaper (server shutdown): it must not touch a closed database."""
         self._stopping.set()
@@ -526,6 +654,7 @@ class ComputerManager:
         instance = self.ensure_running(agent_id, user_id, seed)
         with self._guard:
             self._busy[agent_id] = self._busy.get(agent_id, 0) + 1
+        self.note(agent_id, "command")
         try:
             return self._driver.run(instance, command, timeout)
         except Exception:
@@ -533,6 +662,59 @@ class ComputerManager:
             if self._driver.state(instance) == "gone":
                 self._lost(agent_id, user_id)
             raise
+        finally:
+            with self._guard:
+                self._busy[agent_id] -= 1
+            self.touch(agent_id, user_id)
+
+    def note(self, agent_id: str, kind: str) -> None:
+        """Remember the Bot's latest action on its computer (click, type, command, …)."""
+        self._activity[agent_id] = (kind, self._clock())
+
+    def activity(self, agent_id: str) -> tuple[str, float] | None:
+        return self._activity.get(agent_id)
+
+    def busy(self, agent_id: str) -> bool:
+        """The Bot is working on the computer right now (mid-command or just acted)."""
+        if self._busy.get(agent_id, 0) > 0:
+            return True
+        last = self._activity.get(agent_id)
+        return last is not None and self._clock() - last[1] < BUSY_AFTER_ACTION_SECONDS
+
+    def glance(self, agent_id: str, user_id: int) -> Glance | None:
+        """Front window title and a small thumbnail of a running computer; never starts it."""
+        record = self.record(agent_id, user_id)
+        if not (record.running and record.instance_id):
+            return None
+        now = self._clock()
+        cached = self._glances.get(agent_id)
+        if cached is not None and now - cached[0] < GLANCE_CACHE_SECONDS:
+            return cached[1]
+        output = self._driver.run_python(record.instance_id, GLANCE_SCRIPT)
+        window, thumbnail = None, None
+        for line in output.splitlines():
+            if line.startswith("WINDOW:"):
+                window = line[len("WINDOW:") :].strip() or None
+            elif line.startswith("THUMB:"):
+                thumbnail = line[len("THUMB:") :].strip() or None
+        glance = Glance(window=window, thumbnail=thumbnail)
+        self._glances[agent_id] = (now, glance)
+        return glance
+
+    def use[T](
+        self,
+        agent_id: str,
+        user_id: int,
+        work: Callable[[ComputerDriver, str], T],
+        *,
+        seed: Seeder | None = None,
+    ) -> T:
+        """Do something on the running computer (computer use); it counts as busy meanwhile."""
+        instance = self.ensure_running(agent_id, user_id, seed)
+        with self._guard:
+            self._busy[agent_id] = self._busy.get(agent_id, 0) + 1
+        try:
+            return work(self._driver, instance)
         finally:
             with self._guard:
                 self._busy[agent_id] -= 1
@@ -575,7 +757,7 @@ def computer_manager(services: SharedServices) -> ComputerManager | None:
         return None
     with _manager_lock:
         if _manager is None:
-            _manager = ComputerManager(services, AgsDriver(config))
+            _manager = ComputerManager(services, AgsDriver(config), billing=billing_for(services))
             # Computers left running by a previous process are billed and paused from now on,
             # not from their next tool call.
             _manager._start_reaper()

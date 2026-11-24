@@ -27,8 +27,10 @@
 		50D8356BA21790C2FFF46F1D /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2022CECD87289127591F30D /* AppUpdater.swift */; };
 		5E31F9FF32F06FBE952A0A9F /* octop-mascot.webp in Resources */ = {isa = PBXBuildFile; fileRef = 7B4198C3433D9E46B368560D /* octop-mascot.webp */; };
 		60F09A2E479DE5872452964A /* FileOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = E35158BD983E0060775BA507 /* FileOpener.swift */; };
+		61864BBBDBAF326EBC51EAD0 /* FileAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10FF5FBFB12C25C04EE30FDB /* FileAttachment.swift */; };
 		670A22CF3CD26D0459F1C862 /* GroupRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3673E4497A330EC42D8B0AE4 /* GroupRoomView.swift */; };
 		69A1CDB8034973EE89DFD475 /* device_tools.json in Resources */ = {isa = PBXBuildFile; fileRef = 3AAE94B60EF9C56BB15D6517 /* device_tools.json */; };
+		68D94E409C7E175F0E3D12BA /* BotActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC7AAD0BB828292F63AA7E0 /* BotActivityView.swift */; };
 		701243634B93B3D55795922A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CF6F0F3501DAF6D838B0A354 /* LaunchScreen.storyboard */; };
 		7D0158402BB9F1236A22B6A9 /* CreditsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60FE975D80457770F2B56FE7 /* CreditsView.swift */; };
 		8330BE0127CCDC3E8975B833 /* Characters.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27E10E2BDC532D8A8733A20 /* Characters.swift */; };
@@ -40,6 +42,7 @@
 		A92EDF4C2FD34A513BAC2B1E /* LaunchSplash@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = 485730F843527F6DB74B2288 /* LaunchSplash@3x.png */; };
 		ABC1C4B78D4E12D40A46D64A /* ChatSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B348FA18444D7D35A387C8 /* ChatSession.swift */; };
 		B771D743DC4B5E39F8C6F4EF /* Panels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45C5942C9895849A32C673AB /* Panels.swift */; };
+		BB50225F41D7858630EC14DC /* AttachmentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF7D3162679B1070B3004C72 /* AttachmentViews.swift */; };
 		C37A0D05944FEC7D2C355DC7 /* characters.json in Resources */ = {isa = PBXBuildFile; fileRef = 7280A8EE1534AA92B85CF8D7 /* characters.json */; };
 		C4FEC5251E5ED4CB56B08AA8 /* VoiceModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B36A66B6B51F3F46A0C5001 /* VoiceModeView.swift */; };
 		C771D8F5FBC1CCEA9E472EE8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7F42D68AD0EF0EE042F76EBF /* Assets.xcassets */; };
@@ -51,6 +54,7 @@
 		DEC5AC974DAE214BF6C67D43 /* Hitl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44AA9D2522DD5EC8E5320048 /* Hitl.swift */; };
 		DEC9A2364E12C86351B28398 /* LaunchSplash@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 7D05B2CADB1735B180DD738F /* LaunchSplash@1x.png */; };
 		E4D12A2503C63875BFFB19EA /* LynxceBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */; };
+		F2ED60F819DD51A46615A4E4 /* CloudComputerFloat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 226FEDB7E21C711880C1281F /* CloudComputerFloat.swift */; };
 		F9AAC368DBB70E5F7E9FA7D7 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFA4F9D2603084616EA20193 /* AppModel.swift */; };
 		FE38F2BAB33A8B48E5C629C3 /* HitlCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64A1DD83356759A7465B69ED /* HitlCard.swift */; };
 /* End PBXBuildFile section */
@@ -67,10 +71,12 @@
 
 /* Begin PBXFileReference section */
 		07983C65452A324E84BBF59A /* LocalBots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalBots.swift; sourceTree = "<group>"; };
+		10FF5FBFB12C25C04EE30FDB /* FileAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileAttachment.swift; sourceTree = "<group>"; };
 		15BBCE5B206951E544D4FD60 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		185F69E704AE68F0C0ED11C1 /* OctopBotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OctopBotTests.swift; sourceTree = "<group>"; };
 		1BFCE63FDD2FE3C02C5B5158 /* CreditStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditStore.swift; sourceTree = "<group>"; };
 		1C21A989B7260F2117C40E87 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		226FEDB7E21C711880C1281F /* CloudComputerFloat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudComputerFloat.swift; sourceTree = "<group>"; };
 		273BA3F6AD10D4A909CDADE6 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
 		2B36A66B6B51F3F46A0C5001 /* VoiceModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceModeView.swift; sourceTree = "<group>"; };
 		3360C9BF7AE6466E31224253 /* ToolCalls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCalls.swift; sourceTree = "<group>"; };
@@ -99,6 +105,7 @@
 		9D571B602D444EEE48A8962B /* soft-characters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "soft-characters.json"; sourceTree = "<group>"; };
 		A4E82E7227484F22CB6A5433 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		A58EF3F0541F5BFE3F7F8B17 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		AEC7AAD0BB828292F63AA7E0 /* BotActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotActivityView.swift; sourceTree = "<group>"; };
 		B0B4725C78C81A15A4357C17 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		B376C8BCAD0157318169A260 /* OctopBotTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OctopBotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2022CECD87289127591F30D /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
@@ -113,6 +120,7 @@
 		E4335F1C15013619D4383185 /* DeviceFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceFormat.swift; sourceTree = "<group>"; };
 		E47EB786F0FC7601BFB45245 /* ImageViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewer.swift; sourceTree = "<group>"; };
 		ED1E4C98857F2A9A92FA53F6 /* HTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTP.swift; sourceTree = "<group>"; };
+		EF7D3162679B1070B3004C72 /* AttachmentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentViews.swift; sourceTree = "<group>"; };
 		F27E10E2BDC532D8A8733A20 /* Characters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Characters.swift; sourceTree = "<group>"; };
 		F2B348FA18444D7D35A387C8 /* ChatSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSession.swift; sourceTree = "<group>"; };
 		FB0D4BB60CF5FB920280CF55 /* ChatScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScreen.swift; sourceTree = "<group>"; };
@@ -195,6 +203,7 @@
 		AE037F31FDC8F88E9A8CE3E2 /* Model */ = {
 			isa = PBXGroup;
 			children = (
+				10FF5FBFB12C25C04EE30FDB /* FileAttachment.swift */,
 				44AA9D2522DD5EC8E5320048 /* Hitl.swift */,
 				A58EF3F0541F5BFE3F7F8B17 /* Models.swift */,
 			);
@@ -234,7 +243,10 @@
 		D9AAC1975601BF7EBEE50A14 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				EF7D3162679B1070B3004C72 /* AttachmentViews.swift */,
+				AEC7AAD0BB828292F63AA7E0 /* BotActivityView.swift */,
 				FB0D4BB60CF5FB920280CF55 /* ChatScreen.swift */,
+				226FEDB7E21C711880C1281F /* CloudComputerFloat.swift */,
 				687A510E1D53E5F2DED96BFF /* CloudComputerSection.swift */,
 				60FE975D80457770F2B56FE7 /* CreditsView.swift */,
 				343AF3E3336B6CFB100D14E9 /* DeviceConnectorsSection.swift */,
@@ -385,14 +397,18 @@
 			files = (
 				F9AAC368DBB70E5F7E9FA7D7 /* AppModel.swift in Sources */,
 				50D8356BA21790C2FFF46F1D /* AppUpdater.swift in Sources */,
+				BB50225F41D7858630EC14DC /* AttachmentViews.swift in Sources */,
+				68D94E409C7E175F0E3D12BA /* BotActivityView.swift in Sources */,
 				23EE84C97894827ED6A8E595 /* CharacterView.swift in Sources */,
 				8330BE0127CCDC3E8975B833 /* Characters.swift in Sources */,
 				94F0BEE560698A2E757BFE90 /* ChatScreen.swift in Sources */,
 				ABC1C4B78D4E12D40A46D64A /* ChatSession.swift in Sources */,
+				F2ED60F819DD51A46615A4E4 /* CloudComputerFloat.swift in Sources */,
 				D6C8001E9D47CD4082C819F4 /* CloudComputerSection.swift in Sources */,
 				DB504ED3D1733302B3F10D9E /* CreditAccount.swift in Sources */,
 				4BACAF514D63D9CBB1311E3D /* CreditStore.swift in Sources */,
 				7D0158402BB9F1236A22B6A9 /* CreditsView.swift in Sources */,
+				61864BBBDBAF326EBC51EAD0 /* FileAttachment.swift in Sources */,
 				60F09A2E479DE5872452964A /* FileOpener.swift in Sources */,
 				37F1A56BA2414A8FA7B4E481 /* DeviceConnectors.swift in Sources */,
 				856A4C7A9C1B74456161BF67 /* DeviceConnectorsSection.swift in Sources */,

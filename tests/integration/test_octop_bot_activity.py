@@ -48,5 +48,8 @@ async def test_group_unread_counts_replies_after_the_read_cursor(env_with_agent)
 
     assert (await client.delete(f"/api/octop-bot/groups/{room}", headers=auth)).status_code == 204
     assert server.services.settings_repo.get(f"bot-room-read:{owner}:{room}") is None
+    assert repo.messages(room, internal=True) == []
+    listed = (await client.get(WORKSPACE, headers=auth)).json()["groups"]
+    assert room not in {g["group_id"] for g in listed}
     missing = await client.post(f"/api/octop-bot/groups/{room}/read", headers=auth)
     assert missing.status_code == 404

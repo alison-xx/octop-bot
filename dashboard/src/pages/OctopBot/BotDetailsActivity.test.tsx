@@ -64,6 +64,7 @@ vi.mock("../../api/modules/cronjob", () => ({
   },
 }));
 vi.mock("../../api/request", () => ({ request: vi.fn() }));
+vi.mock("./BotActivityLibrary", () => ({ default: () => null }));
 vi.mock("./BotCharacter", () => ({ BotCharacter: () => null }));
 
 const job: OctopCronRow = {

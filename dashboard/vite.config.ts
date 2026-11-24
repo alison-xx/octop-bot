@@ -132,6 +132,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     esbuild: {
+      // noVNC (the Octop Bot cloud computer screen, loaded on demand) awaits at the top level
+      // of one module. Only that lazy chunk needs it; the app itself keeps its browser target.
+      supported: { "top-level-await": true },
       drop: isProd ? ["debugger"] : [],
       pure: isProd ? ["console.log", "console.debug", "console.info"] : [],
       // Disable identifier mangling to work around @xterm/xterm@6.0.0 crash in
@@ -316,6 +319,8 @@ export default defineConfig(({ mode }) => {
       // TokenUsage lazy-loads recharts; without pre-bundling the first request
       // often 504s while Vite optimizes on demand.
       include: ["recharts"],
+      // The dev server pre-bundles noVNC too; let its top-level await through.
+      esbuildOptions: { supported: { "top-level-await": true } },
     },
   };
 });

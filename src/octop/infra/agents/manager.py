@@ -4314,6 +4314,7 @@ class AgentManager:
         resolved = resolve_agent_backend_spec(
             backend_spec,
             repo=self._repos.storage_backend_repo,
+            workspace_dir=workspace_dir,
         )
         # Windows: the dashboard defaults local backends to root_dir "/", which
         # resolves to a drive other than the workspace and breaks path checks.
@@ -5016,7 +5017,24 @@ class AgentManager:
 
             services = SharedServices(paths=self._paths, config=self._config, repos=self._repos)
             workspace_tools = [show_view, own_chat_tool(services, row.agent_id, row.user_id)]
-            if not row.is_shared and row.kind == "expert":
+            if self._cloud_tenant(row.user_id):
+                # Lynxce cloud: the Bot's computer is its own cloud computer, never the host's.
+                from octop.infra.cloud.computers.manager import current_manager
+
+                computers = current_manager()
+                if computers is not None:
+                    from octop.infra.cloud.computers.computer_use import (
+                        computer_use_tool,
+                        request_takeover_tool,
+                    )
+
+                    workspace_tools.append(computer_use_tool(computers, row.agent_id, row.user_id))
+                    workspace_tools.append(
+                        request_takeover_tool(
+                            computers, self._repos.user_repo, row.agent_id, row.user_id
+                        )
+                    )
+            elif not row.is_shared and row.kind == "expert":
                 from octop.infra.agents.bot_computer import computer_tool
 
                 workspace_tools.append(
@@ -5035,6 +5053,27 @@ class AgentManager:
         merged_tools.extend(knowledge_tools)
         merged_tools.extend(mobile_tools)
         merged_tools.extend(plugin_tools)
+        # The image and video providers the operator configured are theirs; a cloud tenant
+        # would bill them. Without them, a Lynxce credential (the tenant's own key, the desktop
+        # app's Lynxce account, or the server's Lynxce API key) makes images and videos.
+        operator_media = (
+            None if self._cloud_tenant(row.user_id) else self._media_generation.harness_config()
+        )
+        if operator_media is None:
+            from octop.infra.agents.providers.lynxce import media_auth, media_source
+            from octop.infra.agents.providers.lynxce_media import (
+                LynxceMediaTools,
+                lynxce_media_tools,
+            )
+
+            account_services = self._account_services()
+            if media_source(account_services, row.user_id) is not None:
+                owner = row.user_id
+                agent_middleware.append(
+                    LynxceMediaTools(
+                        lynxce_media_tools(ws, lambda: media_auth(account_services, owner))
+                    )
+                )
         # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.
 
         acp_section = cfg.get("acp")
@@ -5184,10 +5223,7 @@ class AgentManager:
             skills_disabled=frozenset(skills_disabled_set(cfg) | plugin_skills_disabled),
             skills_dir=skill_dirs or None,
             default_timezone=self._config.default_timezone,
-            # The image and video providers are the operator's; a cloud tenant would bill them.
-            media_generation=(
-                None if self._cloud_tenant(row.user_id) else self._media_generation.harness_config()
-            ),
+            media_generation=operator_media,
             **harness_fields,
             **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),

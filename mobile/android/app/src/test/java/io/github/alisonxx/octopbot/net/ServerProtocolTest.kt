@@ -236,4 +236,91 @@ class ServerProtocolTest {
         assertEquals(ServerProtocol.ComputerStatus.State.None, ServerProtocol.computerStatus(Http.parse("""{"state":"none"}"""))?.state)
         assertNull(ServerProtocol.computerStatus(Http.parse("""{"state":"melted"}""")))
     }
+
+    @Test
+    fun screenPageCarriesTheTicket() {
+        assertEquals(
+            "https://bot.lynxce.cn/octop-bot/screen/AbC123?ticket=t-1&session=s-1&control=1",
+            ServerProtocol.screenPage(
+                "https://bot.lynxce.cn", "AbC123", "/api/octop-bot/computers/AbC123/screen/ws?ticket=t-1", "s-1", control = true,
+            ),
+        )
+        assertEquals(
+            "https://bot.lynxce.cn/octop-bot/screen/AbC123?ticket=t-1&control=0",
+            ServerProtocol.screenPage(
+                "https://bot.lynxce.cn", "AbC123", "/api/octop-bot/computers/AbC123/screen/ws?ticket=t-1", null, control = false,
+            ),
+        )
+        assertEquals(true, ServerProtocol.computerStatus(Http.parse("""{"state":"running","takeover":true}"""))?.takeover)
+    }
+
+    @Test
+    fun historyAttachesSentFilesToTheTurnsReply() {
+        val messages = ServerProtocol.history(
+            Http.parse(
+                """[
+                  {"role":"user","content":"make a report"},
+                  {"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"send_file_to_user"}]},
+                  {"role":"tool","content":[{"type":"tool_result","id":"t1","name":"send_file_to_user",
+                    "output":"{\"type\":\"file\",\"path\":\"outbound/Q4 report.pdf\",\"filename\":\"Q4 report.pdf\",\"media_type\":\"application/pdf\"}"}]},
+                  {"role":"tool","content":[{"type":"tool_result","id":"t2","name":"mcp/send_file",
+                    "output":"[{\"type\":\"image\",\"path\":\"outbound/chart.png\",\"preview_url\":\"/api/agents/A1/media/preview?source=outbound%2Fchart.png\"}]"}]},
+                  {"role":"tool","content":[{"type":"tool_result","id":"t3","name":"write_file","output":"{\"type\":\"file\",\"path\":\"x.txt\"}"}]},
+                  {"role":"assistant","content":[{"type":"text","text":"Done."}]},
+                  {"role":"user","content":"and the data?"},
+                  {"role":"assistant","content":[{"type":"text","text":"Sending."}]},
+                  {"role":"tool","agent_id":"B2","content":[{"type":"tool_result","name":"send_file_to_user","output":"{\"type\":\"file\",\"path\":\"/tmp/dec.csv\"}"}]}
+                ]""",
+            ) as kotlinx.serialization.json.JsonArray,
+            agentId = "A1",
+        )
+        assertEquals(4, messages.size)
+        val reply = messages[1]
+        assertEquals("Done.", reply.text)
+        assertEquals(listOf("Q4 report.pdf", "chart.png"), reply.attachments.map { it.name })
+        assertEquals("/api/agents/A1/workspace/download?path=outbound%2FQ4%20report.pdf", reply.attachments[0].url)
+        assertEquals("application/pdf", reply.attachments[0].mime)
+        assertEquals("/api/agents/A1/media/preview?source=outbound%2Fchart.png", reply.attachments[1].url)
+        // A file sent after the last text of a turn still lands on that reply, from the speaker's workspace.
+        assertEquals(listOf("/api/agents/B2/workspace/download?path=%2Ftmp%2Fdec.csv"), messages[3].attachments.map { it.url })
+        assertEquals("dec.csv", messages[3].attachments[0].name)
+    }
+
+    @Test
+    fun historyAttachesGeneratedImagesAndVideos() {
+        val messages = ServerProtocol.history(
+            Http.parse(
+                """[
+                  {"role":"user","content":"画一只猫，再做一段海浪的视频"},
+                  {"role":"tool","content":[{"type":"tool_result","name":"generate_image",
+                    "output":"{\"type\":\"image_gen_tool_result\",\"images\":[{\"path\":\"generated/images/cat.png\",\"mediaType\":\"image/png\"}]}"}]},
+                  {"role":"tool","content":[{"type":"tool_result","name":"generate_video",
+                    "output":"{\"type\":\"video_gen_tool_result\",\"videos\":[{\"path\":\"generated/videos/sea.mp4\",\"mediaType\":\"video/mp4\"}]}"}]},
+                  {"role":"assistant","content":[{"type":"text","text":"好了。"}]}
+                ]""",
+            ) as kotlinx.serialization.json.JsonArray,
+            agentId = "A1",
+        )
+        val files = messages[1].attachments
+        assertEquals(listOf("cat.png", "sea.mp4"), files.map { it.name })
+        assertEquals("/api/agents/A1/workspace/download?path=generated%2Fvideos%2Fsea.mp4", files[1].url)
+        assertEquals(listOf("image/png", "video/mp4"), files.map { it.mime })
+    }
+
+    @Test
+    fun attachmentFramesStreamIntoTheReply() {
+        val mapper = ServerProtocol.FrameMapper()
+        val outcome = mapper.map(
+            obj("""{"type":"attachment","kind":"file","url":"/api/agents/A1/workspace/download?path=outbound%2Fdeck.pptx","path":"outbound/deck.pptx","mime_type":"application/vnd.ms-powerpoint"}"""),
+            "th1",
+        ) as ServerProtocol.FrameMapper.Outcome.Events
+        val file = (outcome.events.single() as StreamEvent.Attachment).file
+        assertEquals("deck.pptx", file.name)
+        assertEquals("application/vnd.ms-powerpoint", file.mime)
+        val named = mapper.map(obj("""{"type":"attachment","kind":"image","url":"/api/agents/A1/media/preview?source=outbound%2Fa.png","filename":"chart.png"}"""), "th1")
+        assertEquals("chart.png", ((named as ServerProtocol.FrameMapper.Outcome.Events).events.single() as StreamEvent.Attachment).file.name)
+        // Inline data and foreign URLs are not cards.
+        val inline = mapper.map(obj("""{"type":"attachment","kind":"image","url":"data:image/png;base64,AAAA"}"""), "th1")
+        assertTrue((inline as ServerProtocol.FrameMapper.Outcome.Events).events.isEmpty())
+    }
 }

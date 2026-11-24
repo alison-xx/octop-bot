@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server
+from octop.infra.cloud.computers.manager import current_manager
 from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled, bot_web_enabled
 from octop.infra.setup.self_update import get_local_version
 
@@ -49,8 +50,8 @@ class ServerCapabilities(BaseModel):
     )
     media_generation: bool = Field(
         default=True,
-        description="Bots can generate images and videos. Off for cloud accounts: the "
-        "providers are the server operator's.",
+        description="Bots can generate images and videos. Cloud accounts pay with their own "
+        "Lynxce credits.",
     )
     file_store: Literal["local", "object"] = Field(
         default="local",
@@ -103,7 +104,8 @@ async def server_info(response: Response, server: Any = Depends(get_server)) -> 
         sign_in=sign_in,
         capabilities=ServerCapabilities(
             wallet=edition in ("desktop", "cloud"),
-            media_generation=edition != "cloud",
+            cloud_computer=edition == "cloud" and current_manager() is not None,
+            media_generation=True,
             file_store="object" if edition == "cloud" else "local",
         ),
     )

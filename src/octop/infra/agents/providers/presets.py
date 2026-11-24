@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 
 def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None:
@@ -288,8 +288,25 @@ def _embedding_cloud_presets() -> list[dict[str, Any]]:
     ]
 
 
+# Lynxce models that read images (checked 2026-11-24 with a desktop screenshot). Computer use
+# needs one: its screenshots are stripped before a text-only model sees them.
+LYNXCE_VISION_MODELS = frozenset(
+    {
+        "qwen3.7-plus",
+        "qwen3.8-max",
+        "kimi-k3",
+        "doubao-seed-2.1-turbo",
+        "yunxin/doubao-seed-2-1-pro-260628",
+    }
+)
+
+
+def lynxce_model_input(model_id: str) -> list[Literal["text", "image", "audio", "video"]]:
+    return ["text", "image"] if model_id in LYNXCE_VISION_MODELS else ["text"]
+
+
 def _lynxce_model(model_id: str, name: str) -> dict[str, Any]:
-    return {"id": model_id, "name": name, "enabled": True, "input": ["text"]}
+    return {"id": model_id, "name": name, "enabled": True, "input": lynxce_model_input(model_id)}
 
 
 LYNXCE_API_PRESET: dict[str, Any] = {

@@ -1,3 +1,4 @@
+import SafariServices
 import SwiftUI
 
 /// A Bot's cloud computer on Octop Bot cloud: is it running, and pause it to stop paying.
@@ -27,7 +28,24 @@ struct CloudComputerSection: View {
                     Text(since, style: .relative).monospacedDigit().foregroundStyle(Palette.secondary)
                 }
             }
-            if status?.state == .running {
+            if status != nil {
+                Button {
+                    Task { await openScreen() }
+                } label: {
+                    Label("computer.view", systemImage: "display")
+                }
+                .disabled(busy)
+                .accessibilityIdentifier("computerView")
+                Button {
+                    Task { await takeover(!(status?.takeover ?? false)) }
+                } label: {
+                    Label(status?.takeover == true ? "computer.handBack" : "computer.takeOver",
+                          systemImage: status?.takeover == true ? "hand.raised.slash" : "hand.raised")
+                }
+                .disabled(busy)
+                .accessibilityIdentifier("computerTakeover")
+            }
+            if status?.state == .running, status?.takeover != true {
                 Button {
                     Task { await pause() }
                 } label: {
@@ -46,6 +64,25 @@ struct CloudComputerSection: View {
             Text("computer.footer")
         }
         .task { await load() }
+    }
+
+    /// Presented from UIKit, not a `.sheet` on this Form section: the row redraws when `busy`
+    /// flips back, which dismissed a sheet (and the editor under it) as soon as it appeared.
+    private func openScreen() async {
+        busy = true
+        defer { busy = false }
+        if let url = try? await server.screenURL(botId, control: status?.takeover == true) {
+            FileOpener.present(SFSafariViewController(url: url))
+        }
+    }
+
+    private func takeover(_ active: Bool) async {
+        busy = true
+        defer { busy = false }
+        if let next = try? await server.setTakeover(botId, active: active) {
+            Haptics.success()
+            status = next
+        }
     }
 
     private func load() async {
@@ -72,6 +109,10 @@ extension ServerBackend {
         enum State: String { case none, running, paused }
         var state: State
         var runningSince: Date?
+        var takeover = false
+        /// The Bot is working on the computer right now, and its last action (`click`, `type`, …).
+        var busy = false
+        var activity: String?
 
         var label: String {
             switch state {
@@ -86,7 +127,9 @@ extension ServerBackend {
                 throw APIError(kind: .server, status: 502, message: nil)
             }
             let since = (body["running_since"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
-            return ComputerStatus(state: state, runningSince: since)
+            return ComputerStatus(
+                state: state, runningSince: since, takeover: body["takeover"] as? Bool ?? false,
+                busy: body["busy"] as? Bool ?? false, activity: body["activity"] as? String)
         }
     }
 
@@ -101,4 +144,32 @@ extension ServerBackend {
     func pauseComputer(_ agentId: String) async throws -> ComputerStatus {
         try .parse(try await json(.post, computerPath(agentId) + "/pause"))
     }
+
+    func setTakeover(_ agentId: String, active: Bool) async throws -> ComputerStatus {
+        try .parse(try await json(.post, computerPath(agentId) + "/takeover", json: ["active": active]))
+    }
+
+    /// The server's screen page for this computer, with a one-time ticket and the screen session
+    /// that lets the page type Chinese and sync the clipboard while the user has taken over.
+    func screenURL(_ agentId: String, control: Bool) async throws -> URL {
+        let body = try await json(.post, computerPath(agentId) + "/screen") as? [String: Any]
+        guard let wsPath = body?["ws_path"] as? String, let ticket = URLComponents(string: wsPath)?
+            .queryItems?.first(where: { $0.name == "ticket" })?.value
+        else { throw APIError(kind: .server, status: 502, message: nil) }
+        return Self.screenPage(
+            base: session.baseURL, agentId: agentId, ticket: ticket,
+            screenSession: body?["session"] as? String, control: control)
+    }
+
+    nonisolated static func screenPage(
+        base: URL, agentId: String, ticket: String, screenSession: String?, control: Bool
+    ) -> URL {
+        var components = URLComponents(url: base.appending(path: "/octop-bot/screen/\(agentId)"), resolvingAgainstBaseURL: false)!
+        var items = [URLQueryItem(name: "ticket", value: ticket)]
+        if let screenSession { items.append(URLQueryItem(name: "session", value: screenSession)) }
+        items.append(URLQueryItem(name: "control", value: control ? "1" : "0"))
+        components.queryItems = items
+        return components.url!
+    }
 }
+

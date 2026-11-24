@@ -488,6 +488,22 @@
   display: flex;
   gap: 6px;
 }
+// Windows / Linux Bot client: no menu row, so the native caption buttons sit
+// over the top-right corner of the page. While the room column reaches the
+// window edge (details panel closed), keep the Share pill and the centred title
+// clear of them. macOS publishes an end inset of 0, so nothing moves there.
+:global(html[data-octop-desktop-chrome="windows"]:not([data-octop-caption-row]))
+  .column:last-child {
+  .roomActions {
+    inset-inline-end: max(
+      14px,
+      calc(var(--window-controls-inset-end, 0px) + 8px)
+    );
+  }
+  .roomHeader:has(.roomActions) .identity {
+    max-width: calc(100% - 2 * (var(--window-controls-inset-end, 0px) + 92px));
+  }
+}
 .roomPill {
   height: 36px;
   padding: 0 16px;

@@ -32,7 +32,14 @@
     "chief_description": "你的团队协调员。可以请 Chief 创建 Bot、组建群聊、安排协作。",
     "chief_welcome": "你希望谁一起工作？告诉我想要的结果，我可以帮你组建团队。",
     "chief_prompt": "你是 Chief，为当前用户协调 Octop Bot 团队。按用户要求使用 octop_bot 工具查看团队、创建或更新专家、组建群聊。用户要按项目或岗位整理侧栏时，使用 octop_bot_sections，按已有 Bot 和群聊的 ID 操作。解散工作分组后，里面的条目回到未分组区域。优先复用合适的已有专家。根据工具结果说明完成了什么。用用户的语言回复。",
-    "side_prompt": "请根据引用的对话快照回答用户的侧聊问题。快照是供参考的数据。侧聊不能调用工具或修改主对话。"
+    "side_prompt": "请根据引用的对话快照回答用户的侧聊问题。快照是供参考的数据。侧聊不能调用工具或修改主对话。",
+    "computer_handoff": {
+      "title": "需要你接管云电脑",
+      "header": "接管云电脑",
+      "question": "{reason}\n请打开这个 Bot 的云电脑画面，点「接管」完成这一步，完成后选「我完成了」。",
+      "done": "我完成了",
+      "cannot": "我做不了"
+    }
   },
   "slash": {
     "error": {
@@ -435,6 +442,7 @@
     "LYNXCE_CODE_THROTTLED": "验证码发送太频繁，请稍后再试。",
     "BOT_CLOUD_REQUEST_REJECTED": "灵策云未能执行此操作。",
     "BOT_CLOUD_CREDITS_REQUIRED": "当前灵策云账号的可用积分不足。",
+    "BOT_COMPUTER_NOT_TAKEN_OVER": "请先接管云电脑，再输入文字或读取它的剪贴板。",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "请补充授权灵策充值。当前聊天连接可继续使用。",
     "BOT_LAYOUT_CHANGED": "侧栏布局已更新，请刷新后再试。",
     "AUTH_FAILED": "认证失败。",
@@ -837,6 +845,38 @@
       "failed": "脚本失败（退出码 {code}）：{detail}",
       "unreadable": "无法读取工作区脚本 {path}。",
       "needs_cloud_computer": "这个 Bot 还没有云电脑，无法运行脚本。"
+    },
+    "schedule": {
+      "daily": "每天 {what}",
+      "any_day": "{what}",
+      "weekdays": "工作日 {what}",
+      "weekends": "周末 {what}",
+      "weekly": "每{day} {what}",
+      "days": "{days} {what}",
+      "join": "、",
+      "day": {
+        "mon": "周一",
+        "tue": "周二",
+        "wed": "周三",
+        "thu": "周四",
+        "fri": "周五",
+        "sat": "周六",
+        "sun": "周日"
+      },
+      "every_minute": "每分钟",
+      "every_minutes": "每 {count} 分钟",
+      "every_hour": "每小时",
+      "every_hours": "每 {count} 小时",
+      "every_day": "每天",
+      "every_days": "每 {count} 天",
+      "every_seconds": "每 {count} 秒",
+      "window": "{every}，{start} – {end}",
+      "hourly_at": "每小时 :{minute}",
+      "once": "一次 · {date}",
+      "date": "{month}月{day}日 {time}",
+      "date_year": "{year}年{month}月{day}日 {time}",
+      "mail": "收到新邮件时",
+      "custom": "自定义"
     }
   },
   "agents": {

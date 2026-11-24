@@ -18,6 +18,7 @@ workspace lives in that user's home. Everything is configured from the environme
 
 from __future__ import annotations
 
+import base64
 import os
 import shlex
 import threading
@@ -25,6 +26,7 @@ import time
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal, Protocol
 
 Spec = Literal["standard", "pro"]
@@ -36,6 +38,35 @@ _RUNS = "/home/user/.octop/runs"
 # The desktop server kills a request's command after 120 s, so each request waits less.
 _WAIT_SECONDS = 90
 _PENDING = "__octop_pending__"
+# x11vnc listens on 5900, which AGS does not route; the bridge relays it to this port.
+_SCREEN_PORT = 8080
+_BRIDGE = "/home/user/.octop/vnc_bridge.py"
+# Presses the paste shortcut in the focused window through XTest (the image has no xdotool);
+# terminals paste with Ctrl+Shift+V.
+_PRESS_PASTE = """
+import time
+from Xlib import X, XK, display
+from Xlib.ext import xtest
+d = display.Display()
+root = d.screen().root
+name = ""
+try:
+    active = root.get_full_property(d.intern_atom("_NET_ACTIVE_WINDOW"), X.AnyPropertyType)
+    window = d.create_resource_object("window", active.value[0])
+    name = " ".join(window.get_wm_class() or ()).lower()
+except Exception:
+    pass
+terminal = any(t in name for t in ("terminal", "xterm", "konsole", "terminator", "kitty", "tilix"))
+keys = ["Control_L"] + (["Shift_L"] if terminal else []) + ["v"]
+codes = [d.keysym_to_keycode(XK.string_to_keysym(k)) for k in keys]
+for code in codes:
+    xtest.fake_input(d, X.KeyPress, code)
+    d.sync()
+    time.sleep(0.02)
+for code in reversed(codes):
+    xtest.fake_input(d, X.KeyRelease, code)
+    d.sync()
+"""
 State = Literal["running", "paused", "starting", "gone"]
 
 
@@ -60,6 +91,13 @@ class ComputerDriver(Protocol):
     def run(self, instance_id: str, command: str, timeout: int) -> tuple[int, str]: ...
     def write(self, instance_id: str, path: str, data: bytes) -> None: ...
     def read(self, instance_id: str, path: str) -> bytes | None: ...
+    def screen(self, instance_id: str) -> tuple[str, dict[str, str]]: ...
+    def screenshot(self, instance_id: str) -> bytes: ...
+    def accessibility(self, instance_id: str) -> str: ...
+    def run_python(self, instance_id: str, code: str) -> str: ...
+    def wait_ready(self, instance_id: str, timeout: float = 90.0) -> None: ...
+    def paste_text(self, instance_id: str, text: str) -> None: ...
+    def read_clipboard(self, instance_id: str) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -239,13 +277,16 @@ class AgsDriver:
                 self._tokens[instance_id] = token
         return token
 
-    def _request(self, instance_id: str, path: str, *, timeout: float, **kwargs: Any) -> Any:
+    def _request(
+        self, instance_id: str, path: str, *, timeout: float, method: str = "POST", **kwargs: Any
+    ) -> Any:
         import httpx  # noqa: PLC0415
 
         if self._http is None:
             self._http = httpx.Client()
         for attempt in range(2):
-            response = self._http.post(
+            response = self._http.request(
+                method,
                 self.url(instance_id, 5000, path),
                 headers={"X-Access-Token": self.token(instance_id, fresh=attempt > 0)},
                 timeout=timeout,
@@ -328,3 +369,92 @@ class AgsDriver:
         if response.status_code != 200:
             raise OSError(f"download of {path} failed ({response.status_code}): {response.text}")
         return bytes(response.content)
+
+    def screen(self, instance_id: str) -> tuple[str, dict[str, str]]:
+        """The desktop's VNC over WebSocket, and the header that opens it.
+
+        The desktop runs x11vnc on 5900, which AGS does not route; ``vnc_bridge.py`` relays it
+        to 8080, which it does. The bridge is uploaded and started on first view and keeps
+        running across pauses. Only this server ever holds the access token; browsers reach the
+        screen through Octop.
+        """
+        listening = f"ss -ltn | grep -q ':{_SCREEN_PORT} '"
+        if self._execute(instance_id, f"{listening} && echo up || echo down").strip() != "up":
+            self.write(instance_id, _BRIDGE, (Path(__file__).parent / "vnc_bridge.py").read_bytes())
+            self._execute(
+                instance_id,
+                f"nohup python3 {_BRIDGE} {_SCREEN_PORT} 5900 > /dev/null 2>&1 < /dev/null & "
+                f"for i in $(seq 1 20); do {listening} && break; sleep 0.25; done",
+            )
+        url = self.url(instance_id, _SCREEN_PORT, "/websockify", scheme="wss")
+        return url, {"X-Access-Token": self.token(instance_id)}
+
+    def paste_text(self, instance_id: str, text: str) -> None:
+        """Type ``text`` (any language) at the desktop's cursor by pasting it.
+
+        VNC key events cannot carry Chinese or other IME text, so the text goes onto the
+        desktop's clipboard (``xclip``, which stays behind as the selection owner) and the
+        paste shortcut is pressed; the text stays on the clipboard afterwards.
+        """
+        encoded = base64.b64encode(text.encode()).decode()
+        # xclip stays behind owning the selection; its output must not hold /execute open.
+        output = self._execute(
+            instance_id,
+            f"printf %s {encoded} | base64 -d | xclip -selection clipboard -i > /dev/null 2>&1; "
+            f'[ "$(timeout 3 xclip -selection clipboard -o 2>/dev/null | base64 -w0)" = {encoded} ] '
+            f"&& python3 -c {shlex.quote(_PRESS_PASTE)} && echo pasted",
+        )
+        if output.strip() != "pasted":
+            raise RuntimeError(f"pasting into the cloud computer failed: {output.strip()[:200]}")
+
+    def read_clipboard(self, instance_id: str) -> str:
+        """The desktop's clipboard as text; empty when it holds no text."""
+        return self._execute(
+            instance_id, "timeout 3 xclip -selection clipboard -o 2>/dev/null || true"
+        )
+
+    # -- computer use -----------------------------------------------------------
+
+    def wait_ready(self, instance_id: str, timeout: float = 90.0) -> None:
+        """After a start or resume: wait until the desktop's server answers and its screen is up.
+
+        AGS reports RUNNING before the desktop service listens; actions in that window fail
+        with 502/503.
+        """
+        deadline = time.monotonic() + timeout
+        probe = "import pyautogui; print(pyautogui.size())"
+        while True:
+            try:
+                response = self._request(
+                    instance_id, "/run_python", json={"code": probe}, timeout=15
+                )
+                if response.status_code == 200 and response.json().get("status") == "success":
+                    return
+            except Exception:  # noqa: BLE001 - not listening yet
+                pass
+            if time.monotonic() >= deadline:
+                raise RuntimeError("the cloud computer did not come up in time")
+            time.sleep(1.5)
+
+    def screenshot(self, instance_id: str) -> bytes:
+        """The whole desktop with the pointer, as PNG (1920x1080)."""
+        response = self._request(instance_id, "/screenshot", method="GET", timeout=60)
+        if response.status_code != 200:
+            raise RuntimeError(f"screenshot failed ({response.status_code}): {response.text}")
+        return bytes(response.content)
+
+    def accessibility(self, instance_id: str) -> str:
+        """The desktop's AT-SPI tree as XML (roles, names, screen coordinates)."""
+        response = self._request(instance_id, "/accessibility", method="GET", timeout=60)
+        if response.status_code != 200:
+            raise RuntimeError(f"accessibility failed ({response.status_code}): {response.text}")
+        return str(response.json().get("AT") or "")
+
+    def run_python(self, instance_id: str, code: str) -> str:
+        """Run a short Python script on the desktop (pyautogui is there); its output."""
+        response = self._request(instance_id, "/run_python", json={"code": code}, timeout=60)
+        body = response.json() if response.status_code in (200, 500) else {}
+        if response.status_code != 200 or body.get("status") != "success":
+            message = body.get("message") or body.get("error") or response.text
+            raise RuntimeError(f"desktop action failed: {message}")
+        return str(body.get("output") or "")

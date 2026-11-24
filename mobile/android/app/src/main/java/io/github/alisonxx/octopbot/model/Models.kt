@@ -56,6 +56,8 @@ data class ChatMessage(
     /** Content URIs or remote URLs, shown as thumbnails. */
     val images: List<String> = emptyList(),
     val tools: List<ToolStep> = emptyList(),
+    /** Files the Bot sent (server mode); links to files in [text] become cards too. */
+    val attachments: List<FileAttachment> = emptyList(),
     val status: MessageStatus = MessageStatus.Done,
     val createdAt: Long = System.currentTimeMillis(),
 )
@@ -69,6 +71,8 @@ sealed interface StreamEvent {
     data class Text(val delta: String) : StreamEvent
     data class Thinking(val delta: String) : StreamEvent
     data class Tool(val id: String, val name: String, val done: Boolean) : StreamEvent
+    /** Server mode: a file the Bot sent (`attachment` frame). */
+    data class Attachment(val file: FileAttachment) : StreamEvent
     /** Server mode: the turn paused for a question or an approval. */
     data class Hitl(val request: HitlRequest) : StreamEvent
 }

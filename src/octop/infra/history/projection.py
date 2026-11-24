@@ -61,7 +61,26 @@ def _stamp_duration(items: list[ThreadMessageInput], duration_ms: int) -> list[T
     return items
 
 
+# Images a tool attaches for the model in a follow-up human message (deepagents ``read_file``
+# media, cloud computer screenshots). They are not the user speaking: they neither start a turn
+# nor appear in the chat.
+_TOOL_MEDIA_SOURCES = frozenset({"read_file_media", "cloud_computer"})
+_TOOL_MEDIA_ROLE = "tool_media"
+
+
+def _tool_media(message: Any) -> bool:
+    if isinstance(message, dict):
+        inner = message.get("data")
+        data: dict[str, Any] = inner if isinstance(inner, dict) else message
+        extra = data.get("additional_kwargs")
+    else:
+        extra = getattr(message, "additional_kwargs", None)
+    return isinstance(extra, dict) and extra.get("lc_source") in _TOOL_MEDIA_SOURCES
+
+
 def _role(message: Any) -> str:
+    if _tool_media(message):
+        return _TOOL_MEDIA_ROLE
     if isinstance(message, dict):
         return str(message.get("role") or message.get("type") or "").lower()
     return str(getattr(message, "type", None) or getattr(message, "role", "")).lower()
@@ -135,6 +154,8 @@ def message_inputs(
     out: list[ThreadMessageInput] = []
     seen: set[str] = set()
     for message in messages:
+        if _tool_media(message):
+            continue
         item = message_input(message)
         if item is None:
             continue

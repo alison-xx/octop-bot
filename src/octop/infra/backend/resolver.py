@@ -80,8 +80,13 @@ def resolve_agent_backend_spec(
     spec: Any,
     *,
     repo: Any | None,
+    workspace_dir: Path | None = None,
 ) -> Any:
-    """Expand ``named`` refs (and composite trees) into harness-ready specs."""
+    """Expand ``named`` refs (and composite trees) into harness-ready specs.
+
+    ``workspace_dir`` (the agent's host workspace) roots a cloud computer, so the
+    model sees ``/`` as its working directory instead of the host path.
+    """
     if spec is None:
         return None
     if not isinstance(spec, dict):
@@ -125,6 +130,7 @@ def resolve_agent_backend_spec(
                 user_id=int(spec["user_id"]),
                 agent_id=str(spec["agent_id"]),
                 store=store,
+                root_dir=workspace_dir,
             )
         from octop.infra.cloud.bot_cloud.files import harness_spec  # noqa: PLC0415
 

@@ -350,6 +350,7 @@ function FileAttachmentList({
           filename={file.filename}
           agentId={agentId}
           workspacePath={file.workspacePath}
+          mediaType={file.mediaType}
         />
       ))}
     </div>

@@ -4,6 +4,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { botCloudComputerApi } from "../../api/modules/botCloudComputer";
 import CloudComputerCard from "./CloudComputerCard";
 
+vi.mock("./CloudComputerScreen", () => ({
+  default: ({
+    wsPath,
+    interactive,
+    session,
+  }: {
+    wsPath: string;
+    interactive: boolean;
+    session?: string;
+  }) => <div data-testid="screen">{`${wsPath}|${interactive}|${session}`}</div>,
+  screenSocketUrl: (path: string, origin: string) =>
+    new URL(path, origin).toString().replace(/^http/, "ws"),
+}));
+
 vi.mock("react-i18next", () => {
   const t = (key: string, values?: Record<string, unknown>) =>
     values ? `${key}:${JSON.stringify(values)}` : key;
@@ -24,12 +38,14 @@ describe("Octop Bot cloud computer card", () => {
       spec: "standard",
       running_since: 1_700_000_000,
       paid_until: 1_700_000_900,
+      takeover: false,
     });
     const pause = vi.spyOn(botCloudComputerApi, "pause").mockResolvedValue({
       state: "paused",
       spec: "standard",
       running_since: null,
       paid_until: null,
+      takeover: false,
     });
     render(<CloudComputerCard botId="bot-1" />);
     expect(
@@ -45,7 +61,41 @@ describe("Octop Bot cloud computer card", () => {
     expect(
       await screen.findByText("cloudComputer.state.paused"),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "cloudComputer.pause" }),
+    ).toBeNull();
+  });
+
+  it("opens the screen view-only and gives the user control on takeover", async () => {
+    const running = {
+      state: "running" as const,
+      spec: "standard",
+      running_since: null,
+      paid_until: null,
+      takeover: false,
+    };
+    vi.spyOn(botCloudComputerApi, "status").mockResolvedValue(running);
+    vi.spyOn(botCloudComputerApi, "openScreen").mockResolvedValue({
+      ws_path: "/api/octop-bot/computers/bot-1/screen/ws?ticket=t1",
+      expires_in: 60,
+      session: "s1",
+    });
+    const takeover = vi
+      .spyOn(botCloudComputerApi, "takeover")
+      .mockResolvedValue({ ...running, takeover: true });
+    render(<CloudComputerCard botId="bot-1" />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "cloudComputer.view" }),
+    );
+    expect(await screen.findByTestId("screen")).toHaveTextContent(
+      "/api/octop-bot/computers/bot-1/screen/ws?ticket=t1|false|s1",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "cloudComputer.takeOver" }),
+    );
+    expect(takeover).toHaveBeenCalledWith("bot-1", true);
+    // Taken over: the screen gets control, and its session for IME text and the clipboard.
+    expect(await screen.findByTestId("screen")).toHaveTextContent("|true|s1");
   });
 
   it("explains when the computer starts before it has run", async () => {
@@ -54,6 +104,7 @@ describe("Octop Bot cloud computer card", () => {
       spec: "standard",
       running_since: null,
       paid_until: null,
+      takeover: false,
     });
     render(<CloudComputerCard botId="bot-1" />);
     expect(

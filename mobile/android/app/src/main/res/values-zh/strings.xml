@@ -283,6 +283,14 @@
     <string name="settings_delete_account_done">已提交注销申请，并已退出登录。</string>
     <string name="onboarding_agreement"><![CDATA[继续即表示同意<a href="https://admin.lynxce.cn/legal/app/user-agreement">《灵策用户协议》</a>和<a href="https://octop-bot.lynxce.cn/privacy.html">《隐私政策》</a>]]></string>
     <string name="file_open_unsupported">请在 Octop Bot 网页版或桌面端打开这个文件。</string>
+    <string name="file_kind_file">文件</string>
+    <string name="file_open_with">用其他应用打开…</string>
+    <string name="file_share">分享</string>
+    <string name="file_save">保存到“下载”</string>
+    <string name="file_save_to">保存到…</string>
+    <string name="file_saved">已保存到“下载”</string>
+    <string name="file_saved_to">已保存</string>
+    <string name="file_save_failed">无法保存这个文件。</string>
     <string name="computer_header">云电脑</string>
     <string name="computer_title">这个 Bot 的电脑</string>
     <string name="computer_state_none">未开机</string>
@@ -291,6 +299,9 @@
     <string name="computer_pause">立即暂停</string>
     <string name="computer_unavailable">暂不可用</string>
     <string name="computer_footer">Bot 第一次需要运行命令时自动开机，空闲 10 分钟自动暂停。运行时按分钟扣灵策积分，暂停后文件保留。</string>
+    <string name="computer_view">查看画面</string>
+    <string name="computer_take_over">接管</string>
+    <string name="computer_hand_back">交还</string>
     <!-- 设备连接器（mobile/PROTOCOL.md §C） -->
     <string name="settings_device">设备连接器</string>
     <string name="settings_device_health">健康</string>
@@ -314,4 +325,31 @@
     <string name="device_save">保存</string>
     <string name="health_rationale_title">Octop Bot 如何使用你的健康数据</string>
     <string name="health_rationale_text">在“设置 → 设备连接器 → 健康”打开后，只有当 Bot 在聊天中需要时，Octop Bot 才会从 Health Connect 读取每天的汇总和平均值（步数、活动能量、锻炼分钟数、睡眠、心率、静息心率和体重）。这些数据会随这次聊天发送给回答你的模型，Octop Bot 不会另外保存。Octop Bot 从不写入健康数据。你随时可以关掉开关，或在 Health Connect 里撤销授权。</string>
+    <string name="profile_entry">动态与资料库</string>
+    <string name="profile_activity">动态</string>
+    <string name="profile_library">资料库</string>
+    <string name="profile_upcoming">即将运行</string>
+    <string name="profile_no_upcoming">还没有定时任务。可以让这个 Bot 按时帮你做事。</string>
+    <string name="profile_show_more">显示更多</string>
+    <string name="profile_toggle">按计划运行 %1$s</string>
+    <string name="profile_no_files">这个 Bot 为你生成的文件会显示在这里。</string>
+    <string name="profile_today">今天</string>
+    <string name="profile_week">本周</string>
+    <string name="profile_older">更早</string>
+    <string name="computer_activity_click">点击</string>
+    <string name="computer_activity_command">运行命令</string>
+    <string name="computer_activity_file">读写文件</string>
+    <string name="computer_activity_key">按键</string>
+    <string name="computer_activity_screenshot">查看屏幕</string>
+    <string name="computer_activity_scroll">滚动</string>
+    <string name="computer_activity_type">输入文字</string>
+    <string name="computer_float_busy">正在操作电脑</string>
+    <string name="computer_float_close">关闭</string>
+    <string name="computer_float_expand">放大</string>
+    <string name="computer_float_idle">空闲</string>
+    <string name="computer_float_loading">正在加载画面…</string>
+    <string name="computer_float_minimise">收起</string>
+    <string name="computer_float_off">电脑没开机，Bot 用到时会自动开机</string>
+    <string name="computer_float_toggle">云电脑</string>
+    <string name="computer_float_yours">你在操作</string>
 </resources>

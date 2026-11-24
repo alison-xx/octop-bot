@@ -519,6 +519,8 @@ _IAP_HEADERS = {"X-Lynxce-Iap-App": "cn.lynxce.octopbot"}
 # What cloud mode may do with a tenant's stored Lynxce session, besides request_cloud.
 _TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
     ("POST", "/api/user/personal-api-keys"): {},
+    # The tenant's own model key only, e.g. adding the media scopes (bot_cloud/accounts.py).
+    ("PATCH", "/api/user/personal-api-keys/{id}"): {},
     ("POST", "/api/user/account/deletion-request"): {},
     ("GET", "/api/billing/app/recharge-packages"): _IAP_HEADERS,
     ("POST", "/api/billing/apple/purchase-intents"): _IAP_HEADERS,
@@ -533,6 +535,12 @@ _TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
 _SERVICE_KEY_PATHS = frozenset(
     {"/api/billing/octop-bot/compute/reserve", "/api/billing/octop-bot/compute/settle"}
 )
+
+
+def _route(path: str) -> str:
+    """``/api/user/personal-api-keys/<id>`` as its allow-list entry; other paths unchanged."""
+    match = re.fullmatch(r"/api/user/personal-api-keys/[A-Za-z0-9_-]{1,64}", path)
+    return "/api/user/personal-api-keys/{id}" if match else path
 
 
 def _service_headers(path: str) -> dict[str, str]:
@@ -553,7 +561,7 @@ async def tenant_call(
     json: dict[str, Any] | None = None,
 ) -> Any:
     """Cloud mode: one of a few account operations, as the tenant's stored Lynxce session."""
-    allowed = _TENANT_CALLS.get((method, path))
+    allowed = _TENANT_CALLS.get((method, _route(path)))
     if not bot_cloud_enabled() or allowed is None:
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     extra = {**allowed, **_service_headers(path)}

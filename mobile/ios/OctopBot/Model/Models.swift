@@ -51,6 +51,8 @@ struct ChatMessage: Identifiable, Hashable {
     var thinking: String = ""
     var images: [Data] = []
     var tools: [ToolStep] = []
+    /// Files the Bot sent (server mode); links in `text` become cards too, see `fileCards`.
+    var attachments: [FileAttachment] = []
     var status: MessageStatus = .done
     var createdAt: Date = .now
     /// Group rooms: which Bot wrote this message.
@@ -64,6 +66,8 @@ enum StreamEvent {
     case text(String)
     case thinking(String)
     case tool(id: String, name: String, done: Bool)
+    /// A file the Bot sent (server mode).
+    case attachment(FileAttachment)
     /// The turn paused for a question or an approval (server mode).
     case pause(HitlPause)
     case done

@@ -120,7 +120,7 @@ async def test_native_pkce_state_owner_locale_and_encrypted_grant(
     attempt, url = await lynxce.start_login(services, 1)
     args = query(url)
     assert await lynxce.start_login(services, 1) == (attempt, url)
-    assert args["scope"] == "chat recharge" and args["code_challenge_method"] == "S256"
+    assert args["scope"] == "chat media recharge" and args["code_challenge_method"] == "S256"
     assert args["response_type"] == "code" and args["state"] != attempt
     assert issuer.registrations == [
         {
@@ -129,7 +129,7 @@ async def test_native_pkce_state_owner_locale_and_encrypted_grant(
             "token_endpoint_auth_method": "none",
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],
-            "scope": "chat recharge",
+            "scope": "chat media recharge",
         }
     ]
     assert urlsplit(args["redirect_uri"]).hostname == "127.0.0.1"

@@ -263,12 +263,93 @@ class ServerBackend(
         ServerProtocol.computerStatus(json("POST", "/api/octop-bot/computers/" + segment(botId) + "/pause"))
             ?: throw ApiException.badResponse()
 
+    suspend fun setTakeover(botId: String, active: Boolean): ServerProtocol.ComputerStatus =
+        ServerProtocol.computerStatus(
+            json("POST", "/api/octop-bot/computers/" + segment(botId) + "/takeover", body = Http.body(buildJsonObject { put("active", active) })),
+        ) ?: throw ApiException.badResponse()
+
+    /** Front window and a small thumbnail of a running computer; null while it is off (never wakes it). */
+    suspend fun glance(botId: String): ServerProtocol.Glance? = try {
+        ServerProtocol.glance(json("GET", "/api/octop-bot/computers/" + segment(botId) + "/glance"))
+    } catch (e: ApiException) {
+        if (e.status == 404) null else throw e
+    }
+
+    /** The screen page for a Bot's computer, with a fresh one-time ticket. */
+    suspend fun screenUrl(botId: String, control: Boolean): String {
+        val ticket = json("POST", "/api/octop-bot/computers/" + segment(botId) + "/screen").asObject()
+        val wsPath = ticket?.str("ws_path")
+        return wsPath?.let { ServerProtocol.screenPage(baseUrl, botId, it, ticket?.str("session"), control) }
+            ?: throw ApiException.badResponse()
+    }
+
     /** Octop Bot cloud: a short-lived object-store link for a file a Bot linked to. */
     suspend fun downloadLink(uri: String): String {
         val parsed = (session.baseUrl + uri).toHttpUrl()
         val query = (0 until parsed.querySize).associate { parsed.queryParameterName(it) to parsed.queryParameterValue(it).orEmpty() }
         val link = json("POST", parsed.encodedPath + "-link", query).asObject()?.str("url")
-        return link?.takeIf { it.startsWith("https://") } ?: throw ApiException.badResponse()
+        // https, or plain http only when this server is itself http (no downgrade).
+        return link?.takeIf { it.startsWith("https://") || it.startsWith(parsed.scheme + "://") }
+            ?: throw ApiException.badResponse()
+    }
+
+    /** A file's size from `HEAD` on its download URL; null when unknown (older servers answer 405). */
+    suspend fun fileSize(uri: String): Long? = runCatching {
+        val request = Http.request(session.baseUrl + uri).head().build()
+        client.newCall(request).await().use { response ->
+            if (response.isSuccessful) response.header("Content-Length")?.toLongOrNull() else null
+        }
+    }.getOrNull()
+
+    /**
+     * Downloads a file a Bot sent ([uri] is server-relative) into [target]. On Octop Bot cloud a workspace file
+     * comes from the object store through a short-lived link; otherwise it is fetched with this session.
+     */
+    suspend fun downloadFile(uri: String, target: java.io.File) {
+        val request = if (isCloud && ServerProtocol.isWorkspaceDownload(uri)) {
+            Http.request(downloadLink(uri)).header("Accept", "*/*").build() to Http.client.withReadTimeout(300)
+        } else {
+            Http.request(session.baseUrl + uri).header("Accept", "*/*").build() to client.withReadTimeout(300)
+        }
+        request.second.newCall(request.first).await().use { response ->
+            if (!response.isSuccessful) {
+                throw ApiException.from(response.code, Http.errorMessage(withContext(Dispatchers.IO) { response.body.string() }))
+            }
+            withContext(Dispatchers.IO) {
+                val partial = java.io.File(target.parentFile, target.name + ".part")
+                partial.outputStream().use { out -> response.body.byteStream().use { it.copyTo(out) } }
+                if (!partial.renameTo(target)) throw ApiException.network()
+            }
+        }
+    }
+
+    // Bot profile: upcoming scheduled tasks and the files a Bot made
+
+    suspend fun upcoming(botId: String): List<BotActivity.UpcomingJob> =
+        BotActivity.upcoming(json("GET", "/api/octop-bot/bots/" + segment(botId) + "/upcoming"))
+
+    suspend fun library(botId: String): List<BotActivity.LibraryFile> =
+        BotActivity.library(json("GET", "/api/octop-bot/bots/" + segment(botId) + "/library"))
+
+    suspend fun setCronEnabled(botId: String, jobId: String, enabled: Boolean) {
+        json("PATCH", "/api/agents/" + segment(botId) + "/cron/" + segment(jobId), body = Http.body(buildJsonObject {
+            put("enabled", enabled)
+        }))
+    }
+
+    /** A file's bytes: from a signed object-store link on Octop Bot cloud, otherwise with this session. */
+    suspend fun fileBytes(uri: String): ByteArray {
+        if (!isCloud) {
+            val parsed = (session.baseUrl + uri).toHttpUrl()
+            val query = (0 until parsed.querySize).associate { parsed.queryParameterName(it) to parsed.queryParameterValue(it).orEmpty() }
+            return raw("GET", parsed.encodedPath, query, http = slowClient)
+        }
+        val request = Http.request(downloadLink(uri)).build()
+        // The signed link carries its own authorization; never send this server's token to the store.
+        return Http.client.withReadTimeout(900).newCall(request).await().use { response ->
+            if (!response.isSuccessful) throw ApiException.from(response.code, null)
+            withContext(Dispatchers.IO) { response.body.bytes() }
+        }
     }
 
     private fun segment(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
@@ -330,6 +411,7 @@ class ServerBackend(
             val page = ServerProtocol.historyPage(
                 json("GET", agent(bot) + "/threads/${segment(conversation.id)}/history", mapOf("limit" to "50")),
                 toolLabels(),
+                agentId = bot.id,
             )
             if (!page.loading) return Transcript(page.messages, page.pending)
             delay(page.retryAfterMs.coerceIn(300, 3000))
