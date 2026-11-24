@@ -959,6 +959,8 @@
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "容器环境下不能设置「允许的存储根目录」。",
     "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{{used}}/{{quota}}）。",
     "AGENT_QUOTA_EXCEEDED": "该账号已达到专家数量上限，请联系管理员提升额度（{{used}}/{{quota}}）。",
+    "BOT_COUNT_LIMIT": "这个账号最多有 {{limit}} 个 Bot，已经满了。删掉不用的 Bot 后再建。",
+    "BOT_GROUP_COUNT_LIMIT": "这个账号最多有 {{limit}} 个群聊，已经满了。删掉不用的群聊后再建。",
     "BACKEND_TYPE_NOT_ALLOWED": "该账号不能使用这些后端类型：{{types}}。",
     "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
     "CAPTCHA_FAILED": "验证码校验失败，请重试。",

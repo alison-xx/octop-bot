@@ -6,11 +6,8 @@ cloud, phones) guides an owner once. Accounts that already have a bot or a group
 
 from __future__ import annotations
 
-import json
 import time
-from functools import lru_cache
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -71,15 +68,6 @@ ONBOARDING_INDUSTRIES = (
     "hr",
 )
 EXTRA_INDUSTRIES = ("trade", "store")
-# Same shape as the Bot market's roles.json (onboarding = order on this screen); replaced by
-# the market's own file once it ships.
-ROLES_FILE = Path(__file__).with_name("onboarding_roles.json")
-
-
-@lru_cache(maxsize=1)
-def _roles() -> list[dict[str, Any]]:
-    rows = json.loads(ROLES_FILE.read_text(encoding="utf-8"))
-    return sorted((r for r in rows if r.get("onboarding")), key=lambda r: r["onboarding"])
 
 
 def onboarding_options(locale: str) -> Options:
@@ -100,7 +88,9 @@ def onboarding_options(locale: str) -> Options:
         else:
             continue
         industries.append(Option(id=key, name=name, hint=hint))
-    roles = [Option(id=r["id"], name=r["name"][lang], hint=r["blurb"][lang]) for r in _roles()]
+    # The Bot market's roles that have an onboarding position, in that order.
+    picked = sorted((r for r in catalog.roles if r.onboarding), key=lambda r: r.onboarding or 0)
+    roles = [Option(id=r.id, name=r.name.get(lang), hint=r.blurb.get(lang)) for r in picked]
     return Options(industries=industries, roles=roles)
 
 

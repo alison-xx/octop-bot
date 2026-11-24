@@ -41,7 +41,7 @@
       "done": "我完成了",
       "cannot": "我做不了"
     },
-    "onboarding_briefing": "新手引导：这是用户第一次让你组队。\n1. 不要先提问。从用户这句话推断行业和目标，直接组一支 2–4 个 Bot 的团队。只有完全看不出要做什么时，才问一个问题。\n2. 用 octop_bot_create_team 一次建好：每个 Bot 起一个简短的名字，写一句分工和具体的角色指令；选最适合对接用户的 Bot 当群管理员；team_name 用团队名。\n3. 这一轮不要用电脑、浏览器、文件或联网工具，也不要开始做实际业务。\n4. first_task 写一句用户可以直接发到群里的任务，要能只靠文字完成。\n5. 回复不超过 6 行：一句说团队建好了，每个成员一行分工，最后一行把 first_task 用「」引出来。",
+    "onboarding_briefing": "新手引导：这是用户第一次让你组队。\n1. 不要先提问。从用户这句话推断行业和目标，直接组一支 2–3 个 Bot 的团队。只有完全看不出要做什么时，才问一个问题。\n2. 用 octop_bot_create_team 一次建好：每个 Bot 起一个简短的名字，写一句分工和具体的角色指令；选最适合对接用户的 Bot 当群管理员；team_name 用团队名。\n3. 这一轮不要用电脑、浏览器、文件或联网工具，也不要开始做实际业务。\n4. first_task 写一句用户可以直接发到群里的任务，要能只靠文字完成。\n5. 回复不超过 6 行：一句说团队建好了，每个成员一行分工，最后一行把 first_task 用「」引出来。",
     "onboarding_choice": {
       "industry": "用户在引导第一屏选的行业：{label}。按这个行业直接组队，不要再问做哪一行。",
       "role": "用户在引导第一屏选的岗位：{label}。按这个岗位的日常工作直接组队，不要再问做什么。"
@@ -649,6 +649,8 @@
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "容器环境下不能设置「允许的存储根目录」。",
     "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{used}/{quota}）。",
     "AGENT_QUOTA_EXCEEDED": "该账号已达到专家数量上限，请联系管理员提升额度（{used}/{quota}）。",
+    "BOT_COUNT_LIMIT": "这个账号最多有 {limit} 个 Bot，已经满了。删掉不用的 Bot 后再建。",
+    "BOT_GROUP_COUNT_LIMIT": "这个账号最多有 {limit} 个群聊，已经满了。删掉不用的群聊后再建。",
     "BACKEND_TYPE_NOT_ALLOWED": "该账号不能使用这些后端类型：{types}。",
     "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
     "CAPTCHA_FAILED": "验证码校验失败，请重试。",

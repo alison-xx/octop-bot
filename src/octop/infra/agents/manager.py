@@ -924,6 +924,11 @@ class AgentManager:
 
                 if kind == "managed":
                     raise OctopError.localized(ErrorCode.FORBIDDEN)
+                if kind != "team" and spec.user_id is not None:
+                    # A cloud account owns at most MAX_BOTS Bots; Bots on this computer are unlimited.
+                    from octop.infra.agents.bot_limits import assert_bot_capacity  # noqa: PLC0415
+
+                    assert_bot_capacity(self._repos.user_repo, self._repos.agent_repo, spec.user_id)
                 # Only what a tenant may set; the server picks the folder, backend and layout.
                 config = strip_tenant_input(config)
             if kind == "managed":

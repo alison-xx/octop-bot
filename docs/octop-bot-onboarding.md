@@ -104,7 +104,7 @@
 数据来源：
 
 - 行业：从 Bot 市场的 `categories.json` 里挑最常用的 8 个（名字照市场的读），加上市场还没有的「外贸出口」「餐饮门店」（`octop_bot.onboarding_industries.*`）。挑哪几个、什么顺序在 `bot_onboarding.ONBOARDING_INDUSTRIES` 里。研发技术、个人生活两类没放上第一屏，选「其他」能写。
-- 岗位：和 Bot 市场的「岗位」维度用同一份数据。内容运营在 `feature/bot-market-more` 加了 `bot_market/roles.json`（19 个岗位，`onboarding` 字段 1–10 标出上引导的 10 个和顺序）。那个 PR 进 main 之前，本分支用一份同结构的临时文件 `src/octop/infra/agents/onboarding_roles.json`；进 main 后改读 `catalog.roles` 并删掉临时文件，接口不变。
+- 岗位：和 Bot 市场的「岗位」维度用同一份数据，读 `load_catalog().roles`（`bot_market/roles.json`，19 个岗位），取 `onboarding` 有值的 10 个，按它排序。要调整引导上的岗位或顺序，改 `roles.json` 的 `onboarding`。
 
 下面「补一句具体需求（可选）」可以不填。底部两个按钮并排：
 
@@ -113,7 +113,7 @@
 
 选择先记到服务端，再由总管对话在能发消息时自动发出那句话（路由状态 `autoSend`，只发一次）。本机模式还没接模型时，那句话不会发出，总管首屏照旧显示「连接模型」；接好模型回来后，引导条显示「总管还没建好团队」和「再发一次」，点一下就按已选的行业或岗位重新发出，不用重选。
 
-**为什么这一期仍由总管现编、不直接导入市场模板（D4 第二期）：** 市场模板是一个个独立 Bot，带技能、记忆、例行任务和连接器建议。直接导入会顺带建定时任务（持续花积分）、提示去连连接器，第一次用就太重；模板之间也没有「谁当群管理员、怎么分工」的信息，还得总管来编排。这一期让总管参考同类模板的岗位名（写进引导提示，§6.2）现编 2–4 个 Bot，覆盖面和市场一致，又轻；第二期再加「用模板建」（`octop_bot_create_team` 的 bot 允许带 `template` 字段，导入模板但先不开例行任务）。
+**为什么这一期仍由总管现编、不直接导入市场模板（D4 第二期）：** 市场模板是一个个独立 Bot，带技能、记忆、例行任务和连接器建议。直接导入会顺带建定时任务（持续花积分）、提示去连连接器，第一次用就太重；模板之间也没有「谁当群管理员、怎么分工」的信息，还得总管来编排。这一期让总管参考同类模板的岗位名（写进引导提示，§6.2）现编 2–3 个 Bot，覆盖面和市场一致，又轻；第二期再加「用模板建」（`octop_bot_create_team` 的 bot 允许带 `template` 字段，导入模板但先不开例行任务）。
 
 左侧边栏此时是空的，显示一行提示「还没有 Bot 和群聊。和总管说一句话，它来帮你组队。」如果总管这一轮没建成团队（比如它反问了一句、或者出错），输入框上方的引导条提示「回答总管的问题，或再说一次你想要什么」，用户在输入框里继续就行。
 
@@ -193,21 +193,23 @@
 ```
 octop_bot_create_team(
   team_name: str,                 # 群名，也是侧栏分组名
-  bots: list[{name, role, instructions, avatar?}],   # 2–4 个
+  bots: list[{name, role, instructions, avatar?}],   # 2–3 个
   admin: str,                     # bots 里某个 name，当群管理员
   first_task: str = "",           # 建议用户在群里发的第一句，引导会拿来预填
   reply_mode: "admin_first" | "all_members" = "admin_first",
 ) -> {group_id, bot_ids, section, section_error?}
 ```
 
-内部依次复用现有的 `registry.create(defer_bootstrap=True)`、`set_character / bot_appearance`、`create_group`、`section_action`，所有权检查沿用 `require_owner()`。中途某个 Bot 建失败就停下，返回已经建好的 ID 和错误码，不回滚，总管可以用已有 ID 补建群。上限 6 个，引导模式提示词要求 2–4 个。
+限制（安全评审后，总管 11-25 定）：一次最多 3 个 Bot，和免费档的 3 个协同 Bot、1 个群一致；名字和团队名 ≤40 字，分工 ≤200 字，角色指令 ≤8000 字，first_task ≤500 字，超长返回 `SLASH_BAD_ARGS`；同一对话里同名团队 10 分钟内只建一次，重试返回第一次的结果；非本人或非 Chief 的回合调用返回 `FORBIDDEN`。云端租户（bot.lynxce.cn）每个账号最多 50 个 Bot、20 个群（`BOT_COUNT_LIMIT`、`BOT_GROUP_COUNT_LIMIT`，在 `registry.create` 和 `create_group` 两处检查），本机 Bot 不设上限。
+
+内部依次复用现有的 `registry.create(defer_bootstrap=True)`、`set_character / bot_appearance`、`create_group`、`section_action`，所有权检查沿用 `require_owner()`。中途某个 Bot 建失败就停下，返回已经建好的 ID 和错误码，不回滚，总管可以用已有 ID 补建群。上限 6 个，引导模式提示词要求 2–3 个。
 
 ### 6.2 每轮附加的引导提示
 
 不改总管存好的系统提示词。当账号状态是 `active` 且步骤在 `welcome` / `ask`、本轮是总管、来自 Bot 客户端时，`_prepare_stream_request` 在附加简报里多拼一段（i18n 键 `octop_bot.onboarding_briefing`，中英两份）。中文稿：
 
 > 新手引导：这是用户第一次让你组队。
-> 1. 不要先提问。从这句话推断行业和目标，直接组一支 2–4 个 Bot 的团队。只有完全看不出要做什么时，才问一个问题。
+> 1. 不要先提问。从这句话推断行业和目标，直接组一支 2–3 个 Bot 的团队。只有完全看不出要做什么时，才问一个问题。
 > 2. 用 octop_bot_create_team 一次建好：每个 Bot 起一个简短的名字，写一句分工和具体的角色指令；选最适合对接用户的 Bot 当群管理员；群名和侧栏分组都用团队名。
 > 3. 这一轮不要用电脑、浏览器、文件或联网工具，也不要开始做实际业务。
 > 4. first_task 写一句用户可以直接发到群里的任务，要能只靠文字完成。
@@ -319,7 +321,7 @@ Electron 主进程不用改。桌面窗口拖拽区、红绿灯按钮的留白�
 
 - `src/octop/infra/agents/bot_onboarding.py`：状态读写、首次判定（`get_or_insert`，两个标签页同时打开也只判一次）、`record_team`、`onboarding_briefing`。
 - `src/octop/api/routers/bot_onboarding.py`：`GET / PUT /api/octop-bot/onboarding` 和 `GET /api/octop-bot/onboarding/options`，挂在 `bot_workspace.router` 下。
-- 行业 / 岗位选项（D6 和之后的选项卡改动）：`onboarding_options()` 给两组，行业读市场的 `categories.json` 和模板名再加外贸出口、餐饮门店，岗位读临时的 `onboarding_roles.json`（等市场的 `roles.json` 进 main 后替换）；`PUT start` 记下 `choice`（`kind`、`id`、`label`、`note`），引导提示按行业或岗位措辞。
+- 行业 / 岗位选项（D6 和之后的选项卡改动）：`onboarding_options()` 给两组，行业读市场的 `categories.json` 和模板名再加外贸出口、餐饮门店，岗位读市场的 `roles.json`（`onboarding` 有值的，按序号）；`PUT start` 记下 `choice`（`kind`、`id`、`label`、`note`），引导提示按行业或岗位措辞。
 - `bot_tools.py`：新增 `octop_bot_create_team`；`octop_bot_create_group` 在引导中建群时也记录团队。
 - `manager._prepare_stream_request`：引导中（`active` 且 `welcome` / `ask`）给总管的 Bot 客户端轮次附加 `octop_bot.onboarding_briefing`。
 - 测试 `tests/integration/test_octop_bot_onboarding.py`（7 个，含选行业与提示）：新用户全流程、老用户不引导、跳过后不再出现、简报只在该出现时出现、组队参数校验与半途失败、云租户组队不启动云电脑（等后台 bootstrap 跑完再断言）。

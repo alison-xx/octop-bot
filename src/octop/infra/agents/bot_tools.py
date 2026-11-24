@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import TYPE_CHECKING, Any, Literal
 
 from langchain_core.tools import StructuredTool
@@ -18,13 +19,29 @@ if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
     from octop.infra.db.services import SharedServices
 
-TEAM_MAX_BOTS = 6
+TEAM_MAX_BOTS = 3
+NAME_MAX = 40
+ROLE_MAX = 200
+INSTRUCTIONS_MAX = 8000
+FIRST_TASK_MAX = 500
+# One team per thread and name for a while: a retried or repeated call returns the first result.
+TEAM_REUSE_SECONDS = 600
+_recent_teams: dict[tuple[int, str, str], tuple[float, dict[str, Any]]] = {}
+_team_locks: dict[tuple[int, str, str], asyncio.Lock] = {}
 
 
 class TeamBot(BaseModel):
-    name: str = Field(description="Short display name.")
-    role: str = Field(description="One line on what this bot does in the team.")
-    instructions: str = Field(description="Concrete role instructions (the bot's system prompt).")
+    # Lengths are checked in the tool so an overlong value is a SLASH_BAD_ARGS, not a schema error;
+    # the schema still tells the model the limits.
+    name: str = Field(description="Short display name.", json_schema_extra={"maxLength": NAME_MAX})
+    role: str = Field(
+        description="One line on what this bot does in the team.",
+        json_schema_extra={"maxLength": ROLE_MAX},
+    )
+    instructions: str = Field(
+        description="Concrete role instructions (the bot's system prompt).",
+        json_schema_extra={"maxLength": INSTRUCTIONS_MAX},
+    )
     avatar: Character | None = None
 
 
@@ -244,9 +261,6 @@ def chief_tools(
         post in the group to start. If a bot or the group fails, the result lists the bot_ids
         already created and the error code; reuse those IDs instead of creating them again.
         """
-        from octop.infra.agents.manager import AgentCreateSpec
-        from octop.infra.bot_groups.service import create_group
-
         require_owner()
         name = team_name.strip()
         names = [b.name.strip() for b in bots]
@@ -258,6 +272,47 @@ def chief_tools(
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "every bot needs a name and instructions")
         if len(set(names)) != len(names) or admin.strip() not in names:
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "admin must name one of the new bots")
+        if (
+            len(name) > NAME_MAX
+            or len(first_task) > FIRST_TASK_MAX
+            or any(
+                len(n) > NAME_MAX
+                or len(b.role) > ROLE_MAX
+                or len(b.instructions) > INSTRUCTIONS_MAX
+                for n, b in zip(names, bots, strict=True)
+            )
+        ):
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                f"names up to {NAME_MAX} characters, roles {ROLE_MAX}, instructions "
+                f"{INSTRUCTIONS_MAX}, first_task {FIRST_TASK_MAX}",
+            )
+        thread = str((get_config().get("configurable") or {}).get("thread_id") or "")
+        key = (owner, thread, name)
+        async with _team_locks.setdefault(key, asyncio.Lock()):
+            now = time.monotonic()
+            for stale in [
+                k for k, (at, _) in _recent_teams.items() if now - at > TEAM_REUSE_SECONDS
+            ]:
+                _recent_teams.pop(stale, None)
+            if thread and key in _recent_teams:
+                return {**_recent_teams[key][1], "reused": True}
+            result = await _create_team(name, bots, names, admin, first_task, reply_mode)
+            if thread and "group_id" in result:
+                _recent_teams[key] = (time.monotonic(), result)
+            return result
+
+    async def _create_team(
+        name: str,
+        bots: list[TeamBot],
+        names: list[str],
+        admin: str,
+        first_task: str,
+        reply_mode: Literal["admin_first", "all_members"],
+    ) -> dict[str, Any]:
+        from octop.infra.agents.manager import AgentCreateSpec
+        from octop.infra.bot_groups.service import create_group
+
         created: list[str] = []
         try:
             for bot, bot_name in zip(bots, names, strict=True):

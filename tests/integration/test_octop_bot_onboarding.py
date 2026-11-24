@@ -204,6 +204,94 @@ async def test_create_team_validates_and_keeps_what_it_made(env_with_provider):
         )
 
 
+@pytest.fixture(autouse=True)
+def _fresh_team_memory() -> None:
+    from octop.infra.agents import bot_tools
+
+    bot_tools._recent_teams.clear()
+
+
+async def test_create_team_rejects_oversized_and_foreign_calls(env_with_provider):
+    client, server, auth = env_with_provider
+    chief = await _bot_owner(client, server, auth)
+    tools, config = _chief(server, chief)
+    bot = TEAM["bots"][0]
+    extra = [{"name": f"B{i}", "role": "r", "instructions": "i"} for i in range(4)]
+    for bad in (
+        {**TEAM, "bots": extra, "admin": "B0"},  # more than 3 in one call
+        {**TEAM, "team_name": "团" * 41},
+        {**TEAM, "first_task": "x" * 501},
+        {**TEAM, "bots": [{**bot, "name": "名" * 41}], "admin": "名" * 41},
+        {**TEAM, "bots": [{**bot, "role": "r" * 201}], "admin": bot["name"]},
+        {**TEAM, "bots": [{**bot, "instructions": "i" * 8001}], "admin": bot["name"]},
+    ):
+        with pytest.raises(OctopError) as exc:
+            await tools["octop_bot_create_team"].ainvoke(bad, config=config)
+        assert exc.value.code.value == "SLASH_BAD_ARGS"
+    ctx = config["configurable"]
+    for foreign in (
+        {**ctx, "user": str(int(ctx["user"]) + 1)},  # someone else's turn
+        {**ctx, "agent_id": "not-the-chief"},  # a turn of another bot
+    ):
+        with pytest.raises(OctopError) as exc:
+            await tools["octop_bot_create_team"].ainvoke(TEAM, config={"configurable": foreign})
+        assert exc.value.code.value == "FORBIDDEN"
+    assert len((await client.get(WORKSPACE, headers=auth)).json()["bots"]) == 1
+
+
+async def test_a_retried_team_call_in_one_thread_builds_one_team(env_with_provider):
+    client, server, auth = env_with_provider
+    chief = await _bot_owner(client, server, auth)
+    tools, config = _chief(server, chief)
+    config = {"configurable": {**config["configurable"], "thread_id": "turn-1"}}
+    first, second = await asyncio.gather(
+        tools["octop_bot_create_team"].ainvoke(TEAM, config=config),
+        tools["octop_bot_create_team"].ainvoke(TEAM, config=config),
+    )
+    assert first["group_id"] == second["group_id"]
+    assert {first.get("reused"), second.get("reused")} == {None, True}
+    workspace = (await client.get(WORKSPACE, headers=auth)).json()
+    assert len(workspace["bots"]) == 1 + len(TEAM["bots"])
+    assert len(workspace["groups"]) == 1
+
+
+async def test_account_totals_stop_new_bots_and_groups(env_with_provider, monkeypatch):
+    from octop.infra.agents import bot_limits
+
+    client, server, auth = env_with_provider
+    chief = await _bot_owner(client, server, auth)
+    tools, config = _chief(server, chief)
+    monkeypatch.setattr(bot_limits, "cloud_tenant", lambda *_: True)
+    monkeypatch.setattr(bot_limits, "MAX_BOTS", 2)  # Chief plus one
+    partial = await tools["octop_bot_create_team"].ainvoke(TEAM, config=config)
+    assert len(partial["bot_ids"]) == 1 and partial["error"] == "BOT_COUNT_LIMIT"
+    with pytest.raises(OctopError) as exc:
+        await tools["octop_bot_create"].ainvoke(
+            {"name": "再来", "instructions": "x"}, config=config
+        )
+    assert exc.value.code.value == "BOT_COUNT_LIMIT"
+
+    monkeypatch.setattr(bot_limits, "MAX_GROUPS", 0)
+    with pytest.raises(OctopError) as exc:
+        await tools["octop_bot_create_group"].ainvoke(
+            {"name": "群", "admin_id": chief, "member_ids": partial["bot_ids"]}, config=config
+        )
+    assert exc.value.code.value == "BOT_GROUP_COUNT_LIMIT"
+    assert (await client.get(WORKSPACE, headers=auth)).json()["groups"] == []
+
+
+async def test_bots_on_this_computer_have_no_account_limit(env_with_provider, monkeypatch):
+    from octop.infra.agents import bot_limits
+
+    client, server, auth = env_with_provider
+    chief = await _bot_owner(client, server, auth)
+    tools, config = _chief(server, chief)
+    monkeypatch.setattr(bot_limits, "MAX_BOTS", 1)
+    monkeypatch.setattr(bot_limits, "MAX_GROUPS", 0)
+    result = await tools["octop_bot_create_team"].ainvoke(TEAM, config=config)
+    assert "group_id" in result and len(result["bot_ids"]) == len(TEAM["bots"])
+
+
 async def test_cloud_team_does_not_start_computers(
     tmp_octop_home: Path,
     upstream,  # noqa: F811

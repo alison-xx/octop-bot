@@ -959,6 +959,8 @@
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({{used}}/{{quota}}).",
     "AGENT_QUOTA_EXCEEDED": "This account has reached its expert limit. Please contact an administrator to raise the limit ({{used}}/{{quota}}).",
+    "BOT_COUNT_LIMIT": "This account can have up to {{limit}} Bots and has reached that. Delete Bots you no longer use, then try again.",
+    "BOT_GROUP_COUNT_LIMIT": "This account can have up to {{limit}} group chats and has reached that. Delete group chats you no longer use, then try again.",
     "BACKEND_TYPE_NOT_ALLOWED": "This account cannot use backend type {{types}}.",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
