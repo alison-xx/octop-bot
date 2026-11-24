@@ -175,14 +175,15 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
     val models by model.models.collectAsStateWithLifecycle()
     val settings by model.settings.collectAsStateWithLifecycle()
     val update by model.update.collectAsStateWithLifecycle()
-    val cloudKeys by model.cloudKeys.collectAsStateWithLifecycle()
+    val serverKeys by model.serverKeys.collectAsStateWithLifecycle()
     val phoneSelection by model.phoneModels.selection.collectAsStateWithLifecycle()
     val phoneKeys by model.phoneModels.ownKeys.collectAsStateWithLifecycle()
     val phoneLocal by model.phoneModels.local.collectAsStateWithLifecycle()
     val cloud = (backend as? ServerBackend)?.isCloud == true
     val phoneModel = remember(phoneSelection, phoneKeys, phoneLocal) { model.phoneModels.current { it.name }?.first }
     val modelSummary = when {
-        cloud -> cloudKeys?.takeIf { it.inUse != null }?.selectedModel ?: stringResource(R.string.models_lynxce_auto)
+        cloud -> serverKeys?.takeIf { it.inUse != null }?.selectedModel ?: stringResource(R.string.models_lynxce_auto)
+        backend is ServerBackend -> serverKeys?.takeIf { it.inUse != null }?.selectedModel ?: stringResource(R.string.models_server_default)
         backend is DeviceBackend -> phoneModel ?: stringResource(R.string.models_none)
         else -> phoneModel ?: models.firstOrNull { it.id == settings.model }?.name ?: stringResource(R.string.settings_model_auto)
     }
@@ -242,7 +243,7 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
             deviceHealth = settings.deviceHealth && healthPermitted,
             deviceCalendar = settings.deviceCalendar && calendarPermitted,
             deviceNotice = deviceNotice,
-            showModels = backend.definesBotsLocally || cloud,
+            showModels = true,
             modelSummary = modelSummary,
             phoneOnly = backend is DeviceBackend,
         ),

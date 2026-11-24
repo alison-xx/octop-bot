@@ -229,25 +229,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         viewModelScope.launch { enter(deviceBackend()) }
     }
 
-    /** Where "My API keys" live: the cloud account, or this phone; a self-hosted server manages its own models. */
+    /** Where "My API keys" live: the Octop server signed in to (cloud or self-hosted), or this phone. */
     val modelKeys: ModelKeyStore?
         get() = when (val backend = (session.value as? SessionState.Ready)?.backend) {
-            is ServerBackend -> if (backend.isCloud) ServerModelKeys(backend, app.phoneModels.bundled) else null
+            is ServerBackend -> ServerModelKeys(backend, app.phoneModels.bundled)
             null -> null
             else -> app.phoneModels
         }
 
-    private val _cloudKeys = MutableStateFlow<OwnKeyList?>(null)
-    /** The cloud account's own keys and the one in use, for the Settings row. */
-    val cloudKeys: StateFlow<OwnKeyList?> = _cloudKeys
+    private val _serverKeys = MutableStateFlow<OwnKeyList?>(null)
+    /** The server account's own keys and the one in use, for the Settings row. */
+    val serverKeys: StateFlow<OwnKeyList?> = _serverKeys
 
-    fun setCloudKeys(list: OwnKeyList?) {
-        _cloudKeys.value = list
+    fun setServerKeys(list: OwnKeyList?) {
+        _serverKeys.value = list
     }
 
-    private fun refreshCloudKeys() {
+    private fun refreshServerKeys() {
         val store = modelKeys?.takeUnless { it.onPhone } ?: return
-        viewModelScope.launch { runCatching { store.list() }.onSuccess { _cloudKeys.value = it } }
+        viewModelScope.launch { runCatching { store.list() }.onSuccess { _serverKeys.value = it } }
     }
 
     /** Signed in to a server (self-hosted or Octop Bot cloud). */
@@ -289,8 +289,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         _session.value = SessionState.Ready(backend)
         refreshDirectory()
         _models.value = if (backend.definesBotsLocally) runCatching { backend.models() }.getOrDefault(emptyList()) else emptyList()
-        _cloudKeys.value = null
-        refreshCloudKeys()
+        _serverKeys.value = null
+        refreshServerKeys()
         refreshBalance()
     }
 

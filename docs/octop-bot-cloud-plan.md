@@ -653,9 +653,10 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 - Key 按用户加密保存在 `secret_repo`（`octop_bot:own_model_keys:{user_id}`），不进全局 `providers` 表，别的用户看不到也用不了。接口只返回 `****` 加末四位。
 - 添加时先用这把 Key 请求厂商的 `/models`。厂商返回 401 或 403 就拒绝，报 `BOT_MODEL_KEY_INVALID`。厂商没有模型列表时，用目录里的推荐模型。
 - 选用后，个人模型选择记成 `{"connection": "own:<key id>", "model": ...}`。云端租户、桌面端、群聊、IM 和定时任务都走同一个 `account_selection`，所以都会用上这把 Key。删掉正在用的 Key 后，云端回到灵策模型；桌面端如果登录了灵策，也回到灵策模型，否则回到本机配置。
-- 安全：灵策云端只能选列表里的厂商，不能填自定义地址，否则租户可以让服务器去访问内网地址（127.0.0.1、云厂商元数据服务等）。桌面端可以填任意 OpenAI 兼容地址（`vendor: "custom"`）。每人最多 20 把 Key。
+- 安全：灵策云端只能选列表里的厂商，不能填自定义地址，否则租户可以让服务器去访问内网地址（127.0.0.1、云厂商元数据服务等）。桌面端可以填任意 OpenAI 兼容地址（`vendor: "custom"`）。自建服务器（`OCTOP_BOT_WEB`，NAS、Docker）只有管理员能填自定义地址。每人最多 20 把 Key。
+- 自建服务器（2026-11-25）：用户也能用自己的 Key。不用 Key 时 `account_selection` 返回空，对话用服务器管理员配置的模型。
 
-接口（`/api/octop-bot/model-keys`，云端任何租户可用，桌面端只限本机）：
+接口（`/api/octop-bot/model-keys`，云端任何租户和自建服务器的用户可用，桌面端只限本机）：
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -663,6 +664,7 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 | GET | `` | 我的 Key（不含 Key 本身）、正在用的 Key 和模型 |
 | POST | `` | 添加：`{vendor, api_key, name?, base_url?, protocol?}`，后两项只用于 `custom` |
 | PUT | `/{id}/model` | 用这把 Key 的某个模型聊天：`{model_id}` |
+| DELETE | `/in-use` | 不再用自己的 Key，回到默认模型（云端和登录灵策的桌面端是灵策积分，自建服务器是管理员配置的模型），Key 保留 |
 | DELETE | `/{id}` | 删除；正在用的话回到默认模型 |
 
 新增错误码：`BOT_MODEL_KEY_INVALID`、`BOT_MODEL_VENDOR_UNSUPPORTED`、`BOT_MODEL_KEY_LIMIT`（都是 400）。界面（设置 → 模型 →「我的 API Key」和添加弹窗）由桌面客户端改版那边按这套接口做。

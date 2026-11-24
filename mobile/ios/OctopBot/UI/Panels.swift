@@ -303,7 +303,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    if model.usesPhoneBots || model.isCloud {
+                    if model.backend != nil {
                         NavigationLink {
                             ModelSourcesView()
                         } label: {
@@ -326,7 +326,7 @@ struct SettingsView: View {
                 } header: {
                     Text("settings.chat")
                 } footer: {
-                    if model.usesPhoneBots || model.isCloud { Text("models.footer") }
+                    Text(LocalizedStringKey(model.server.map { !$0.isCloud } == true ? "models.footerServer" : "models.footer"))
                 }
 
                 DeviceConnectorsSection()

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -80,6 +81,7 @@ import io.github.alisonxx.octopbot.app.SessionState
 import io.github.alisonxx.octopbot.app.describe
 import io.github.alisonxx.octopbot.character.BotCharacter
 import io.github.alisonxx.octopbot.model.Look
+import io.github.alisonxx.octopbot.net.KeyPlace
 import io.github.alisonxx.octopbot.net.KeyVendor
 import io.github.alisonxx.octopbot.net.LocalServer
 import io.github.alisonxx.octopbot.net.LynxceBackend
@@ -90,6 +92,7 @@ import io.github.alisonxx.octopbot.net.OwnKeyList
 import io.github.alisonxx.octopbot.net.PhoneModels
 import io.github.alisonxx.octopbot.net.PhoneSelection
 import io.github.alisonxx.octopbot.net.ServerBackend
+import io.github.alisonxx.octopbot.net.ServerModelKeys
 import io.github.alisonxx.octopbot.net.VendorCatalog
 import io.github.alisonxx.octopbot.net.VendorCompany
 import io.github.alisonxx.octopbot.ui.common.BackButton
@@ -158,6 +161,9 @@ fun VendorLogo(company: String, size: Dp = 28.dp) {
     when {
         company == VendorCompany.CUSTOM -> Box(Modifier.size(size).clip(shape).background(palette.raised), contentAlignment = Alignment.Center) {
             Icon(Icons.Rounded.Hub, contentDescription = null, tint = palette.text, modifier = Modifier.size(size * 0.55f))
+        }
+        company == "server" -> Box(Modifier.size(size).clip(shape).background(palette.raised), contentAlignment = Alignment.Center) {
+            Icon(Icons.Rounded.Dns, contentDescription = null, tint = palette.text, modifier = Modifier.size(size * 0.55f))
         }
         logo != null -> Box(
             Modifier.size(size).clip(shape).background(Color.White).border(0.5.dp, palette.hairline, shape),
@@ -313,7 +319,7 @@ fun ModelSourcesScreen(model: AppViewModel, onBack: () -> Unit, onCredits: () ->
     val selection by phone.selection.collectAsStateWithLifecycle()
     val phoneKeys by phone.ownKeys.collectAsStateWithLifecycle()
     val local by phone.local.collectAsStateWithLifecycle()
-    var cloudList by remember { mutableStateOf<OwnKeyList?>(null) }
+    var serverList by remember { mutableStateOf<OwnKeyList?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var actionError by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
@@ -327,11 +333,23 @@ fun ModelSourcesScreen(model: AppViewModel, onBack: () -> Unit, onCredits: () ->
         if (store == null || onPhone) return@LaunchedEffect
         loadError = null
         runCatching { store.list() }
-            .onSuccess { cloudList = it; model.setCloudKeys(it) }
+            .onSuccess { serverList = it; model.setServerKeys(it) }
             .onFailure { loadError = resources.describe(it) }
     }
     val keyInUse = selection?.takeIf { it.source == PhoneSelection.Source.Key }
-    val keys: OwnKeyList? = if (onPhone) OwnKeyList(phoneKeys, keyInUse?.id, keyInUse?.model) else cloudList
+    val keys: OwnKeyList? = if (onPhone) OwnKeyList(phoneKeys, keyInUse?.id, keyInUse?.model) else serverList
+
+    fun leave() {
+        val server = store as? ServerModelKeys ?: return
+        busy = LEAVE
+        actionError = null
+        scope.launch {
+            runCatching { server.leave() }
+                .onSuccess { serverList = it; model.setServerKeys(it) }
+                .onFailure { actionError = resources.describe(it) }
+            busy = null
+        }
+    }
 
     fun act(id: String, block: suspend () -> Unit) {
         busy = id
@@ -353,12 +371,22 @@ fun ModelSourcesScreen(model: AppViewModel, onBack: () -> Unit, onCredits: () ->
                 .navigationBarsPadding(),
         ) {
             Text(
-                stringResource(R.string.models_body),
+                stringResource(if (backend is ServerBackend && !backend.isCloud) R.string.models_body_server else R.string.models_body),
                 style = MaterialTheme.typography.bodyMedium,
                 color = palette.secondary,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
             )
 
+            if (backend is ServerBackend && !backend.isCloud) {
+                // A self-hosted server: its admin's models, or one of my keys.
+                SourceHeader(stringResource(R.string.models_server_title), stringResource(R.string.models_server_billing))
+                Card {
+                    SourceRow("server", stringResource(R.string.models_server_default), stringResource(R.string.models_server_body)) {
+                        if (keys != null && keys.inUse == null) InUse(stringResource(R.string.models_in_use))
+                    }
+                    if (keys?.inUse != null) LeaveRow(stringResource(R.string.models_server_use), busy == LEAVE) { leave() }
+                }
+            } else {
             // Lynxce
             SourceHeader(stringResource(R.string.models_lynxce_title), stringResource(R.string.models_lynxce_billing))
             Card {
@@ -385,6 +413,7 @@ fun ModelSourcesScreen(model: AppViewModel, onBack: () -> Unit, onCredits: () ->
                         SourceRow("lynxce", stringResource(R.string.models_lynxce_title), stringResource(R.string.models_lynxce_cloud)) {
                             if (keys != null && keys.inUse == null) InUse(stringResource(R.string.models_in_use))
                         }
+                        if (keys?.inUse != null) LeaveRow(stringResource(R.string.models_lynxce_use), busy == LEAVE) { leave() }
                         HorizontalDivider(color = palette.hairline.copy(alpha = 0.6f), modifier = Modifier.padding(start = 16.dp))
                         CreditsRow(balance, onCredits)
                     }
@@ -395,6 +424,8 @@ fun ModelSourcesScreen(model: AppViewModel, onBack: () -> Unit, onCredits: () ->
                         onClick = { model.signOut() },
                     ) { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = palette.secondary) }
                 }
+            }
+
             }
 
             // My API keys
@@ -432,7 +463,7 @@ fun ModelSourcesScreen(model: AppViewModel, onBack: () -> Unit, onCredits: () ->
                                 key.models.isNotEmpty() -> UseMenu(key.models.map { it.id to it.label }) { choice ->
                                     act(key.id) {
                                         val next = store!!.use(key.id, choice)
-                                        if (!onPhone) { cloudList = next; model.setCloudKeys(next) }
+                                        if (!onPhone) { serverList = next; model.setServerKeys(next) }
                                     }
                                 }
                             }
@@ -444,7 +475,7 @@ fun ModelSourcesScreen(model: AppViewModel, onBack: () -> Unit, onCredits: () ->
                 }
             }
             actionError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, top = 6.dp)) }
-            Footer(stringResource(if (onPhone) R.string.models_keys_kept_phone else R.string.models_keys_kept_cloud))
+            Footer(stringResource(keptFooter(store?.place)))
 
             // Local models (phone only)
             if (onPhone) {
@@ -481,7 +512,7 @@ fun ModelSourcesScreen(model: AppViewModel, onBack: () -> Unit, onCredits: () ->
             store = store,
             phone = phone,
             onDismiss = { adding = false },
-            onChanged = { if (!onPhone) { cloudList = it; model.setCloudKeys(it) } },
+            onChanged = { if (!onPhone) { serverList = it; model.setServerKeys(it) } },
         )
     }
     if (addingLocal) {
@@ -496,7 +527,7 @@ fun ModelSourcesScreen(model: AppViewModel, onBack: () -> Unit, onCredits: () ->
                     removing = null
                     act(key.id) {
                         store!!.remove(key.id)
-                        if (!onPhone) store.list().let { cloudList = it; model.setCloudKeys(it) }
+                        if (!onPhone) store.list().let { serverList = it; model.setServerKeys(it) }
                     }
                 }) { Text(stringResource(R.string.models_keys_remove), color = MaterialTheme.colorScheme.error) }
             },
@@ -515,6 +546,28 @@ fun ModelSourcesScreen(model: AppViewModel, onBack: () -> Unit, onCredits: () ->
             },
             dismissButton = { TextButton(onClick = { removingLocal = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
+    }
+}
+
+private const val LEAVE = "leave"
+
+private fun keptFooter(place: KeyPlace?): Int = when (place) {
+    KeyPlace.Cloud -> R.string.models_keys_kept_cloud
+    KeyPlace.Server -> R.string.models_keys_kept_server
+    else -> R.string.models_keys_kept_phone
+}
+
+/** Stop chatting on my own key (the key is kept). */
+@Composable
+private fun LeaveRow(title: String, busy: Boolean, onClick: () -> Unit) {
+    val palette = LocalPalette.current
+    HorizontalDivider(color = palette.hairline.copy(alpha = 0.6f), modifier = Modifier.padding(start = 16.dp))
+    Row(
+        Modifier.fillMaxWidth().clickable(enabled = !busy, onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
     }
 }
 
@@ -683,7 +736,13 @@ fun AddModelKeyDialog(
                             else -> {
                                 val companies = VendorCompany.group(loaded.vendors)
                                 Text(
-                                    stringResource(if (store.onPhone) R.string.models_add_hint_phone else R.string.models_add_hint_cloud),
+                                    stringResource(
+                                when (store.place) {
+                                    KeyPlace.Phone -> R.string.models_add_hint_phone
+                                    KeyPlace.Cloud -> R.string.models_add_hint_cloud
+                                    KeyPlace.Server -> R.string.models_add_hint_server
+                                },
+                            ),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = palette.secondary,
                                     modifier = Modifier.padding(vertical = 12.dp),
@@ -750,7 +809,13 @@ fun AddModelKeyDialog(
                             placeholder = plan?.apiKeyPrefix?.takeIf { it.isNotEmpty() }?.let { "$it…" } ?: stringResource(R.string.models_add_key_placeholder),
                         )
                         Text(
-                            stringResource(if (store.onPhone) R.string.models_add_kept_phone else R.string.models_add_kept_cloud),
+                            stringResource(
+                                when (store.place) {
+                                    KeyPlace.Phone -> R.string.models_add_kept_phone
+                                    KeyPlace.Cloud -> R.string.models_add_kept_cloud
+                                    KeyPlace.Server -> R.string.models_add_kept_server
+                                },
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = palette.secondary,
                         )

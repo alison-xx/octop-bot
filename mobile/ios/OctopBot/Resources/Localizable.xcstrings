@@ -7428,6 +7428,182 @@
           }
         }
       }
+    },
+    "models.lynxce.use": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use Lynxce models"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改用灵策模型"
+          }
+        }
+      }
+    },
+    "models.server.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This server"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台服务器"
+          }
+        }
+      }
+    },
+    "models.server.billing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set up by the admin"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "管理员配置"
+          }
+        }
+      }
+    },
+    "models.server.default": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server models"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器的模型"
+          }
+        }
+      }
+    },
+    "models.server.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chats use the models the server's admin set up."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话使用服务器管理员配置的模型。"
+          }
+        }
+      }
+    },
+    "models.server.use": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use the server's models"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改用服务器的模型"
+          }
+        }
+      }
+    },
+    "models.keys.keptServer": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keys are stored encrypted on your server; the vendor bills you directly."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Key 加密保存在你的服务器上，模型费用由厂商直接收取。"
+          }
+        }
+      }
+    },
+    "models.add.hintServer": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a vendor. The key is stored encrypted on your server; the vendor bills you directly."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择模型厂商。Key 加密保存在你的服务器上，模型费用由厂商直接收取。"
+          }
+        }
+      }
+    },
+    "models.add.keptServer": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stored encrypted on your server; only the last four characters are shown later."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加密保存在你的服务器上，之后只显示末四位。"
+          }
+        }
+      }
+    },
+    "models.bodyServer": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bots use the model chosen here: the models this server's admin set up, or your own API keys, billed by the vendor."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bot 默认用这里选中的模型：服务器管理员配置的模型，或者你自己的 API Key（由厂商直接收费）。"
+          }
+        }
+      }
+    },
+    "models.footerServer": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose what your Bots run on: the server's models or your own API keys."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 Bot 用的模型：服务器的模型或你的 API Key。"
+          }
+        }
+      }
     }
   }
 }

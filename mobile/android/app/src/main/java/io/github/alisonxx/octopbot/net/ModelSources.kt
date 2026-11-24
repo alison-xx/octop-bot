@@ -95,10 +95,14 @@ class ModelSourceException(val reason: Reason, val status: Int = 0, val detail: 
     enum class Reason { InvalidKey, Limit, BadUrl, UnknownVendor, Vendor, Unreachable, NoModels, NoModel, KeyRejected, Quota }
 }
 
-/** The user's own keys, kept by Octop Bot cloud or on this phone. */
+/** Where the user's own keys are kept. */
+enum class KeyPlace { Phone, Cloud, Server }
+
+/** The user's own keys, kept by Octop Bot cloud, a self-hosted server, or on this phone. */
 interface ModelKeyStore {
-    /** True when keys stay on this phone (not signed in to Octop Bot cloud). */
-    val onPhone: Boolean
+    val place: KeyPlace
+    /** True when keys stay on this phone (no Octop server signed in). */
+    val onPhone: Boolean get() = place == KeyPlace.Phone
     suspend fun vendors(): VendorCatalog
     suspend fun list(): OwnKeyList
     /** Checks the key with the vendor's model list before keeping it. */
@@ -229,9 +233,9 @@ object ModelSourcesProtocol {
     }
 }
 
-/** Octop Bot cloud: `/api/octop-bot/model-keys`. Errors come back localized by the server. */
+/** Octop Bot cloud or a self-hosted server: `/api/octop-bot/model-keys`. Errors come back localized. */
 class ServerModelKeys(private val server: ServerBackend, private val bundled: List<KeyVendor>) : ModelKeyStore {
-    override val onPhone = false
+    override val place = if (server.isCloud) KeyPlace.Cloud else KeyPlace.Server
 
     override suspend fun vendors(): VendorCatalog = ModelSourcesProtocol.serverCatalog(server.call("GET", "$BASE/vendors"), bundled)
 
@@ -253,6 +257,9 @@ class ServerModelKeys(private val server: ServerBackend, private val bundled: Li
 
     override suspend fun use(id: String, model: String): OwnKeyList =
         ModelSourcesProtocol.ownKeys(server.call("PUT", "$BASE/${escape(id)}/model", buildJsonObject { put("model_id", model) }))
+
+    /** Stop chatting on an own key: back to Lynxce credits (cloud) or the server's models. Keys stay. */
+    suspend fun leave(): OwnKeyList = ModelSourcesProtocol.ownKeys(server.call("DELETE", "$BASE/in-use"))
 
     private fun escape(id: String) = java.net.URLEncoder.encode(id, "UTF-8").replace("+", "%20")
 
@@ -293,7 +300,7 @@ class PhoneModels(context: Context, private val box: SecretBox = SecretBox("octo
     private val _keys = MutableStateFlow(keys())
     val ownKeys: StateFlow<List<OwnKey>> = _keys
 
-    override val onPhone = true
+    override val place = KeyPlace.Phone
 
     /** The app was last used without signing in. */
     var phoneOnly: Boolean

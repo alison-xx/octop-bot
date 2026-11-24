@@ -507,4 +507,15 @@
     <string name="models_company_iflytek">iFlytek Spark</string>
     <string name="models_company_opencode">OpenCode</string>
     <string name="mode_device">Not signed in</string>
+    <string name="models_lynxce_use">Use Lynxce models</string>
+    <string name="models_server_title">This server</string>
+    <string name="models_server_billing">Set up by the admin</string>
+    <string name="models_server_default">Server models</string>
+    <string name="models_server_body">Chats use the models the server\'s admin set up.</string>
+    <string name="models_server_use">Use the server\'s models</string>
+    <string name="models_keys_kept_server">Keys are stored encrypted on your server; the vendor bills you directly.</string>
+    <string name="models_add_hint_server">Choose a vendor. The key is stored encrypted on your server; the vendor bills you directly.</string>
+    <string name="models_add_kept_server">Stored encrypted on your server; only the last four characters are shown later.</string>
+    <string name="models_body_server">Bots use the model chosen here: the models this server\'s admin set up, or your own API keys, billed by the vendor.</string>
+    <string name="models_footer_server">Choose what your Bots run on: the server\'s models or your own API keys.</string>
 </resources>

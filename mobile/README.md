@@ -28,19 +28,22 @@ Three groups, like the desktop:
 
 - **灵策智算 · 积分.** Direct Lynxce: "Auto" and the Lynxce models, plus 积分与充值 (App Store purchase on
   iOS, the recharge Custom Tab on Android). Octop Bot cloud: a line saying chats are paid with credits.
-  Not signed in: "Sign in to Lynxce" (back to the start page; keys and chats stay).
-- **我的 API Key · 厂商直接收费.** On Octop Bot cloud the keys live in the account
-  (`/api/octop-bot/model-keys`, docs/octop-bot-cloud-plan.md §12.9; errors come back localized); otherwise
-  they stay on the phone. Each row: vendor logo, name, `****` + last four and the model count, then the
-  model in use (green dot) or "Use" with the key's models; swipe or the trash button removes it.
+  Not signed in: "Sign in to Lynxce" (back to the start page; keys and chats stay). While a cloud
+  user chats on their own key, "Use Lynxce models" goes back to credits (`DELETE
+  /api/octop-bot/model-keys/in-use`; the key is kept).
+  On a self-hosted server this group is **这台服务器 · 管理员配置** instead: the models the server's admin
+  set up, with "Use the server's models" to leave one's own key the same way.
+- **我的 API Key · 厂商直接收费.** On Octop Bot cloud and on a self-hosted server the keys live on the
+  server (`/api/octop-bot/model-keys`, docs/octop-bot-cloud-plan.md §12.9; errors come back localized;
+  only a self-hosted server's admins may add a custom URL); otherwise they stay on the phone. Each row:
+  vendor logo, name, `****` + last four and the model count, then the model in use (green dot) or "Use" with the key's models; swipe or the trash button removes it.
   "Add" opens the add sheet: vendors grouped by company (Tencent Cloud, Bailian, Ark, DeepSeek, Zhipu,
   Kimi, MiniMax, SiliconFlow first, "More vendors" for the rest, a custom OpenAI-compatible URL where
   allowed), then the plan and key with the endpoint and a "Get a key" link, then the models found.
   A key the vendor refuses (401/403) shows "The vendor rejected this key"; a vendor's quota error during
   a chat is an ordinary error, never the Lynxce top-up card, and never signs the user out.
 - **本地模型 · 免费** (phone only). Ollama or LM Studio by address (`192.168.1.8` → `:11434/v1`); the
-  phone talks to it directly. A self-hosted server manages its own models, so this page is not offered
-  there.
+  phone talks to it directly. Not shown when signed in to a server, which runs the chat itself.
 
 The desktop app's built-in server listens on `127.0.0.1` only, so phones connect to a NAS/Docker
 deployment (`deploy/docker`, `fnos/`), not to the desktop app.

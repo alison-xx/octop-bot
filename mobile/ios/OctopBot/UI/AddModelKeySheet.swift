@@ -109,7 +109,7 @@ struct AddModelKeySheet: View {
         } else if let catalog {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(store.onPhone ? "models.add.hintPhone" : "models.add.hintCloud")
+                    Text(Self.hint(store.place))
                         .font(.subheadline)
                         .foregroundStyle(Palette.secondary)
                     VendorGrid(companies: companies.filter(\.isFeatured), choose: choose)
@@ -210,7 +210,7 @@ struct AddModelKeySheet: View {
                 Text(verbatim: "API Key")
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(store.onPhone ? "models.add.keptPhone" : "models.add.keptCloud")
+                    Text(Self.kept(store.place))
                     if !custom, let plan {
                         Text(verbatim: "\(L("models.add.endpoint")) \(plan.baseURL)").lineLimit(2)
                         if let docs = plan.docs, let url = URL(string: docs), !docs.isEmpty {
@@ -234,6 +234,22 @@ struct AddModelKeySheet: View {
                     .accessibilityIdentifier("keyError")
                 }
             }
+        }
+    }
+
+    static func hint(_ place: KeyPlace) -> LocalizedStringKey {
+        switch place {
+        case .phone: "models.add.hintPhone"
+        case .cloud: "models.add.hintCloud"
+        case .server: "models.add.hintServer"
+        }
+    }
+
+    static func kept(_ place: KeyPlace) -> LocalizedStringKey {
+        switch place {
+        case .phone: "models.add.keptPhone"
+        case .cloud: "models.add.keptCloud"
+        case .server: "models.add.keptServer"
         }
     }
 

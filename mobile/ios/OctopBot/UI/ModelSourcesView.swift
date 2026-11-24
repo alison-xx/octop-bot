@@ -23,13 +23,17 @@ struct ModelSourcesView: View {
     var body: some View {
         List {
             Section {
-                Text("models.body")
+                Text(LocalizedStringKey(model.server.map { !$0.isCloud } == true ? "models.bodyServer" : "models.body"))
                     .font(.subheadline)
                     .foregroundStyle(Palette.secondary)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
             }
-            lynxceSection
+            if let server = model.server, !server.isCloud {
+                serverSection
+            } else {
+                lynxceSection
+            }
             keysSection
             if onPhone { localSection }
         }
@@ -88,9 +92,10 @@ struct ModelSourcesView: View {
                         Text("models.lynxce.cloud").font(.caption).foregroundStyle(Palette.secondary)
                     }
                     Spacer(minLength: 8)
-                    if keys?.inUse == nil { InUseMark(text: L("models.inUse")) }
+                    if keys?.inUse == nil { InUseMark(text: L("models.inUse")).fixedSize() }
                 }
                 .padding(.vertical, 2)
+                if keys?.inUse != nil { leaveButton("models.lynxce.use") }
                 creditsLink
             } else {
                 Button {
@@ -113,6 +118,55 @@ struct ModelSourcesView: View {
         } header: {
             SourceHeader(title: "models.lynxce.title", tag: "models.lynxce.billing")
         }
+    }
+
+    /// A self-hosted server: its admin's models, or one of my keys.
+    private var serverSection: some View {
+        Section {
+            HStack(spacing: 12) {
+                Image(systemName: "server.rack")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Palette.text)
+                    .frame(width: 32, height: 32)
+                    .background(Palette.raised, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("models.server.default").font(.body.weight(.semibold))
+                    Text("models.server.body").font(.caption).foregroundStyle(Palette.secondary)
+                }
+                Spacer(minLength: 8)
+                if keys?.inUse == nil { InUseMark(text: L("models.inUse")).fixedSize() }
+            }
+            .padding(.vertical, 2)
+            if keys?.inUse != nil { leaveButton("models.server.use") }
+        } header: {
+            SourceHeader(title: "models.server.title", tag: "models.server.billing")
+        }
+    }
+
+    /// Stop chatting on my own key (the key is kept).
+    private func leaveButton(_ title: LocalizedStringKey) -> some View {
+        Button {
+            guard let store = store as? ServerModelKeys else { return }
+            busy = "leave"
+            actionError = nil
+            Task {
+                defer { busy = nil }
+                do {
+                    apply(try await store.leave())
+                    Haptics.success()
+                } catch {
+                    actionError = error.localizedDescription
+                }
+            }
+        } label: {
+            HStack {
+                Text(title).foregroundStyle(Palette.text)
+                Spacer()
+                if busy == "leave" { ProgressView() }
+            }
+        }
+        .disabled(busy != nil)
+        .accessibilityIdentifier("leaveOwnKey")
     }
 
     private var creditsLink: some View {
@@ -181,7 +235,7 @@ struct ModelSourcesView: View {
                     .accessibilityIdentifier("addKey")
             }
         } footer: {
-            Text(onPhone ? "models.keys.keptPhone" : "models.keys.keptCloud")
+            Text(keptFooter)
         }
     }
 
@@ -221,6 +275,14 @@ struct ModelSourcesView: View {
         }
         .contextMenu {
             Button("models.keys.remove", systemImage: "trash", role: .destructive) { removing = key }
+        }
+    }
+
+    private var keptFooter: LocalizedStringKey {
+        switch store?.place {
+        case .cloud: "models.keys.keptCloud"
+        case .server: "models.keys.keptServer"
+        default: "models.keys.keptPhone"
         }
     }
 
@@ -289,7 +351,7 @@ struct ModelSourcesView: View {
 
     private func apply(_ list: OwnKeyList) {
         keys = list
-        if model.isCloud { model.cloudKeys = list }
+        if model.server != nil { model.serverKeys = list }
     }
 
     private func use(_ key: OwnKey, _ choice: String) {

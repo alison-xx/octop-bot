@@ -488,4 +488,15 @@
     <string name="models_company_iflytek">讯飞星火</string>
     <string name="models_company_opencode">OpenCode</string>
     <string name="mode_device">未登录</string>
+    <string name="models_lynxce_use">改用灵策模型</string>
+    <string name="models_server_title">这台服务器</string>
+    <string name="models_server_billing">管理员配置</string>
+    <string name="models_server_default">服务器的模型</string>
+    <string name="models_server_body">对话使用服务器管理员配置的模型。</string>
+    <string name="models_server_use">改用服务器的模型</string>
+    <string name="models_keys_kept_server">Key 加密保存在你的服务器上，模型费用由厂商直接收取。</string>
+    <string name="models_add_hint_server">选择模型厂商。Key 加密保存在你的服务器上，模型费用由厂商直接收取。</string>
+    <string name="models_add_kept_server">加密保存在你的服务器上，之后只显示末四位。</string>
+    <string name="models_body_server">Bot 默认用这里选中的模型：服务器管理员配置的模型，或者你自己的 API Key（由厂商直接收费）。</string>
+    <string name="models_footer_server">选择 Bot 用的模型：服务器的模型或你的 API Key。</string>
 </resources>

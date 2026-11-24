@@ -171,10 +171,12 @@ struct NewOwnKey {
     var baseURL: String? = nil
 }
 
-/// The user's own keys, kept by Octop Bot cloud or on this phone.
+/// Where the user's own keys are kept.
+enum KeyPlace { case phone, cloud, server }
+
+/// The user's own keys, kept by Octop Bot cloud, a self-hosted server, or on this phone.
 protocol ModelKeyStore: AnyObject {
-    /// True when keys stay on this phone (not signed in to Octop Bot cloud).
-    var onPhone: Bool { get }
+    var place: KeyPlace { get }
     func vendors() async throws -> VendorCatalog
     func list() async throws -> OwnKeyList
     /// Checks the key with the vendor's model list before keeping it.
@@ -184,14 +186,20 @@ protocol ModelKeyStore: AnyObject {
     func use(_ id: String, model: String) async throws -> OwnKeyList
 }
 
-/// Octop Bot cloud: `/api/octop-bot/model-keys`. Errors come back localized by the server.
+extension ModelKeyStore {
+    /// True when keys stay on this phone (no Octop server signed in).
+    var onPhone: Bool { place == .phone }
+}
+
+/// Octop Bot cloud or a self-hosted server: `/api/octop-bot/model-keys`. Errors come back
+/// localized by the server.
 final class ServerModelKeys: ModelKeyStore {
     private let server: ServerBackend
     private static let base = "/api/octop-bot/model-keys"
 
     init(server: ServerBackend) { self.server = server }
 
-    var onPhone: Bool { false }
+    var place: KeyPlace { server.isCloud ? .cloud : .server }
 
     func vendors() async throws -> VendorCatalog {
         let data = try await server.raw(.get, Self.base + "/vendors")
@@ -236,6 +244,11 @@ final class ServerModelKeys: ModelKeyStore {
 
     func use(_ id: String, model: String) async throws -> OwnKeyList {
         OwnKeyList.parse(try await server.json(.put, Self.base + "/" + Self.escape(id) + "/model", json: ["model_id": model]))
+    }
+
+    /// Stop chatting on an own key: back to Lynxce credits (cloud) or the server's models. Keys stay.
+    func leave() async throws -> OwnKeyList {
+        OwnKeyList.parse(try await server.json(.delete, Self.base + "/in-use"))
     }
 
     private static func escape(_ id: String) -> String {
@@ -320,7 +333,7 @@ final class PhoneModels: ModelKeyStore {
         selection = defaults.data(forKey: Self.selectionKey).flatMap { try? JSONDecoder().decode(PhoneSelection.self, from: $0) }
     }
 
-    var onPhone: Bool { true }
+    var place: KeyPlace { .phone }
 
     var keys: [OwnKey] {
         stored.map { OwnKey(id: $0.id, vendor: $0.vendor, name: $0.name, baseURL: $0.baseURL, keyHint: $0.hint, models: $0.models) }

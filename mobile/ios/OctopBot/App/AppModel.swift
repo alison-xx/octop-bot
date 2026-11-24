@@ -85,21 +85,22 @@ final class AppModel {
     var server: ServerBackend? { backend as? ServerBackend }
     var isCloud: Bool { server?.isCloud == true }
 
-    /// Where "My API keys" live: the cloud account, or this phone. A self-hosted server manages its
-    /// own models, so it has none here.
+    /// Where "My API keys" live: the Octop server signed in to (cloud or self-hosted), or this phone.
     var modelKeys: ModelKeyStore? {
-        if let server { return server.isCloud ? ServerModelKeys(server: server) : nil }
+        if let server { return ServerModelKeys(server: server) }
         return backend == nil ? nil : PhoneModels.shared
     }
 
-    /// The cloud account's own keys and the one in use, for the Settings row.
-    var cloudKeys: OwnKeyList?
+    /// The server account's own keys and the one in use, for the Settings row.
+    var serverKeys: OwnKeyList?
 
     /// The model Bots reply with, as Settings → Models shows it: ("deepseek-flash", "DeepSeek").
     var currentModel: (model: String, source: String)? {
-        if isCloud {
-            guard let keys = cloudKeys, let id = keys.inUse, let model = keys.selectedModel else {
-                return (L("models.lynxce.auto"), L("models.lynxce.title"))
+        if let server {
+            guard let keys = serverKeys, let id = keys.inUse, let model = keys.selectedModel else {
+                return server.isCloud
+                    ? (L("models.lynxce.auto"), L("models.lynxce.title"))
+                    : (L("models.server.default"), server.host)
             }
             return (model, keys.keys.first { $0.id == id }?.displayName ?? "")
         }
@@ -187,12 +188,13 @@ final class AppModel {
         }
     }
 
-    func refreshCloudKeys() async {
-        guard isCloud, let store = modelKeys else {
-            cloudKeys = nil
+    func refreshServerKeys() async {
+        guard server != nil, let store = modelKeys else {
+            serverKeys = nil
             return
         }
-        if let keys = try? await store.list() { cloudKeys = keys }
+        // An older server without own keys just keeps showing its own models.
+        serverKeys = try? await store.list()
     }
 
     func refreshBalance() async {
@@ -247,7 +249,7 @@ final class AppModel {
             accountName = server.accountName
         }
         models = (try? await backend.models()) ?? []
-        await refreshCloudKeys()
+        await refreshServerKeys()
         await refreshBalance()
     }
 
@@ -363,7 +365,7 @@ final class AppModel {
         backend = nil
         bots = []
         groups = []
-        cloudKeys = nil
+        serverKeys = nil
         balance = nil
         walletAccount = nil
         lowBalanceDismissed = false
