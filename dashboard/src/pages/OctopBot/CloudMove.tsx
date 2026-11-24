@@ -8,14 +8,24 @@ const LATER_KEY = "octop.bot.cloud-move.later";
 const POLL_MS = 1000;
 
 /**
- * Desktop, signed in with Lynxce: the team lives in the Octop Bot cloud, shared
- * with phones and the web. Offers to move this computer's Bots, chats and
- * groups there, then reopens the app on the cloud, already signed in.
+ * Off unless the build sets VITE_OCTOP_BOT_CLOUD_MOVE=1. Since 2026-11-25 a
+ * desktop signed in with Lynxce keeps its Bots on this computer and pays for
+ * models with Lynxce credits; it no longer moves the team to the cloud.
+ */
+export function cloudMoveEnabled(): boolean {
+  return import.meta.env.VITE_OCTOP_BOT_CLOUD_MOVE === "1";
+}
+
+/**
+ * Desktop, signed in with Lynxce: offers to move this computer's Bots, chats
+ * and groups to the Octop Bot cloud, then reopens the app there, already
+ * signed in. Only shown when {@link cloudMoveEnabled}.
  */
 export default function CloudMove() {
   const { t } = useTranslation();
   const bridge = getDesktopBridge();
-  const available = isBotOnlyDesktop() && Boolean(bridge?.useLynxceCloud);
+  const available =
+    cloudMoveEnabled() && isBotOnlyDesktop() && Boolean(bridge?.useLynxceCloud);
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<CloudMoveStatus | null>(null);
   const [error, setError] = useState("");

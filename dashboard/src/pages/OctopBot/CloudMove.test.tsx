@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { botCloudApi } from "../../api/modules/botCloud";
 import CloudMove from "./CloudMove";
 
@@ -29,6 +29,29 @@ const idle = {
 beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
+  vi.stubEnv("VITE_OCTOP_BOT_CLOUD_MOVE", "1");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+it("stays on this computer after a Lynxce sign-in unless the build turns the move on", async () => {
+  vi.stubEnv("VITE_OCTOP_BOT_CLOUD_MOVE", "");
+  api.account.mockResolvedValue({
+    connected: true,
+    account_id: "lx1",
+    display_name: "Alison",
+  });
+  api.moveStatus.mockResolvedValue(idle);
+
+  render(<CloudMove />);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(screen.queryByText("botCloudMove.start")).toBeNull();
+  expect(api.account).not.toHaveBeenCalled();
+  expect(api.moveStatus).not.toHaveBeenCalled();
+  expect(api.move).not.toHaveBeenCalled();
+  expect(useLynxceCloud).not.toHaveBeenCalled();
 });
 
 it("moves the team after a Lynxce sign-in and reopens on the cloud", async () => {
