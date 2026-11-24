@@ -74,7 +74,7 @@
 | 定价·会员 | `/pricing.html` | 顶部切换「会员套餐 / 加油包」；月付 / 年付（限时 9 折）切换；五档卡片；下面是按量单价和模型价格表（文本 / 作图 / 视频）；常见问题 | ![月付](assets/octop-bot-saas-billing/pricing.png) ![年付](assets/octop-bot-saas-billing/pricing-year.png) |
 | 定价·加油包 | `/pricing.html#credits` | 左边金额卡片（含自定义金额），右边固定的结算栏（价格、到账、有效期、购买；底部引导看会员）。受限会话上线后，客户端「买加油包」直接打开这一页（§5.3） | ![](assets/octop-bot-saas-billing/packs.png) |
 | 登录 | `/login.html?next=…` | 验证码 / 密码两个标签，WorkBuddy；没有账号自动注册（带 `X-Lynxce-Signup-Site: octopbot`）；登录后回到 `next` | ![](assets/octop-bot-saas-billing/login.png) |
-| 支付结果 | `/pay/result.html?order=…` | 到账多少、当前余额；「返回 Octop Bot」和「查看订单」 | ![](assets/octop-bot-saas-billing/result.png) |
+| 支付结果 | `/pay/result.html?recharge=paid&order=…` | 到账多少、当前余额；「返回 Octop Bot」和「查看订单」 | ![](assets/octop-bot-saas-billing/result.png) |
 | 个人中心·概览 | `/account/` | 积分余额（会过期 / 永久，最近到期日，扣费顺序说明）、当前套餐和到期日、本月已用；本月用量按类别、按 Bot；「积分活动」：近一年每天用掉的积分，像 GitHub 贡献图一样按周排成 7 行，颜色越深用得越多，悬停看当天数字，可切换每日 / 每周 / 累计，上方写近一年总量、用过的天数和最长连续天数，「分享」生成一张图 | ![](assets/octop-bot-saas-billing/account.png) |
 | 用量明细 | `/account/#usage` | 按月；类别：文本对话、作图、做视频、云电脑、云电脑磁盘；维度切换 Bot / 模型 / 类别；导出 CSV | ![](assets/octop-bot-saas-billing/usage.png) |
 | 订单与发票 | `/account/#orders` | 汇总（累计支付、可开票、已开票）；订单列表；单张或批量开票 | ![](assets/octop-bot-saas-billing/orders.png) |
@@ -173,14 +173,15 @@
 
 ```
 官网定价页选好档位或加油包（已登录）
-  → 官网用 Bearer 调 POST /api/billing/recharge/checkout-link {product:"octop_bot", item, returnUrl}
-  → 跳灵策收银台 admin.lynxce.cn/recharge?token=…（带 Octop Bot 品牌参数，预选商品）
+  → 官网用 Bearer 调 POST /api/billing/recharge/checkout-link {site:"octopbot", returnUrl}
+  → 跳返回的 admin.lynxce.cn/recharge 地址（换成 Octop Bot 品牌），积分充值加 &tab=boost 直接停在积分充值页签
   → 付款（微信 / 支付宝）
-  → 收银台回跳官网 /pay/result.html?order=…，官网查 GET /api/user/purchase-orders/:id/status
+  → 「返回 Octop Bot」回到 returnUrl，灵策在后面追加 recharge=paid&order=<订单号>；官网查 GET /api/user/purchase-orders/:id/status，刷新余额并显示结果
   → 从客户端来的：结果页「返回 Octop Bot」打开 octop-bot://recharge/done
 ```
 
-- 灵策要做：收银台支持 `product=octop_bot` 品牌、预选商品和回跳（票据里签进来源和回跳地址，白名单校验，约 1 天，碰钱）。
+- 收银台品牌和回跳：灵策已开发完（分支 `feat/octopbot-checkout-brand`，等上车）。站点 id 是 `octopbot`（没有连字符，和 `signupSite` 一致）；`returnUrl` 只允许 `octop-bot.lynxce.cn` 下的 https 地址（非生产环境可以 `http://localhost`），其它地址返回 400 `return_url_not_allowed`。
+- **第一期只把积分充值（加油包）导到收银台**：会员列车给套餐加上「所属产品」之前，灵策收银台还会显示灵策自己的企业版、个人版套餐。加上以后，Octop Bot 打开时只显示 Octop Bot 的套餐和加油包，会员购买才走这里。
 - 会员下单现在只有微信；支付宝要接中台收银台（登记 `octop-web` 产品，2–4 小时）。
 - 第二期再评估在官网自己做收银台（原型里的「结账」页），前提是受限会话（§5.3）已经上线。
 
@@ -192,10 +193,10 @@
 
 ```
 客户端 ──POST /api/octop-bot/wallet/recharge {intent, need?, reason?, from}──► Octop 后端
-Octop 后端 ──POST /api/billing/recharge/checkout-link {product:"octop_bot", item, returnUrl}──► 灵策  ◄── {token}
-Octop 后端返回 https://admin.lynxce.cn/recharge?token=…（Octop Bot 品牌，预选商品）
+Octop 后端 ──POST /api/billing/recharge/checkout-link {site:"octopbot", returnUrl}──► 灵策  ◄── {url}
+Octop 后端返回灵策给的 admin.lynxce.cn/recharge 地址（Octop Bot 品牌），intent=credits 时加 &tab=boost
 客户端用系统浏览器打开（Android 用 Custom Tabs）
-付完 → 收银台回跳官网 /pay/result.html?order=…&from=… → 桌面打开 octop-bot://recharge/done
+付完 → 回到 returnUrl（官网 /pay/result.html?from=…，灵策追加 recharge=paid&order=…）→ 桌面打开 octop-bot://recharge/done
 ```
 
 - 收银台的票据和现在一样只在灵策自己的页面里用，不经过官网。
@@ -215,7 +216,7 @@ Octop 后端返回 https://octop-bot.lynxce.cn/pricing.html?ticket=…&from=desk
 
 | 参数 | 必填 | 含义 |
 |---|---|---|
-| `intent` | 是 | `credits`：落在加油包；`plan`：落在会员（开通、续费、升级） |
+| `intent` | 是 | `credits`：落在加油包；`plan`：落在会员（开通、续费、升级）。套餐加上「所属产品」之前只开放 `credits`，客户端不出现会员购买按钮 |
 | `from` | 是 | `desktop` / `web` / `android`，决定付完怎么回到客户端（§8.5）。iOS 不走这条路，只有内购 |
 | `need` | 否 | 还差多少积分（正整数）：预选第一个不小于缺口的加油包，页面顶部写「还差 1,200 积分」 |
 | `reason` | 否 | 只用于文案：`text` / `image` / `video` / `computer` / `disk` / `plan_limit`，和 §8.4 错误码的类别一致 |
@@ -250,7 +251,7 @@ Octop 后端返回 https://octop-bot.lynxce.cn/pricing.html?ticket=…&from=desk
 灵策要新做的（汇总盘点 §5 和运营后台设计 2.3.6，第一期会员约 14–19 个开发日，全部走 Codex 评审和灵策总管列车）：
 
 1. 跨域白名单加官网（0.5 小时）。官网直接调登录、余额、价格接口都靠这一项，必须做。
-2. 收银台支持 Octop Bot 品牌、预选、回跳（约 1 天）；票据换受限会话：一次性、5 分钟、只能查看余额和下单充值（P17，上线后才开官网直达）。
+2. 收银台支持 Octop Bot 品牌和回跳（已开发，`feat/octopbot-checkout-brand` 等上车）；票据换受限会话：一次性、5 分钟、只能查看余额和下单充值（P17，上线后才开官网直达）。
 3. 套餐、加油包、订阅、订单、流水、密钥加 `product`；`Subscription` 唯一约束改为 `(organizationId, product)`。这也是区分 Octop Bot 用量的唯一可靠办法：现在 Octop 的调用在灵策记成 `appId=cn.lynxce.app`，认不出来。
 4. 会过期积分 `CreditLot`：发放、到期、先扣快到期的。
 5. 五档会员和年付套餐、首月加赠、体验档发放。
