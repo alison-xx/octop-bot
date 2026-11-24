@@ -4978,6 +4978,7 @@ class AgentManager:
         )
         from octop.infra.agents.workspace.dir import local_backend_root_dir
         from octop.infra.knowledge.hint import KnowledgeSearchHintMiddleware
+        from octop.infra.utils.browser_media import OUTBOUND_SCREENSHOTS_REL
 
         agent_middleware: list[Any] = [
             PrivateDirectoryGuard(
@@ -4991,7 +4992,13 @@ class AgentManager:
             ReasoningRequestMiddleware(),
             TeamDispatchBriefingMiddleware(),
             KnowledgeSearchHintMiddleware(),
-            BrowserProfileMiddleware(row.agent_id),
+            BrowserProfileMiddleware(
+                row.agent_id,
+                # Created by octop-browser on the first screenshot, not up front.
+                Path(workspace_dir) / OUTBOUND_SCREENSHOTS_REL
+                if self.host_files_allowed(row.agent_id)
+                else None,
+            ),
             BinaryReadGuardMiddleware(),
             *(() if harness_handles_mcp_tool_errors() else (McpOutputSchemaMiddleware(),)),
             WorkspaceImageMaterializeMiddleware(workspace=ws),
