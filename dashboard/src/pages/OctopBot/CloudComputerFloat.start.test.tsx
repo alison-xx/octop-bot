@@ -4,6 +4,7 @@ import {
   botCloudComputerApi,
   type CloudComputerStatus,
 } from "../../api/modules/botCloudComputer";
+import { ApiResponseError } from "../../api/responseError";
 import CloudComputerFloat, {
   nextMode,
   toggleCloudFloat,
@@ -83,6 +84,30 @@ describe("opening the cloud computer from its icon", () => {
     // The pill stays clickable to try again.
     fireEvent.click(
       screen.getByRole("button", { name: "cloudComputer.float.open" }),
+    );
+    expect(api.openScreen).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops showing that it is starting when no computer is free", async () => {
+    api.status.mockResolvedValue({ ...off, state: "none" });
+    api.openScreen.mockRejectedValue(
+      new ApiResponseError(
+        503,
+        { code: "BOT_COMPUTER_BUSY", message: "No cloud computer is free" },
+        null,
+      ),
+    );
+    render(<CloudComputerFloat botId="writer" botName="Writer" />);
+    await act(async () => undefined);
+    act(() => toggleCloudFloat("writer"));
+    expect(
+      await screen.findByText("No cloud computer is free"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("cloudComputer.float.starting"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "cloudComputer.float.retry" }),
     );
     expect(api.openScreen).toHaveBeenCalledTimes(2);
   });

@@ -404,6 +404,11 @@ export default function CloudComputerFloat({
           <span className={styles.dot} aria-hidden="true" />
           <span className={styles.pillText}>{activity}</span>
         </button>
+        {startError ? (
+          <button type="button" className={styles.pillRetry} onClick={open}>
+            {t("cloudComputer.float.retry")}
+          </button>
+        ) : null}
         <button
           type="button"
           className={styles.pillClose}

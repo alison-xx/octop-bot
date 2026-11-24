@@ -9060,6 +9060,7 @@
       "open": "打开云电脑画面",
       "starting": "正在启动电脑…",
       "startFailed": "电脑没能启动，请稍后再试。",
+      "retry": "重试",
       "fit": "切换画面比例",
       "expand": "放大",
       "collapse": "收起",
