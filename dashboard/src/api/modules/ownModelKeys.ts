@@ -58,6 +58,8 @@ export const ownModelKeysApi = {
     request<OwnKey>(base, { method: "POST", body: JSON.stringify(body) }),
   remove: (id: string) =>
     request<void>(`${base}/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  /** Stop chatting on my own key: back to Lynxce credits (cloud) or the server's models. */
+  leave: () => request<OwnKeyList>(`${base}/in-use`, { method: "DELETE" }),
   useModel: (id: string, model_id: string) =>
     request<OwnKeyList>(`${base}/${encodeURIComponent(id)}/model`, {
       method: "PUT",

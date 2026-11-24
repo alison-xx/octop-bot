@@ -18,6 +18,7 @@ import androidx.core.net.toUri
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.app.BalanceState
 import io.github.alisonxx.octopbot.net.ChatBackend
+import io.github.alisonxx.octopbot.net.DeviceBackend
 import io.github.alisonxx.octopbot.net.LynxceBackend
 import io.github.alisonxx.octopbot.net.LynxceProtocol
 import io.github.alisonxx.octopbot.net.ServerBackend
@@ -30,10 +31,11 @@ val LowBalanceColor = Color(0xFFFF9F0A)
 @Composable
 fun accountName(backend: ChatBackend): String = backend.accountName ?: stringResource(R.string.account_generic_name)
 
-/** "Lynxce cloud", "Lynxce account" (direct), or a self-hosted server's host. */
+/** "Lynxce cloud", "Lynxce account" (direct), "Not signed in", or a self-hosted server's host. */
 @Composable
 fun modeLabel(backend: ChatBackend): String = when {
     backend is LynxceBackend -> stringResource(R.string.mode_lynxce)
+    backend is DeviceBackend -> stringResource(R.string.mode_device)
     backend is ServerBackend && backend.isCloud -> stringResource(R.string.mode_cloud)
     else -> backend.connectionLabel
 }

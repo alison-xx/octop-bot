@@ -58,7 +58,8 @@ import io.github.alisonxx.octopbot.ui.home.HomeScreen
 import io.github.alisonxx.octopbot.ui.onboarding.OnboardingScreen
 import io.github.alisonxx.octopbot.ui.onboarding.ServerConnectScreen
 import io.github.alisonxx.octopbot.ui.settings.CreditsScreen
-import io.github.alisonxx.octopbot.ui.settings.ModelPickerScreen
+import io.github.alisonxx.octopbot.ui.settings.ModelSetupScreen
+import io.github.alisonxx.octopbot.ui.settings.ModelSourcesScreen
 import io.github.alisonxx.octopbot.ui.settings.SettingsScreen
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
 import io.github.alisonxx.octopbot.ui.theme.OctopTheme
@@ -73,6 +74,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 private object Routes {
     const val ONBOARDING = "onboarding"
     const val SERVER = "server"
+    const val MODEL_SETUP = "models/setup"
     const val HOME = "home"
     const val CHAT = "chat/{bot}"
     const val EDITOR = "editor?bot={bot}"
@@ -169,8 +171,12 @@ private fun SignedOutNav(model: AppViewModel, notice: String?, reopenServer: Boo
                 onSignIn = model::signInLynxce,
                 onRequestCode = model::requestLynxceCode,
                 onCodeSignIn = model::signInLynxceCode,
+                onOwnModel = { nav.navigate(Routes.MODEL_SETUP) },
                 onServer = { nav.navigate(Routes.SERVER) },
             )
+        }
+        composable(Routes.MODEL_SETUP) {
+            ModelSetupScreen(model.phoneModels, onBack = { nav.back() }, onStart = model::usePhoneOnly)
         }
         composable(Routes.SERVER) {
             ServerConnectScreen(onBack = { nav.back() }, onConnected = model::useServer)
@@ -249,7 +255,7 @@ private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<String?>)
             CreditsScreen(model, onBack = { nav.back() })
         }
         composable(Routes.MODELS) {
-            ModelPickerScreen(model, onBack = { nav.back() })
+            ModelSourcesScreen(model, onBack = { nav.back() }, onCredits = { nav.navigate(Routes.CREDITS) })
         }
     }
 }

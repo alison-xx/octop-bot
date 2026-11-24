@@ -31,6 +31,7 @@ import {
   BOT_SETTINGS,
   botClientDestination,
 } from "../../utils/botClientRoute";
+import { ownModelKeysApi } from "../../api/modules/ownModelKeys";
 import { apiErrorMessage } from "../../utils/apiError";
 import ModelsPage from "../Settings/Models";
 import { useProviders } from "../Settings/Models/useProviders";
@@ -124,6 +125,20 @@ export default function BotClientSettings() {
     try {
       if ((await providerApi.listResolvedModels()).length > 0)
         await lynxceBotApi.clearModel();
+      setSwitchError("");
+      refreshSource();
+    } catch (e) {
+      setSwitchError(apiErrorMessage(e, t("octopBot.failed"), t));
+    } finally {
+      setSwitching(false);
+    }
+  };
+  // Cloud: stop chatting on my own key; the key stays in "My API keys".
+  const switchToLynxce = async () => {
+    if (switching) return;
+    setSwitching(true);
+    try {
+      await ownModelKeysApi.leave();
       setSwitchError("");
       refreshSource();
     } catch (e) {
@@ -437,9 +452,26 @@ export default function BotClientSettings() {
                     </div>
                     <div className={sourcesUi.card}>
                       {cloudEdition ? (
-                        <p className={sourcesUi.note}>
-                          {t("botClient.account.cloudModels")}
-                        </p>
+                        <>
+                          <p className={sourcesUi.note}>
+                            {t("botClient.account.cloudModels")}
+                          </p>
+                          {ownKeys?.in_use && (
+                            <Button
+                              loading={switching}
+                              onClick={() => void switchToLynxce()}
+                            >
+                              {t("botModels.lynxce.use")}
+                            </Button>
+                          )}
+                          {switchError && (
+                            <Alert
+                              type="error"
+                              showIcon
+                              message={switchError}
+                            />
+                          )}
+                        </>
                       ) : (
                         <LynxceAccount
                           key={user?.username}
