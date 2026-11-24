@@ -211,9 +211,6 @@
         if (plan.monthly === 0) {
           button.textContent = t("免费开始", "Start free");
           button.href = "https://bot.lynxce.cn";
-        } else if (pricing.membershipOpen) {
-          button.textContent = t(`开通${pick(plan.name)}版`, `Get ${pick(plan.name)}`);
-          button.href = "#";
         } else {
           button.textContent = t("即将开通", "Coming soon");
           button.setAttribute("aria-disabled", "true");
@@ -292,8 +289,9 @@
         ? t(`请输入 ${min}–${num(max)} 之间的整数`, `Enter a whole number from ${min} to ${num(max)}`)
         : "";
     const buy = $("#pack-buy");
-    if (pricing.packsOpen && yuan !== null) {
-      buy.textContent = t(`${money(yuan)} 立即购买`, `Buy for ${money(yuan)}`);
+    // Lynxce's cashier cannot take the chosen amount yet: the buyer picks the pack there.
+    if (pricing.packsOpen && window.OctopAuth.config.checkoutEnabled && yuan !== null) {
+      buy.textContent = t("去收银台选择金额", "Choose an amount at checkout");
       buy.removeAttribute("aria-disabled");
       buy.classList.remove("disabled");
     } else {
@@ -434,6 +432,17 @@
       modelTab = m.dataset.tab;
       renderRates();
     }
+    if (e.target.closest("#pack-buy")) {
+      e.preventDefault();
+      if (!pricing?.packsOpen || !window.OctopAuth.config.checkoutEnabled || e.target.closest(".disabled")) return;
+      const auth = window.OctopAuth;
+      if (!auth.requireLogin("/pricing.html#credits")) return;
+      auth.api("/api/billing/recharge/checkout-link", { method: "POST", body: { site: "octopbot", returnUrl: "https://octop-bot.lynxce.cn/pay/result.html" } }).then((data) => {
+        const url = new URL(data.url);
+        if (url.origin !== "https://admin.lynxce.cn" || url.pathname !== "/recharge" || url.username || url.password) throw new Error("Invalid checkout URL");
+        url.searchParams.append("tab", "boost"); location.assign(url.href);
+      }).catch(() => { alert(t("无法打开收银台，请稍后重试。", "Unable to open checkout. Please try again.")); });
+    }
     if (e.target.closest("a.disabled")) e.preventDefault();
   });
   $("#custom-amount")?.addEventListener("input", (e) => {
@@ -441,6 +450,7 @@
     renderPacks();
   });
   document.addEventListener("langchange", renderAll);
+  window.OctopAuth.ready.then(async () => { await window.OctopAuth.redeemHash(); renderPacks(); });
   showView(location.hash === "#credits" ? "packs" : location.hash === "#enterprise" ? "enterprise" : "plans");
 
   const getJson = (url, timeoutMs = 8000) => {

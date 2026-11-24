@@ -1106,3 +1106,47 @@
   root.classList.remove("i18n-wait");
   root.dataset.ready = "1";
 })();
+
+/* Shared account navigation. */
+(() => {
+  const auth = window.OctopAuth;
+  if (!auth) return;
+  const tools = document.querySelector(".header-tools"), mobile = document.querySelector(".mobile-nav");
+  const zh = () => document.documentElement.dataset.lang !== "en";
+  let profile = null, quota = null, generation = 0;
+  function label(cn, en) { return zh() ? cn : en; }
+  function render() {
+    document.querySelectorAll(".auth-nav").forEach((el) => el.remove());
+    const session = auth.session();
+    if (!session && !auth.config.loginEnabled) return;
+    for (const parent of [tools, mobile]) {
+      if (!parent) continue;
+      const box = document.createElement("div"); box.className = "auth-nav";
+      if (!session) {
+        const login = document.createElement("a"); login.href = "/login.html?next=" + encodeURIComponent(auth.safePath(location.pathname + location.search + location.hash)); login.textContent = label("登录", "Sign in"); box.append(login);
+      } else {
+        const details = document.createElement("details"), summary = document.createElement("summary");
+        const avatar = document.createElement("span"); avatar.className = "auth-avatar";
+        const name = profile?.name || profile?.nickname || session.user?.name || session.user?.nickname || "U";
+        if (profile?.avatarUrl && /^https:\/\//i.test(profile.avatarUrl)) { const img = document.createElement("img"); img.src = profile.avatarUrl; img.alt = ""; avatar.append(img); } else avatar.textContent = String(name).slice(0, 1);
+        const balance = document.createElement("span"); const left = Number(quota?.creditsRemaining ?? quota?.balance ?? quota?.remaining); balance.textContent = `✦ ${Number.isFinite(left) ? left.toLocaleString("en-US") : "—"}`;
+        summary.append(avatar, balance); details.append(summary);
+        const menu = document.createElement("div"); menu.className = "auth-menu";
+        const account = document.createElement("a"); account.href = "/account.html"; account.textContent = label("个人中心", "Account");
+        const logout = document.createElement("button"); logout.type = "button"; logout.textContent = label("退出登录", "Sign out"); logout.addEventListener("click", () => { profile = null; quota = null; auth.logout(); });
+        menu.append(account, logout); details.append(menu); box.append(details);
+      }
+      if (parent === tools) parent.insertBefore(box, parent.querySelector(".btn-primary")); else parent.prepend(box);
+    }
+  }
+  async function update() {
+    const id = ++generation; profile = null; quota = null; render();
+    if (!auth.session()) return;
+    const results = await Promise.allSettled([auth.api("/api/user/profile"), auth.api("/api/user/quota")]);
+    if (id !== generation || !auth.session()) return;
+    if (results[0].status === "fulfilled") profile = results[0].value;
+    if (results[1].status === "fulfilled") quota = results[1].value;
+    render();
+  }
+  auth.onChange(update); document.addEventListener("langchange", render); auth.ready.then(update);
+})();
