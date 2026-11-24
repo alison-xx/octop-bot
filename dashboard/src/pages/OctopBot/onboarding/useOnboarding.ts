@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { botCloudApi } from "../../../api/modules/botCloud";
 import {
   botOnboardingApi,
   type OnboardingChange,
@@ -7,10 +6,6 @@ import {
 } from "../../../api/modules/botOnboarding";
 import { onStreamEvent } from "../../Chat/hooks/chatStore";
 import { botGuideSeenKey } from "../../../utils/botClientRoute";
-import { getDesktopBridge } from "../../../utils/desktopBridge";
-
-/** CloudMove's "later" choice; while it is unset the desktop is about to move to the cloud. */
-const CLOUD_MOVE_LATER_KEY = "octop.bot.cloud-move.later";
 
 function stored(storage: () => Storage, key: string): string | null {
   try {
@@ -18,18 +13,6 @@ function stored(storage: () => Storage, key: string): string | null {
   } catch {
     return null;
   }
-}
-
-/**
- * A desktop signed in to a Lynxce account moves its team to the cloud and is guided there,
- * so this computer's page stays quiet until the owner chooses to stay here for now.
- */
-async function guidedElsewhere(): Promise<boolean> {
-  const bridge = getDesktopBridge();
-  if (!bridge?.botOnly || !("useLynxceCloud" in bridge)) return false;
-  if (stored(() => sessionStorage, CLOUD_MOVE_LATER_KEY)) return false;
-  const account = await botCloudApi.account().catch(() => null);
-  return Boolean(account?.connected);
 }
 
 export interface Onboarding {
@@ -55,7 +38,6 @@ export function useOnboarding(
     if (!enabled || userId === null) return;
     let current = true;
     void (async () => {
-      if (await guidedElsewhere()) return;
       let next = await botOnboardingApi.read().catch(() => null);
       // The older desktop guide was already seen here: do not guide this owner again.
       if (

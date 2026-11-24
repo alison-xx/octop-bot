@@ -71,19 +71,10 @@ describe("useOnboarding", () => {
     });
   });
 
-  it("leaves a desktop about to move to the cloud for the cloud page", async () => {
+  it("guides a desktop signed in to Lynxce on this computer too", async () => {
+    // Signed in, Bots still run here (scheme C), so the guide does not wait for the cloud.
     api.bridge = { botOnly: true, useLynxceCloud: vi.fn() };
     api.account.mockResolvedValue({ connected: true });
-    api.read.mockResolvedValue(state());
-    const { result } = renderHook(() => useOnboarding(true, 7));
-    await waitFor(() => expect(api.account).toHaveBeenCalled());
-    expect(api.read).not.toHaveBeenCalled();
-    expect(result.current.state).toBeNull();
-  });
-
-  it("guides on this computer when the owner chose to move later", async () => {
-    api.bridge = { botOnly: true, useLynxceCloud: vi.fn() };
-    sessionStorage.setItem("octop.bot.cloud-move.later", "1");
     api.read.mockResolvedValue(state());
     const { result } = renderHook(() => useOnboarding(true, 7));
     await waitFor(() => expect(result.current.state?.show).toBe(true));
