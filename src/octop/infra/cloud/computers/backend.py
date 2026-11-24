@@ -60,7 +60,16 @@ STORE_FILES = frozenset(
         "/manifest.json",
     }
 )
-STORE_DIRS = ("/.octop/", "/.octop-auth/", "/memory/", "/memories/", "/skills/", "/inbound/")
+# ``/agents/`` holds the built-in sub-agent definitions, checked whenever a Bot is created.
+STORE_DIRS = (
+    "/.octop/",
+    "/.octop-auth/",
+    "/agents/",
+    "/memory/",
+    "/memories/",
+    "/skills/",
+    "/inbound/",
+)
 
 
 def on_store(path: str | None) -> bool:

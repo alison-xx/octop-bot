@@ -41,6 +41,14 @@ import { DeviceSessionClient } from "./session/device-session";
 import { safeStorageCipher, warnIfKeychainUnavailable } from "./session/safe-storage-cipher";
 import { ClientSettingsStore, defaultClientSettingsPath } from "./storage/client-settings";
 import { defaultServerChoicePath, LYNXCE_CLOUD_ORIGIN, ServerChoiceStore } from "./server/server-choice";
+import {
+  cloudOrigin,
+  cloudSignInScript,
+  isCloudAccessToken,
+  pendingCloudSignInPath,
+  savePendingCloudSignIn,
+  takePendingCloudSignIn,
+} from "./server/cloud-sign-in";
 import { readLoginShellEnv, resolveOctopHome } from "./supervisor/shell-env";
 import { reserveRandomPort } from "./supervisor/random-port";
 import {
@@ -733,6 +741,14 @@ function registerIpcHandlers(): void {
     const zh = app.getLocale().toLowerCase().startsWith("zh");
     return openWorkbuddyLogin(BrowserWindow.fromWebContents(event.sender), zh);
   });
+  ipcMain.handle(IPC_CHANNELS.botUseCloud, (_event, accessToken: unknown): boolean => {
+    // Only this computer's own page moves the app; a cloud page has no preload.
+    if (!botOnly || remoteOrigin || !serverPicker || !isCloudAccessToken(accessToken)) return false;
+    const origin = cloudOrigin();
+    savePendingCloudSignIn(pendingCloudSignInPath(app.getPath("userData")), { origin, accessToken });
+    serverPicker.switchTo(origin);
+    return true;
+  });
   ipcMain.handle(IPC_CHANNELS.getPlatformInfo,(): PlatformInfo => ({
     platform: process.platform as PlatformInfo["platform"],
     arch: process.arch,
@@ -1302,6 +1318,7 @@ function restartApp(): void {
 
 function openRemoteWindow(origin: string): BrowserWindow {
   const chromeTheme = resolveWindowChromeTheme(settingsStore.load().themeBackground);
+  const signIn = takePendingCloudSignIn(pendingCloudSignInPath(app.getPath("userData")), origin);
   const win = createRemoteWindow({
     origin,
     backgroundColor: windowBackground(chromeTheme.mode),
@@ -1309,6 +1326,13 @@ function openRemoteWindow(origin: string): BrowserWindow {
     onNavigate: openExternal,
     onLoadFailed: (description) => void showRemoteFailure(win, origin, description),
   });
+  if (signIn) {
+    // The cloud sign-in handed over by the move: stored by the cloud page, then forgotten here.
+    win.webContents.once("did-finish-load", () => {
+      if (win.isDestroyed() || new URL(win.webContents.getURL()).origin !== origin) return;
+      void win.webContents.executeJavaScript(cloudSignInScript(signIn)).catch(() => undefined);
+    });
+  }
   win.on("close", (event) => {
     if (!shouldKeepWindowOnClose({ platform: process.platform, closeBehavior, quitting, trayReady: tray !== null })) return;
     event.preventDefault();

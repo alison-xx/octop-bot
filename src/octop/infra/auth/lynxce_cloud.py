@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 import re
-from collections.abc import Coroutine, Mapping
+from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Literal
@@ -518,6 +518,53 @@ async def open_password_session(account: str, password: str) -> CloudSession:
 
 async def open_code_session(target: str, code: str) -> CloudSession:
     return await _code_login(target, code)
+
+
+async def open_refresh_session(refresh_token: str) -> CloudSession:
+    """Take over a Lynxce session another Octop Bot app handed over, renewed here.
+
+    The desktop app moves its sign-in to the cloud when it starts keeping its data there.
+    Renewing proves the token and gives this server a session of its own to keep.
+    """
+    if not (1 <= len(refresh_token) <= 32768) or not refresh_token.isascii():
+        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
+    try:
+        data = await _send("POST", "/api/auth/refresh", json={"refreshToken": refresh_token})
+        access = _token(data, "accessToken")
+        profile = await _send("GET", "/api/user/profile", bearer=access)
+    except _UpstreamFailure as exc:
+        if exc.status in {400, 401, 403}:
+            raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403) from None
+        raise _rejected(exc.status) from None
+    if (
+        not isinstance(profile, dict)
+        or not isinstance(profile.get("id"), str)
+        or not profile["id"].strip()
+    ):
+        raise OctopError.localized(ErrorCode.NETWORK_ERROR)
+    renewed = _token(data, "refreshToken") if "refreshToken" in data else refresh_token
+    return _Grant(
+        profile["id"], display_name(profile), uuid4().hex, access, renewed, _avatar(profile)
+    )
+
+
+async def hand_over_session[T](
+    services: SharedServices, user_id: int, accept: Callable[[str], Awaitable[T]]
+) -> T:
+    """Give this desktop's Lynxce sign-in to the cloud, then forget it here.
+
+    ``accept`` sends the refresh token on. Only once it succeeded is the local copy dropped
+    (without signing out upstream, since the cloud now uses that session).
+    """
+    if not _enabled():
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
+    async with _lock(services, user_id):
+        grant = await asyncio.to_thread(_load, services, user_id)
+        if grant is None:
+            raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
+        result = await accept(grant.refresh_token)
+        await _finish(asyncio.to_thread(services.secret_repo.delete, _key(user_id)))
+    return result
 
 
 async def discard_session(session: CloudSession) -> None:

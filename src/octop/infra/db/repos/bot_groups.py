@@ -222,6 +222,35 @@ class BotGroupRepo:
             result.append(entry)
         return result
 
+    def import_messages(self, group_id: str, messages: list[dict[str, Any]]) -> None:
+        """Add a finished timeline moved from another server, keeping its turns and times.
+
+        Each message carries ``request_id``, ``slot``, ``role``, ``agent_id``, ``text`` and
+        ``created_at``. A request already present is skipped, so a retried move adds nothing.
+        """
+        with self._db.transaction() as conn:
+            for message in messages:
+                conn.execute(
+                    "INSERT INTO bot_group_turns(group_id,request_id,input_json,lease_until,"
+                    "finished) VALUES(?,?,'[]',0,1) ON CONFLICT(group_id,request_id) DO NOTHING",
+                    (group_id, message["request_id"]),
+                )
+                conn.execute(
+                    "INSERT INTO bot_group_messages(message_id,group_id,request_id,slot,role,"
+                    "agent_id,text,created_at) VALUES(?,?,?,?,?,?,?,?) "
+                    "ON CONFLICT(group_id,request_id,slot) DO NOTHING",
+                    (
+                        new_ulid(),
+                        group_id,
+                        message["request_id"],
+                        message["slot"],
+                        message["role"],
+                        message["agent_id"],
+                        message["text"],
+                        message["created_at"],
+                    ),
+                )
+
     def has_turn(self, group_id: str, request_id: str) -> bool:
         with self._db.connect() as conn:
             return (

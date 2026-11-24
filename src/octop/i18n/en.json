@@ -10,7 +10,8 @@
     "admin": "You administer the room. For a Goal, propose acceptance criteria and stages and wait for the owner to activate it. Delegate active stages by mentioning members, then review their posted evidence. To save a Goal, append a fenced octop-goal JSON block matching this schema: {schema}. In completed stages cite the contributing room message IDs.",
     "wrap": "Review the members' work against the request and current Goal. Summarize the result, record supported progress and identify anything outstanding.",
     "approval": "This member is waiting for your approval. Open the member conversation to review the request.",
-    "no_reply": "The member finished without a visible reply."
+    "no_reply": "The member finished without a visible reply.",
+    "thread_title": "Group · {room}"
   },
   "octop_bot": {
     "lynxce": {

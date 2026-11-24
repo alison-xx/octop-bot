@@ -281,14 +281,21 @@ class ThreadRepo:
             ).fetchall()
         return map_rows(rows, ThreadRow)
 
-    def list_visible(self, *, agent_id: str, user_id: int, limit: int = 50) -> list[ThreadRow]:
-        """Own threads plus conversations contributed to this shared expert."""
+    def list_visible(
+        self, *, agent_id: str, user_id: int, limit: int = 50, include_bot_groups: bool = False
+    ) -> list[ThreadRow]:
+        """Own threads plus conversations contributed to this shared expert.
+
+        A Bot's work threads for Bot groups stay out unless asked for; they are
+        never contributed, so only the owner sees them.
+        """
+        groups = "" if include_bot_groups else "AND channel_type <> 'octop_bot_group' "
         with self._db.connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM threads WHERE agent_id = ? "
-                "AND (user_id = ? OR contributed = 1) "
-                "AND channel_type <> 'octop_bot_group' "
-                "ORDER BY pinned DESC, "
+                "AND (user_id = ? OR (contributed = 1 AND channel_type <> 'octop_bot_group')) "
+                + groups
+                + "ORDER BY pinned DESC, "
                 "CASE WHEN last_active > 0 THEN last_active ELSE created_at END DESC, "
                 "thread_id DESC LIMIT ?",
                 (agent_id, user_id, limit),

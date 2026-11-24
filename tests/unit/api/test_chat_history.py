@@ -634,3 +634,31 @@ async def test_shared_thread_hitl_resume_skips_user_filter(
         server=server,
     )
     assert store.resolve_pending_for_thread.call_args.kwargs["user_id"] == 2
+
+
+async def test_rebind_leaves_the_private_chat_on_a_bot_group_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers.chat.models import RebindSessionBody
+
+    monkeypatch.setattr(history_mod, "require_agent_row", lambda *_a, **_k: MagicMock())
+    server = MagicMock()
+    registry = server.app_runtime.gateway.thread_registry
+    registry.get_thread.return_value = MagicMock(
+        agent_id="agt_1",
+        user_id=1,
+        contributed=False,
+        channel_type="octop_bot_group",
+        session_key="group-key",
+    )
+    registry.rebind = AsyncMock()
+
+    result = await history_mod.rebind_session(
+        "agt_1",
+        RebindSessionBody(thread_id="thr_group"),
+        user=MagicMock(id=1, is_admin=False),
+        server=server,
+    )
+
+    assert result == {"session_key": "group-key", "thread_id": "thr_group"}
+    registry.rebind.assert_not_called()

@@ -66,6 +66,7 @@ import BotChat from "./BotChat";
 import { GroupForm, canInviteBot, type GroupSeed } from "./GroupForms";
 import GroupRoom from "./GroupRoom";
 import AccountMenu from "./AccountMenu";
+import CloudMove from "./CloudMove";
 import RetainedFolders from "./RetainedFolders";
 import DeleteBotDialog from "./DeleteBotDialog";
 import DeleteGroupDialog from "./DeleteGroupDialog";
@@ -1055,6 +1056,7 @@ export default function OctopBotPage() {
           }
         >
           <AccountMenu compact={compactDirectory} />
+          <CloudMove />
           {isBotOnlyDesktop() && (
             <Button
               type="text"

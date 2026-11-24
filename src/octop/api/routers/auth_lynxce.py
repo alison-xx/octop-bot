@@ -224,6 +224,35 @@ async def lynxce_code_login(
     )
 
 
+class LynxceSessionLoginBody(BaseModel):
+    refresh_token: str = Field(
+        min_length=1, max_length=32768, description="Lynxce refresh token the desktop hands over."
+    )
+    locale: str | None = Field(default=None, max_length=16)
+
+
+@router.post(
+    "/lynxce/session-login",
+    summary="Sign in with a Lynxce session handed over by the desktop app",
+    description=(
+        "Octop Bot cloud only. The desktop app moves its Lynxce sign-in here when it starts "
+        "keeping its data in the cloud, so the user does not sign in twice. The session is "
+        "renewed with Lynxce first, which proves it, and then kept like any cloud sign-in."
+    ),
+)
+async def lynxce_session_login(
+    body: LynxceSessionLoginBody, request: Request, server: Any = Depends(get_server)
+) -> dict[str, Any]:
+    if not bot_cloud_enabled():
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
+    return await _cloud_sign_in(
+        server,
+        request,
+        body.locale,
+        lambda: lynxce_cloud.open_refresh_session(body.refresh_token),
+    )
+
+
 async def _opened[T](request: Request, opener: Callable[[], Awaitable[T]]) -> T:
     """Run a Lynxce sign-in, counting wrong passwords and codes toward the client's lockout."""
     ip = _client_ip(request)

@@ -11,6 +11,14 @@ export interface CloudAccount {
   display_name: string | null;
   avatar_url?: string | null;
 }
+export interface CloudMoveStatus {
+  state: "idle" | "running" | "done" | "failed";
+  done: number;
+  total: number;
+  error_code: string | null;
+  /** Cloud sign-in once done; the desktop shell opens the cloud with it. */
+  access_token: string | null;
+}
 export interface CloudCapabilities {
   enabled: boolean;
   reason: string | null;
@@ -100,6 +108,9 @@ export const botCloudApi = {
       json("POST", { account_id, revision, model }),
     ),
   account: () => request<CloudAccount>(root + "/account"),
+  /** Desktop: move this computer's team to the Octop Bot cloud (runs in the background). */
+  move: () => request<CloudMoveStatus>(root + "/move", { method: "POST" }),
+  moveStatus: () => request<CloudMoveStatus>(root + "/move"),
   login: (account: string, password: string) =>
     request<CloudAccount>(
       root + "/account",

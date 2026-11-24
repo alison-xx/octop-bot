@@ -653,6 +653,14 @@ def test_legacy_root_system_files_stay_in_the_store() -> None:
     assert not on_store("/notes/manifest.json")
 
 
+def test_creating_a_bot_does_not_start_its_computer() -> None:
+    from octop.infra.cloud.computers.backend import on_store
+
+    # The harness checks the built-in sub-agents here whenever a Bot is created.
+    assert on_store("/agents/general-purpose.md")
+    assert not on_store("/agents-notes.md")
+
+
 def test_a_computer_stopped_while_the_server_was_down_is_billed_until_it_stopped(
     setup: Any,
 ) -> None:
