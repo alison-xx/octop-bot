@@ -46,7 +46,6 @@
     <string name="onboarding_resend_code">重新发送</string>
     <string name="onboarding_code_countdown">%1$d 秒</string>
     <string name="onboarding_code_sent">验证码已发送，可能需要稍等片刻。</string>
-    <string name="onboarding_code_hint">未注册的手机号或邮箱，验证后将自动创建灵策账号。</string>
     <string name="onboarding_use_password">密码登录</string>
     <string name="onboarding_use_code">验证码登录</string>
     <string name="error_code_invalid">验证码错误或已过期，请重新获取</string>
@@ -385,12 +384,8 @@
     <string name="onboarding_hero_title">一支随叫随到的 AI 团队</string>
     <string name="onboarding_hero_body">Chief 帮你组建 Bot、拉群分工。写稿、查资料、操作网页，交给它们去做。</string>
     <string name="onboarding_lynxce_account">灵策智算账号</string>
-    <string name="onboarding_recommended">推荐</string>
     <string name="onboarding_target">手机号或邮箱</string>
-    <string name="onboarding_tab_code">验证码</string>
-    <string name="onboarding_tab_password">密码</string>
-    <string name="onboarding_methods">登录方式</string>
-    <string name="onboarding_or">或者</string>
+    <string name="onboarding_or">或</string>
     <string name="onboarding_own_model">不登录，自己配置模型</string>
     <string name="onboarding_own_model_body">用你的 API Key，或电脑上的 Ollama、LM Studio。Key 和对话只存在这台手机。</string>
     <string name="account_device">本机使用</string>
@@ -503,4 +498,25 @@
     <string name="computer_file_off">文件在云电脑上，点电脑图标打开电脑后再看。</string>
     <string name="computer_busy">云电脑暂时都被占满了，请过几分钟再试。</string>
     <string name="computer_starting_short">正在开机…</string>
+    <string name="onboarding_title">开始使用 Octop Bot</string>
+    <string name="onboarding_subtitle">用灵策智算账号登录，没有账号会自动注册。</string>
+    <string name="onboarding_recommended_sync">推荐 · 多端同步</string>
+    <string name="onboarding_auto_register">未注册的手机号或邮箱会自动创建账号。</string>
+    <string name="onboarding_use_password_link">用密码登录</string>
+    <string name="onboarding_use_code_link">用验证码登录</string>
+    <string name="onboarding_code_six">6 位验证码</string>
+    <string name="onboarding_banner_title">一支随叫随到的\nAI 团队</string>
+    <string name="account_demo_tier">进阶会员</string>
+    <string name="account_lynxce_id">灵策 ID %1$s</string>
+    <string name="account_until">%1$s 到期</string>
+    <string name="account_expiring">会过期 %1$s</string>
+    <string name="account_expiring_on">会过期 %1$s（%2$s 到期）</string>
+    <string name="account_permanent">永久 %1$s</string>
+    <string name="account_renew">续费会员</string>
+    <string name="account_join">开通会员</string>
+    <string name="account_top_up">买加油包</string>
+    <string name="account_credits_usage">积分与用量</string>
+    <string name="account_credits_usage_detail">余额、到期和最近 30 天用量</string>
+    <string name="account_centre">个人中心</string>
+    <string name="account_centre_detail">会员、订单和发票（官网）</string>
 </resources>
