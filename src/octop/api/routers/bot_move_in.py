@@ -19,14 +19,14 @@ from octop.infra.cloud.move_in import (
     move_notes,
     move_thread,
 )
-from octop.infra.desktop import bot_cloud_enabled
+from octop.infra.desktop import bot_cloud_move_in_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 from octop.infra.users.identity import User
 
 
 def _cloud(server: Annotated[OctopServer, Depends(get_server)]) -> OctopServer:
-    if not bot_cloud_enabled():
+    if not bot_cloud_move_in_enabled():
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     assert server.services is not None and server.app_runtime is not None
     return server
