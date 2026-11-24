@@ -142,7 +142,8 @@
   .small { font-size: 12.5px; }
   .plan { padding: 20px 16px; }
   .plan .renew { font-size: 12px; color: var(--ink-3); margin-top: -6px; }
-  .plan .credits { min-height: 92px; }
+  .plan .credits { min-height: 102px; }
+  .plan .btn { margin-top: 0; }
   .plan .credits .row { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
   .plan .credits .row + .row { margin-top: 4px; }
   .plan .credits .gift { color: var(--accent); }
@@ -416,9 +417,9 @@
 const PAGES = [["pricing","定价·月付"],["pricing-year","定价·年付"],["packs","定价·积分包"],["changelog","更新日志"],["changelog-en","Changelog (EN)"],["login","登录"],["checkout","结账"],["result","支付结果"],["account","个人中心·概览"],["usage","用量明细"],["orders","订单与发票"],["plan","套餐管理"],["security","账号与安全"],["devices","登录设备"],["bots","我的 Bot 与下载"],["app-desktop","客户端·余额与不足"],["app-limits","客户端·云电脑与上限"],["app-mobile","客户端·手机线框"]];
 const ACCOUNT = ["account","usage","orders","plan","security","devices","bots"];
 let cycle = "m";
-// Read live from Lynxce on the real page: default image / video model and their unit prices.
-const IMG_STD_PRICE = __IMG_STD__, IMG_HD_PRICE = __IMG_HD__, VID_768_PRICE = __VID_768__, VID_2K_PRICE = __VID_2K__;
-const MEDIA = { image: { model: "gpt2.6", std: IMG_STD_PRICE, hd: IMG_HD_PRICE }, video: { model: "MiniMax H3", p768: VID_768_PRICE, k2: VID_2K_PRICE } };
+// The real page reads these from Lynxce (GET /api/models/pricing-catalog: the first image and
+// video model are the defaults). Values below are Lynxce's prices on 2026-11-25.
+const MEDIA = { image: { model: "image2.6", std: 70, hd: 70 }, video: { model: "MiniMax H3", p768: 10.4, p1080: 19.76 } };
 const imgN = credits => Math.floor(credits / MEDIA.image.std).toLocaleString("en-US");
 const vidN = credits => Math.floor(credits / (MEDIA.video.p768 * 6)).toLocaleString("en-US");
 const PLANS = [
@@ -429,9 +430,9 @@ const PLANS = [
   { id:"plus", name:"进阶", m:99, y:1069, monthly:10000, credits:[["10,000 积分每月","1 个月有效"]], gift:"每月加赠 1,000 积分", hot:"稳定使用推荐",
     items:[["文本模型","全部可用模型"],["作图",(c)=>`标准画质 · 约 ${imgN(c)} 张`],["做视频",(c)=>`768p · 约 ${vidN(c)} 条 6 秒视频`],["协同 Bot","50 个"],["群聊","30 个"],["同步设备","5 台"],["云电脑","标准，同时 2 台"],["云端文件","20 GB"],["定时任务","50 个"],["支持","社群"]], btn:"开通进阶版" },
   { id:"pro", name:"专业", m:199, y:2149, monthly:20000, credits:[["20,000 积分每月","1 个月有效"]], gift:"首月加赠 4,000 积分",
-    items:[["文本模型","全部可用模型"],["作图",(c)=>`可选高清，单次最多 4 张 · 约 ${imgN(c)} 张`],["做视频",(c)=>`可选 2K · 约 ${vidN(c)} 条 6 秒视频`],["协同 Bot","不限"],["群聊","不限"],["同步设备","10 台"],["云电脑","标准 + 专业，同时 3 台"],["云端文件","50 GB"],["定时任务","200 个"],["排队优先","模型和云电脑"],["支持","工单优先"]], btn:"开通专业版" },
+    items:[["文本模型","全部可用模型"],["作图",(c)=>`可选高清，单次最多 4 张 · 约 ${imgN(c)} 张`],["做视频",(c)=>`可选 1080p · 约 ${vidN(c)} 条 6 秒视频`],["协同 Bot","不限"],["群聊","不限"],["同步设备","10 台"],["云电脑","标准 + 专业，同时 3 台"],["云端文件","50 GB"],["定时任务","200 个"],["排队优先","模型和云电脑"],["支持","工单优先"]], btn:"开通专业版" },
   { id:"max", name:"卓越", m:699, y:7549, monthly:70000, credits:[["70,000 积分每月","1 个月有效"]], gift:"首月加赠 14,000 积分",
-    items:[["文本模型","全部可用模型"],["作图",(c)=>`可选高清，单次最多 4 张 · 约 ${imgN(c)} 张`],["做视频",(c)=>`可选 2K · 约 ${vidN(c)} 条 6 秒视频`],["协同 Bot","不限"],["群聊","不限"],["同步设备","20 台"],["云电脑","标准 + 专业，同时 10 台"],["云端文件","200 GB"],["定时任务","不限"],["排队优先","模型和云电脑"],["支持","专属顾问"]], btn:"开通卓越版" },
+    items:[["文本模型","全部可用模型"],["作图",(c)=>`可选高清，单次最多 4 张 · 约 ${imgN(c)} 张`],["做视频",(c)=>`可选 1080p · 约 ${vidN(c)} 条 6 秒视频`],["协同 Bot","不限"],["群聊","不限"],["同步设备","20 台"],["云电脑","标准 + 专业，同时 10 台"],["云端文件","200 GB"],["定时任务","不限"],["排队优先","模型和云电脑"],["支持","专属顾问"]], btn:"开通卓越版" },
 ];
 const PACKS = [[20, "2,000"], [50, "5,000"], [100, "10,000"], [200, "20,000"], [500, "50,000"]];
 const money = v => "¥" + (Number.isInteger(v) ? v.toLocaleString("en-US") : v.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 2 }));
@@ -669,7 +670,7 @@ if (new URLSearchParams(location.search).has("clean")) document.body.classList.a
 document.getElementById("imgModel").textContent = MEDIA.image.model;
 document.getElementById("vidModel").textContent = MEDIA.video.model;
 document.getElementById("rateImg").textContent = `${MEDIA.image.model}：标准 ${MEDIA.image.std} 积分/张，高清 ${MEDIA.image.hd} 积分/张`;
-document.getElementById("rateVid").textContent = `${MEDIA.video.model}：768p ${MEDIA.video.p768} 积分/秒，2K ${MEDIA.video.k2} 积分/秒`;
+document.getElementById("rateVid").textContent = `${MEDIA.video.model}：768p ${MEDIA.video.p768} 积分/秒，1080p ${MEDIA.video.p1080} 积分/秒`;
 renderPlans();
 window.onhashchange = render;
 render();
