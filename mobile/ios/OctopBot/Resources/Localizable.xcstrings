@@ -4858,13 +4858,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The computer is off. It starts when the Bot needs it."
+            "value": "The computer is off. It starts when the Bot needs it, or tap expand to start it now."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "电脑没开机，Bot 用到时会自动开机"
+            "value": "电脑没开机。Bot 用到时会自动开机，点放大也能现在开机。"
           }
         }
       }
@@ -4906,13 +4906,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "It starts when the Bot first needs to run something and pauses after 10 idle minutes. Running time is charged by the minute in Lynxce credits; files stay while it's paused."
+            "value": "It starts when the Bot needs it or when you tap View screen, and pauses after 10 idle minutes. Running time is charged by the minute in Lynxce credits; files stay while it's paused."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bot 第一次需要运行命令时自动开机，空闲 10 分钟自动暂停。运行时按分钟扣灵策积分，暂停后文件保留。"
+            "value": "Bot 需要用电脑、或者你点「查看画面」时开机，空闲 10 分钟自动暂停。运行时按分钟扣灵策积分，暂停后文件保留。"
           }
         }
       }
@@ -7601,6 +7601,134 @@
           "stringUnit": {
             "state": "translated",
             "value": "选择 Bot 用的模型：服务器的模型或你的 API Key。"
+          }
+        }
+      }
+    },
+    "credits.titleNoPurchase": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credits"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "积分"
+          }
+        }
+      }
+    },
+    "credits.lowNoPurchase": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're running low on credits."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "积分快用完了。"
+          }
+        }
+      }
+    },
+    "credits.out.bodyNoPurchase": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This didn't finish. Once you have credits again, press Continue to pick up where it stopped."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这次没能跑完。积分到账后，点「继续」就接着做。"
+          }
+        }
+      }
+    },
+    "error.creditsNoPurchase": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're out of Lynxce credits."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "灵策积分不足。"
+          }
+        }
+      }
+    },
+    "computer.starting": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starting the computer… The first time can take a minute or two."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在启动电脑…第一次可能要一两分钟。"
+          }
+        }
+      }
+    },
+    "error.computerOff": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This file is on the cloud computer. Tap the computer icon to start it, then open the file."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件在云电脑上，点电脑图标打开电脑后再看。"
+          }
+        }
+      }
+    },
+    "error.computerBusy": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All cloud computers are in use right now. Try again in a few minutes."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "云电脑暂时都被占满了，请过几分钟再试。"
+          }
+        }
+      }
+    },
+    "computer.startingShort": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starting…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在开机…"
           }
         }
       }

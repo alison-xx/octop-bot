@@ -58,6 +58,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -70,7 +71,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -79,6 +82,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.alisonxx.octopbot.R
+import io.github.alisonxx.octopbot.app.describe
 import io.github.alisonxx.octopbot.net.ApiException
 import io.github.alisonxx.octopbot.net.ServerBackend
 import io.github.alisonxx.octopbot.net.ServerProtocol.ComputerStatus
@@ -181,6 +185,8 @@ class CloudFloatState(val server: ServerBackend, val botId: String, context: Con
             pinned = true
             pillOnly = false
             mode = Mode.Card
+            // The computer is off: the icon starts it, full screen saying so until the desktop is up.
+            if (available && !running) expanded = true
         } else {
             close()
         }
@@ -408,10 +414,22 @@ fun CloudFloatToggle(state: CloudFloatState) {
 fun CloudScreenDialog(state: CloudFloatState, botName: String) {
     val palette = LocalPalette.current
     val scope = rememberCoroutineScope()
+    val resources = LocalResources.current
     var url by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var attempt by remember { mutableIntStateOf(0) }
     var working by remember { mutableStateOf(false) }
     val takenOver = state.status?.takeover == true
-    LaunchedEffect(Unit) { url = runCatching { state.server.screenUrl(state.botId, control = takenOver) }.getOrNull() }
+    // Starts or resumes the computer when it is off; shows "starting…" meanwhile and a retry on failure.
+    LaunchedEffect(attempt) {
+        error = null
+        runCatching { state.server.screenUrl(state.botId, control = takenOver) }
+            .onSuccess {
+                url = it
+                state.refresh()
+            }
+            .onFailure { if (it !is CancellationException) error = resources.describe(it) else throw it }
+    }
     Dialog(
         onDismissRequest = { state.expanded = false },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
@@ -426,7 +444,8 @@ fun CloudScreenDialog(state: CloudFloatState, botName: String) {
                 }
                 Column(Modifier.weight(1f)) {
                     Text(state.window ?: botName, style = MaterialTheme.typography.titleSmall, color = palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(stringResource(state.activityText), style = MaterialTheme.typography.labelSmall, color = palette.secondary, maxLines = 1)
+                    val subtitle = if (url == null && error == null && !state.running) R.string.computer_starting_short else state.activityText
+                    Text(stringResource(subtitle), style = MaterialTheme.typography.labelSmall, color = palette.secondary, maxLines = 1)
                 }
                 Spacer(Modifier.width(8.dp))
                 Button(
@@ -438,7 +457,7 @@ fun CloudScreenDialog(state: CloudFloatState, botName: String) {
                             if (runCatching { state.server.setTakeover(state.botId, !takenOver) }.isSuccess) {
                                 state.refresh()
                                 url = null
-                                url = runCatching { state.server.screenUrl(state.botId, control = !takenOver) }.getOrNull()
+                                attempt++
                             }
                             working = false
                         }
@@ -451,10 +470,26 @@ fun CloudScreenDialog(state: CloudFloatState, botName: String) {
             }
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 val page = url
-                if (page == null) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
-                } else {
-                    ScreenWebView(page)
+                val failure = error
+                when {
+                    page != null -> ScreenWebView(page)
+                    failure != null -> Column(Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(failure, color = Color.White, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(12.dp))
+                        Button(onClick = { attempt++ }) { Text(stringResource(R.string.chat_retry)) }
+                    }
+                    else -> Column(Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                        if (!state.running) {
+                            Spacer(Modifier.height(14.dp))
+                            Text(
+                                stringResource(R.string.computer_starting),
+                                color = Color.White.copy(alpha = 0.8f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
                 }
             }
         }

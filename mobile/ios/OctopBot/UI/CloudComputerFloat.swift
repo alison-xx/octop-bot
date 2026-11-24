@@ -94,6 +94,8 @@ final class CloudFloat {
             pinned = true
             pillOnly = false
             mode = .card
+            // The computer is off: the icon starts it, full screen saying so until the desktop is up.
+            if available, !running { expanded = true }
             Task { await refresh() }
         } else {
             close()
@@ -358,6 +360,7 @@ struct CloudScreenCover: View {
     let bot: BotProfile
     @Environment(\.dismiss) private var dismiss
     @State private var url: URL?
+    @State private var error: String?
     @State private var busy = false
 
     var body: some View {
@@ -369,7 +372,7 @@ struct CloudScreenCover: View {
                 .accessibilityLabel(Text("computer.float.minimise"))
                 VStack(alignment: .leading, spacing: 0) {
                     Text(float.window?.isEmpty == false ? float.window! : bot.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                    Text(float.activityText).font(.caption2).foregroundStyle(Palette.secondary).lineLimit(1)
+                    Text(url == nil && error == nil && !float.running ? "computer.startingShort" : float.activityText).font(.caption2).foregroundStyle(Palette.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 Button {
@@ -390,8 +393,24 @@ struct CloudScreenCover: View {
                 Color.black
                 if let url {
                     ScreenWebView(url: url)
+                } else if let error {
+                    VStack(spacing: 12) {
+                        Text(error).multilineTextAlignment(.center).foregroundStyle(.white)
+                        Button("common.retry") { Task { await load(control: float.status?.takeover == true) } }
+                            .buttonStyle(.bordered)
+                            .tint(.white)
+                            .accessibilityIdentifier("cloudScreenRetry")
+                    }
+                    .padding(32)
                 } else {
-                    ProgressView().tint(.white)
+                    // Opening the screen starts or resumes a computer that is off.
+                    VStack(spacing: 14) {
+                        ProgressView().tint(.white)
+                        if !float.running {
+                            Text("computer.starting").multilineTextAlignment(.center).foregroundStyle(.white.opacity(0.8))
+                        }
+                    }
+                    .padding(32)
                 }
             }
         }
@@ -400,7 +419,14 @@ struct CloudScreenCover: View {
     }
 
     private func load(control: Bool) async {
-        url = try? await float.server.screenURL(float.botId, control: control)
+        error = nil
+        do {
+            url = try await float.server.screenURL(float.botId, control: control)
+            await float.refresh()
+        } catch is CancellationError {
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     private func takeover(_ active: Bool) async {

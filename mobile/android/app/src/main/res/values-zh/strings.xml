@@ -292,7 +292,7 @@
     <string name="computer_state_paused">已暂停</string>
     <string name="computer_pause">立即暂停</string>
     <string name="computer_unavailable">暂不可用</string>
-    <string name="computer_footer">Bot 第一次需要运行命令时自动开机，空闲 10 分钟自动暂停。运行时按分钟扣灵策积分，暂停后文件保留。</string>
+    <string name="computer_footer">Bot 需要用电脑、或者你点「查看画面」时开机，空闲 10 分钟自动暂停。运行时按分钟扣灵策积分，暂停后文件保留。</string>
     <string name="computer_view">查看画面</string>
     <string name="computer_take_over">接管</string>
     <string name="computer_hand_back">交还</string>
@@ -343,7 +343,7 @@
     <string name="computer_float_idle">空闲</string>
     <string name="computer_float_loading">正在加载画面…</string>
     <string name="computer_float_minimise">收起</string>
-    <string name="computer_float_off">电脑没开机，Bot 用到时会自动开机</string>
+    <string name="computer_float_off">电脑没开机。Bot 用到时会自动开机，点放大也能现在开机。</string>
     <string name="computer_float_toggle">云电脑</string>
     <string name="computer_float_yours">你在操作</string>
     <string name="server_unsupported">这台服务器还不支持灵策智算登录，请让管理员升级 Octop Bot。</string>
@@ -499,4 +499,8 @@
     <string name="models_add_kept_server">加密保存在你的服务器上，之后只显示末四位。</string>
     <string name="models_body_server">Bot 默认用这里选中的模型：服务器管理员配置的模型，或者你自己的 API Key（由厂商直接收费）。</string>
     <string name="models_footer_server">选择 Bot 用的模型：服务器的模型或你的 API Key。</string>
+    <string name="computer_starting">正在启动电脑…第一次可能要一两分钟。</string>
+    <string name="computer_file_off">文件在云电脑上，点电脑图标打开电脑后再看。</string>
+    <string name="computer_busy">云电脑暂时都被占满了，请过几分钟再试。</string>
+    <string name="computer_starting_short">正在开机…</string>
 </resources>

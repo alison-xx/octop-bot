@@ -13,6 +13,8 @@ fun Resources.describe(error: Throwable): String {
     // The server's out-of-credits text carries a URL a snackbar can't open; the chat card links it instead.
     if (api.kind == ApiException.Kind.Credits) return getString(R.string.error_credits)
     if (api.kind == ApiException.Kind.DailyLimit) return getString(R.string.error_daily_limit)
+    if (api.code == ApiException.COMPUTER_OFF) return getString(R.string.computer_file_off)
+    if (api.code == ApiException.COMPUTER_BUSY) return getString(R.string.computer_busy)
     api.message?.takeIf { it.isNotBlank() }?.let { return it }
     return when (api.kind) {
         ApiException.Kind.Unauthorized -> getString(R.string.error_unauthorized)

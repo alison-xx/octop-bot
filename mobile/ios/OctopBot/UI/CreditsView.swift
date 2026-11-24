@@ -23,7 +23,7 @@ struct CreditsView: View {
             Form {
                 if hasWallet {
                     balanceSection { withAnimation(.snappy) { proxy.scrollTo("packs", anchor: .top) } }
-                    packsSection.id("packs")
+                    if CreditPurchases.inApp { packsSection.id("packs") }
                 } else {
                     Section {
                         Label("credits.selfHosted", systemImage: "server.rack")
@@ -35,7 +35,7 @@ struct CreditsView: View {
                 if model.server != nil { usageSections }
             }
         }
-        .navigationTitle(hasWallet ? "credits.title" : "usage.title")
+        .navigationTitle(hasWallet ? CreditPurchases.title : "usage.title")
         .navigationBarTitleDisplayMode(.inline)
         .task { await reload() }
         .refreshable { await reload() }
@@ -44,7 +44,7 @@ struct CreditsView: View {
     private func reload() async {
         async let balance: Void = model.refreshBalance()
         async let usage: Void = loadUsage()
-        if hasWallet { await store.load() }
+        if hasWallet && CreditPurchases.inApp { await store.load() }
         _ = await (balance, usage)
     }
 
@@ -67,22 +67,24 @@ struct CreditsView: View {
                 Text("credits.balance").font(.subheadline).foregroundStyle(Palette.secondary)
                 bigBalance
                 if model.isLowBalance {
-                    Label("credits.low", systemImage: "exclamationmark.triangle.fill")
+                    Label(CreditPurchases.inApp ? "credits.low" : "credits.lowNoPurchase", systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
                         .foregroundStyle(.orange)
                         .multilineTextAlignment(.center)
                 }
-                Button(action: recharge) {
-                    Text("credits.recharge")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Palette.text, in: Capsule())
-                        .foregroundStyle(Palette.background)
+                if CreditPurchases.inApp {
+                    Button(action: recharge) {
+                        Text("credits.recharge")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Palette.text, in: Capsule())
+                            .foregroundStyle(Palette.background)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("recharge")
                 }
-                .buttonStyle(.plain)
-                .padding(.top, 4)
-                .accessibilityIdentifier("recharge")
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
@@ -251,6 +253,11 @@ struct CreditsView: View {
     }
 }
 
+extension CreditPurchases {
+    /// "积分与充值" while packs are sold here, otherwise "积分".
+    static var title: LocalizedStringKey { inApp ? "credits.title" : "credits.titleNoPurchase" }
+}
+
 /// 积分与充值 in its own sheet, opened from the home screen and from chat.
 struct CreditsSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -334,8 +341,10 @@ struct LowBalanceBanner: View {
                 .font(.footnote)
                 .foregroundStyle(Palette.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Button("credits.recharge") { showCredits = true }
-                .buttonStyle(PillButtonStyle(filled: true))
+            if CreditPurchases.inApp {
+                Button("credits.recharge") { showCredits = true }
+                    .buttonStyle(PillButtonStyle(filled: true))
+            }
             Button {
                 withAnimation(.snappy) { model.dismissLowBalance() }
             } label: {
@@ -379,7 +388,7 @@ struct OutOfCreditsCard: View {
             } icon: {
                 Image(systemName: outOfCredits ? "bolt.circle.fill" : "clock.badge.exclamationmark").foregroundStyle(.orange)
             }
-            Text(outOfCredits ? "credits.out.body" : "credits.limit.body").font(.subheadline).foregroundStyle(Palette.secondary)
+            Text(outOfCredits ? (CreditPurchases.inApp ? "credits.out.body" : "credits.out.bodyNoPurchase") : "credits.limit.body").font(.subheadline).foregroundStyle(Palette.secondary)
             // Daily cap: the account centre, where the cap is raised (not a purchase). Out of credits:
             // only the App Store packs behind 充值 — App Store builds never link to a web checkout (3.1.1).
             if !outOfCredits {
@@ -398,7 +407,7 @@ struct OutOfCreditsCard: View {
                 BalanceLabel().font(.footnote)
             }
             HStack(spacing: 8) {
-                if outOfCredits && model.creditAccount != nil {
+                if outOfCredits && model.creditAccount != nil && CreditPurchases.inApp {
                     Button("credits.recharge") { showCredits = true }
                         .buttonStyle(PillButtonStyle(filled: true))
                         .accessibilityIdentifier("creditCardRecharge")
