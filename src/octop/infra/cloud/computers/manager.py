@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import threading
 import time
 import uuid
@@ -591,6 +592,11 @@ class ComputerManager:
 
     # Screen and takeover
 
+    def screen_ssl(self) -> Any:
+        """TLS settings for the screen's WebSocket, when the provider pins its own CA (CVM)."""
+        context = getattr(self._driver, "ssl_context", None)
+        return context() if callable(context) else None
+
     def screen(self, agent_id: str, user_id: int) -> tuple[str, dict[str, str]]:
         """Where to reach the running computer's desktop (VNC over WebSocket)."""
         instance = self.ensure_running(agent_id, user_id)
@@ -749,15 +755,34 @@ def shutdown_manager() -> None:
         manager.close()
 
 
+def computer_driver() -> ComputerDriver | None:
+    """The configured cloud-computer provider: Tencent Cloud CVM or AGS.
+
+    ``OCTOP_COMPUTER_PROVIDER`` picks one (``cvm`` / ``ags``); unset, CVM is used when it is
+    configured, else AGS. ``None`` when the chosen provider is not configured.
+    """
+    from octop.infra.cloud.computers.cvm import CvmConfig, CvmDriver  # noqa: PLC0415
+
+    choice = (os.environ.get("OCTOP_COMPUTER_PROVIDER") or "").strip().lower()
+    if choice in ("", "cvm"):
+        cvm = CvmConfig.from_env()
+        if cvm is not None:
+            return CvmDriver(cvm)
+        if choice == "cvm":
+            return None
+    ags = AgsConfig.from_env()
+    return AgsDriver(ags) if ags is not None else None
+
+
 def computer_manager(services: SharedServices) -> ComputerManager | None:
-    """The process-wide manager, or ``None`` when AGS is not configured."""
+    """The process-wide manager, or ``None`` when no cloud-computer provider is configured."""
     global _manager
-    config = AgsConfig.from_env()
-    if config is None:
-        return None
     with _manager_lock:
         if _manager is None:
-            _manager = ComputerManager(services, AgsDriver(config), billing=billing_for(services))
+            driver = computer_driver()
+            if driver is None:
+                return None
+            _manager = ComputerManager(services, driver, billing=billing_for(services))
             # Computers left running by a previous process are billed and paused from now on,
             # not from their next tool call.
             _manager._start_reaper()

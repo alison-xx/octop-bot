@@ -288,8 +288,13 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
 
     try:
         url, headers = await asyncio.to_thread(manager.screen, agent_id, user_id)
+        pinned = manager.screen_ssl() if url.startswith("wss://") else None
         async with websockets.connect(
-            url, additional_headers=headers, subprotocols=[Subprotocol("binary")], max_size=None
+            url,
+            additional_headers=headers,
+            subprotocols=[Subprotocol("binary")],
+            max_size=None,
+            **({"ssl": pinned} if pinned is not None else {}),
         ) as upstream:
 
             async def down() -> None:

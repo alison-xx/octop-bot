@@ -47,6 +47,9 @@ class Manager:
         self.handed_back = False
         self.broken = False
 
+    def screen_ssl(self) -> None:
+        return None
+
     def screen(self, agent_id: str, user_id: int) -> tuple[str, dict[str, str]]:
         if self.broken:
             raise RuntimeError("sandbox unreachable")
