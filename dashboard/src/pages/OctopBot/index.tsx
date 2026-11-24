@@ -51,6 +51,7 @@ import { navAllowed } from "../../utils/permissions";
 import { isBotClient, isBotOnlyDesktop } from "../../utils/desktopBridge";
 import { BotCharacter, octopCharacter, GroupCharacter } from "./BotCharacter";
 import { useBotMotion } from "./useBotMotion";
+import { useBotInbox } from "./useBotInbox";
 import AppearanceModal, {
   AppearancePicker,
   saveAppearance,
@@ -74,6 +75,7 @@ import {
   OnboardingWelcome,
 } from "./onboarding/OnboardingParts";
 import AccountMenu from "./AccountMenu";
+import CloudMove from "./CloudMove";
 import RetainedFolders from "./RetainedFolders";
 import DeleteBotDialog from "./DeleteBotDialog";
 import DeleteGroupDialog from "./DeleteGroupDialog";
@@ -108,6 +110,12 @@ export default function OctopBotPage() {
   const { agentId, threadId, groupId } = useParams();
   const standalone = isBotClient();
   const motion = useBotMotion(threadId);
+  // Bots with a question, approval or takeover waiting for me get a dot in the directory.
+  const inbox = useBotInbox();
+  const waitingBots = useMemo(
+    () => new Set(inbox.map((entry) => entry.agent_id)),
+    [inbox],
+  );
   const [newLook, setNewLook] = useState<AppearanceChoice | null>(null);
   const [retryLook, setRetryLook] = useState<{
     id: string;
@@ -799,7 +807,14 @@ export default function OctopBotPage() {
         standalone={standalone}
         disabled={layoutSaving}
         unread={countUnread(item)}
-        subtitle={chief ? t("botDirectory.chiefRole") : previewFor(item)}
+        waiting={Boolean(item.bot && waitingBots.has(item.bot.agent_id))}
+        subtitle={
+          item.bot && waitingBots.has(item.bot.agent_id)
+            ? t("botInbox.needsYou")
+            : chief
+            ? t("botDirectory.chiefRole")
+            : previewFor(item)
+        }
         motion={item.bot && item.bot.agent_id === agentId ? motion : "idle"}
         members={item.group && groupMembers.get(item.group.group_id)}
         sectionNames={sectionNames}
@@ -1207,6 +1222,7 @@ export default function OctopBotPage() {
               )
             }
           />
+          <CloudMove />
           {isBotOnlyDesktop() && (
             <Button
               type="text"

@@ -32,6 +32,7 @@ export const DirectoryItem = memo(function DirectoryItem({
   standalone,
   disabled,
   unread,
+  waiting = false,
   subtitle,
   motion,
   members,
@@ -54,6 +55,8 @@ export const DirectoryItem = memo(function DirectoryItem({
   standalone: boolean;
   disabled: boolean;
   unread: number;
+  /** A question, approval or takeover from this Bot waits for me. */
+  waiting?: boolean;
   subtitle: string;
   motion: BotMotion;
   members?: WorkspaceBot[];
@@ -168,6 +171,7 @@ export const DirectoryItem = memo(function DirectoryItem({
       data-chief={chief}
       data-unread={unread > 0 || undefined}
       data-onboarding-new={fresh || undefined}
+      data-waiting={waiting || undefined}
       draggable={!chief && !disabled}
       onDragEnd={() => onDragging(false)}
       onDragStart={(e) => {
@@ -196,6 +200,14 @@ export const DirectoryItem = memo(function DirectoryItem({
           </span>
         ) : (
           <span>{item.name}</span>
+        )}
+        {waiting && (
+          <i
+            className={styles.waiting}
+            role="status"
+            aria-label={t("botInbox.needsYou")}
+            title={t("botInbox.needsYou")}
+          />
         )}
         {unread > 0 && (
           <b

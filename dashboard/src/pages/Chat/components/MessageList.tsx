@@ -20,6 +20,7 @@ import MessageBubble from "./MessageBubble";
 import AssistantTurnView from "./AssistantTurnView";
 import BotTurnView from "../../OctopBot/BotTurnView";
 import BotWorkingLine from "../../OctopBot/BotWorkingLine";
+import { indexBotTasks, type BotTaskIndex } from "../../OctopBot/botTasks";
 import { BotTimeDivider } from "../../OctopBot/BotClientWelcome";
 import { isBotClient } from "../../../utils/desktopBridge";
 import ScrollToBottomButton from "./ScrollToBottomButton";
@@ -153,6 +154,8 @@ interface GroupRenderContext {
   registerBubbleRef: (messageId: string, el: HTMLDivElement | null) => void;
   /** Bot client: timestamp of the centred time divider before a group. */
   dividers?: ReadonlyMap<number, number>;
+  /** Bot client: every task in the conversation, at its newest state. */
+  botTasks?: BotTaskIndex;
 }
 
 function renderMessageGroup(
@@ -201,6 +204,8 @@ function renderGroupBody(
         <BotTurnView
           messages={group.messages}
           agentId={ctx.agentId}
+          tasks={ctx.botTasks}
+          live={Boolean(ctx.isStreaming)}
           onRegenerate={ctx.onRegenerate}
           onDisableStreamUsage={ctx.onDisableStreamUsage}
           onForkAssistantMessage={ctx.onForkAssistantMessage}
@@ -854,9 +859,16 @@ export default function MessageList(props: MessageListProps) {
     return at;
   }, [messageGroups]);
 
+  // Bot client: a task check made in a later turn updates the card where the task started.
+  const botTasks = useMemo(
+    () => (isBotClient() ? indexBotTasks(messages) : undefined),
+    [messages],
+  );
+
   const groupContext = useMemo<GroupRenderContext>(
     () => ({
       dividers,
+      botTasks,
       agentId,
       composerLookups,
       isStreaming,
@@ -906,6 +918,7 @@ export default function MessageList(props: MessageListProps) {
       compactProcess,
       registerBubbleRef,
       dividers,
+      botTasks,
     ],
   );
 

@@ -72,7 +72,7 @@ class LynxceProtocolTest {
         val bot = BotProfile("engineer", "Engineer", look = Look("beacon", "cobalt"), systemPrompt = "Be precise.")
         val history = (1..25).map { ChatMessage(role = if (it % 2 == 1) MessageRole.User else MessageRole.Assistant, text = "m$it") } +
             ChatMessage(role = MessageRole.Assistant, text = "broken", status = MessageStatus.Failed(null))
-        val body = LynxceProtocol.chatBody("look", listOf(byteArrayOf(1, 2, 3)), bot, history, "octop-bot-v1-abc", "m1", turnId = "t")
+        val body = LynxceProtocol.chatBody("look", listOf(byteArrayOf(1, 2, 3)), bot, history, "octop-bot-v1-abc", "tencent/m1", turnId = "t")
         val messages = body["messages"]!!.jsonArray
         assertEquals("system", messages.first().jsonObject["role"]!!.jsonPrimitive.content)
         // System + the last 20 finished turns + the new user message.
@@ -82,7 +82,7 @@ class LynxceProtocolTest {
         assertEquals("look", content[0].jsonObject["text"]!!.jsonPrimitive.content)
         assertEquals("data:image/jpeg;base64,AQID", content[1].jsonObject["image_url"]!!.jsonObject["url"]!!.jsonPrimitive.content)
         assertEquals("octop-bot-v1-abc", body["sessionId"]!!.jsonPrimitive.content)
-        assertEquals("m1", body["model"]!!.jsonPrimitive.content)
+        assertEquals("tencent/m1", body["model"]!!.jsonPrimitive.content)
         assertEquals("octop-bot-android", body["metadata"]!!.jsonObject["client"]!!.jsonPrimitive.content)
         assertTrue(body["stream"]!!.jsonPrimitive.content.toBoolean())
         assertFalse("model omitted for auto", "model" in LynxceProtocol.chatBody("x", emptyList(), bot, emptyList(), "s", null))
@@ -240,5 +240,17 @@ class LynxceProtocolTest {
         assertEquals("手机号格式不正确", invalid.message)
         assertNull(LynxceProtocol.codeFailure(ApiException.network()))
         assertNull(LynxceProtocol.codeFailure(IllegalStateException()))
+    }
+
+    @Test
+    fun everyLynxceCallNamesOctopBotAsTheSignupSite() {
+        val signIn = LynxceProtocol.headers(null)
+        assertEquals("octop-bot", signIn["X-Lynxce-Signup-Site"])
+        assertEquals("octopbot", signIn["X-Lynxce-App"])
+        assertEquals("web", signIn["X-Lynxce-Client"])
+        assertEquals(null, signIn["Authorization"])
+        val signedIn = LynxceProtocol.headers("t")
+        assertEquals("octop-bot", signedIn["X-Lynxce-Signup-Site"])
+        assertEquals("Bearer t", signedIn["Authorization"])
     }
 }

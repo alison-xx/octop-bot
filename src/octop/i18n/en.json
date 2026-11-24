@@ -10,7 +10,8 @@
     "admin": "You administer the room. For a Goal, propose acceptance criteria and stages and wait for the owner to activate it. Delegate active stages by mentioning members, then review their posted evidence. To save a Goal, append a fenced octop-goal JSON block matching this schema: {schema}. In completed stages cite the contributing room message IDs.",
     "wrap": "Review the members' work against the request and current Goal. Summarize the result, record supported progress and identify anything outstanding.",
     "approval": "This member is waiting for your approval. Open the member conversation to review the request.",
-    "no_reply": "The member finished without a visible reply."
+    "no_reply": "The member finished without a visible reply.",
+    "thread_title": "Group · {room}"
   },
   "octop_bot": {
     "lynxce": {
@@ -59,6 +60,27 @@
     "onboarding_hint": {
       "industry": "Roles in similar Bot market templates, for reference: {hint}.",
       "role": "What this job usually involves: {hint}"
+    },
+    "approval": {
+      "title": "Needs your OK",
+      "header": "Confirm",
+      "question": "The Bot wants to {action}: {target}\n{detail}",
+      "irreversible": "This cannot be undone.",
+      "once": "Allow once",
+      "always": "Always allow",
+      "deny": "Deny",
+      "category": {
+        "send": "send",
+        "publish": "publish",
+        "submit": "submit",
+        "delete": "delete or overwrite",
+        "permissions": "change permissions or security settings",
+        "production": "change a live system",
+        "terms": "accept terms",
+        "upload": "upload files to another site",
+        "other": "do something",
+        "click": "click"
+      }
     }
   },
   "slash": {
@@ -461,6 +483,7 @@
     "LYNXCE_CODE_INVALID": "The code is wrong or has expired. Request a new one.",
     "LYNXCE_CODE_TARGET_INVALID": "Enter a valid phone number or email.",
     "LYNXCE_CODE_THROTTLED": "Codes were requested too often. Try again in a moment.",
+    "LYNXCE_SIGNUP_PASSWORD_REQUIRED": "This email has no Lynxce account yet. Set a sign-in password (at least 8 characters) to create one, then sign in with the same code.",
     "BOT_CLOUD_REQUEST_REJECTED": "Lynxce Cloud could not complete this action.",
     "BOT_CLOUD_CREDITS_REQUIRED": "You're out of Lynxce credits. Top up at https://admin.lynxce.cn/recharge to continue.",
     "BOT_LYNXCE_DAILY_LIMIT": "Today's Lynxce usage hit its daily limit. It resets at 00:00 UTC. To raise the limit, open your Lynxce account centre at https://admin.lynxce.cn and edit the Octop Bot key.",
@@ -468,6 +491,7 @@
     "BOT_MODEL_VENDOR_UNSUPPORTED": "This vendor or address can't be used here. Pick one from the list.",
     "BOT_MODEL_KEY_LIMIT": "You can keep up to {limit} API keys. Remove one first.",
     "BOT_COMPUTER_NOT_TAKEN_OVER": "Take over the cloud computer before typing into it or reading its clipboard.",
+    "BOT_COMPUTER_BUSY": "No cloud computer is free right now, so this one could not start. Try again in a few minutes.",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "Authorize Lynxce checkout to recharge this account. Your existing chat connection stays active.",
     "BOT_LAYOUT_CHANGED": "The sidebar changed. Refresh it and try again.",
     "AUTH_FAILED": "Authentication failed.",
@@ -909,6 +933,10 @@
       "date_year": "{month}/{day}/{year} {time}",
       "mail": "When new mail arrives",
       "custom": "Custom"
+    },
+    "waiting": {
+      "needs_you": "The scheduled task “{name}” needs you. Open this Bot's chat to continue (within 24 hours).",
+      "still": "The scheduled task “{name}” is still waiting for you from its last run, so this run was skipped."
     }
   },
   "agents": {

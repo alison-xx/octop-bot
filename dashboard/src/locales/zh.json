@@ -195,7 +195,9 @@
     "resendIn": "{{seconds}} 秒后重发",
     "sentPhone": "验证码已发送到手机，几分钟内有效。",
     "sentEmail": "验证码已发送到邮箱，没收到请看看垃圾邮件。",
-    "newAccountHint": "没有灵策账号也可以直接登录，会自动注册，不用设密码。",
+    "newAccountHint": "没有灵策账号也可以直接登录，会自动注册；用邮箱注册时还要设一个登录密码。",
+    "newPassword": "设置登录密码",
+    "newPasswordHint": "至少 8 位。以后也可以用这个邮箱和密码登录灵策。",
     "password": "密码",
     "methods": "登录方式",
     "tabCode": "验证码",
@@ -270,6 +272,8 @@
       "scheduleTitle": "{{name}} 的定时任务",
       "usageTitle": "{{name}} 的 Token 用量",
       "localExecution": "任务在这台电脑上执行。到点时请保持电脑唤醒，并让 Octop Bot 在后台运行。",
+      "cloudExecution": "任务在云端按时执行，电脑关机或退出 Octop Bot 也照常运行。",
+      "serverExecution": "任务在服务器上按时执行，电脑关机或退出 Octop Bot 也照常运行。",
       "noSchedules": "这个 Bot 还没有定时任务",
       "noUsage": "所选时段没有用量记录",
       "usageScope": "统计当前账号使用这个 Bot 的模型调用。",
@@ -288,6 +292,7 @@
       "future": "请选择未来的执行时间。",
       "deliverHere": "执行结果会发回当前私聊。",
       "deliverLatest": "执行结果会发到你与这个 Bot 最近使用的本机私聊。",
+      "deliverLatestServer": "执行结果会发到你与这个 Bot 最近使用的私聊。",
       "pause": "暂停",
       "resume": "恢复",
       "lastRun": "上次执行",
@@ -416,6 +421,19 @@
       "promoDevices": "手机、网页和这台电脑看到同一个团队",
       "promoMove": "这台电脑上的 Bot 和对话不会丢，切回本机使用还在。",
       "promoRegister": "没有账号？验证码登录会自动注册"
+    },
+    "octopImport": {
+      "title": "从 Octop 导入",
+      "found": "发现本机的 Octop：{{agents}} 个助手、{{threads}} 段会话",
+      "nothingNew": "本机 Octop 的助手都已导入",
+      "action": "一键导入",
+      "confirmTitle": "从 Octop 导入？",
+      "confirmBody": "会复制 Octop 里的助手（含记忆和工作区文件）、会话和模型配置，Octop 本身不受影响。已导入过的助手会跳过。IM 频道和定时任务导入后先暂停，避免两边同时回复。",
+      "done": "已导入 {{agents}} 个助手、{{threads}} 段会话",
+      "providers": "新增模型配置：{{names}}",
+      "paused": "{{channels}} 个 IM 频道、{{cron}} 个定时任务已暂停，确认 Octop 不再使用它们后再开启。",
+      "skipped": "跳过 {{count}} 个已存在的助手",
+      "failed": "{{names}} 导入失败"
     },
     "update": {
       "title": "关于与更新",
@@ -775,6 +793,7 @@
     "LYNXCE_CODE_INVALID": "验证码错误或已过期，请重新获取。",
     "LYNXCE_CODE_TARGET_INVALID": "请输入正确的手机号或邮箱。",
     "LYNXCE_CODE_THROTTLED": "验证码发送太频繁，请稍后再试。",
+    "LYNXCE_SIGNUP_PASSWORD_REQUIRED": "这个邮箱还没有灵策账号。请设置一个至少 8 位的登录密码来注册，再用同一个验证码登录。",
     "BOT_CLOUD_REQUEST_REJECTED": "灵策云未能执行此操作。",
     "BOT_CLOUD_CREDITS_REQUIRED": "灵策积分不足，到 https://admin.lynxce.cn/recharge 充值后就能继续。",
     "BOT_LYNXCE_DAILY_LIMIT": "今天的灵策用量已到每日上限，北京时间早上 8 点自动恢复。急用的话，可以到灵策账户中心 https://admin.lynxce.cn 调高「Octop Bot」这把 Key 的每日上限。",
@@ -782,6 +801,7 @@
     "BOT_MODEL_VENDOR_UNSUPPORTED": "这里不能用这个厂商或地址，请从列表里选择。",
     "BOT_MODEL_KEY_LIMIT": "最多保存 {{limit}} 个 API Key，请先删掉一个。",
     "BOT_COMPUTER_NOT_TAKEN_OVER": "请先接管云电脑，再输入文字或读取它的剪贴板。",
+    "BOT_COMPUTER_BUSY": "云电脑暂时都被占满了，没能启动。请过几分钟再试。",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "请补充授权灵策充值。当前聊天连接可继续使用。",
     "BOT_LAYOUT_CHANGED": "侧栏布局已更新，请刷新后再试。",
     "AUTH_FAILED": "认证失败。",
@@ -3518,10 +3538,12 @@
     "oneShotDone": "已完成",
     "oneShotFailed": "已失败",
     "oneShotMissed": "已错过",
+    "oneShotWaiting": "等你处理",
     "oneShotPaused": "已停用",
     "lastStatusOk": "成功",
     "lastStatusError": "失败",
     "lastStatusMissed": "已错过",
+    "lastStatusWaiting": "等你处理",
     "oneShotEnableBlocked": "执行时间已过，请改到将来的时间后再启用",
     "form": {
       "sectionBasic": "基础信息",
@@ -9079,6 +9101,7 @@
     "noUpcoming": "还没有定时任务。可以让这个 Bot 按时帮你做事。",
     "showMore": "显示更多",
     "toggle": "按计划运行 {{name}}",
+    "delete": "删除 {{name}}",
     "noFiles": "这个 Bot 为你生成的文件会显示在这里。",
     "today": "今天",
     "week": "本周",
@@ -9141,7 +9164,8 @@
     "current": "正在使用",
     "lynxce": {
       "title": "灵策智算",
-      "billing": "积分"
+      "billing": "积分",
+      "use": "改用灵策模型"
     },
     "keys": {
       "title": "我的 API Key",
@@ -9206,6 +9230,56 @@
       "later": "稍后再选",
       "useModel": "使用这个模型"
     }
+  },
+  "botTask": {
+    "label": "任务：{{goal}}",
+    "deep": "深度",
+    "steps": "{{done}}/{{total}} 步",
+    "seconds": "{{count}} 秒",
+    "minutes": "{{count}} 分钟",
+    "criteria": "验收条件 {{count}} 条",
+    "acceptance": "验收",
+    "openIssues": "没做完的",
+    "assumptions": "我自己定的",
+    "reportDone": "已完成：{{goal}}",
+    "reportPartial": "部分完成：{{goal}}",
+    "duration": "用时 {{time}}",
+    "phase": {
+      "live": "进行中",
+      "waiting": "等你处理",
+      "paused": "已暂停",
+      "done": "已完成",
+      "partial": "部分完成",
+      "stopped": "已停止"
+    },
+    "check": {
+      "pending": "待核对",
+      "passed": "通过",
+      "failed": "未通过",
+      "skipped": "跳过"
+    },
+    "review": "独立复核",
+    "showReview": "展开复核结论",
+    "hideReview": "收起",
+    "deliverables": "产物",
+    "checked": "已检查：{{facts}}",
+    "opens": "能打开",
+    "fact": {
+      "pages": "{{count}} 页",
+      "rows": "{{count}} 行数据",
+      "sheets": "{{count}} 个工作表",
+      "slides": "{{count}} 页幻灯片",
+      "chars": "{{count}} 字",
+      "lines": "{{count}} 行",
+      "files": "{{count}} 个文件",
+      "pixels": "{{w}}×{{h}}"
+    }
+  },
+  "botInbox": {
+    "needsYou": "等你处理"
+  },
+  "botApproval": {
+    "title": "需要你确认"
   },
   "botAbout": {
     "title": "关于与更新",

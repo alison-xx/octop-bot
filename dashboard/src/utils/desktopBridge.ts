@@ -111,6 +111,8 @@ export interface OctopDesktopBridge {
     | { ok: true; code: string }
     | { ok: false; reason: "cancelled" | "denied" | "failed" }
   >;
+  /** Restart on the Octop Bot cloud, signed in with this token. Absent on older shells. */
+  useLynxceCloud?: (accessToken: string) => Promise<boolean>;
   session?: DesktopSessionBridge;
   /**
    * Where to dial WebSockets (§5.2). Absent on an older shell, and null when the

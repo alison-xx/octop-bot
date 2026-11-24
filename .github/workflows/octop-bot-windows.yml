@@ -1,0 +1,75 @@
+name: Octop Bot Windows
+
+# Builds the x64 Octop Bot Windows installer and portable ZIP with
+# desktop/src/scripts/package-bot-windows.py (docs/octop-bot-updates.md, 发版步骤).
+# Manual only for now: releases ship macOS first, and this runs when a Windows build is
+# wanted (Actions → Octop Bot Windows → Run workflow, on the release tag or branch).
+# The installer is not code-signed yet, so Windows SmartScreen will warn on first run.
+# Upload the artifact's files to https://dl.lynxce.cn/releases/octop-bot/<version>/ and
+# rebuild the manifest with them, as for the macOS DMG.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: octop-bot-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-x64:
+    name: win32-x64 installer and ZIP
+    if: github.repository == 'alison-xx/octop-bot'
+    runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.15.0
+          run_install: false
+
+      - name: Install dashboard and shell dependencies
+        run: |
+          set -euo pipefail
+          (cd dashboard && npm ci)
+          (cd desktop/src && pnpm install --frozen-lockfile)
+
+      - name: Build the installer and portable ZIP
+        working-directory: desktop/src
+        run: pnpm run package:bot:win
+
+      - name: Write SHA-256 files
+        working-directory: desktop/src/release/octop-bot
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(Octop-Bot-Setup-*-x64.exe Octop-Bot-*-x64.zip)
+          (( ${#files[@]} == 2 )) || { echo "::error::expected the installer and the ZIP, found: ${files[*]}"; exit 1; }
+          for f in "${files[@]}"; do
+            sha256sum "$f" | awk '{print $1 "  " $2}' > "$f.sha256"
+            cat "$f.sha256"
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: octop-bot-windows-x64
+          path: |
+            desktop/src/release/octop-bot/Octop-Bot-Setup-*-x64.exe
+            desktop/src/release/octop-bot/Octop-Bot-Setup-*-x64.exe.sha256
+            desktop/src/release/octop-bot/Octop-Bot-*-x64.zip
+            desktop/src/release/octop-bot/Octop-Bot-*-x64.zip.sha256
+          if-no-files-found: error
+          retention-days: 14

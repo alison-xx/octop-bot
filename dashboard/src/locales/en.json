@@ -195,7 +195,9 @@
     "resendIn": "Resend in {{seconds}}s",
     "sentPhone": "Code sent by text message. It is valid for a few minutes.",
     "sentEmail": "Code sent by email. Check spam if it does not arrive.",
-    "newAccountHint": "No Lynxce account yet? Signing in creates one; no password needed.",
+    "newAccountHint": "No Lynxce account yet? Signing in creates one; a new email also needs a sign-in password.",
+    "newPassword": "Set a sign-in password",
+    "newPasswordHint": "At least 8 characters. You can also sign in to Lynxce with this email and password later.",
     "password": "Password",
     "methods": "Sign-in method",
     "tabCode": "Code",
@@ -270,6 +272,8 @@
       "scheduleTitle": "Scheduled tasks for {{name}}",
       "usageTitle": "Token usage for {{name}}",
       "localExecution": "Tasks run on this computer. Keep it awake and Octop Bot running in the background at the scheduled time.",
+      "cloudExecution": "Tasks run in the cloud on schedule, even when your computer is off or Octop Bot is closed.",
+      "serverExecution": "Tasks run on the server on schedule, even when your computer is off or Octop Bot is closed.",
       "noSchedules": "This Bot has no scheduled tasks yet",
       "noUsage": "No usage recorded in this period",
       "usageScope": "Model calls made by this account with this Bot.",
@@ -288,6 +292,7 @@
       "future": "Choose a time in the future.",
       "deliverHere": "Results will appear in this conversation.",
       "deliverLatest": "Results will appear in your latest local conversation with this Bot.",
+      "deliverLatestServer": "Results will appear in your latest conversation with this Bot.",
       "pause": "Pause",
       "resume": "Resume",
       "lastRun": "Last run",
@@ -416,6 +421,19 @@
       "promoDevices": "See the same team on your phone, the web and this computer",
       "promoMove": "The Bots and chats on this computer stay here; switch back to local use any time.",
       "promoRegister": "No account? Signing in with a code creates one"
+    },
+    "octopImport": {
+      "title": "Import from Octop",
+      "found": "Octop found on this computer: {{agents}} assistants, {{threads}} chats",
+      "nothingNew": "All assistants from Octop on this computer are already imported",
+      "action": "Import",
+      "confirmTitle": "Import from Octop?",
+      "confirmBody": "Copies Octop's assistants (with their memory and workspace files), chats and model settings. Octop itself is not changed. Assistants imported before are skipped. IM channels and scheduled tasks arrive paused so the two apps don't both reply.",
+      "done": "Imported {{agents}} assistants and {{threads}} chats",
+      "providers": "Model settings added: {{names}}",
+      "paused": "{{channels}} IM channels and {{cron}} scheduled tasks are paused; turn them on once Octop no longer uses them.",
+      "skipped": "Skipped {{count}} assistants that are already here",
+      "failed": "Could not import {{names}}"
     },
     "update": {
       "title": "About & updates",
@@ -775,6 +793,7 @@
     "LYNXCE_CODE_INVALID": "The code is wrong or has expired. Request a new one.",
     "LYNXCE_CODE_TARGET_INVALID": "Enter a valid phone number or email.",
     "LYNXCE_CODE_THROTTLED": "Codes were requested too often. Try again in a moment.",
+    "LYNXCE_SIGNUP_PASSWORD_REQUIRED": "This email has no Lynxce account yet. Set a sign-in password (at least 8 characters) to create one, then sign in with the same code.",
     "BOT_CLOUD_REQUEST_REJECTED": "Lynxce Cloud could not complete this action.",
     "BOT_CLOUD_CREDITS_REQUIRED": "You're out of Lynxce credits. Top up at https://admin.lynxce.cn/recharge to continue.",
     "BOT_LYNXCE_DAILY_LIMIT": "Today's Lynxce usage hit its daily limit. It resets at 00:00 UTC. To raise the limit, open your Lynxce account centre at https://admin.lynxce.cn and edit the Octop Bot key.",
@@ -782,6 +801,7 @@
     "BOT_MODEL_VENDOR_UNSUPPORTED": "This vendor or address can't be used here. Pick one from the list.",
     "BOT_MODEL_KEY_LIMIT": "You can keep up to {{limit}} API keys. Remove one first.",
     "BOT_COMPUTER_NOT_TAKEN_OVER": "Take over the cloud computer before typing into it or reading its clipboard.",
+    "BOT_COMPUTER_BUSY": "No cloud computer is free right now, so this one could not start. Try again in a few minutes.",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "Authorize Lynxce checkout to recharge this account. Your existing chat connection stays active.",
     "BOT_LAYOUT_CHANGED": "The sidebar changed. Refresh it and try again.",
     "AUTH_FAILED": "Authentication failed.",
@@ -3519,10 +3539,12 @@
     "oneShotDone": "Completed",
     "oneShotFailed": "Failed",
     "oneShotMissed": "Missed",
+    "oneShotWaiting": "Needs you",
     "oneShotPaused": "Paused",
     "lastStatusOk": "Succeeded",
     "lastStatusError": "Failed",
     "lastStatusMissed": "Missed",
+    "lastStatusWaiting": "Needs you",
     "oneShotEnableBlocked": "That time has already passed. Pick a future time before enabling it again.",
     "form": {
       "sectionBasic": "Basic Info",
@@ -9079,6 +9101,7 @@
     "noUpcoming": "No scheduled tasks yet. Ask this Bot to do something on a schedule.",
     "showMore": "Show more",
     "toggle": "Run {{name}} on schedule",
+    "delete": "Delete {{name}}",
     "noFiles": "Files this Bot makes for you will show up here.",
     "today": "Today",
     "week": "This week",
@@ -9141,7 +9164,8 @@
     "current": "In use",
     "lynxce": {
       "title": "Lynxce",
-      "billing": "Credits"
+      "billing": "Credits",
+      "use": "Use Lynxce models"
     },
     "keys": {
       "title": "My API keys",
@@ -9206,6 +9230,56 @@
       "later": "Choose later",
       "useModel": "Use this model"
     }
+  },
+  "botTask": {
+    "label": "Task: {{goal}}",
+    "deep": "Deep",
+    "steps": "{{done}}/{{total}} steps",
+    "seconds": "{{count}}s",
+    "minutes": "{{count}} min",
+    "criteria": "Acceptance criteria ({{count}})",
+    "acceptance": "Acceptance",
+    "openIssues": "Not done",
+    "assumptions": "Decided on my own",
+    "reportDone": "Done: {{goal}}",
+    "reportPartial": "Partly done: {{goal}}",
+    "duration": "Took {{time}}",
+    "phase": {
+      "live": "Working",
+      "waiting": "Needs you",
+      "paused": "Paused",
+      "done": "Done",
+      "partial": "Partly done",
+      "stopped": "Stopped"
+    },
+    "check": {
+      "pending": "To check",
+      "passed": "Passed",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "review": "Independent review",
+    "showReview": "Show the review",
+    "hideReview": "Hide",
+    "deliverables": "Deliverables",
+    "checked": "Checked: {{facts}}",
+    "opens": "opens",
+    "fact": {
+      "pages": "{{count}} pages",
+      "rows": "{{count}} data rows",
+      "sheets": "{{count}} sheets",
+      "slides": "{{count}} slides",
+      "chars": "{{count}} characters",
+      "lines": "{{count}} lines",
+      "files": "{{count}} files",
+      "pixels": "{{w}}×{{h}}"
+    }
+  },
+  "botInbox": {
+    "needsYou": "Needs you"
+  },
+  "botApproval": {
+    "title": "Needs your OK"
   },
   "botAbout": {
     "title": "About and updates",

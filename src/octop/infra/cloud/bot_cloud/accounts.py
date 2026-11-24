@@ -2,16 +2,23 @@
 
 Each Lynxce account maps to one non-admin Octop user through the ``user_sso_identities`` table
 (provider kind ``lynxce``, subject = Lynxce user id). The tenant's chats call the Lynxce open
-gateway with a personal API key minted for them ("Octop Bot 云端"), so usage is billed to their
-own Lynxce wallet and shows up, revocable, in their Lynxce account centre.
+gateway with a personal API key minted for them ("Octop Bot 云端 · <tag>"), so usage is billed
+to their own Lynxce wallet and shows up, revocable, in their Lynxce account centre.
+
+Lynxce never returns a key's secret again, so a key this server lost (new database, key
+forgotten or revoked) cannot be reused: it is revoked before the replacement is minted. The
+``<tag>`` tells this server's keys apart from those of other servers and desktops signed in to
+the same account, which must keep working.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
-from dataclasses import dataclass
+import secrets
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 from filelock import AsyncFileLock
@@ -34,6 +41,8 @@ LYNXCE_MODEL_PREFIX = "tencent/"
 DEFAULT_MODEL = "tencent/auto"
 # Chat, plus the Bots' image and video generation (lynxce_media.py).
 KEY_SCOPES = ("model:chat", "media:image", "media:video")
+# Under OCTOP_HOME, not in the database, so the tag survives a database swap.
+INSTANCE_FILE = ".lynxce-key-instance"
 # UserManager.disabled_reason of a tenant who asked Lynxce to delete their account.
 DELETION_PENDING = "lynxce_deletion_pending"
 
@@ -44,6 +53,9 @@ class ModelKey:
     secret: str
     # Scopes this server gave the key; keys minted before media generation have none recorded.
     scopes: tuple[str, ...] = ()
+    # The key has no credit cap of its own: only the wallet balance limits it. Keys minted
+    # before this got Lynxce's default daily cap (1000 credits) and are lifted once.
+    uncapped: bool = False
 
 
 def _provider_id(services: SharedServices) -> int:
@@ -79,6 +91,7 @@ def load_model_key(services: SharedServices, user_id: int) -> ModelKey | None:
         key_id=str(data["key_id"]),
         secret=str(data["secret"]),
         scopes=tuple(str(s) for s in scopes) if isinstance(scopes, list) else (),
+        uncapped=data.get("uncapped") is True,
     )
 
 
@@ -89,21 +102,47 @@ def forget_model_key(services: SharedServices, user_id: int) -> None:
 def _save_model_key(services: SharedServices, user_id: int, key: ModelKey) -> None:
     repo = services.secret_repo
     ref = _key_ref(user_id)
-    data = {"key_id": key.key_id, "secret": key.secret, "scopes": list(key.scopes)}
+    data = {
+        "key_id": key.key_id,
+        "secret": key.secret,
+        "scopes": list(key.scopes),
+        "uncapped": key.uncapped,
+    }
     repo.put(ref, encrypt_json(repo, ref + ".fernet", data))
 
 
-def _key_request() -> dict[str, Any]:
-    """Chat and media generation; the daily cap is Lynxce's default unless
-    OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT says otherwise (``none`` = no cap). The user can change it
-    in their Lynxce account centre."""
-    body: dict[str, Any] = {"name": KEY_NAME, "scopes": list(KEY_SCOPES)}
-    raw = (os.environ.get("OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT") or "").strip().lower()
-    if raw == "none":
-        body["dailyCreditLimit"] = None
-    elif raw.isdigit() and int(raw) > 0:
-        body["dailyCreditLimit"] = int(raw)
-    return body
+def key_name(services: SharedServices, user_id: int) -> str:
+    """``Octop Bot 云端 · <tag>``: the tag is fixed for this server and local user."""
+    path = services.paths.root / INSTANCE_FILE
+    try:
+        with path.open("x", encoding="utf-8") as fh:
+            fh.write(secrets.token_hex(16))
+    except FileExistsError:
+        pass
+    instance = path.read_text(encoding="utf-8").strip()
+    tag = hashlib.sha256(f"{instance}:{user_id}".encode()).hexdigest()[:6]
+    return f"{KEY_NAME} · {tag}"
+
+
+def _operator_daily_cap() -> int | None:
+    """A daily credit cap the operator sets for every key (OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT)."""
+    raw = (os.environ.get("OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT") or "").strip()
+    return int(raw) if raw.isdigit() and int(raw) > 0 else None
+
+
+def _key_request(name: str) -> dict[str, Any]:
+    """Chat and media generation, with no credit cap on the key itself.
+
+    The wallet balance is the only limit: a user who still has credits must never be stopped.
+    Lynxce gives a key 1000 credits a day unless told otherwise, so the caps are sent as
+    ``null``. OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT, when the operator sets it, is the one exception.
+    """
+    return {
+        "name": name,
+        "scopes": list(KEY_SCOPES),
+        "dailyCreditLimit": _operator_daily_cap(),
+        "monthlyCreditLimit": None,
+    }
 
 
 def _key_lock(services: SharedServices, user_id: int) -> AsyncFileLock:
@@ -124,20 +163,97 @@ async def ensure_model_key(
         existing = await asyncio.to_thread(load_model_key, services, user_id)
         if existing is not None:
             if not verify or not await lynxce_cloud.model_key_rejected(existing.secret):
-                return existing
+                return await _lift_caps(services, user_id, existing)
             await asyncio.to_thread(forget_model_key, services, user_id)
-        return await _mint_model_key(services, user_id)
+        return await _mint_model_key(services, user_id, existing)
 
 
-async def _mint_model_key(services: SharedServices, user_id: int) -> ModelKey:
-    data = await lynxce_cloud.create_model_key(services, user_id, _key_request())
+async def _lift_caps(services: SharedServices, user_id: int, key: ModelKey) -> ModelKey:
+    """Take Lynxce's default daily cap off a key minted with it, once (best effort).
+
+    Runs at sign-in and at the periodic key check before a chat, so a deploy lifts every
+    active user's cap before their next message. On failure the next check tries again.
+    """
+    if key.uncapped or _operator_daily_cap() is not None:
+        return key
+    try:
+        await lynxce_cloud.tenant_call(
+            services,
+            user_id,
+            "PATCH",
+            f"/api/user/personal-api-keys/{key.key_id}",
+            {"dailyCreditLimit": None, "monthlyCreditLimit": None},
+        )
+    except Exception:  # noqa: BLE001 - no session, or Lynxce down: chat on, retry later
+        logger.warning("Could not lift the credit caps of the Lynxce key of user %s", user_id)
+        return key
+    lifted = replace(key, uncapped=True)
+    await asyncio.to_thread(_save_model_key, services, user_id, lifted)
+    return lifted
+
+
+async def _revoke(services: SharedServices, user_id: int, key_id: str) -> None:
+    try:
+        await lynxce_cloud.revoke_model_key(services, user_id, key_id)
+    except Exception:  # noqa: BLE001 - already gone, or Lynxce down: the key just stays
+        logger.warning("Could not revoke Lynxce key %s of user %s", key_id, user_id)
+
+
+async def _revoke_stale_keys(
+    services: SharedServices, user_id: int, name: str, stale: ModelKey | None
+) -> None:
+    """Before minting: revoke this server's previous keys for the account (best effort).
+
+    That is the key it held (``stale``), any key with this server's ``name`` (one it lost),
+    and keys named plain ``KEY_NAME`` that were never used: those came from before the tag,
+    from no server that is chatting with them.
+    """
+    ids = {stale.key_id} if stale is not None else set()
+    try:
+        listing = await lynxce_cloud.list_model_keys(services, user_id)
+    except Exception:  # noqa: BLE001 - mint anyway; the next replacement cleans up
+        logger.warning("Could not list the Lynxce keys of user %s", user_id)
+        listing = None
+    items = listing.get("items") if isinstance(listing, dict) else None
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            continue
+        if item.get("name") == name or (
+            item.get("name") == KEY_NAME and item.get("lastUsedAt") is None
+        ):
+            ids.add(item["id"])
+    for key_id in sorted(ids):
+        await _revoke(services, user_id, key_id)
+
+
+async def _mint_model_key(
+    services: SharedServices, user_id: int, stale: ModelKey | None = None
+) -> ModelKey:
+    name = await asyncio.to_thread(key_name, services, user_id)
+    await _revoke_stale_keys(services, user_id, name, stale)
+    data = await lynxce_cloud.create_model_key(services, user_id, _key_request(name))
     key_id = data.get("id") if isinstance(data, dict) else None
     secret = data.get("secret") if isinstance(data, dict) else None
     if not isinstance(key_id, str) or not isinstance(secret, str) or not secret.startswith("sk-"):
         raise OctopError.localized(ErrorCode.NETWORK_ERROR)
-    key = ModelKey(key_id=key_id, secret=secret, scopes=KEY_SCOPES)
+    key = ModelKey(
+        key_id=key_id,
+        secret=secret,
+        scopes=KEY_SCOPES,
+        uncapped=_operator_daily_cap() is None,
+    )
     await asyncio.to_thread(_save_model_key, services, user_id, key)
     return key
+
+
+async def revoke_model_key(services: SharedServices, user_id: int) -> None:
+    """Desktop sign-out: revoke the key upstream while the session still works, then forget it."""
+    async with _key_lock(services, user_id):
+        key = await asyncio.to_thread(load_model_key, services, user_id)
+        if key is None:
+            return
+        await _revoke(services, user_id, key.key_id)
+        await asyncio.to_thread(forget_model_key, services, user_id)
 
 
 async def ensure_media_scopes(services: SharedServices, user_id: int) -> None:
@@ -166,7 +282,7 @@ async def ensure_media_scopes(services: SharedServices, user_id: int) -> None:
             _save_model_key,
             services,
             user_id,
-            ModelKey(key_id=key.key_id, secret=key.secret, scopes=KEY_SCOPES),
+            replace(key, scopes=KEY_SCOPES),
         )
 
 

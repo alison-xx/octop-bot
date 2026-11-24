@@ -192,6 +192,11 @@ def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
     return effective_skills_disabled(cfg)
 
 
+# Builtin tools that drive the server's own browser or screen. A cloud tenant's Bot works on its
+# own cloud computer instead (``cloud_computer``), never on the operator's machine.
+TENANT_HOST_TOOLS = frozenset({"browser_use", "desktop_screenshot"})
+
+
 def tools_disabled_set(cfg: dict[str, Any]) -> set[str]:
     """Return disabled built-in tool names from agent config (critical stripped)."""
     from octop.infra.agents.settings.tool_catalog import tools_disabled_set as _tools_disabled_set
@@ -3649,6 +3654,37 @@ class AgentManager:
 
         return user_id is not None and bot_cloud_enabled() and not self._user_is_admin(user_id)
 
+    def _tenant_tools_disabled(self, user_id: int | None, disabled: set[str]) -> set[str]:
+        """A cloud tenant's Bot never drives the server's own browser or screen."""
+        return disabled | TENANT_HOST_TOOLS if self._cloud_tenant(user_id) else disabled
+
+    def _cloud_computer_tools(self, row: AgentRow) -> list[Any]:
+        """``cloud_computer`` and ``request_takeover`` for a cloud tenant's Bot, when the server
+        has cloud computers configured; nothing otherwise."""
+        if row.user_id is None or not self._cloud_tenant(row.user_id):
+            return []
+        from octop.infra.cloud.computers.manager import current_manager  # noqa: PLC0415
+
+        computers = current_manager()
+        if computers is None:
+            return []
+        from octop.infra.bot_tasks.approvals import ApprovalRules  # noqa: PLC0415
+        from octop.infra.cloud.computers.computer_use import (  # noqa: PLC0415
+            computer_use_tool,
+            request_takeover_tool,
+        )
+
+        return [
+            computer_use_tool(
+                computers,
+                row.agent_id,
+                row.user_id,
+                approvals=ApprovalRules(self._repos.settings_repo),
+                user_repo=self._repos.user_repo,
+            ),
+            request_takeover_tool(computers, self._repos.user_repo, row.agent_id, row.user_id),
+        ]
+
     def host_files_allowed(self, agent_id: str) -> bool:
         """Whether this agent's file I/O may reach the server's own disk (temp files, browser
         screenshots, host paths, host-run cron scripts). Not for a cloud tenant's agent; the
@@ -4087,7 +4123,10 @@ class AgentManager:
         )
         if is_team_agent(self.get_row(agent_id)):
             disabled = set(host_tools_disabled(disabled))
-        self.sync_tools_disabled(agent_id, disabled)
+        row = self.get_row(agent_id)
+        self.sync_tools_disabled(
+            agent_id, self._tenant_tools_disabled(row.user_id if row else None, disabled)
+        )
 
     # ------------------------------------------------------------------
     # Internal — validation
@@ -5065,24 +5104,31 @@ class AgentManager:
 
             services = SharedServices(paths=self._paths, config=self._config, repos=self._repos)
             workspace_tools = [show_view, own_chat_tool(services, row.agent_id, row.user_id)]
-            if self._cloud_tenant(row.user_id):
-                # Lynxce cloud: the Bot's computer is its own cloud computer, never the host's.
-                from octop.infra.cloud.computers.manager import current_manager
+            # Lynxce cloud: the Bot's computer is its own cloud computer, never the host's,
+            # and it works there on every turn (web, phone, IM, schedules).
+            computer_tools = self._cloud_computer_tools(row)
+            # Tasks (plan, evidence, finish gate) wherever the Bot works: every turn for a
+            # cloud tenant, Octop Bot client turns otherwise.
+            from octop.infra.bot_tasks.approvals import ApprovalRules, request_approval_tool
+            from octop.infra.bot_tasks.store import TaskStore
+            from octop.infra.bot_tasks.tools import task_tools
+            from octop.infra.bot_tasks.watchdog import BotTaskMiddleware
 
-                computers = current_manager()
-                if computers is not None:
-                    from octop.infra.cloud.computers.computer_use import (
-                        computer_use_tool,
-                        request_takeover_tool,
-                    )
-
-                    workspace_tools.append(computer_use_tool(computers, row.agent_id, row.user_id))
-                    workspace_tools.append(
-                        request_takeover_tool(
-                            computers, self._repos.user_repo, row.agent_id, row.user_id
-                        )
-                    )
-            elif not row.is_shared and row.kind == "expert":
+            tenant = self._cloud_tenant(row.user_id)
+            tasks = TaskStore(self._repos.settings_repo)
+            task_kit = [
+                *task_tools(tasks),
+                request_approval_tool(
+                    ApprovalRules(self._repos.settings_repo),
+                    self._repos.user_repo,
+                    row.agent_id,
+                    row.user_id,
+                ),
+            ]
+            anywhere = [*computer_tools, *task_kit] if tenant else computer_tools
+            if not tenant:
+                workspace_tools.extend(task_kit)
+            if not tenant and not row.is_shared and row.kind == "expert":
                 from octop.infra.agents.bot_computer import computer_tool
 
                 workspace_tools.append(
@@ -5092,10 +5138,25 @@ class AgentManager:
                 from octop.infra.agents.bot_tools import chief_tools
 
                 workspace_tools.extend(chief_tools(self, services, row.agent_id, row.user_id))
-            agent_middleware.append(BotWorkspaceTools(workspace_tools))
+            agent_middleware.append(BotWorkspaceTools(workspace_tools, anywhere))
+            agent_middleware.append(BotTaskMiddleware(tasks, always=tenant))
+            if computer_tools:
+                from octop.infra.cloud.computers.computer_use import ComputerBriefing
+
+                agent_middleware.append(ComputerBriefing())
             from octop.infra.agents.bot_device import DeviceTools
 
             agent_middleware.append(DeviceTools())
+        elif room_workspace is not None and not team_host:
+            # A group member points and types on its own cloud computer too; its file tools
+            # stay on the group's shared files.
+            computer_tools = self._cloud_computer_tools(row)
+            if computer_tools:
+                from octop.infra.agents.middleware.bot_workspace import BotWorkspaceTools
+                from octop.infra.cloud.computers.computer_use import ComputerBriefing
+
+                agent_middleware.append(BotWorkspaceTools((), computer_tools))
+                agent_middleware.append(ComputerBriefing(room=True))
         if cron_tools:
             merged_tools.extend(cron_tools)
         merged_tools.extend(knowledge_tools)
@@ -5288,7 +5349,9 @@ class AgentManager:
             )
             if team_host:
                 disabled = set(host_tools_disabled(disabled))
-            harness_cfg.tools_disabled = frozenset(disabled)
+            harness_cfg.tools_disabled = frozenset(
+                self._tenant_tools_disabled(row.user_id, disabled)
+            )
         applied = policy.apply_to_config(harness_cfg)
         applied = self._apply_team_host_config(applied, row)
         applied = self._merge_agently_write_interrupts(

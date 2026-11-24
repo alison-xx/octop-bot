@@ -36,6 +36,7 @@ from octop.infra.gateway.media.backend_files import (
     is_allowed_host_download_abs_path,
     is_host_absolute_path,
     resolve_preview_payload,
+    tenant_workspace_path,
 )
 from octop.infra.utils.doc_edit import DocConverter, get_doc_converter
 
@@ -72,16 +73,21 @@ def _host_files(server: Any, agent_id: str) -> bool:
     return bool(server.app_runtime.agent_registry.host_files_allowed(agent_id))
 
 
-def _guard_workspace_read(io_path: str, workspace: Path, *, host_files: bool) -> None:
-    """Allow this workspace, temp, and non-home tool outputs. Deny the control plane."""
+def _guard_workspace_read(io_path: str, workspace: Path, *, host_files: bool) -> str:
+    """Allow this workspace, temp, and non-home tool outputs. Deny the control plane.
+
+    Returns the path to read. A cloud tenant never reads the server's disk: its Bot reports
+    files as ``/generated/a.md`` (its workspace is ``/``), so such a path is read inside the
+    workspace instead.
+    """
     if is_host_absolute_path(io_path) and not host_files:
-        # A cloud tenant's workspace lives in the object store; the server's disk is off limits.
-        raise OctopError.localized(ErrorCode.FORBIDDEN)
-    if is_host_absolute_path(io_path):
+        io_path = tenant_workspace_path(io_path, [workspace])
+    elif is_host_absolute_path(io_path):
         if not is_allowed_host_download_abs_path(io_path, workspace=workspace):
             raise OctopError(ErrorCode.FORBIDDEN, "host path not allowed")
-        return
+        return io_path
     _reject_parent_segments(io_path)
+    return io_path
 
 
 def _map_workspace_fs_error(exc: Exception, *, operation: str, path: str) -> OctopError:
@@ -162,7 +168,9 @@ async def list_tree(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
-    _guard_workspace_read(io_path, ws.workspace_dir, host_files=_host_files(server, agent_id))
+    io_path = _guard_workspace_read(
+        io_path, ws.workspace_dir, host_files=_host_files(server, agent_id)
+    )
     result = await ws.als(io_path)
     if result is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot list {path!r}")
@@ -204,7 +212,9 @@ async def read_file(
     """Read a UTF-8 text file."""
     ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
-    _guard_workspace_read(io_path, ws.workspace_dir, host_files=_host_files(server, agent_id))
+    io_path = _guard_workspace_read(
+        io_path, ws.workspace_dir, host_files=_host_files(server, agent_id)
+    )
     content = await ws.aread_text(io_path)
     if content is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot read {path!r}")
@@ -432,7 +442,9 @@ async def _read_download(
 ) -> tuple[str, bytes]:
     ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
-    _guard_workspace_read(io_path, ws.workspace_dir, host_files=_host_files(server, agent_id))
+    io_path = _guard_workspace_read(
+        io_path, ws.workspace_dir, host_files=_host_files(server, agent_id)
+    )
 
     try:
         file_blob = await ws.adownload_bytes(io_path)
@@ -466,7 +478,9 @@ async def download_link(
         raise OctopError.localized(ErrorCode.NOT_FOUND)
     ws = await require_agent_workspace(agent_id, user=user, as_user=None, server=server)
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
-    _guard_workspace_read(io_path, ws.workspace_dir, host_files=_host_files(server, agent_id))
+    io_path = _guard_workspace_read(
+        io_path, ws.workspace_dir, host_files=_host_files(server, agent_id)
+    )
     try:
         file_blob = await ws.adownload_bytes(io_path)
     except PermissionError as exc:
@@ -497,7 +511,9 @@ async def read_doc(
     converter = _ensure_editable_doc(path)
     ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
-    _guard_workspace_read(io_path, ws.workspace_dir, host_files=_host_files(server, agent_id))
+    io_path = _guard_workspace_read(
+        io_path, ws.workspace_dir, host_files=_host_files(server, agent_id)
+    )
     try:
         blob = await ws.adownload_bytes(io_path)
     except PermissionError as exc:
@@ -624,7 +640,7 @@ async def glob_files(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
     root = _workspace_io_path(path, from_workspace=from_workspace)
-    _guard_workspace_read(root, ws.workspace_dir, host_files=_host_files(server, agent_id))
+    root = _guard_workspace_read(root, ws.workspace_dir, host_files=_host_files(server, agent_id))
     if pattern in ("**/*.md", "*.md") and root == ".":
         ls_result = await ws.als(".")
         if ls_result is None:
@@ -660,7 +676,9 @@ async def grep_files(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
-    _guard_workspace_read(io_path, ws.workspace_dir, host_files=_host_files(server, agent_id))
+    io_path = _guard_workspace_read(
+        io_path, ws.workspace_dir, host_files=_host_files(server, agent_id)
+    )
     result = await ws.agrep(pattern, io_path)
     if result is None:
         raise OctopError(ErrorCode.NOT_FOUND, "grep failed")

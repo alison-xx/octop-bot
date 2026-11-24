@@ -48,9 +48,10 @@ export default function BotLogin() {
   }, [navigate]);
 
   const locale = i18n.language.startsWith("zh") ? "zh" : "en";
+  /** Resolves with the error when sign-in failed (shown here, inspected by the form). */
   const lynxceSignIn = async (
     attempt: () => Promise<{ access_token: string }>,
-  ) => {
+  ): Promise<unknown> => {
     if (busy) return;
     setBusy(true);
     setError("");
@@ -59,6 +60,7 @@ export default function BotLogin() {
       navigate(BOT_HOME, { replace: true });
     } catch (e) {
       setError(apiErrorMessage(e, t("octopBot.failed"), t));
+      return e;
     } finally {
       setBusy(false);
     }
@@ -123,13 +125,14 @@ export default function BotLogin() {
                     sendCode={async (target) =>
                       (await authApi.lynxceSendCode(target, locale)).channel
                     }
-                    onCode={(target, code) =>
+                    onCode={(target, code, password) =>
                       lynxceSignIn(() =>
                         authApi.lynxceCodeLogin(
                           target,
                           code,
                           locale,
                           legacyPassword,
+                          password,
                         ),
                       )
                     }

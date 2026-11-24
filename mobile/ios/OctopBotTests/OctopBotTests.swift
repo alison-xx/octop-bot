@@ -940,3 +940,155 @@ final class BotActivityTests: XCTestCase {
         XCTAssertEqual(file("blob.bin").symbol, "doc")
     }
 }
+
+@MainActor
+final class ModelSourceTests: XCTestCase {
+    func testBundledCatalogGroupsCompaniesFeaturedFirst() {
+        let vendors = VendorCatalog.bundled.vendors
+        XCTAssertFalse(vendors.isEmpty)
+        // Phones call vendors themselves over the OpenAI-compatible protocol only.
+        XCTAssertFalse(vendors.contains { $0.id == "anthropic" })
+        let companies = VendorCompany.group(vendors)
+        XCTAssertEqual(Array(companies.prefix(8).map(\.id)), VendorCompany.featured)
+        // The preferred plan comes first: Tencent Cloud TokenHub, Bailian's main endpoint.
+        XCTAssertEqual(companies.first { $0.id == "tencent" }?.plans.first?.id, "tencent-tokenhub")
+        XCTAssertEqual(companies.first { $0.id == "aliyun" }?.plans.first?.id, "dashscope")
+        XCTAssertTrue(vendors.allSatisfy { $0.baseURL.hasPrefix("https://") })
+    }
+
+    func testGroupKeepsCatalogOrderAfterFeatured() {
+        let vendors = [
+            KeyVendor(id: "x-1", name: "X", vendor: "xco", baseURL: "https://x"),
+            KeyVendor(id: "kimi-intl", name: "Kimi intl", vendor: "kimi", baseURL: "https://k2"),
+            KeyVendor(id: "kimi-cn", name: "Kimi", vendor: "kimi", baseURL: "https://k1"),
+            KeyVendor(id: "y-1", name: "Y", vendor: "yco", baseURL: "https://y"),
+        ]
+        let companies = VendorCompany.group(vendors)
+        XCTAssertEqual(companies.map(\.id), ["kimi", "xco", "yco"])
+        XCTAssertEqual(companies[0].plans.map(\.id), ["kimi-cn", "kimi-intl"])
+    }
+
+    func testCompanyNamesAreLocalized() {
+        Preferences.shared.language = .chinese
+        defer { Preferences.shared.language = .system }
+        XCTAssertEqual(VendorCompany(id: "volcengine", plans: []).name, "火山方舟")
+        XCTAssertEqual(VendorCompany.name(of: "unknown-co", fallback: "Unknown"), "Unknown")
+    }
+
+    func testOwnKeyListParsesTheServerShape() throws {
+        let list = OwnKeyList.parse([
+            "keys": [[
+                "id": "k1", "vendor": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com/v1",
+                "key_hint": "****7f3a", "models": [["id": "deepseek-flash", "name": "DeepSeek Flash"]], "created_at": 1.0,
+            ]],
+            "in_use": "k1", "selected_model": "deepseek-flash",
+        ])
+        XCTAssertEqual(list.keys.count, 1)
+        XCTAssertEqual(list.keys[0].keyHint, "****7f3a")
+        XCTAssertEqual(list.keys[0].models.first?.label, "DeepSeek Flash")
+        XCTAssertEqual(list.keys[0].company, "deepseek")
+        XCTAssertEqual(list.inUse, "k1")
+        XCTAssertEqual(list.selectedModel, "deepseek-flash")
+        XCTAssertEqual(OwnKeyList.parse(["keys": [], "in_use": NSNull()]), .empty)
+    }
+
+    func testServerCatalogKeepsCustomFlagAndAddsDocs() throws {
+        let data = Data(#"{"vendors":[{"id":"deepseek","name":"DeepSeek","vendor":"deepseek","logo_id":"deepseek","base_url":"https://api.deepseek.com/v1","protocol":"openai","api_key_prefix":"sk-","models":[]}],"custom_allowed":false}"#.utf8)
+        let catalog = try ServerModelKeys.catalog(data)
+        XCTAssertFalse(catalog.customAllowed)
+        XCTAssertEqual(catalog.vendors.first?.apiKeyPrefix, "sk-")
+        XCTAssertEqual(catalog.vendors.first?.docs, "https://platform.deepseek.com/api_keys")
+    }
+
+    func testLocalAddressesAndCustomBases() {
+        XCTAssertEqual(PhoneModels.localBase("192.168.1.8")?.absoluteString, "http://192.168.1.8:11434/v1")
+        XCTAssertEqual(PhoneModels.localBase(" 192.168.1.8:1234/ ")?.absoluteString, "http://192.168.1.8:1234/v1")
+        XCTAssertEqual(PhoneModels.localBase("http://mac.local:11434/v1")?.absoluteString, "http://mac.local:11434/v1")
+        XCTAssertNil(PhoneModels.localBase("  "))
+        XCTAssertEqual(PhoneModels.normalizedBase("https://api.example.com/v1/chat/completions"), "https://api.example.com/v1")
+        XCTAssertEqual(PhoneModels.normalizedBase("https://api.example.com/v1/"), "https://api.example.com/v1")
+        XCTAssertNil(PhoneModels.normalizedBase("ftp://x"))
+        XCTAssertNil(PhoneModels.normalizedBase("not a url"))
+    }
+
+    func testModelListsFromVendorsAndOllama() {
+        let openAI = PhoneModels.parseModels(Data(#"{"object":"list","data":[{"id":"a"},{"id":"b"},{"id":"a"}]}"#.utf8))
+        XCTAssertEqual(openAI.map(\.id), ["a", "b"])
+        let other = PhoneModels.parseModels(Data(#"{"models":[{"name":"qwen3:14b"}]}"#.utf8))
+        XCTAssertEqual(other.map(\.id), ["qwen3:14b"])
+        XCTAssertTrue(PhoneModels.parseModels(Data("nope".utf8)).isEmpty)
+    }
+
+    func testPhoneSelectionPicksTheEndpointAndForgetsRemovedKeys() async throws {
+        let defaults = UserDefaults(suiteName: "phone-models-test")!
+        defaults.removePersistentDomain(forName: "phone-models-test")
+        var secrets: [String: String] = [:]
+        let phone = PhoneModels(defaults: defaults, secrets: { secrets[$0] }, saveSecret: { value, id in secrets[id] = value })
+        XCTAssertNil(phone.endpoint())
+        XCTAssertFalse(phone.hasModel)
+        phone.useLocal("missing", model: "m")
+        XCTAssertNil(phone.endpoint(), "an unknown local server is no endpoint")
+        phone.useLynxce()
+        XCTAssertNil(phone.selection)
+        // Keys are only added after the vendor accepts them, which needs the network; removing is local.
+        try await phone.remove("nothing")
+        XCTAssertTrue(phone.keys.isEmpty)
+        XCTAssertTrue(secrets.isEmpty)
+    }
+
+    func testVendorBodyDropsLynxceFields() {
+        let bot = BotProfile(id: "chief", name: "Chief", look: .chief, isChief: true, systemPrompt: "Be brief.")
+        let body = LynxceBackend.chatBody(text: "hi", images: [], bot: bot, history: [], sessionId: "s", model: nil)
+        let vendor = CompletionChat.vendorBody(body, model: "deepseek-flash")
+        XCTAssertEqual(vendor["model"] as? String, "deepseek-flash")
+        XCTAssertNil(vendor["sessionId"])
+        XCTAssertNil(vendor["metadata"])
+        XCTAssertNil(vendor["stream_options"])
+        XCTAssertEqual(vendor["stream"] as? Bool, true)
+        XCTAssertEqual((vendor["messages"] as? [[String: Any]])?.count, 2)
+    }
+
+    func testVendorErrorsNeverSignOutOrAskForCredits() {
+        let refused = CompletionChat.vendorError(status: 401, data: Data())
+        XCTAssertEqual(refused.kind, .rejected)
+        XCTAssertEqual(refused.status, 401)
+        let quota = CompletionChat.vendorError(status: 402, data: Data(#"{"error":{"message":"Insufficient Balance"}}"#.utf8))
+        XCTAssertEqual(quota.kind, .rejected)
+        XCTAssertTrue(quota.localizedDescription.contains("Insufficient Balance"))
+        XCTAssertEqual(CompletionChat.vendorError(status: 500, data: Data()).kind, .server)
+        XCTAssertEqual(CompletionChat.finishReason(#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#), "stop")
+        XCTAssertNil(CompletionChat.finishReason(#"{"choices":[{"delta":{"content":"x"}}]}"#))
+    }
+
+    func testDeviceConversationsKeepTurnsPerBot() {
+        let file = FileManager.default.temporaryDirectory.appending(path: "device-conv-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let store = DeviceConversations(file: file)
+        store.create("c1", bot: "chief", title: "  第一行\n第二行")
+        store.append(to: "c1", user: "第一行\n第二行", startedAt: .now, answer: "好的", thinking: "想一下")
+        store.create("c2", bot: "writer", title: "draft")
+        XCTAssertEqual(store.conversations(for: "chief").map(\.title), ["第一行"])
+        let reloaded = DeviceConversations(file: file)
+        let messages = reloaded.messages(in: "c1")
+        XCTAssertEqual(messages.map(\.role), [.user, .assistant])
+        XCTAssertEqual(messages.last?.thinking, "想一下")
+        reloaded.delete("c1")
+        XCTAssertTrue(reloaded.conversations(for: "chief").isEmpty)
+        XCTAssertEqual(reloaded.conversations(for: "writer").count, 1)
+    }
+}
+
+@MainActor
+final class LynxceSignupSourceTests: XCTestCase {
+    func testEveryLynxceCallNamesOctopBotAsTheSignupSite() {
+        let signIn = LynxceBackend.headers(nil)
+        XCTAssertEqual(signIn["X-Lynxce-Signup-Site"], "octop-bot")
+        XCTAssertEqual(signIn["X-Lynxce-App"], "octopbot")
+        XCTAssertEqual(signIn["X-Lynxce-Client"], "web")
+        XCTAssertNil(signIn["Authorization"])
+        let signedIn = LynxceBackend.headers("t", iap: true)
+        XCTAssertEqual(signedIn["X-Lynxce-Signup-Site"], "octop-bot")
+        XCTAssertEqual(signedIn["Authorization"], "Bearer t")
+        XCTAssertEqual(signedIn["X-Lynxce-Iap-App"], "cn.lynxce.octopbot")
+    }
+}

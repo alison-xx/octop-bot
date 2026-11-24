@@ -357,7 +357,7 @@ P1 的实际做法与上文设计有几处不同，以本节为准：
 | `OCTOP_FILE_STORE_ADDRESSING` | 默认 `virtual`（COS、OSS 必须）；MinIO 填 `path` |
 | `OCTOP_FILE_STORE_PREFIX` | 可选，所有对象的公共前缀，例如 `prod` |
 | `OCTOP_BOT_CLOUD_MODEL` | 默认模型，未设置时用 `deepseek-flash` |
-| `OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT` | 新签发 Key 的每日积分上限；不设置则用灵策默认值，`none` 表示不设上限 |
+| `OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT` | 运营方给每把 Key 设的每日积分上限。不设置（默认）就不设上限，只受钱包余额限制；旧 Key 带着灵策默认的 1000 积分/天，下次核对 Key 时自动取消一次 |
 
 存储桶需要配一条生命周期规则：`downloads/` 前缀 1 到 2 天后过期。管理员账户（运营方）不受租户限制，继续使用服务器的共享模型配置。
 
@@ -627,7 +627,7 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 **服务端约定**
 
 - 对话记在用户自己的灵策钱包上时（云端租户，或桌面登录了灵策），模型返回 402 / 余额不足，这轮的错误帧和历史记录都带 `error_code: BOT_CLOUD_CREDITS_REQUIRED`，提示里直接给出充值网址 `https://admin.lynxce.cn/recharge`。
-- 钱包里还有积分，但「Octop Bot 云端」这把 Key 的每日上限用完了（灵策返回 `api_key_credit_limit_reached`），错误码是 `BOT_LYNXCE_DAILY_LIMIT`（429）。这种情况充值没用，提示每天 UTC 0 点自动恢复，或到灵策账户中心调高上限。默认每日上限 1000 积分，由 `OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT` 调整；做图、做视频上线后这个默认值偏低，待定。
+- 只要钱包里有积分就不限额：签发 Key 时明确把每日、每月上限设为不限（灵策默认是每天 1000 积分），以前签发、带着默认上限的 Key 在下次核对时（登录、对话前每 10 分钟）自动取消一次。只有运营方设置了 `OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT`，或用户自己在灵策账户中心给这把 Key 设了上限，才会碰到 `api_key_credit_limit_reached`，错误码是 `BOT_LYNXCE_DAILY_LIMIT`（429），提示到灵策账户中心调高上限。
 - 显示名优先用灵策昵称，没有昵称时用打码的手机号或邮箱，不再出现 `sso_…` 这类内部账号。
 - 桌面登录灵策一次就够：登录时用这次的会话给本机签一把个人 Key（和云端同一种），模型、余额、云电脑都走这个账号，不再需要在浏览器里二次授权。换了灵策账号会先丢掉旧 Key；退出灵策时一并删除。浏览器授权保留为次要入口。
 - 用量用现有的 `/api/usage/summary`（`by_agent`、`by_model`），统计的是 token。积分扣费明细以灵策账户中心为准。
@@ -653,9 +653,10 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 - Key 按用户加密保存在 `secret_repo`（`octop_bot:own_model_keys:{user_id}`），不进全局 `providers` 表，别的用户看不到也用不了。接口只返回 `****` 加末四位。
 - 添加时先用这把 Key 请求厂商的 `/models`。厂商返回 401 或 403 就拒绝，报 `BOT_MODEL_KEY_INVALID`。厂商没有模型列表时，用目录里的推荐模型。
 - 选用后，个人模型选择记成 `{"connection": "own:<key id>", "model": ...}`。云端租户、桌面端、群聊、IM 和定时任务都走同一个 `account_selection`，所以都会用上这把 Key。删掉正在用的 Key 后，云端回到灵策模型；桌面端如果登录了灵策，也回到灵策模型，否则回到本机配置。
-- 安全：灵策云端只能选列表里的厂商，不能填自定义地址，否则租户可以让服务器去访问内网地址（127.0.0.1、云厂商元数据服务等）。桌面端可以填任意 OpenAI 兼容地址（`vendor: "custom"`）。每人最多 20 把 Key。
+- 安全：灵策云端只能选列表里的厂商，不能填自定义地址，否则租户可以让服务器去访问内网地址（127.0.0.1、云厂商元数据服务等）。桌面端可以填任意 OpenAI 兼容地址（`vendor: "custom"`）。自建服务器（`OCTOP_BOT_WEB`，NAS、Docker）只有管理员能填自定义地址。每人最多 20 把 Key。
+- 自建服务器（2026-11-25）：用户也能用自己的 Key。不用 Key 时 `account_selection` 返回空，对话用服务器管理员配置的模型。
 
-接口（`/api/octop-bot/model-keys`，云端任何租户可用，桌面端只限本机）：
+接口（`/api/octop-bot/model-keys`，云端任何租户和自建服务器的用户可用，桌面端只限本机）：
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -663,6 +664,7 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 | GET | `` | 我的 Key（不含 Key 本身）、正在用的 Key 和模型 |
 | POST | `` | 添加：`{vendor, api_key, name?, base_url?, protocol?}`，后两项只用于 `custom` |
 | PUT | `/{id}/model` | 用这把 Key 的某个模型聊天：`{model_id}` |
+| DELETE | `/in-use` | 不再用自己的 Key，回到默认模型（云端和登录灵策的桌面端是灵策积分，自建服务器是管理员配置的模型），Key 保留 |
 | DELETE | `/{id}` | 删除；正在用的话回到默认模型 |
 
 新增错误码：`BOT_MODEL_KEY_INVALID`、`BOT_MODEL_VENDOR_UNSUPPORTED`、`BOT_MODEL_KEY_LIMIT`（都是 400）。界面（设置 → 模型 →「我的 API Key」和添加弹窗）由桌面客户端改版那边按这套接口做。
@@ -684,6 +686,20 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 - **单价**（成本 × 2）：标准 1.70 积分/分钟，高配 3.40 积分/分钟，磁盘 4.80 积分/GB·天。公网流量暂未单独计费（看画面时每小时约几十到一两百 MB）。
 
 部署所需环境变量（`OCTOP_CVM_*`）：`SECRET_ID` / `SECRET_KEY`（CAM 子账号，CVM、VPC、TAT 全读写加 `finance:trade` 付款权限）、`REGION`、`IMAGE_ID`、`VPC_ID`、`SUBNETS`、`SECURITY_GROUP`、`TYPE` / `TYPE_PRO`、`DISK_GB`、`BANDWIDTH`。
+
+## 12.11 多端互通：桌面登录灵策就用云端（2026-11-24 定）
+
+改了 12.4 表里「数据在哪」那一格：桌面登录灵策后不再把 Bot、群聊和会话留在本机 Octop，而是和网页、手机一样用灵策云（bot.lynxce.cn），四端看到同一个团队。「本机使用」不变。
+
+- **搬家**：桌面在本机登录灵策后弹出「把团队搬到灵策云」。本机 Octop 把灵策登录交给云端（`POST /api/auth/lynxce/session-login`，云端用刷新令牌自己续一次并读资料，校验通过才开户，本机随后删掉自己那份灵策登录），再依次推送 Bot（名字、职责、系统提示词、形象、私密标记）、和 Bot 的会话（Bot 的完整上下文写进云端 checkpoint，历史投影同步，能接着聊）、群聊（成员、管理员、回复方式、群记忆、目标、消息时间线）和团队笔记。接口在云端 `/api/octop-bot/move-in/{bots,threads,groups,notes}`，只在云端模式开放。
+- **可重试**：每一项带来源 id（本机安装 id + 类型 + 原 id），云端记住它变成了什么，中途失败再搬只补缺的。云端已有同名 Bot 时并入那个 Bot；本机 Chief 并入云端 Chief。
+- **不删本机**：本机数据原样保留，菜单「服务器 → 本机」切回来还在。附件和工作目录里的文件不搬；单条超过 10 万字的消息会截断；每个 Bot 最多搬最近 200 段会话。
+- **切过去不用再登录**：搬完本机页面把云端登录态交给桌面壳（IPC `octop:bot:use-cloud`）。壳记到 userData 的 `cloud-sign-in.json`（0600，只用一次），切换服务器并重启，云端页面第一次加载完时写入登录态。
+- **本机接口**：`POST/GET /api/octop-bot/cloud/move`（只限桌面本机回环），后台运行，前端轮询进度，完成后返回云端 access token。测试时用 `OCTOP_BOT_CLOUD_ORIGIN` 指向别的云端地址（后端和桌面壳都认）。
+
+- **建 Bot 不开云电脑**：实测发现云端每新建一个 Bot（含首次登录时的 Chief、搬过来的 Bot），harness 播种内置子代理时会在 `/agents/` 下查文件，这个目录原来不在对象存储名单里，查一次就把这个 Bot 的云电脑开起来了。已把 `/agents/` 加进 `STORE_DIRS`，现在建 Bot、搬家都不碰云电脑，只有真正干活才开。
+
+另外，群聊里每条成员回复下的「打开成员会话」现在打开的是这个成员在该群的工作记录（之前跳到空白私聊）。成员的历史会话里多一条「群聊 · 群名」；它不会被当成私聊的默认会话，用户那一条显示的是在群里说的原话而不是发给成员的长提示词。
 
 ## 14. 待你拍板
 

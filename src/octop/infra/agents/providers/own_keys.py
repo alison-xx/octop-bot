@@ -24,7 +24,7 @@ from octop_harness.config import ModelConfig, ProviderConfig
 from octop.infra.agents.providers.lynxce import AccountModel
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.crypto.fernet import decrypt_json, encrypt_json
-from octop.infra.desktop import bot_cloud_enabled
+from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled, bot_web_enabled
 from octop.infra.errors import ErrorCode, OctopError
 
 if TYPE_CHECKING:
@@ -99,8 +99,17 @@ def vendor_catalog() -> list[dict[str, Any]]:
     ]
 
 
-def custom_urls_allowed() -> bool:
-    return not bot_cloud_enabled()
+def custom_urls_allowed(admin: bool = True) -> bool:
+    """Whether a key may point at any OpenAI-compatible URL instead of a listed vendor.
+
+    Never on Octop Bot cloud (a tenant could make the server call internal addresses), always
+    in the desktop app, and on a self-hosted Bot web server only for its admins.
+    """
+    if bot_cloud_enabled():
+        return False
+    if bot_web_enabled() and not bot_desktop_enabled():
+        return admin
+    return True
 
 
 def _load(services: SharedServices, user_id: int) -> list[OwnKey]:
@@ -208,13 +217,14 @@ async def add_key(
     name: str | None = None,
     base_url: str | None = None,
     protocol: str | None = None,
+    admin: bool = True,
 ) -> OwnKey:
     """Check the key with the vendor and keep it. Returns the stored key."""
     secret = api_key.strip()
     if not secret:
         raise _bad(ErrorCode.BOT_MODEL_KEY_INVALID)
     if vendor == CUSTOM_VENDOR:
-        if not custom_urls_allowed() or not base_url:
+        if not custom_urls_allowed(admin) or not base_url:
             raise _bad(ErrorCode.BOT_MODEL_VENDOR_UNSUPPORTED)
         url = _check_custom_url(base_url)
         proto = "anthropic" if protocol == "anthropic" else "openai"

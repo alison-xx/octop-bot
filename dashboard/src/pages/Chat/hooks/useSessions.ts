@@ -126,7 +126,11 @@ export function sortSessions(sessions: Session[]): Session[] {
 }
 
 /** Pick the thread bound to the dashboard session_key, else best history candidate. */
-export function pickPreferredSession(sessions: Session[]): Session | null {
+/** A Bot's work thread in an Octop Bot group, opened from the group only. */
+export const BOT_GROUP_CHANNEL = "octop_bot_group";
+
+export function pickPreferredSession(all: Session[]): Session | null {
+  const sessions = all.filter((s) => s.channelType !== BOT_GROUP_CHANNEL);
   if (sessions.length === 0) return null;
   return (
     sessions.find((s) => s.isActive) ??
@@ -357,7 +361,9 @@ async function fetchSessionsPage(
   agentId: string,
   limit: number,
 ): Promise<{ sessions: Session[]; hasMore: boolean }> {
-  const rows = await octopThreadsApi.list(agentId, limit + 1);
+  const rows = await octopThreadsApi.list(agentId, limit + 1, {
+    includeBotGroups: true,
+  });
   const hasMore = rows.length > limit;
   const sessions = sortSessions(
     rows.slice(0, limit).map((row) => toSession({ ...row, agent_id: agentId })),

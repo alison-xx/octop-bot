@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Segmented, Spin, Switch } from "antd";
+import { Button, Popconfirm, Segmented, Spin, Switch } from "antd";
 import {
   Clock,
   File,
@@ -11,6 +11,7 @@ import {
   FileText,
   FileVideo,
   Presentation,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -90,6 +91,18 @@ function Upcoming({
       setRevision((n) => n + 1);
     }
   };
+  const remove = async (job: UpcomingJob) => {
+    setChanging(job.id);
+    setError("");
+    try {
+      await octopCronApi.delete(agentId, job.id);
+      setJobs((rows) => rows?.filter((row) => row.id !== job.id) ?? rows);
+    } catch (e) {
+      setError(apiErrorMessage(e, t("cronJobs.operationFailed"), t));
+    } finally {
+      setChanging(null);
+    }
+  };
   if (!jobs && !error) return <Spin size="small" className={styles.spin} />;
   const shown = all ? jobs ?? [] : (jobs ?? []).slice(0, FIRST);
   return (
@@ -124,6 +137,25 @@ function Upcoming({
                   aria-label={t("botProfile.toggle", { name: job.name })}
                   onChange={(on) => void toggle(job, on)}
                 />
+                {canToggle && (
+                  <Popconfirm
+                    title={t("cronJobs.deleteConfirm")}
+                    okText={t("common.delete")}
+                    cancelText={t("common.cancel")}
+                    okButtonProps={{ danger: true }}
+                    onConfirm={() => remove(job)}
+                  >
+                    <Button
+                      size="small"
+                      type="text"
+                      danger
+                      icon={<Trash2 size={14} />}
+                      disabled={changing !== null}
+                      aria-label={t("botProfile.delete", { name: job.name })}
+                      title={t("common.delete")}
+                    />
+                  </Popconfirm>
+                )}
               </li>
             ))}
             {!all && jobs.length > FIRST && (

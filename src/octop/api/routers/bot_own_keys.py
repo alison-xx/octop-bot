@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from octop.api.common.bot_desktop import AccountServices, Owner
+from octop.api.common.bot_desktop import ModelKeyServices, Owner
 from octop.api.deps import get_server
 from octop.infra.agents.providers import lynxce as models
 from octop.infra.agents.providers import own_keys
@@ -37,8 +37,8 @@ class Vendor(BaseModel):
 class VendorCatalog(BaseModel):
     vendors: list[Vendor]
     custom_allowed: bool = Field(
-        description="Whether a custom OpenAI-compatible URL may be added (desktop only; cloud "
-        "accounts use the listed vendors)."
+        description="Whether a custom OpenAI-compatible URL may be added: in the desktop app "
+        "and for a self-hosted server's admins; Octop Bot cloud accounts use the listed vendors."
     )
 
 
@@ -84,16 +84,16 @@ async def _rebuild(server: OctopServer, user_id: int) -> None:
 
 
 @router.get("/vendors", summary="List model vendors I can add my own API key for")
-def vendors(user: Owner, services: AccountServices) -> VendorCatalog:
-    del user, services
+def vendors(user: Owner, services: ModelKeyServices) -> VendorCatalog:
+    del services
     return VendorCatalog(
         vendors=[Vendor.model_validate(v) for v in own_keys.vendor_catalog()],
-        custom_allowed=own_keys.custom_urls_allowed(),
+        custom_allowed=own_keys.custom_urls_allowed(user.is_admin),
     )
 
 
 @router.get("", summary="List my own model vendor keys")
-def list_keys(user: Owner, services: AccountServices) -> OwnKeyList:
+def list_keys(user: Owner, services: ModelKeyServices) -> OwnKeyList:
     return OwnKeyList(
         keys=[_view(k) for k in own_keys.list_keys(services, user.id)],
         in_use=models.own_key_in_use(services, user.id),
@@ -109,7 +109,7 @@ def list_keys(user: Owner, services: AccountServices) -> OwnKeyList:
     "stored encrypted for this user only and never returned. Chats on it are billed by the "
     "vendor, not in Lynxce credits.",
 )
-async def add_key(body: AddKey, user: Owner, services: AccountServices) -> OwnKeyView:
+async def add_key(body: AddKey, user: Owner, services: ModelKeyServices) -> OwnKeyView:
     key = await own_keys.add_key(
         services,
         user.id,
@@ -118,8 +118,26 @@ async def add_key(body: AddKey, user: Owner, services: AccountServices) -> OwnKe
         name=body.name,
         base_url=body.base_url,
         protocol=body.protocol,
+        admin=user.is_admin,
     )
     return _view(key)
+
+
+@router.delete(
+    "/in-use",
+    summary="Stop chatting on my own key",
+    description="My Bots go back to the default model: Lynxce credits on Octop Bot cloud and on "
+    "a desktop signed in to Lynxce, otherwise the server's own models. The key is kept.",
+)
+async def leave_own_key(
+    user: Owner,
+    services: ModelKeyServices,
+    server: Annotated[OctopServer, Depends(get_server)],
+) -> OwnKeyList:
+    if models.own_key_in_use(services, user.id) is not None:
+        await asyncio.to_thread(models.leave_own_key, services, user.id)
+        await _rebuild(server, user.id)
+    return list_keys(user, services)
 
 
 @router.delete(
@@ -131,7 +149,7 @@ async def add_key(body: AddKey, user: Owner, services: AccountServices) -> OwnKe
 async def remove_key(
     key_id: str,
     user: Owner,
-    services: AccountServices,
+    services: ModelKeyServices,
     server: Annotated[OctopServer, Depends(get_server)],
 ) -> None:
     in_use = models.own_key_in_use(services, user.id) == key_id
@@ -147,7 +165,7 @@ async def use_model(
     key_id: str,
     body: UseModel,
     user: Owner,
-    services: AccountServices,
+    services: ModelKeyServices,
     server: Annotated[OctopServer, Depends(get_server)],
 ) -> OwnKeyList:
     await models.select_own_model(services, user.id, key_id, body.model_id)

@@ -45,5 +45,25 @@ def test_collect_keeps_this_bots_files_once_newest_thread_first() -> None:
         ("/Users/me/Desktop/b.key", True, "new"),
         ("out/a.pdf", False, "new"),
     ]
+    # A cloud tenant's Bot sees its workspace as "/": every path it reports is in there.
     cloud = _collect(rows, "bot", ["/ws"], cloud=True)
-    assert [f.path for f in cloud] == ["out/a.pdf"]
+    assert [(f.path, f.host) for f in cloud] == [
+        ("Users/me/Desktop/b.key", False),
+        ("out/a.pdf", False),
+    ]
+
+
+def test_a_cloud_bots_files_are_found_in_its_workspace() -> None:
+    rows = [
+        _thread(
+            "t",
+            10,
+            ("/generated/plan.md", "bot"),
+            ("/home/user/workspace/data/table.csv", "bot"),
+            ("/data/agents/bot/result.txt", "bot"),
+            ("/../etc/passwd", "bot"),
+        )
+    ]
+    found = _collect(rows, "bot", ["/data/agents/bot"], cloud=True)
+    assert sorted(f.path for f in found) == ["data/table.csv", "generated/plan.md", "result.txt"]
+    assert not any(f.host for f in found)

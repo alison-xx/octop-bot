@@ -68,7 +68,7 @@ function ThreadHistory({
     setLoading(true);
     setError("");
     void octopThreadsApi
-      .list(agentId, limit + 1)
+      .list(agentId, limit + 1, { includeBotGroups: true })
       .then((result) => {
         if (current) setRows(result);
       })

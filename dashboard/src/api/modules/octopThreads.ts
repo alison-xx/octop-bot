@@ -210,9 +210,16 @@ export function fetchPublicShare(shareId: string): Promise<PublicShareView> {
 }
 
 export const octopThreadsApi = {
-  list: (agentId: string, limit = 50) =>
+  /** ``includeBotGroups`` adds the Bot's work threads in Octop Bot groups. */
+  list: (
+    agentId: string,
+    limit = 50,
+    options?: { includeBotGroups?: boolean },
+  ) =>
     request<OctopThread[]>(
-      `/agents/${encodeURIComponent(agentId)}/threads?limit=${limit}`,
+      `/agents/${encodeURIComponent(agentId)}/threads?limit=${limit}${
+        options?.includeBotGroups ? "&include_bot_groups=true" : ""
+      }`,
     ),
 
   create: (agentId: string, options?: { rebind?: boolean }) =>

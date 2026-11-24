@@ -119,11 +119,14 @@ final class LynxceBackend: ChatBackend {
     /// Lynxce's Octop Bot line: every model it offers Octop Bot is named `tencent/…`.
     nonisolated static let modelPrefix = "tencent/"
 
-    private static func headers(_ bearer: String?, iap: Bool = false) -> [String: String] {
+    static func headers(_ bearer: String?, iap: Bool = false) -> [String: String] {
         // 'web' is Lynxce's multi-session channel; signing in here never signs other devices out.
         var headers = ["X-Lynxce-Client": "web"]
         // Lynxce serves Octop Bot only the Tencent Cloud TokenHub models and records sign-ups made here.
         headers["X-Lynxce-App"] = "octopbot"
+        // An account created here shows Octop Bot as its source (Lynxce admin, sign-up notice);
+        // Lynxce reads it only when the account is created.
+        headers["X-Lynxce-Signup-Site"] = "octop-bot"
         if let bearer { headers["Authorization"] = "Bearer \(bearer)" }
         if iap { headers["X-Lynxce-Iap-App"] = iapApp }
         return headers
@@ -264,111 +267,43 @@ final class LynxceBackend: ChatBackend {
 
     // MARK: Chat
 
-    private var running: [String: Task<Void, Never>] = [:]
-    /// Turns waiting on device tools the phone runs (PROTOCOL.md §C, Lynxce mode), by conversation.
-    private var loops: [String: ToolLoop] = [:]
-    private static let maxToolRounds = 6
-
-    /// One turn's function-calling loop: the request so far and what to sync when it ends.
-    struct ToolLoop {
-        var body: [String: Any]
-        var user: String
-        var startedAt: Date
-        var model: String?
-        var answer = ""
-        var thinking = ""
-        var rounds = 0
-        var pendingId = ""
-    }
+    private lazy var chat = CompletionChat(
+        stream: { [unowned self] turn, body, calls, onEvent in
+            if let endpoint = turn.endpoint {
+                try await CompletionChat.streamEndpoint(endpoint, body, calls: &calls, onEvent: onEvent)
+            } else {
+                try await streamCompletion(body, calls: &calls, onEvent: onEvent)
+            }
+        },
+        finished: { [unowned self] turn, sessionId in
+            await sync(sessionId: sessionId, user: turn.user, startedAt: turn.startedAt, answer: turn.answer, thinking: turn.thinking, model: turn.model)
+        }
+    )
 
     func send(
         _ text: String, images: [Data], to bot: BotProfile, conversation: String?,
         history: [ChatMessage], model: String?
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         let sessionId = conversation ?? Self.sessionPrefix + UUID().uuidString.lowercased()
-        loops[sessionId] = nil
+        // A model the user picked on this phone (their own key, a local server) wins over Lynxce's.
+        let endpoint = PhoneModels.shared.endpoint()
+        let model = endpoint?.model ?? model
         let tools = DeviceConnectors.shared.offeredSpecs.map(\.openAITool)
         let body = Self.chatBody(
             text: text, images: images, bot: bot, history: history, sessionId: sessionId, model: model, tools: tools
         )
-        let loop = ToolLoop(body: body, user: text, startedAt: Date(), model: model)
-        return run(loop, sessionId: sessionId, announce: conversation == nil ? bot : nil)
+        let turn = CompletionChat.Turn(body: body, user: text, startedAt: Date(), model: model, endpoint: endpoint)
+        let announce: (() -> Void)? = conversation == nil ? { [unowned self] in sessionBots[sessionId] = bot.id } : nil
+        return chat.start(turn, sessionId: sessionId, announce: announce)
     }
 
     func resume(
         _ pause: HitlPause, decisions: [[String: Any]], conversation: String, bot: BotProfile
     ) -> AsyncThrowingStream<StreamEvent, Error> {
-        guard var loop = loops.removeValue(forKey: conversation), loop.pendingId == pause.id else {
-            return AsyncThrowingStream { $0.finish(throwing: APIError(kind: .server, status: 409, message: L("device.expired"))) }
-        }
-        loop.body["messages"] = Self.answering(loop.body["messages"], decisions: decisions)
-        return run(loop, sessionId: conversation, announce: nil)
+        chat.resume(pause, decisions: decisions, conversation: conversation)
     }
 
     func openPause(in conversation: ConversationSummary) -> HitlPause? { nil }
-
-    /// Stream completions until the model answers without tool calls, or pauses for the phone's tools.
-    private func run(_ start: ToolLoop, sessionId: String, announce bot: BotProfile?) -> AsyncThrowingStream<StreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                var loop = start
-                if let bot {
-                    sessionBots[sessionId] = bot.id
-                    continuation.yield(.conversation(sessionId))
-                }
-                do {
-                    while true {
-                        var calls = ToolCallAccumulator()
-                        var text = ""
-                        if loop.rounds >= Self.maxToolRounds { loop.body["tools"] = nil; loop.body["tool_choice"] = nil }
-                        var body = loop.body
-                        try await streamWithToolFallback(&body, calls: &calls) { event in
-                            switch event {
-                            case .text(let delta): text += delta
-                            case .thinking(let delta): loop.thinking += delta
-                            default: break
-                            }
-                            continuation.yield(event)
-                        }
-                        loop.body = body
-                        loop.answer += text
-                        let made = calls.calls
-                        guard !made.isEmpty else { break }
-                        loop.rounds += 1
-                        var messages = loop.body["messages"] as? [[String: Any]] ?? []
-                        messages.append(ToolCallAccumulator.assistantMessage(text: text, calls: made))
-                        loop.body["messages"] = messages
-                        for call in made {
-                            continuation.yield(.tool(id: call.id, name: DeviceConnectors.isDeviceTool(call.name) ? L("device.tool.\(call.name)") : call.name, done: false))
-                        }
-                        let pending = "local-" + UUID().uuidString.lowercased()
-                        let raw: [String: Any] = [
-                            "pending_id": pending,
-                            "action_requests": made.map { ["name": $0.name, "args": $0.arguments] },
-                        ]
-                        if let pause = HitlPause.parse(raw) {
-                            loop.pendingId = pause.id
-                            loops[sessionId] = loop
-                            continuation.yield(.pause(pause))
-                        }
-                        // The chat answers the pause (at once for reads) and `resume` carries on.
-                        continuation.yield(.done)
-                        continuation.finish()
-                        running[sessionId] = nil
-                        return
-                    }
-                    continuation.yield(.done)
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-                await sync(sessionId: sessionId, user: loop.user, startedAt: loop.startedAt, answer: loop.answer, thinking: loop.thinking, model: loop.model)
-                running[sessionId] = nil
-            }
-            running[sessionId] = task
-            continuation.onTermination = { _ in task.cancel() }
-        }
-    }
 
     /// The model's tool calls answered in order: a result, or the user's refusal.
     static func answering(_ messages: Any?, decisions: [[String: Any]]) -> [[String: Any]] {
@@ -385,20 +320,6 @@ final class LynxceBackend: ChatBackend {
             list.append(["role": "tool", "tool_call_id": call["id"] as? String ?? "", "content": content])
         }
         return list
-    }
-
-    /// Some gateway models refuse `tools`: then ask once more without them.
-    private func streamWithToolFallback(
-        _ body: inout [String: Any], calls: inout ToolCallAccumulator, onEvent: (StreamEvent) -> Void
-    ) async throws {
-        do {
-            try await streamCompletion(body, calls: &calls, onEvent: onEvent)
-        } catch let error as APIError where error.status == 400 && body["tools"] != nil {
-            body["tools"] = nil
-            body["tool_choice"] = nil
-            calls = ToolCallAccumulator()
-            try await streamCompletion(body, calls: &calls, onEvent: onEvent)
-        }
     }
 
     static func chatBody(
@@ -525,7 +446,7 @@ final class LynxceBackend: ChatBackend {
     }
 
     func stop(conversation: String, bot: BotProfile) async {
-        running[conversation]?.cancel()
+        chat.stop(conversation)
     }
 
     // MARK: Voice, push, account
@@ -638,7 +559,7 @@ final class LynxceBackend: ChatBackend {
     }
 
     func signOut() async {
-        for task in running.values { task.cancel() }
+        chat.cancelAll()
         _ = try? await Self.call(.post, "/api/auth/logout", bearer: grant.accessToken, json: [:])
         Keychain.set(nil, for: Self.grantKey)
     }

@@ -8,8 +8,8 @@ name: Octop Bot macOS
 #   APPLE_API_KEY_P8_BASE64      App Store Connect API key (AuthKey_XXXX.p8), base64
 #   APPLE_API_KEY_ID             its Key ID
 #   APPLE_API_ISSUER             its Issuer ID
-# The Windows client is still built with package-bot-windows.py and is not part
-# of this workflow. The inherited octop-desktop.yml builds the upstream Octop app.
+# The Windows client has its own manual workflow, octop-bot-windows.yml. The
+# inherited octop-desktop.yml builds the upstream Octop app.
 
 on:
   push:

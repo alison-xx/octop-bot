@@ -50,6 +50,7 @@ import {
   formatServerYmd,
 } from "../../utils/formatMessageTime";
 import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
+import { BOT_HOME } from "../../utils/botClientRoute";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { roomDraft, type RoomRequest } from "./GroupRoomDraft";
 import { resolveMentions } from "./groupMentions";
@@ -688,7 +689,8 @@ function GroupRoomView({
                         {row.thread_id && row.agent_id && (
                           <Link
                             to={
-                              "/chat/" +
+                              BOT_HOME +
+                              "/bots/" +
                               encodeURIComponent(row.agent_id) +
                               "/" +
                               encodeURIComponent(row.thread_id)

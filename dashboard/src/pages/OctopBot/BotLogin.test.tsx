@@ -121,8 +121,71 @@ describe("Bot web sign-in", () => {
     expect(
       await screen.findByRole("heading", { name: "Workspace" }),
     ).toBeInTheDocument();
-    expect(login).toHaveBeenCalledWith("13800000000", "123456", "en", "");
+    expect(login).toHaveBeenCalledWith(
+      "13800000000",
+      "123456",
+      "en",
+      "",
+      undefined,
+    );
     expect(getAuthToken()).toBe("issued");
+  });
+
+  it("asks a new email account for a password, then signs in with the same code", async () => {
+    vi.spyOn(authApi, "getLynxceIdentityStatus").mockResolvedValue({
+      enabled: true,
+      claimed: false,
+      cloud: true,
+    });
+    vi.spyOn(authApi, "lynxceSendCode").mockResolvedValue({ channel: "email" });
+    const login = vi
+      .spyOn(authApi, "lynxceCodeLogin")
+      .mockRejectedValueOnce(
+        new Error(
+          '422: {"error":{"code":"LYNXCE_SIGNUP_PASSWORD_REQUIRED","message":"Set a password"}}',
+        ),
+      )
+      .mockResolvedValue(session as never);
+    open();
+    await userEvent.type(
+      await screen.findByLabelText("lynxceSignIn.target"),
+      "new@b.cn",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "lynxceSignIn.send" }),
+    );
+    await screen.findByText("lynxceSignIn.sentEmail");
+    await userEvent.type(screen.getByLabelText("lynxceSignIn.code"), "123456");
+    expect(login).toHaveBeenLastCalledWith(
+      "new@b.cn",
+      "123456",
+      "en",
+      "",
+      undefined,
+    );
+    expect(await screen.findByText("Set a password")).toBeInTheDocument();
+    const submit = screen.getByRole("button", {
+      name: "botOnboarding.loginTitle",
+    });
+    await userEvent.type(
+      screen.getByLabelText("lynxceSignIn.newPassword"),
+      "short",
+    );
+    expect(submit).toBeDisabled();
+    await userEvent.type(
+      screen.getByLabelText("lynxceSignIn.newPassword"),
+      "-enough{Enter}",
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Workspace" }),
+    ).toBeInTheDocument();
+    expect(login).toHaveBeenLastCalledWith(
+      "new@b.cn",
+      "123456",
+      "en",
+      "",
+      "short-enough",
+    );
   });
 
   it("binds a server set up with a local password once, through Lynxce", async () => {

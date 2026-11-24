@@ -503,7 +503,7 @@ class CronManager:
         row = self._repos.cron_repo.get(cron_id)
         if row is None or not row.trigger.startswith("date:"):
             return
-        if row.last_status not in {"ok", "error"}:
+        if row.last_status not in {"ok", "error", "waiting"}:
             return
         if row.enabled:
             self._repos.cron_repo.update(cron_id, enabled=False)
@@ -525,7 +525,7 @@ class CronManager:
         row = self._repos.cron_repo.get(job_id)
         if row is None or not row.trigger.startswith("date:"):
             return
-        if row.last_status in {"ok", "error"} or row.last_run_at is not None:
+        if row.last_status in {"ok", "error", "waiting"} or row.last_run_at is not None:
             if row.enabled:
                 self._repos.cron_repo.update(job_id, enabled=False)
             return
