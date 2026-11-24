@@ -480,7 +480,7 @@ const MEDIA = { image: { model: "image2.6", std: 70, hd: 70 }, video: { model: "
 const imgN = credits => Math.floor(credits / MEDIA.image.std).toLocaleString("en-US");
 const vidN = credits => Math.floor(credits / (MEDIA.video.p768 * 6)).toLocaleString("en-US");
 const PLANS = [
-  { id:"trial", name:"体验", m:0, monthly:300, credits:[["注册送 300 积分","14 天有效"]],
+  { id:"trial", name:"体验", m:0, monthly:100, credits:[["注册送 100 积分","14 天有效，仅限 Octop"]],
     items:[["文本模型","全部可用模型"],["作图",(c)=>`标准画质 · 约 ${imgN(c)} 张`],["做视频",(c)=>`768p · 约 ${vidN(c)} 条 6 秒视频`],["协同 Bot","3 个"],["群聊","1 个"],["同步设备","2 台"],["云电脑","标准，同时 1 台"],["云端文件","1 GB"],["定时任务","3 个"],["支持","社群"]], btn:"当前套餐", cur:true },
   { id:"standard", name:"标准", m:69, y:745, monthly:7000, credits:[["7,000 积分每月","1 个月有效"]], gift:"每月加赠 700 积分",
     items:[["文本模型","全部可用模型"],["作图",(c)=>`标准画质 · 约 ${imgN(c)} 张`],["做视频",(c)=>`768p · 约 ${vidN(c)} 条 6 秒视频`],["协同 Bot","20 个"],["群聊","10 个"],["同步设备","3 台"],["云电脑","标准，同时 1 台"],["云端文件","10 GB"],["定时任务","20 个"],["支持","社群"]], btn:"开通标准版" },

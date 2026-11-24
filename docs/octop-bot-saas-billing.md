@@ -1,6 +1,6 @@
 # Octop Bot 的会员、充值、个人中心和更新日志（设计稿）
 
-状态：**定稿**（2026-11-25）。会员、加油包和规则以总管的《会员权益与定价定稿》（`/Users/alex/Desktop/octop-bot-team/会员权益与定价定稿.md`，用户授权总管直接定下）为准，本文 §0、§3 照它写。负责：岗位·桌面与 Web。
+状态：**定稿**（2026-11-25）。会员、加油包和规则以总管的《会员权益与定价定稿》（团队共享目录，用户授权总管直接定下）为准，本文 §0、§3 照它写。负责：岗位·桌面与 Web。
 
 用户原话：
 - 「再给 octop bot 单独在官网做一个充值页和登录以及个人中心体系，帮我设计规划好 octop bot 的会员套餐和积分充值，以及个人中心 ui 那些，可以参考复用部分之前灵策的，然后引导充值也是引导到 octop 这个充值页来。……把 octop bot 设计得更像一个 SaaS 产品、AI 工具一些。」
@@ -8,11 +8,11 @@
 - 「官网的那几个定价的你参考 lobster，跟他们类似，然后我们的根据实际情况来，把视频和作图模型也加进去」。
 - 「然后再把所有客户端的充值、积分、余额不足等等各种充值和开通的 ui 交互功能都做好设计好」。
 
-可点原型：[`docs/assets/octop-bot-saas-billing/prototype.html`](assets/octop-bot-saas-billing/prototype.html)（浏览器直接打开，顶部条切换页面；官网部分直接用 `website/assets/site.css`；客户端部分是桌面窗口和手机线框）。
+可点原型：[`docs/assets/octop-bot-saas-billing/prototype.html`](assets/octop-bot-saas-billing/prototype.html)（浏览器直接打开，顶部条切换页面；官网部分直接用 `website/assets/site.css`；客户端部分是桌面窗口和手机线框）。原型中的体验积分以本文为准：注册赠送 100 积分，14 天有效，仅限 Octop 使用。
 
 相关文档：
 - 灵策侧数据模型、工作量、发版模块：灵策仓库 `team/方案/2026-11-25-OctopBot运营后台设计.md`（2.3、2.4、3 节，下称「运营后台设计」）。
-- 灵策现有能力盘点：`/Users/alex/Desktop/octop-bot-team/灵策能力盘点-官网.md`（下称「盘点」）。
+- 灵策现有能力盘点：灵策对接的《灵策能力盘点-官网》（团队共享目录，下称「盘点」）。
 - 两套账号：`docs/octop-bot-accounts.md`。
 
 ## 0. 已定
@@ -25,7 +25,7 @@
 | P4 | 积分有效期 | 月度积分 1 个月、签到当月、体验 14 天、加油包 365 天，第一期就做；先到期的先用 |
 | P5 | 续费 | 第一期不做自动续订，页面写「到期前 3 天提醒，手动续费」；同时申请微信、支付宝代扣，开通后第二期上线 |
 | P6 | iPhone | 只卖加油包对应的内购积分包（1.0.2 起），不卖会员、不放外链，App 内显示当前套餐 |
-| P7 | 新用户 | 通过 Octop Bot 注册的灵策账号自动发 300 积分，14 天有效，不和灵策自己的注册奖励叠加 |
+| P7 | 新用户 | 通过 Octop Bot 注册的灵策账号自动发 100 积分，14 天有效，仅限 Octop 使用，不和灵策自己的注册奖励叠加 |
 | P8 | 加油包 | ¥20 / 50 / 100 / 200 / 500 和自定义 ¥10–5,000，1 元 = 100 积分，365 天有效，可与会员叠加，未订阅也能买 |
 | P9 | 体验档限制 | 协同 Bot 3、群聊 1、同步设备 2、标准云电脑同时 1 台、云端文件 1 GB、定时任务 3；本机 Bot 不限 |
 | P10 | 登录 | 第一期官网直接调灵策验证码登录；三个子域单点登录以后再做 |
@@ -35,12 +35,15 @@
 | P14 | 签到 | 付费会员每天 100 积分（约 3,000/月），当月有效，第二期；第一期页面不显示签到那一行 |
 | P15 | 加赠 | 标准、进阶每月加赠 10%；专业、卓越只在首个权益月加赠 20% |
 | P16 | 模型折扣 | 第一期不做，页面不写 |
-| P17 | 客户端「去充值」 | 票据只能换**一次性、5 分钟有效、只能查余额、下单充值和查本会话自己下的订单状态（只读）**的受限会话，不允许换完整网页会话。受限会话上线前，客户端直接打开灵策收银台（Octop Bot 品牌、预选、回跳）；上线后再开官网免登录直达（§5.3） |
+| P17 | 客户端「去充值」 | 票据只能换**一次性、5 分钟有效、只能查余额、下单充值和查本会话自己下的订单状态（只读）**的受限会话，不允许换完整网页会话。受限会话上线前，客户端直接打开灵策收银台（Octop Bot 品牌、按接口上线情况预选、回跳）；上线后再开官网免登录直达（§5.3） |
+| P18 | 客户端「个人中心」直达 | 个人中心打开 `account.html#code=…`，充值入口打开 `pricing.html#ticket=…`；落地页先读取片段中的码，再用 `history.replaceState` 清除，之后以对应的 `account` 或 `recharge` 作用域通过 POST 兑换，会话只放内存或 `sessionStorage`。兑换失败显示正常登录；改密码、换绑、注销和管理登录设备需要再次验证。接口上线前关闭相关开关（§5.3） |
+| P19 | 积分可用范围 | 会员和注册体验积分仅限 Octop 使用；加油包、充值和 iOS 内购积分通用。余额及扣费规则见 §3.4。 |
+| P20 | 开卖时间 | 会员和加油包在灵策列车 B 上线后一起开卖，预计 11 月 30 日前后；此前按钮显示「即将开通」，登录和个人中心先上线。 |
 
 ## 1. 现状
 
 - **账号**：灵策账号（手机号 / 邮箱验证码、密码、WorkBuddy、微信）。官网的登录和个人中心只管灵策账号这一侧；本机账号和本机 Bot 在官网完全看不到（`octop-bot-accounts.md`）。
-- **充值**：客户端调 Octop 后端 `POST /api/octop-bot/wallet/recharge`，后端用灵策 `POST /api/billing/recharge/checkout-link` 换 15 分钟票据，打开灵策收银台 `admin.lynxce.cn/recharge?token=…`。URL 在 `src/octop/infra/auth/lynxce_wallet.py` 精确校验，手机端各有一份同样的校验。
+- **充值**：客户端调 Octop 后端 `POST /api/octop-bot/wallet/recharge`，后端用灵策 `POST /api/billing/recharge/checkout-link` 换 15 分钟票据，打开灵策收银台。URL 在 `src/octop/infra/auth/lynxce_wallet.py` 精确校验，手机端各有一份同样的校验。
 - **iOS**：苹果内购积分包（`/api/octop-bot/wallet/apple/*`）。
 - **客户端入口**：设置 → 账号与积分（`CreditsPanel`：余额、30 天用量、充值）、对话里的积分不足卡片（`CreditsRequiredCard`）、余额偏低横幅（`LowCreditsBanner`）、账号菜单里的余额。
 - **错误**：`BOT_CLOUD_CREDITS_REQUIRED`（402，文案指向 admin.lynxce.cn/recharge）；模型服务商余额不足走 `stream_errors.insufficient_balance`。
@@ -72,10 +75,10 @@
 | 页面 | 地址 | 内容 | 原型 |
 |------|------|------|------|
 | 定价·会员 | `/pricing.html` | 顶部切换「会员套餐 / 加油包」；月付 / 年付（限时 9 折）切换；五档卡片；下面是按量单价和模型价格表（文本 / 作图 / 视频）；常见问题 | ![月付](assets/octop-bot-saas-billing/pricing.png) ![年付](assets/octop-bot-saas-billing/pricing-year.png) |
-| 定价·加油包 | `/pricing.html#credits` | 左边金额卡片（含自定义金额），右边固定的结算栏（价格、到账、有效期、购买；底部引导看会员）。受限会话上线后，客户端「买加油包」直接打开这一页（§5.3） | ![](assets/octop-bot-saas-billing/packs.png) |
-| 登录 | `/login.html?next=…` | 验证码 / 密码两个标签，WorkBuddy；没有账号自动注册（带 `X-Lynxce-Signup-Site: octopbot`）；登录后回到 `next` | ![](assets/octop-bot-saas-billing/login.png) |
+| 定价·加油包 | `/pricing.html#credits` | 左边金额卡片（自定义金额按 §5.2 开关显示），右边固定的结算栏（价格、到账、有效期、购买；底部引导看会员）。受限会话上线后，客户端「买加油包」直接打开这一页（§5.3） | ![](assets/octop-bot-saas-billing/packs.png) |
+| 登录 | `/login.html?next=…` | 和 App 一致的五种方式（§5.1）：手机验证码、邮箱验证码、密码、微信扫码、WorkBuddy；没有账号自动注册（带 `X-Lynxce-Signup-Site: octop-bot`）；登录后回到 `next` | ![](assets/octop-bot-saas-billing/login.png) |
 | 支付结果 | `/pay/result.html?recharge=paid&order=…` | 到账多少、当前余额；「返回 Octop Bot」和「查看订单」 | ![](assets/octop-bot-saas-billing/result.png) |
-| 个人中心·概览 | `/account/` | 积分余额（会过期 / 永久，最近到期日，扣费顺序说明）、当前套餐和到期日、本月已用；本月用量按类别、按 Bot；「积分活动」：近一年每天用掉的积分，像 GitHub 贡献图一样按周排成 7 行，颜色越深用得越多，悬停看当天数字，可切换每日 / 每周 / 累计，上方写近一年总量、用过的天数和最长连续天数，「分享」生成一张图 | ![](assets/octop-bot-saas-billing/account.png) |
+| 个人中心·概览 | `/account/` | 本产品可用积分（专属 + 通用），分列明细和 30 天内即将到期的积分，并说明扣费顺序、当前套餐和到期日、本月已用；本月用量按类别、按 Bot；「积分活动」：近一年每天用掉的积分，像 GitHub 贡献图一样按周排成 7 行，颜色越深用得越多，悬停看当天数字，可切换每日 / 每周 / 累计，上方写近一年总量、用过的天数和最长连续天数，「分享」生成一张图 | ![](assets/octop-bot-saas-billing/account.png) |
 | 用量明细 | `/account/#usage` | 按月；类别：文本对话、作图、做视频、云电脑、云电脑磁盘；维度切换 Bot / 模型 / 类别；导出 CSV | ![](assets/octop-bot-saas-billing/usage.png) |
 | 订单与发票 | `/account/#orders` | 汇总（累计支付、可开票、已开票）；订单列表；单张或批量开票 | ![](assets/octop-bot-saas-billing/orders.png) |
 | 套餐 | `/account/#plan` | 当前档位和到期日、续费、改年付、升级 | ![](assets/octop-bot-saas-billing/plan.png) |
@@ -92,7 +95,7 @@
 
 | 档位 | tier | 月付 | 年付（限时 9 折） | 每月积分（1 个月有效） | 加赠 | 签到（第二期） |
 |---|---|---|---|---|---|---|
-| 体验 | `trial` | ¥0 | — | 注册送 300（14 天有效） | — | — |
+| 体验 | `trial` | ¥0 | — | 注册送 100（14 天有效，仅限 Octop 使用） | — | — |
 | 标准 | `standard` | ¥69 | ¥745（原 ¥828） | 7,000 | 每月 10%（700） | 每天 100，约 3,000/月 |
 | 进阶（稳定使用推荐） | `plus` | ¥99 | ¥1,069（原 ¥1,188） | 10,000 | 每月 10%（1,000） | 同上 |
 | 专业 | `pro` | ¥199 | ¥2,149（原 ¥2,388） | 20,000 | 首月 20%（4,000） | 同上 |
@@ -117,7 +120,7 @@
 | 支持 | 社群 | 社群 | 社群 | 工单优先 | 专属顾问 |
 | 本机 Bot（🔒） | 不限、免费、不扣积分 | 同左 | 同左 | 同左 | 同左 |
 
-- **作图和做视频的数量换算**：卡片上写「本档每月积分约可生成 N 张图」「约 N 条 6 秒视频」。官网读灵策后台当前的默认作图模型、默认视频模型和它们的单价，用「每月积分 ÷ 单价」实时算，向下取整；体验档按 300 积分算。模型名也读后台，不写死。按现价（作图 70 积分/张，768p 视频 10.4 积分/秒）：体验 4 张 / 4 条，标准 100 / 112，进阶 142 / 160，专业 285 / 320，卓越 1,000 / 1,121（只算月度积分）。价格接口是灵策公开的 `GET https://api.lynxce.cn/api/models/pricing-catalog`，`imageModels[0]`、`videoModels[0]` 即默认模型；官网浏览器直接调需要灵策放行跨域，放行前在构建时拉取或经 bot.lynxce.cn 转发。
+- **作图和做视频的数量换算**：卡片上写「本档每月积分约可生成 N 张图」「约 N 条 6 秒视频」。官网读灵策后台当前的默认作图模型、默认视频模型和它们的单价，作图用「积分 ÷ 每张单价」、视频用「积分 ÷（每秒单价 × 6）」实时算，向下取整；体验档按 100 积分算。模型名也读后台，不写死。按现价（作图 70 积分/张，768p 视频 10.4 积分/秒）：体验 1 张 / 1 条，标准 100 / 112，进阶 142 / 160，专业 285 / 320，卓越 1,000 / 1,121（只算月度积分）。价格接口是灵策公开的 `GET https://api.lynxce.cn/api/models/pricing-catalog`，`imageModels[0]`、`videoModels[0]` 即默认模型；官网浏览器直接调需要灵策放行跨域，放行前在构建时拉取或经 bot.lynxce.cn 转发。
 - 数量上限（协同 Bot、群聊、设备、云电脑并发、文件空间、定时任务）和作图高清、视频 1080p 的档位开关，页面写数字；第一期客户端先不拦，第二期强制执行（§8.4）。
 - 成本核对：会员积分按面值消耗，消耗时文本是成本 × 3、云电脑和磁盘是成本 × 2，积分全部用完时成本在面值的 33%–50%。
 
@@ -134,13 +137,14 @@
 
 一次性购买，到账即用，365 天有效，可与会员叠加，未订阅也能买。
 
-### 3.4 积分怎么扣（灵策钱包规则）
+### 3.4 积分可用范围和扣费
 
-- 只有一个灵策钱包。界面上分两类显示：**会过期的积分**（体验、签到、月度会员积分、加油包，显示最近一次到期的日期和数量）和**永久积分**（灵策原有余额）。
-- 扣费顺序：先到期的先用（体验 / 签到 / 当月会员积分 → 加油包），最后是灵策原有余额。
-- Octop Bot 会员积分在灵策其它地方也能用，反过来也一样（运营后台设计 2.3.3）。
-- 会员到期不续：不再发下一期，已发的积分按各自的有效期过期，不收回。
-- 欠费（余额为 0）：当前回合跑完这一步停下；云电脑暂停（文件保留），见 §8.3。
+- 会员积分（每月积分、首月加赠、年付按月到账）和注册体验积分只能在 Octop 使用。
+- 加油包、充值和 iOS 内购买的积分是通用积分，可在 Octop 和灵策使用；在 Octop 购买的积分有效期为 365 天。
+- 扣费时，在本产品可用的专属积分和通用积分中先用到期早的；没有补扣，Octop 专属积分和灵策专属积分互不动用。
+- 灵策列车 B 上线前已有的余额全部视为通用积分，永久有效。
+- 余额显示「本产品可用 = 专属 + 通用」，分开列出明细和 30 天内即将到期的积分；具体字段名随列车 B 给出。
+- 会员到期不续时，不再发下一期积分，已发积分按各自的有效期过期，不收回。余额不足时，当前回合跑完这一步停下，云电脑暂停并保留文件，见 §8.3。
 
 ## 4. 公开单价
 
@@ -161,11 +165,68 @@
 
 ### 5.1 登录（第一期）
 
-- 官网直接调灵策的验证码 / 密码登录接口（`/api/auth/phone-code` + `phone-login`、`email-code` + `email-login`、`password-login`），拿到灵策的 Bearer 会话令牌，存在官网自己的 `localStorage`（和灵策网页端一样），刷新走 `POST /api/auth/refresh`。注册来源带 `X-Lynxce-Signup-Site: octopbot`，并带 `X-Lynxce-App: octopbot`。
+- 官网直接调灵策的验证码 / 密码登录接口（`/api/auth/phone-code` + `phone-login`、`email-code` + `email-login`、`password-login`），拿到灵策的 Bearer 会话令牌，存在官网自己的 `localStorage`（和灵策网页端一样），刷新走 `POST /api/auth/refresh`。注册来源带 `X-Lynxce-Signup-Site: octop-bot`（灵策中台的应用 id，带连字符，和 Octop 客户端一致），并带 `X-Lynxce-App: octopbot`。
 - 前提：灵策的跨域白名单加 `https://octop-bot.lynxce.cn`（改生产环境变量，0.5 小时）。
 - 「用灵策登录」（OIDC）的令牌只能调 userinfo，个人中心用不了，不用它。
 - 官网、bot.lynxce.cn、admin.lynxce.cn 各登各的。三站单点要灵策种 `.lynxce.cn` 的 HttpOnly 刷新 Cookie，碰登录、高风险（3–5 天），放到以后。
-- 微信扫码登录要灵策把官网加进微信中转白名单（0.5–1 天），第一期可不做。
+- 微信扫码登录要灵策把官网加进微信中转白名单（0.5–1 天）。
+
+**登录方式**（用户 11-25 定，和 App 一致；样式等桌面客户端的登录改版定稿后对齐）：
+
+| 方式 | 说明 | 官网怎么接 |
+|---|---|---|
+| 手机验证码 | 没有账号自动注册 | `phone-code` + `phone-login` |
+| 邮箱验证码 | 没有账号自动注册；新邮箱首次登录要同时设密码 | `email-code` + `email-login` |
+| 密码 | 手机号或邮箱加密码 | `password-login` |
+| 微信扫码 | 网页标准扫码登录 | 走灵策中转，不用在微信开放平台加回调域（灵策分支 `feat/octopbot-wechat-relay`，按 11-28 前上线排），流程见下 |
+| WorkBuddy | 官方图标 | 灵策加 WorkBuddy 站点 `octop-bot`（总管 11-25 定做，和微信中转同车，11-28 前），流程见下 |
+
+灵策还不支持的方式先把界面做好，用开关关着，支持后打开。
+
+**微信扫码流程**（官网直接调 api.lynxce.cn，依赖跨域白名单 `cors-octop-bot`，已批，等列车）：
+
+1. `GET https://api.lynxce.cn/api/auth/wechat-web/config?site=octop-bot`（带 `X-Lynxce-Client: web`），返回 `{enabled, appId, redirectUri, state}`；`enabled=false` 时隐藏微信按钮。
+2. 用这三个值打开微信扫码页 `open.weixin.qq.com/connect/qrconnect`（`scope=snsapi_login`），不引入第三方脚本。
+3. 扫码后微信回到灵策中转页，再 302 到官网静态页 `/auth/wechat-callback.html#code=…&state=…`；只有 `state` 没有 `code` 表示用户取消，提示重新扫码。
+4. 回调页从片段读取参数并先用 `history.replaceState` 清除，再调 `POST /api/auth/wechat-web/login {code, state}`（带 `X-Lynxce-Client: web`、`X-Lynxce-Signup-Site: octop-bot`）。直接成功返回会话；新微信号返回 `needBindPhone` 和 10 分钟有效的 `bindToken`，先 `POST /api/auth/phone-code {phone}`，再 `POST /api/auth/wechat-web/bind-phone {bindToken, phone, code, password?}`（新号可以不设密码，设了要 ≥8 位）。
+5. `state` 一次性，刷新回调页会失败，提示重新扫码。
+6. 防登录 CSRF（Codex 提醒）：发起扫码时把 `state` 存进 `sessionStorage`；回调页先拿 URL 里的 `state` 和存的比对，不一致就不调 `wechat-web/login`，提示重新扫码；比对完删掉存的 `state`。灵策服务端会校验 `state` 的签名并一次性作废，但「是不是本浏览器发起的」只能由官网核对。
+
+**WorkBuddy 流程**（复用灵策智算的 WorkBuddy 应用，同一个 WorkBuddy 用户在官网和桌面登录的是同一个灵策账号）：
+
+1. `GET https://api.lynxce.cn/api/oauth/workbuddy/config?site=octop-bot` → `{enabled}`，`false` 就隐藏按钮。
+2. 发起登录时生成 32 字节随机数，编码为 base64url 的 `clientState` 并存入 `sessionStorage`；跳转到灵策 WorkBuddy 登录入口时带上 `clientState` 和站内相对路径 `returnTo`。`returnTo` 必须以 `/` 开头，不能以 `//` 或 `/login` 开头，否则按 `/` 处理。
+3. 授权后回到官网 WorkBuddy 落地页，优先从 `#code=` 读取交接码；兼容旧回调时，片段里没有码再从查询参数读取。用户拒绝或出错时显示原因并提示重试。
+4. 落地页读取交接码后，先用 `history.replaceState` 清除地址中的码，再用 `POST /api/oauth/workbuddy/session` 发送请求体 `{code, clientState}` 换会话；交接码有效期为 120 秒。核对不匹配时灵策返回 401 `workbuddy_client_state_mismatch`。成功后跳到 `next`，只接受本站路径。灵策上线后将强制核对 `clientState`，并把回调切到片段。
+5. 新 WorkBuddy 用户自动建灵策账号，注册来源记 `octop-bot`，不用绑手机号。
+
+- 邮箱：新邮箱首次验证码登录要带 `password`，否则返回 400 `signup_password_required`，界面在这时补出密码框。
+- WorkBuddy 图标：WorkBuddy 开放平台的公开渠道查不到品牌或按钮使用规范；灵策自己的登录页用的是通用登录图标加「WorkBuddy 一键进入」，没用 WorkBuddy 的 logo。总管 11-25 定：照用户要求用 WorkBuddy、微信的官方 logo 原文件，不用通用图标。
+- 找回或设置密码：没有单独接口，用「发验证码，再带验证码和新密码调 `email-login` 或 `phone-login`」实现；密码登录时的「忘记密码」走这条路。
+- 登录后顶栏的头像读 `GET /api/user/profile` 的 `data.avatarUrl`（公开地址），没有头像时显示名字首字。
+
+微信、WorkBuddy 按钮带官方图标（用户 11-25 要求）：微信用微信官网（weixin.qq.com）公开的图标原文件（用户定），WorkBuddy 用 WorkBuddy 官网的站点图标原文件，都不改动、不自己画。桌面客户端取素材，放在团队共享目录的「登录页改版-方案/品牌图标」，官网 PR-C 复用，换掉稿里的占位。
+
+
+**登录页设计**（沿用桌面客户端登录改版的方向 B，等用户选定 App 的方向后对齐；可点稿 [`login-b.html`](assets/octop-bot-saas-billing/login-b.html)）：
+
+- 顶部是官网导航；左边是 Chief 舞台（大标题、三条卖点、团队头像轮动展示 Bot 刚干完的活），右边是不加卡片框的表单。手机上舞台缩成顶部横幅，只留 Chief 和标题。
+- 从定价、个人中心、结账跳来时，表单上方有一个「登录后回到「定价」」的提示，登录后回到原页面（`next` 参数，只接受本站路径）。
+- 登录和注册是同一页，不单独做注册：验证码登录对没有账号的手机号或邮箱自动注册，页面写明这一点；密码登录时写「没有账号或忘了密码？用验证码登录」。理由是注册和登录分开会多一步选择，而灵策的验证码本来就是登录即注册。
+- 排法和 App 一致（用户 11-25 定的排法 B）：一个「手机号或邮箱」输入框，自动识别是手机还是邮箱，加验证码（「获取验证码」收在输入框里）；「用密码登录」是一个文字链接，点了把验证码框换成密码框；下面「其他方式」并排两个半宽按钮：微信登录、WorkBuddy，都用官方图标。点微信登录，表单原地换成扫码流程。
+- 没有「仅在本机使用」入口（官网只对应灵策账号）。底部写「登录即表示同意灵策智算《服务条款》和《隐私政策》」，链到灵策的两页。
+- 图标和组件和桌面客户端共用一套：微信用微信官方站点的 apple-touch-icon（`wechat.png`，180×180），WorkBuddy 用其官网站点图标（`workbuddy.svg`），原文件、来源和校验和在团队共享目录的「登录页改版-方案/品牌图标」；按原样缩放，不改色、不裁切、不加描边。
+
+![亮色](assets/octop-bot-saas-billing/login-b-light.png)
+![暗色](assets/octop-bot-saas-billing/login-b-dark.png)
+![手机](assets/octop-bot-saas-billing/login-b-mobile.png)
+
+**安全要求**（安全审计 3.5、3.6，PR-C 起执行）：
+
+- 全站不用内联脚本（现有页面头部的主题和语言初始化挪到本站 js 文件），接口和数据文件里的文本一律用 `textContent`，不用 `innerHTML`。
+- CSP：`script-src 'self'`；`connect-src 'self' https://dl.lynxce.cn https://api.lynxce.cn https://api.github.com`（下载页读签名清单、登录和个人中心调灵策、GitHub 星标数）；宣传片和图片如果放在别的域名，`img-src`、`media-src` 要加上。打开登录开关之前，必须先用 `Content-Security-Policy-Report-Only` 跑一天，没有报错后正式启用 CSP。
+- `account.html`、`pricing.html` 加 `Referrer-Policy: no-referrer`。由于登录会话存于 `localStorage`，官网任何页面永远不引入第三方脚本。
+- 回跳参数 `from`、`next` 只接受白名单值和本站固定路径；官网不转发验证码接口，不持有服务端密钥。
 
 ### 5.2 付款（第一期跳灵策收银台）
 
@@ -175,14 +236,16 @@
 官网定价页选好档位或加油包（已登录）
   → 官网用 Bearer 调 POST /api/billing/recharge/checkout-link {site:"octopbot", returnUrl}
   → 跳返回的 admin.lynxce.cn/recharge 地址（换成 Octop Bot 品牌），积分充值加 &tab=boost 直接停在积分充值页签
-  → 付款（微信 / 支付宝）
+  → 付款（微信 / 支付宝 / 银行卡）
   → 「返回 Octop Bot」回到 returnUrl，灵策在后面追加 recharge=paid&order=<订单号>；官网查 GET /api/user/purchase-orders/:id/status，刷新余额并显示结果
   → 从客户端来的：结果页「返回 Octop Bot」打开 octop-bot://recharge/done
 ```
 
-- 收银台品牌和回跳：灵策已开发完（分支 `feat/octopbot-checkout-brand`，等上车）。站点 id 是 `octopbot`（没有连字符，和 `signupSite` 一致）；`returnUrl` 只允许 `octop-bot.lynxce.cn` 下的 https 地址（非生产环境可以 `http://localhost`），其它地址返回 400 `return_url_not_allowed`。
-- **第一期只把积分充值（加油包）导到收银台**：会员列车给套餐加上「所属产品」之前，灵策收银台还会显示灵策自己的企业版、个人版套餐。加上以后，Octop Bot 打开时只显示 Octop Bot 的套餐和加油包，会员购买才走这里。
-- 会员下单现在只有微信；支付宝要接中台收银台（登记 `octop-web` 产品，2–4 小时）。
+- 收银台品牌和回跳：灵策已开发完（分支 `feat/octopbot-checkout-brand`，等上车）。充值站点 id 是 `octopbot`（没有连字符，灵策只认这个值，填 `octop-bot` 返回 400）；它和注册来源 `signupSite` 是两个字段，后者见 §12；`returnUrl` 只允许 `octop-bot.lynxce.cn` 下的 https 地址（非生产环境可以 `http://localhost`），其它地址返回 400 `return_url_not_allowed`。
+- 收银台支持微信、支付宝和银行卡，官网文案写「支持微信、支付宝、银行卡（Visa / Mastercard 等）」。银行卡走 Stripe，以人民币标价、澳元收款，Stripe 自动换算成用户当地货币；官网不单独接 Stripe，也不显示美元价。
+- `checkout-link` 请求体除 `site`、`returnUrl` 外，可二选一传入 `packageId` 或 `amountYuan`。`packageId` 是从 `GET /api/billing/recharge/packages?product=octop_bot` 取得的字符串，不存在时不报错，只是不预选；`amountYuan` 是 10–5000 的整数。同时传入两个字段返回 400；灵策尚未上线某字段时传入该字段也返回 400。
+- `packageId` 随下一趟灵策列车上线，`amountYuan` 跟列车 B 一起或排在其后。分别用 `checkoutPackageId` 和 `checkoutAmount` 开关控制；相应能力上线前不发送字段，开卖后、相应预选能力上线前，官网按钮显示「去收银台选择金额」，并隐藏自定义金额。
+- 会员和加油包等灵策列车 B 上线后一起开卖，预计 11 月 30 日前后；上线前购买按钮显示「即将开通」，登录和个人中心先上线。
 - 第二期再评估在官网自己做收银台（原型里的「结账」页），前提是受限会话（§5.3）已经上线。
 
 ### 5.3 从客户端进来
@@ -199,28 +262,41 @@ Octop 后端返回灵策给的 admin.lynxce.cn/recharge 地址（Octop Bot 品�
 付完 → 回到 returnUrl（官网 /pay/result.html?from=…，灵策追加 recharge=paid&order=…）→ 桌面打开 octop-bot://recharge/done
 ```
 
+- 客户端在 `wallet/recharge` 请求体里带 `from`（desktop / web / android），Octop 后端把它拼进 `returnUrl`（例如 `https://octop-bot.lynxce.cn/pay/result.html?from=desktop`）；不在这三个值里就不带。老客户端不传 `from`，结果页按网页处理：只显示结果，不尝试打开 `octop-bot://`。返回给客户端的地址仍指向原有灵策收银台，已发布的客户端照常能打开。
+
 - 收银台的票据和现在一样只在灵策自己的页面里用，不经过官网。
-- 官网这时只负责结果页（查订单状态、显示到账和余额、回到客户端），用户在官网自己点「充值」时照 §5.2 登录后跳收银台。
+- 官网这时只负责结果页（查订单状态、显示到账和余额、回到客户端），列车 B 上线后，用户在官网点「充值」时照 §5.2 登录后跳收银台。
 
 **以后（受限会话上线后）：官网免登录直达**
 
 ```
-Octop 后端返回 https://octop-bot.lynxce.cn/pricing.html?ticket=…&from=desktop&need=1200&reason=image#credits
-官网用 ticket 换受限会话 → 立即 history.replaceState 去掉票据，令牌只放内存，不写 localStorage
-用户在官网选加油包或会员 → 用受限会话下单 → 跳收银台付款 → 回跳结果页
+Octop 后端返回 pricing.html?from=desktop&need=1200&reason=image#ticket=…
+官网从 location.hash 读取票据 → 先用 history.replaceState 清除 → POST /api/auth/login-codes/redeem，请求体带码和 scope=recharge
+受限会话只放内存或 sessionStorage
+用户在官网选加油包 → 用受限会话下单充值 → 跳收银台付款 → 回跳结果页；购买会员需正常登录
 ```
 
 - 受限会话只能查余额、下单充值，以及只读地查本会话自己下的订单状态（结果页用，`/recharge/orders/:id/status`），不开放订单列表；个人中心的其它页面（用量、订单、发票、安全）仍要正常登录。
+
+**一次性登录码**（灵策方案《P17 一次性登录码》，灵策侧还没做）：同一个接口 `POST /api/auth/login-codes/redeem`，按用途换不同的令牌：
+
+| 用途 | 落地页 | 换到什么 |
+|---|---|---|
+| `recharge` | `pricing.html#ticket=…` | 5 分钟受限令牌：只能查余额、下单充值、只读查询本会话自己下的订单状态 |
+| `account` | `account.html#code=…` | 网页会话；改密码、换绑、注销、管理登录设备要再验证一次（P18） |
+| `server` | 云端用 | 和官网无关 |
+
+落地页均先从 `location.hash` 读取码，调用 `history.replaceState` 清除后再通过 POST 兑换，码放在请求体中；`account.html` 带 `scope=account`，`pricing.html` 带 `scope=recharge`。兑换所得会话只放内存或 `sessionStorage`。
 
 **参数**（两步都一样，只是落点不同）
 
 | 参数 | 必填 | 含义 |
 |---|---|---|
-| `intent` | 是 | `credits`：落在加油包；`plan`：落在会员（开通、续费、升级）。套餐加上「所属产品」之前只开放 `credits`，客户端不出现会员购买按钮 |
+| `intent` | 是 | `credits`：落在加油包；`plan`：落在会员（开通、续费、升级）。列车 B 上线前会员和加油包都不开卖，购买按钮显示「即将开通」 |
 | `from` | 是 | `desktop` / `web` / `android`，决定付完怎么回到客户端（§8.5）。iOS 不走这条路，只有内购 |
-| `need` | 否 | 还差多少积分（正整数）：预选第一个不小于缺口的加油包，页面顶部写「还差 1,200 积分」 |
+| `need` | 否 | 还差多少积分（正整数）：支持预选后选中第一个不小于缺口的加油包，页面顶部写「还差 1,200 积分」 |
 | `reason` | 否 | 只用于文案：`text` / `image` / `video` / `computer` / `disk` / `plan_limit`，和 §8.4 错误码的类别一致 |
-| `ticket` | 以后 | 受限会话的票据，只在第二步出现 |
+| `code` / `ticket` | 以后 | 一次性码只在第二步出现，个人中心使用片段参数 `code`，充值页使用片段参数 `ticket`；兑换时将码放在请求体中。 |
 
 - Octop 后端和 Android 对打开地址的校验改成精确匹配：现在是 `admin.lynxce.cn/recharge`，受限会话上线后换成官网 `pricing.html`。
 
@@ -232,11 +308,11 @@ Octop 后端返回 https://octop-bot.lynxce.cn/pricing.html?ticket=…&from=desk
 |---|---|---|
 | 登录注册（手机 / 邮箱验证码、密码、Apple） | 现成 | 直接调；跨域要放行 |
 | 微信扫码登录 | 回调域只登记了 web.lynxce.cn | 第一期不放，或灵策加中转白名单 |
-| 余额 `GET /api/user/quota`、积分汇总 | 现成 | 概览页；「会过期 / 永久」两类要灵策新做（`CreditLot`） |
+| 余额 `GET /api/user/quota`、积分汇总 | 现成 | 概览页；专属、通用和 30 天内到期明细由列车 B 提供 |
 | 会员目录 `GET /api/billing/subscription-plans` | 现成，按 `X-Lynxce-App` 过滤 | 要加 `product=octop_bot`（运营后台设计 2.3.3） |
 | 加油包 `GET /api/billing/recharge/packages` | 现成，没有售卖端字段 | 要加 `product` |
-| 下单（微信 native / h5 / jsapi、支付宝、会员） | 现成，只认 checkout 票据；微信 H5 和支付宝的生产开关没核实 | 第一期不直接调，跳收银台（§5.2） |
-| checkout-link | 现成，15 分钟票据 | 要加品牌、预选、回跳 |
+| 下单（微信 native / h5 / jsapi、支付宝、会员） | 收银台支持微信、支付宝和银行卡 | 第一期不直接调，跳收银台（§5.2） |
+| checkout-link | 现成，15 分钟票据 | 品牌、回跳和预选按 §5.2 的上线节奏接入 |
 | 订单 `GET /api/user/purchase-orders`、状态、续付 | 现成，没有来源字段 | 要加 `product` |
 | 发票 `GET /api/user/invoice-requests/orders`、`GET/POST /api/user/invoice-requests` | 现成 | 直接用 |
 | 用量 `GET /api/user/usage-ledger`、`usage-overview`、`usage-trend` | 现成，不能按类别或来源筛，不返回 `subjectId`。作图、视频记为 `subjectType=media`，`metadata.type` 是 `image` 或 `video`，带 `metadata.model` 和 `apiKeyId` | 要加 `product` 和类别筛选（作图、视频直接按 `metadata.type` 归类）；Bot 维度要 Octop 带 `X-Lynxce-Bot-Id`（模型）和 `botId`（云电脑、磁盘） |
@@ -258,7 +334,7 @@ Octop 后端返回 https://octop-bot.lynxce.cn/pricing.html?ticket=…&from=desk
 6. Octop Bot 加油包（单独建，带有效期）。
 7. 用量按 `product`、类别筛选的用户接口；模型流水写 `product` 和 Bot；云电脑、磁盘流水写 Bot。
 8. 权益接口 `GET /api/billing/octop-bot/entitlements`（第一期只返回档位、周期、到期日、积分）。
-9. 中台收银台登记 `octop-web`（支付宝）。
+9. 按 §5.2 接入收银台支付方式和预选开关。
 10. 第二期：签到（会员专属）、兑换码、自助改密码、权益 `limits`。
 11. 以后：三站单点、签约代扣（正在向微信、支付宝申请，《自动续费服务协议》挂在官网 `auto-renew.html`）、自助退款、对公转账。
 12. 发版模块写 `changelog.json`（§11）。
@@ -285,7 +361,7 @@ Octop 侧要做的（总管 11-25 派给灵策对接，它熟悉这几处接口�
 | 位置 | 内容 | 点了以后 |
 |---|---|---|
 | 桌面 / 网页：侧栏底部账号卡片 | 头像、档位徽标（体验 / 标准 / 进阶 / 专业 / 卓越）、积分余额 | 打开账号菜单 |
-| 账号菜单顶部 | 余额大字；下面两行：「会过期 2,300（11-30 到期）」「永久 21,000」；档位和到期日；按钮「买加油包」「开通会员 / 续费」 | 按钮走 §8.5；「查看明细」打开官网个人中心（带票据，免登录） |
+| 账号菜单顶部 | 显示本产品可用余额，分列专属积分、通用积分和 30 天内即将到期的积分；档位和到期日；按钮「买加油包」「开通会员 / 续费」 | 按钮走 §8.5；「查看明细」在一次性码接口上线后免登录打开官网个人中心，此前正常登录 |
 | 设置 → 账号与积分 | 同上，加最近 30 天按类别的用量（文本对话、作图、做视频、云电脑、磁盘） | 同上 |
 | Android：「我」页顶部卡片 | 同账号菜单 | 同上 |
 | iOS：「我」页顶部卡片 | 余额和档位（只读）；「买积分」按钮打开内购弹层 | 内购（§8.5） |
@@ -332,14 +408,14 @@ Octop 侧要做的（总管 11-25 派给灵策对接，它熟悉这几处接口�
 
 | 端 | 买加油包 | 开通 / 续费 / 升级会员 | 付完以后 |
 |---|---|---|---|
-| 网页 bot.lynxce.cn | 新标签打开 `wallet/recharge` 返回的地址：现在是灵策收银台（预选加油包），受限会话上线后是官网 `pricing.html?ticket…#credits`（§5.3） | 同上，`intent=plan` | 回到网页版标签页时刷新余额，成功后提示「已到账 +5,000 积分」 |
+| 网页 bot.lynxce.cn | 新标签打开 `wallet/recharge` 返回的地址：现在是灵策收银台（预选按 §5.2 的开关控制），受限会话上线后是官网 `pricing.html#ticket=…`（§5.3） | 同上，`intent=plan` | 回到网页版标签页时刷新余额，成功后提示「已到账 +5,000 积分」 |
 | 桌面 | 系统浏览器打开同上地址 | 同上 | 官网结果页打开 `octop-bot://recharge/done`，客户端刷新余额并提示；没有回跳时，窗口回到前台也会刷新 |
 | Android | Custom Tabs 打开同上地址 | 同上 | 回到 App（`onResume`）刷新余额并提示 |
 | iOS | 内购积分包弹层（1.0.1 隐藏，1.0.2 打开） | **不出现**会员购买和外链，只显示当前档位 | 苹果交易确认后刷新余额 |
 
 ### 8.6 新用户、首次付费、签到
 
-- 新用户第一次登录灵策：「已到账 300 体验积分，14 天内有效」（toast），账号菜单显示到期日。
+- 新用户第一次登录灵策：「已到账 100 体验积分，14 天内有效，仅限 Octop 使用」（toast），账号菜单显示到期日。
 - 第一次碰到余额不足：卡片下面多一行小字对比「加油包一次性买 / 会员每月送积分」，帮用户选。
 - 签到（第二期）：账号菜单里「签到领积分」一行；付费会员每天 100 积分，当月有效，月底清零。
 
@@ -381,7 +457,7 @@ Octop 侧要做的（总管 11-25 派给灵策对接，它熟悉这几处接口�
 | 加油包：可选金额卡片 + 自定义金额，右侧固定结算栏，底部引导订阅 | 采用 |
 | 定价页下半部分的模型价格表：文本 / 图片 / 视频切换，输入、输出、缓存命中、能力 | 采用：文本 / 作图 / 视频，价格读灵策；另加云电脑和磁盘单价 |
 | 个人中心左侧短导航，右侧数字卡片 + 每日用量图 | 采用 |
-| 积分额度：可用总积分、当前订阅、加油包记录（总量、已用、剩余、到期）、「查看消耗顺序」 | 采用：会过期 / 永久两类和扣费顺序 |
+| 积分额度：可用总积分、当前订阅、加油包记录（总量、已用、剩余、到期）、「查看消耗顺序」 | 采用：专属和通用明细、30 天内到期积分及扣费顺序 |
 | 账单与发票：累计支付、可开票、已开票，单张和批量开票 | 采用 |
 | 兑换中心、邀请好友 | 兑换码第二期；邀请不做 |
 | 更新日志：左侧日期、版本号 +「最新」、一句话标题、条目列表、共多少个版本 | 采用，另加平台标签、正式版 / 测试版和分组 |
@@ -450,8 +526,8 @@ Octop 侧要做的（总管 11-25 派给灵策对接，它熟悉这几处接口�
 
 | 概念 | 定义 |
 |---|---|
-| Octop Bot 用户 | 注册来源 `signupSite=octopbot`，或名下有 `product=octop_bot` 的密钥、订阅或订单 |
-| 积分 | 同一个灵策钱包；显示成「会过期的积分」（带最近到期日）和「永久积分」；先扣快到期的，最后扣加油包和灵策原有余额 |
+| Octop Bot 用户 | 注册来源 `signupSite IN ('octop-bot', 'octopbot')`，或名下有 `product=octop_bot` 的密钥、订阅或订单。线上两种值都有：客户端注册带的 `X-Lynxce-Signup-Site` 是中台应用 id `octop-bot`；只带 `X-Lynxce-App: octopbot` 时兜底记成 `octopbot`。老灵策用户登录 Octop Bot 不会改 `signupSite` |
+| 积分 | 本产品可用 = 专属 + 通用；按 §3.4 分列明细和 30 天内到期积分，在本产品可用积分中先扣到期早的 |
 | 用量 | 流水 `product=octop_bot`。类别：文本对话 `model`、作图 `image`、做视频 `video`、`computer_standard`、`computer_pro`、`disk`（作图、视频的类别名和灵策对接再确认）；维度：Bot、模型、日期；按北京时间自然日、自然月汇总 |
 | 订单 | `product=octop_bot`；状态 `pending` / `paid` / `cancelled` / `expired` / `refunded`（`cancelled` 和 `expired` 都显示「已关闭」）；金额 `amountCents`（分）；会员单 `period` 为 `monthly` / `yearly` |
 | 套餐 | `tier`：`trial` / `standard` / `plus` / `pro` / `max`；权益 `GET /api/billing/octop-bot/entitlements`（第一期只有档位、周期、到期日和积分） |
@@ -483,4 +559,4 @@ Octop 侧要做的（总管 11-25 派给灵策对接，它熟悉这几处接口�
 
 - 两套账号第 1 期（首启设本地账号和密码、补设密码、Bot 的 🔒 / ☁ / ⚠ 标、账户菜单）：我估 4–6 天，**没有外部依赖**，也是方案 C 第 2 期的前提。
 - 官网第一期：前端 6–8 天，但**登录、余额、订单、用量都要等灵策**（跨域 0.5 小时可以马上做；`product` 字段、会过期积分、会员套餐、收银台回跳要 14–19 个开发日，走列车）。
-- 建议：**先做两套账号第 1 期**；同时请灵策先上跨域白名单和收银台回跳。之后做官网第一期，顺序是更新日志页（只依赖 `changelog.json`，读不到时用 `releases.json` 兜底，可以最早上线）→ 登录 + 个人中心（概览、订单、发票，字段先按本文口径对接）→ 加油包 → 会员（等灵策会员上线）。客户端的余额不足卡片和错误码跟着加油包一起上。
+- 建议：**先做两套账号第 1 期**；同时请灵策先上跨域白名单和收银台回跳。之后做官网第一期，顺序是更新日志页（只依赖 `changelog.json`，读不到时用 `releases.json` 兜底，可以最早上线）→ 登录 + 个人中心（概览、订单、发票，字段先按本文口径对接）→ 会员和加油包（等灵策列车 B 上线后一起开卖）。客户端的余额不足卡片和错误码跟着加油包一起上。
