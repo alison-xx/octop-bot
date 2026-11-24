@@ -375,10 +375,11 @@
       "appearance": "外观",
       "floatingButton": "悬浮球",
       "floatingButtonHint": "桌面上的小章鱼，随时快速对话。",
-      "privacy": "隐私",
-      "signedInAs": "当前账号",
       "manage": "管理",
-      "language": "语言"
+      "language": "语言",
+      "lookAndLanguage": "外观与语言",
+      "desktopAndPrivacy": "桌面与隐私",
+      "retainedFoldersHint": "删除 Bot 时保留下来的工作文件夹，可以在这里打开或清理"
     },
     "account": {
       "local": "本机账号",
@@ -386,7 +387,15 @@
       "lynxceUser": "灵策用户",
       "signInHint": "登录灵策智算后，就能用积分对话、给每个 Bot 配云电脑。",
       "signIn": "登录灵策智算",
-      "cloudModels": "对话使用你的灵策智算账号里的模型，费用从灵策积分扣除。"
+      "cloudModels": "对话使用你的灵策智算账号里的模型，费用从灵策积分扣除。",
+      "localHint": "本机使用，没有登录",
+      "centre": "账户中心",
+      "promoTitle": "登录灵策智算，解锁更多",
+      "promoComputer": "每个 Bot 一台云电脑，你关机后它照样干活",
+      "promoModels": "用积分调用 Qwen、DeepSeek、GLM、Kimi 等全部灵策模型，不用自己配 Key",
+      "promoDevices": "手机、网页和这台电脑看到同一个团队",
+      "promoMove": "这台电脑上的 Bot 和对话不会丢，切回本机使用还在。",
+      "promoRegister": "没有账号？验证码登录会自动注册"
     },
     "update": {
       "title": "关于与更新",
@@ -9034,7 +9043,6 @@
     "title": "积分与充值",
     "menu": "积分与充值",
     "menuHint": "余额、充值和用量",
-    "balance": "余额",
     "unit": "积分",
     "amount": "{{value}} 积分",
     "recharge": "充值",
@@ -9047,7 +9055,6 @@
     "shared": "余额与灵策官网和你其他设备上的 Octop Bot 共用，充值后回到这里会自动刷新。",
     "openFailed": "充值页没能打开，请稍后再试。",
     "usageTitle": "近 30 天用量",
-    "usageTotal": "共 {{tokens}} tokens，调用模型 {{calls}} 次",
     "byBot": "按 Bot",
     "byModel": "按模型",
     "noUsage": "还没有用量",
@@ -9063,7 +9070,14 @@
     "siteLabel": "或在浏览器打开：",
     "limitTitle": "今天的额度用完了",
     "limitBody": "为防止意外消耗，灵策给 Octop Bot 设了每日用量上限，今天已经用完。北京时间早上 8 点自动恢复，到时点「继续」就接着做。",
-    "limitLink": "急用的话，可以在灵策账户中心调高上限："
+    "limitLink": "急用的话，可以在灵策账户中心调高上限：",
+    "walletTitle": "灵策积分",
+    "rate": "1 元 = 100 积分。灵策模型、云电脑和存储都从这里扣。",
+    "accountCentre": "账户中心",
+    "usageGroup": "用量分组",
+    "tokens": "tokens",
+    "calls": "次模型调用",
+    "readyTitle": "积分已到账"
   },
   "botStart": {
     "heroTitle": "一支随叫随到的 AI 团队",
@@ -9146,5 +9160,18 @@
       "later": "稍后再选",
       "useModel": "使用这个模型"
     }
+  },
+  "botAbout": {
+    "title": "关于与更新",
+    "version": "版本 {{version}}",
+    "server": "服务器",
+    "serverLocal": "本机服务",
+    "serverCloud": "灵策云",
+    "serverLocalHint": "Bot 和对话保存在这台电脑上",
+    "serverRemoteHint": "Bot 和对话保存在这台服务器上",
+    "switchServer": "切换服务器",
+    "switchFromMenu": "在菜单栏「Octop Bot → 服务器」里切换",
+    "links": "更多",
+    "site": "官网"
   }
 }

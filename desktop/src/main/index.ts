@@ -718,6 +718,10 @@ function refreshUpdateMenus(): void {
 
 function registerIpcHandlers(): void {
   ipcMain.on(IPC_CHANNELS.showBotOrb, () => botOrb?.show(true));
+  // Settings → About: the same server picker as the menu's "Connect to a Server…".
+  ipcMain.on(IPC_CHANNELS.openServerPicker, (event) => {
+    serverPicker?.open(BrowserWindow.fromWebContents(event.sender));
+  });
   ipcMain.on(IPC_CHANNELS.botNotify, (event, payload: unknown) => {
     const note = sanitizeNotification(payload);
     if (!note) return;

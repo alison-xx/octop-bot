@@ -57,6 +57,7 @@ if (botOnly) {
 const bridge = {
   botOnly,
   showBotOrb() { if (botOnly) ipcRenderer.send(IPC_CHANNELS.showBotOrb); },
+  openServerPicker() { if (botOnly) ipcRenderer.send(IPC_CHANNELS.openServerPicker); },
   onBotShortcut(callback: (action: BotShortcut) => void): () => void {
     botShortcut = callback;
     if (pendingShortcut) {
