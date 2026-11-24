@@ -11,11 +11,20 @@ Lynxce's gateway (``/api/v1``) is asynchronous for both kinds: ``POST /images/ge
 ``POST /videos/generations`` return ``{id, status}``; ``GET /generations/{id}`` is polled until
 ``status`` is ``succeeded`` with ``data[].url`` (or ``b64_json``). A key needs the
 ``media:image`` / ``media:video`` scopes; an OAuth grant the ``media`` scope.
+
+Which model draws and which films is Lynxce's choice, not Octop's: Lynxce's admin orders its
+model catalog, and the first image and the first video model in ``GET /models`` are its
+defaults (Lynxce's own MCP tools pick the same way). The adapter reads that list, keeps it for a
+few minutes, and falls back to fixed models only when the list cannot be read, so a new default
+set in Lynxce's admin reaches every Bot without an Octop release.
 """
 
 from __future__ import annotations
 
 import base64
+import hashlib
+import logging
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -41,10 +50,15 @@ from octop_harness.media.models import (
 if TYPE_CHECKING:
     from octop_harness.backends.workspace import BackendWorkspace
 
-# Defaults checked against GET /models on 2026-11-24: Seedream 5.0 (Chinese prompts and text in
-# images) and Seedance 2.0 Mini (Lynxce's low-cost video tier, 4-15 s, 480p/720p).
-IMAGE_MODEL = "doubao-seedream-5-0-260128"
-VIDEO_MODEL = "doubao-seedance-2-0-mini-260615"
+logger = logging.getLogger(__name__)
+
+# Used only when Lynxce's model list cannot be read: the defaults Lynxce's admin had set on
+# 2026-11-25 (GPT Image 2.6 for images, MiniMax H3 for video), checked against GET /models.
+IMAGE_MODEL = "gpt-image-2.6-flare"
+VIDEO_MODEL = "ucloud/MiniMax-H3"
+# How long one read of Lynxce's defaults is used, and how soon to try again after a failed read.
+DEFAULTS_TTL_SECONDS = 600.0
+DEFAULTS_RETRY_SECONDS = 60.0
 LYNXCE_HOSTS = frozenset({"api.lynxce.cn", "center.lynxce.cn"})
 
 _RUNNING = frozenset({"pending", "submitting", "processing", "uncertain"})
@@ -60,6 +74,23 @@ class LynxceMediaAuth:
 
 
 AuthSource = Callable[[], Awaitable[LynxceMediaAuth]]
+
+# (base URL, hash of the bearer) -> (valid until, {"image": model, "video": model}). The list
+# depends on the account (scopes, organization), hence one entry per credential.
+_defaults_cache: dict[tuple[str, str], tuple[float, dict[str, str]]] = {}
+
+
+def _first_models(body: Any) -> dict[str, str]:
+    """The first image and the first video model of a ``GET /models`` reply, in Lynxce's order."""
+    found: dict[str, str] = {}
+    rows = body.get("data") if isinstance(body, dict) else None
+    for row in rows if isinstance(rows, list) else ():
+        if not isinstance(row, dict):
+            continue
+        model, modality = row.get("id"), row.get("modality")
+        if isinstance(model, str) and model and modality in ("image", "video"):
+            found.setdefault(modality, model)
+    return found
 
 
 def _credits_error(
@@ -136,22 +167,68 @@ class LynxceMediaProvider:
         self,
         auth: AuthSource,
         *,
-        image_model: str = IMAGE_MODEL,
-        video_model: str = VIDEO_MODEL,
+        image_model: str | None = None,
+        video_model: str | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> None:
+        """``image_model`` / ``video_model`` pin a model; left out, Lynxce's defaults are used."""
         self._auth = auth
-        self._image_model = image_model
-        self._video_model = video_model
+        self._pinned = {"image": image_model, "video": video_model}
+        self._used = {"image": image_model or IMAGE_MODEL, "video": video_model or VIDEO_MODEL}
         self._client = client
 
     @property
     def image_model(self) -> str:
-        return self._image_model
+        """The model of the latest image request (the fallback until one is made)."""
+        return self._used["image"]
 
     @property
     def video_model(self) -> str:
-        return self._video_model
+        return self._used["video"]
+
+    async def _get(self, url: str, headers: dict[str, str]) -> httpx.Response:
+        if self._client is not None:
+            return await self._client.get(url, headers=headers)
+        async with httpx.AsyncClient(timeout=15) as client:
+            return await client.get(url, headers=headers)
+
+    async def _lynxce_defaults(self, auth: LynxceMediaAuth) -> dict[str, str]:
+        """Lynxce's current default image and video models, read at most every few minutes."""
+        key = (auth.base_url, hashlib.sha256(auth.bearer.encode()).hexdigest())
+        cached = _defaults_cache.get(key)
+        now = time.monotonic()
+        if cached is not None and cached[0] > now:
+            return cached[1]
+        found: dict[str, str] = {}
+        try:
+            response = await self._get(
+                auth.base_url + "/models", {"Authorization": f"Bearer {auth.bearer}"}
+            )
+            if response.is_success:
+                found = _first_models(response.json())
+            else:
+                logger.warning("Lynxce model list returned HTTP %s", response.status_code)
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("Lynxce model list could not be read: %s", exc)
+        for kind, fallback in (("image", IMAGE_MODEL), ("video", VIDEO_MODEL)):
+            if kind not in found:
+                logger.warning("No Lynxce default %s model; using %s", kind, fallback)
+        ttl = DEFAULTS_TTL_SECONDS if len(found) == 2 else DEFAULTS_RETRY_SECONDS
+        _defaults_cache[key] = (now + ttl, found)
+        return found
+
+    async def _model(self, kind: str) -> str:
+        pinned = self._pinned[kind]
+        if pinned:
+            return pinned
+        try:
+            auth = await self._auth()
+        except Exception:  # noqa: BLE001 - the submit itself reports the missing sign-in
+            return self._used[kind]
+        fallback = IMAGE_MODEL if kind == "image" else VIDEO_MODEL
+        model = (await self._lynxce_defaults(auth)).get(kind) or fallback
+        self._used[kind] = model
+        return model
 
     async def _request(
         self,
@@ -253,7 +330,7 @@ class LynxceMediaProvider:
 
     async def submit_image(self, request: ImageGenerationRequest) -> MediaSubmission:
         payload: dict[str, Any] = {
-            "model": self._image_model,
+            "model": await self._model("image"),
             "prompt": request.prompt,
             "n": request.count,
         }
@@ -278,7 +355,7 @@ class LynxceMediaProvider:
             *request.reference_images,
         ]
         payload: dict[str, Any] = {
-            "model": self._video_model,
+            "model": await self._model("video"),
             "prompt": request.prompt,
             "duration": request.duration,
             "resolution": request.resolution,
