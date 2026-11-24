@@ -231,10 +231,15 @@ extension ServerBackend {
     /// downloaded with this session.
     func fetchLibraryFile(_ file: LibraryFile) async throws -> URL {
         guard let link = URL(string: file.url) else { throw APIError(kind: .server, status: 502, message: nil) }
-        guard isCloud else { return try await downloadFile(for: link) }
-        let (data, response) = try await URLSession.shared.data(from: try await downloadLink(for: link))
-        guard let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status) else {
-            throw APIError(kind: .server, status: 502, message: nil)
+        let data: Data
+        if isCloud {
+            let (body, response) = try await URLSession.shared.data(from: try await downloadLink(for: link))
+            guard let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status) else {
+                throw APIError(kind: .server, status: 502, message: nil)
+            }
+            data = body
+        } else {
+            data = try await fileData(for: link)
         }
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

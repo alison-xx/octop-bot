@@ -821,6 +821,10 @@ final class DeviceConnectorTests: XCTestCase {
             DateInterval(start: t0.addingTimeInterval(6 * 3600), duration: 3600),
         ]) / 3600
         XCTAssertEqual(hours, 5)
+    }
+}
+
+@MainActor
 final class BotActivityTests: XCTestCase {
     func testUpcomingKeepsServerOrderAndSchedules() {
         let jobs = ServerBackend.UpcomingJob.parse([
