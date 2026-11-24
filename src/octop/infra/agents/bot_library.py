@@ -16,6 +16,7 @@ from octop.infra.gateway.media.backend_files import (
     extract_workspace_rel,
     is_allowed_host_download_abs_path,
     is_host_absolute_path,
+    tenant_workspace_path,
     workspace_download_url,
 )
 
@@ -88,9 +89,12 @@ def _collect(rows: Sequence[Any], agent_id: str, roots: Sequence[str], cloud: bo
             if artifact.agent_id and artifact.agent_id != agent_id:
                 continue
             rel = _relative(artifact.path, roots)
+            if rel is None and cloud:
+                # A cloud tenant's Bot reports files from its own view: "/" is the workspace.
+                rel = tenant_workspace_path(artifact.path, roots)
             host = rel is None
             path = artifact.path if host else rel
-            if not path or _hidden(path) or (host and cloud):
+            if not path or path == "." or _hidden(path) or ".." in path.split("/"):
                 continue
             key = path.casefold() if os.name == "nt" else path
             if key in seen:
@@ -149,9 +153,14 @@ async def bot_library(
     user_id: int,
     timezone: str,
     cloud: bool,
+    check: bool = True,
     now: dt.datetime | None = None,
 ) -> list[dict[str, Any]]:
-    """Newest first: files the Bot wrote or sent in my conversations that still exist."""
+    """Newest first: files the Bot wrote or sent in my conversations that still exist.
+
+    ``check=False`` lists them without looking in the workspace (each look would wake a Bot's
+    paused cloud computer, and bill it): sizes are unknown and times are the chat's.
+    """
     if workspace is None:
         return []
     rows = await asyncio.to_thread(
@@ -159,7 +168,8 @@ async def bot_library(
     )
     rows = sorted(rows, key=lambda row: row.last_active or row.created_at or 0, reverse=True)
     found = _collect(rows, agent_id, [*roots, str(workspace.workspace_dir)], cloud)
-    kept = await _stat_workspace(workspace, [f for f in found if not f.host])
+    stored = [f for f in found if not f.host]
+    kept = await _stat_workspace(workspace, stored) if check else stored
     kept += await asyncio.to_thread(
         _stat_host, [f for f in found if f.host], Path(workspace.workspace_dir)
     )

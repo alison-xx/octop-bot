@@ -34,6 +34,7 @@ const mock = vi.hoisted(() => ({
   owner: true,
   bridge: false,
   permissions: ["tasks", "token_usage"],
+  edition: "desktop" as "desktop" | "cloud",
   t: (k: string, p?: Record<string, string>) =>
     p?.name ? k + " " + p.name : k,
 }));
@@ -61,11 +62,16 @@ vi.mock("../../api/modules/cronjob", () => ({
     settings: vi.fn(),
     create: vi.fn(),
     patch: vi.fn(),
+    delete: vi.fn(),
   },
+}));
+vi.mock("./useBotServerInfo", () => ({
+  useBotServerInfo: () => ({ edition: mock.edition }),
 }));
 vi.mock("../../api/request", () => ({ request: vi.fn() }));
 vi.mock("./BotActivityLibrary", () => ({ default: () => null }));
 vi.mock("./BotCharacter", () => ({ BotCharacter: () => null }));
+vi.mock("./CloudComputerCard", () => ({ default: () => null }));
 
 const job: OctopCronRow = {
   id: "daily-plan",
@@ -124,6 +130,7 @@ beforeEach(() => {
   mock.owner = true;
   mock.bridge = false;
   mock.permissions = ["tasks", "token_usage"];
+  mock.edition = "desktop";
   vi.mocked(octopCronApi.list).mockResolvedValue([]);
   vi.mocked(octopCronApi.settings).mockResolvedValue({
     timezone: "Asia/Shanghai",
@@ -203,6 +210,39 @@ describe("activity from the standalone Bot profile", () => {
       "daily-plan",
       { enabled: true },
     );
+  });
+
+  it("tells a cloud user tasks run in the cloud and deletes a task after confirming", async () => {
+    mock.edition = "cloud";
+    vi.mocked(octopCronApi.list).mockResolvedValue([job]);
+    vi.mocked(octopCronApi.delete).mockResolvedValue(undefined);
+    openDetails("/octop-bot/bots/writer");
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "botClient.activity.schedules",
+      }),
+    );
+    expect(
+      await screen.findByText("botClient.activity.cloudExecution"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("botClient.activity.localExecution"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "common.delete Morning plan" }),
+    );
+    expect(octopCronApi.delete).not.toHaveBeenCalled();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "common.delete" }),
+    );
+    expect(
+      await screen.findByText("botClient.activity.noSchedules"),
+    ).toBeInTheDocument();
+    expect(octopCronApi.delete).toHaveBeenCalledWith("writer", "daily-plan");
+    fireEvent.click(screen.getByRole("button", { name: "cronJobs.createJob" }));
+    expect(
+      screen.getByText("botClient.activity.deliverLatestServer"),
+    ).toBeInTheDocument();
   });
 
   it("can retry a failed list, keeps the form after creation fails and uses the Bot's local chat when no thread exists", async () => {

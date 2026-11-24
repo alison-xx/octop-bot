@@ -590,6 +590,8 @@ _MODEL_KEY_CALLS = frozenset(
         ("POST", "/api/user/personal-api-keys"),
         ("GET", "/api/user/personal-api-keys"),
         ("DELETE", "/api/user/personal-api-keys/{id}"),
+        # Taking Lynxce's default daily credit cap off it (bot_cloud/accounts.py).
+        ("PATCH", "/api/user/personal-api-keys/{id}"),
     }
 )
 # What cloud mode may do with a tenant's stored Lynxce session, besides request_cloud.
@@ -598,7 +600,8 @@ _TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
     # This server's own model keys only: listed and revoked before a replacement is minted.
     ("GET", "/api/user/personal-api-keys"): {},
     ("DELETE", "/api/user/personal-api-keys/{id}"): {},
-    # The tenant's own model key only, e.g. adding the media scopes (bot_cloud/accounts.py).
+    # The tenant's own model key only: adding the media scopes, lifting the default credit cap
+    # (bot_cloud/accounts.py).
     ("PATCH", "/api/user/personal-api-keys/{id}"): {},
     ("POST", "/api/user/account/deletion-request"): {},
     ("GET", "/api/billing/app/recharge-packages"): _IAP_HEADERS,

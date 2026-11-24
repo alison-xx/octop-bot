@@ -72,9 +72,22 @@ def test_read_guard_rejects_parent_and_system_root(tmp_path: Path) -> None:
 
 
 def test_read_guard_per_owner(tmp_path: Path) -> None:
-    """Host paths are closed to a cloud tenant's agent, open to everyone else's."""
+    """Host paths are open to a self-hosted agent; a cloud tenant's are read in its workspace."""
     inside = str(tmp_path / "report.pdf")
-    _guard_workspace_read(inside, tmp_path, host_files=True)
-    with pytest.raises(OctopError):
-        _guard_workspace_read(inside, tmp_path, host_files=False)
-    _guard_workspace_read("outbound/report.pdf", tmp_path, host_files=False)
+    assert _guard_workspace_read(inside, tmp_path, host_files=True) == inside
+    assert _guard_workspace_read(inside, tmp_path, host_files=False) == "report.pdf"
+    assert _guard_workspace_read("outbound/report.pdf", tmp_path, host_files=False) == (
+        "outbound/report.pdf"
+    )
+
+
+def test_a_cloud_tenants_paths_never_leave_its_workspace(tmp_path: Path) -> None:
+    """The Bot's ``/`` is its workspace, here or on its cloud computer; the disk is not."""
+    read = lambda path: _guard_workspace_read(path, tmp_path, host_files=False)  # noqa: E731
+    assert read("/generated/plan.md") == "generated/plan.md"
+    assert read("/home/user/workspace/generated/plan.md") == "generated/plan.md"
+    assert read("/etc/passwd") == "etc/passwd"
+    assert read("/") == "."
+    with pytest.raises(OctopError) as escaped:
+        read("/generated/../../../etc/passwd")
+    assert escaped.value.code.value == "FORBIDDEN"

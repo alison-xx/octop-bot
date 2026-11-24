@@ -53,6 +53,8 @@ class Driver:
         self.calls: list[tuple[str, str]] = []
         self.files: dict[str, bytes] = {}
         self.fail_start = False
+        # AGS account quota: at most this many running at once (None: unlimited).
+        self.capacity: int | None = None
         self.broken: set[str] = set()
         self.readied: list[str] = []
         self.clipboard = ""
@@ -63,12 +65,23 @@ class Driver:
     def start(self, *, spec: str, labels: Mapping[str, str]) -> str:
         if self.fail_start:
             raise RuntimeError("no capacity")
+        self._check_capacity()
         instance = f"ins-{len(self.states) + 1}"
         self.states[instance] = "running"
         self.calls.append(("start", labels["octop-bot"]))
         return instance
 
+    def _check_capacity(self) -> None:
+        from tencentcloud.common.exception.tencent_cloud_sdk_exception import (
+            TencentCloudSDKException,
+        )
+
+        running = sum(1 for state in self.states.values() if state == "running")
+        if self.capacity is not None and running >= self.capacity:
+            raise TencentCloudSDKException("LimitExceeded.SandboxInstance", "quota", "req")
+
     def resume(self, instance_id: str) -> None:
+        self._check_capacity()
         self.states[instance_id] = "running"
         self.calls.append(("resume", instance_id))
 
@@ -276,6 +289,55 @@ def test_a_failed_start_refunds_the_chunk(setup: Any) -> None:
     with pytest.raises(RuntimeError):
         CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
     assert billing.settled == [("r1", 0)]
+
+
+def test_out_of_capacity_pauses_the_longest_idle_computer_and_retries(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    driver.capacity = 2
+    CloudComputer(manager, user_id=7, agent_id="old").execute("ls")
+    clock.now += 60
+    CloudComputer(manager, user_id=8, agent_id="recent").execute("ls")
+    clock.now += computers.MAKE_ROOM_IDLE_SECONDS
+    assert CloudComputer(manager, user_id=9, agent_id="new").execute("ls").output == "ran ls"
+    # The longest-idle computer made room; the other keeps running.
+    assert ("pause", "ins-1") in driver.calls
+    assert manager.is_running("recent", 8) and manager.is_running("new", 9)
+    assert not manager.is_running("old", 7)
+
+
+def test_out_of_capacity_never_pauses_a_computer_in_use(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    driver.capacity = 1
+    CloudComputer(manager, user_id=7, agent_id="busy").execute("ls")
+    clock.now += 30  # acted on just now
+    computer = CloudComputer(manager, user_id=9, agent_id="new")
+    reply = computer.execute("ls")
+    # The Bot is told plainly, and the reserved chunk is refunded.
+    assert reply.exit_code == 1 and "no cloud computer is free" in reply.output
+    assert billing.settled == [("r2", 0)]
+    assert manager.is_running("busy", 7)
+    with pytest.raises(OctopError) as refused:
+        manager.ensure_running("new", 9)
+    assert refused.value.code == ErrorCode.BOT_COMPUTER_BUSY
+
+
+def test_capacity_errors_are_told_apart() -> None:
+    from tencentcloud.common.exception.tencent_cloud_sdk_exception import (
+        TencentCloudSDKException,
+    )
+
+    assert computers.capacity_full(TencentCloudSDKException("LimitExceeded.SandboxInstance"))
+    assert computers.capacity_full(TencentCloudSDKException("LimitExceeded"))
+    assert not computers.capacity_full(TencentCloudSDKException("RequestLimitExceeded"))
+    assert not computers.capacity_full(TencentCloudSDKException("LimitExceeded.APIKeyQuota"))
+    assert not computers.capacity_full(RuntimeError("no capacity"))
+    # CVM: a type sold out in every zone, wrapped by the driver after the last zone.
+    sold_out = TencentCloudSDKException("ResourcesSoldOut.SpecifiedInstanceType")
+    try:
+        raise RuntimeError("no zone has a SA9.LARGE8 available") from sold_out
+    except RuntimeError as wrapped:
+        assert computers.capacity_full(wrapped)
+    assert computers.capacity_full(TencentCloudSDKException("LimitExceeded.InstanceQuota"))
 
 
 def test_ags_config_and_states() -> None:

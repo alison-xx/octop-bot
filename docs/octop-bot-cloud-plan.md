@@ -357,7 +357,7 @@ P1 的实际做法与上文设计有几处不同，以本节为准：
 | `OCTOP_FILE_STORE_ADDRESSING` | 默认 `virtual`（COS、OSS 必须）；MinIO 填 `path` |
 | `OCTOP_FILE_STORE_PREFIX` | 可选，所有对象的公共前缀，例如 `prod` |
 | `OCTOP_BOT_CLOUD_MODEL` | 默认模型，未设置时用 `deepseek-flash` |
-| `OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT` | 新签发 Key 的每日积分上限；不设置则用灵策默认值，`none` 表示不设上限 |
+| `OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT` | 运营方给每把 Key 设的每日积分上限。不设置（默认）就不设上限，只受钱包余额限制；旧 Key 带着灵策默认的 1000 积分/天，下次核对 Key 时自动取消一次 |
 
 存储桶需要配一条生命周期规则：`downloads/` 前缀 1 到 2 天后过期。管理员账户（运营方）不受租户限制，继续使用服务器的共享模型配置。
 
@@ -627,7 +627,7 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 **服务端约定**
 
 - 对话记在用户自己的灵策钱包上时（云端租户，或桌面登录了灵策），模型返回 402 / 余额不足，这轮的错误帧和历史记录都带 `error_code: BOT_CLOUD_CREDITS_REQUIRED`，提示里直接给出充值网址 `https://admin.lynxce.cn/recharge`。
-- 钱包里还有积分，但「Octop Bot 云端」这把 Key 的每日上限用完了（灵策返回 `api_key_credit_limit_reached`），错误码是 `BOT_LYNXCE_DAILY_LIMIT`（429）。这种情况充值没用，提示每天 UTC 0 点自动恢复，或到灵策账户中心调高上限。默认每日上限 1000 积分，由 `OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT` 调整；做图、做视频上线后这个默认值偏低，待定。
+- 只要钱包里有积分就不限额：签发 Key 时明确把每日、每月上限设为不限（灵策默认是每天 1000 积分），以前签发、带着默认上限的 Key 在下次核对时（登录、对话前每 10 分钟）自动取消一次。只有运营方设置了 `OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT`，或用户自己在灵策账户中心给这把 Key 设了上限，才会碰到 `api_key_credit_limit_reached`，错误码是 `BOT_LYNXCE_DAILY_LIMIT`（429），提示到灵策账户中心调高上限。
 - 显示名优先用灵策昵称，没有昵称时用打码的手机号或邮箱，不再出现 `sso_…` 这类内部账号。
 - 桌面登录灵策一次就够：登录时用这次的会话给本机签一把个人 Key（和云端同一种），模型、余额、云电脑都走这个账号，不再需要在浏览器里二次授权。换了灵策账号会先丢掉旧 Key；退出灵策时一并删除。浏览器授权保留为次要入口。
 - 用量用现有的 `/api/usage/summary`（`by_agent`、`by_model`），统计的是 token。积分扣费明细以灵策账户中心为准。

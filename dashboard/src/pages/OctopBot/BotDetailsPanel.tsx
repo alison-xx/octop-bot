@@ -78,7 +78,8 @@ export default function BotDetailsPanel({
   onDelete,
 }: Props) {
   const { t } = useTranslation();
-  const cloud = useBotServerInfo()?.edition === "cloud";
+  const edition = useBotServerInfo()?.edition;
+  const cloud = edition === "cloud";
   const { agents, refresh } = useAgent();
   const user = useCurrentUser();
   const navigate = useNavigate();
@@ -415,6 +416,7 @@ export default function BotDetailsPanel({
         agentId={bot.agent_id}
         name={bot.name}
         threadId={threadId}
+        edition={edition}
         onOpenCloud={
           canUseBotInCloud
             ? (job) =>

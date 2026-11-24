@@ -547,7 +547,9 @@ async def test_a_chat_only_model_key_gets_the_media_scopes_once(
         key = accounts.load_model_key(srv.services, uid)
         assert key is not None and key.scopes == accounts.KEY_SCOPES
         # A key minted before media generation: no scopes recorded.
-        accounts._save_model_key(srv.services, uid, accounts.ModelKey(key.key_id, key.secret))
+        accounts._save_model_key(
+            srv.services, uid, accounts.ModelKey(key.key_id, key.secret, uncapped=True)
+        )
         from octop.infra.agents.providers import lynxce as lynxce_provider
 
         auth = await lynxce_provider.media_auth(srv.services, uid)
@@ -555,6 +557,46 @@ async def test_a_chat_only_model_key_gets_the_media_scopes_once(
         assert upstream.patched == [(key.key_id, {"scopes": list(accounts.KEY_SCOPES)})]
         await lynxce_provider.media_auth(srv.services, uid)
         assert len(upstream.patched) == 1
+
+
+async def test_model_keys_have_no_credit_cap_so_only_the_balance_limits_a_user(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.agents.providers import lynxce as lynxce_provider
+
+    async with octop_client(tmp_octop_home) as (client, srv):
+        uid = (await _sign_in(client, "13800000031"))["user"]["id"]
+        # New keys: Lynxce's default daily cap (1000 credits) is turned off explicitly.
+        assert upstream.keys[0]["dailyCreditLimit"] is None
+        assert upstream.keys[0]["monthlyCreditLimit"] is None
+        key = accounts.load_model_key(srv.services, uid)
+        assert key is not None and key.uncapped
+        assert upstream.patched == []
+
+        # A key minted before this kept the default cap: the next key check lifts it, once.
+        accounts._save_model_key(
+            srv.services, uid, accounts.ModelKey(key.key_id, key.secret, accounts.KEY_SCOPES)
+        )
+        model = lynxce_provider.CloudAccountModel(uid, "", accounts.DEFAULT_MODEL)
+        key_for_request = model.provider(srv.services).api_key
+        lynxce_provider._key_checked.pop(uid, None)
+        assert await key_for_request() == key.secret  # type: ignore[operator]
+        lifted = (key.key_id, {"dailyCreditLimit": None, "monthlyCreditLimit": None})
+        assert upstream.patched == [lifted]
+        assert accounts.load_model_key(srv.services, uid).uncapped  # type: ignore[union-attr]
+        lynxce_provider._key_checked.pop(uid, None)
+        await key_for_request()  # type: ignore[operator]
+        await _sign_in(client, "13800000031")
+        assert upstream.patched == [lifted]
+
+        # An operator who sets a daily cap keeps it, on new keys and old ones.
+        monkeypatch.setenv("OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT", "5000")
+        other = (await _sign_in(client, "13800000032"))["user"]["id"]
+        assert upstream.keys[-1]["dailyCreditLimit"] == 5000
+        assert not accounts.load_model_key(srv.services, other).uncapped  # type: ignore[union-attr]
+        lynxce_provider._key_checked.pop(other, None)
+        await lynxce_provider.cloud_model_key(srv.services, other)
+        assert upstream.patched == [lifted]
 
 
 async def test_only_a_401_replaces_the_model_key(tmp_octop_home: Path, upstream: Upstream) -> None:
