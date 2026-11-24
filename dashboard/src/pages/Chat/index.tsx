@@ -937,6 +937,33 @@ function ChatPageInner() {
     ],
   );
 
+  // Octop Bot onboarding: text the owner chose to send with a button elsewhere
+  // ({ autoSend } in router state), sent once when this chat can take a message.
+  const autoSentFor = useRef<string | null>(null);
+  const routedAutoSend = (location.state as { autoSend?: unknown } | null)
+    ?.autoSend;
+  const autoSend =
+    typeof routedAutoSend === "string" &&
+    routedAutoSend.trim() &&
+    autoSentFor.current !== location.key
+      ? routedAutoSend
+      : null;
+  const canAutoSend =
+    agentChatReady && modelsReady && hasChatModel && !isStreaming;
+  useEffect(() => {
+    if (!autoSend || !canAutoSend) return;
+    autoSentFor.current = location.key;
+    navigate(location.pathname, { replace: true, state: {} });
+    wrappedHandleSend(autoSend);
+  }, [
+    autoSend,
+    canAutoSend,
+    wrappedHandleSend,
+    navigate,
+    location.key,
+    location.pathname,
+  ]);
+
   const flushQueuedItem = useCallback(
     (item: QueuedChatItem, ctx: ChatQueueFlushContext): boolean => {
       if (!ctx.threadId) {
@@ -2117,6 +2144,7 @@ function ChatPageInner() {
                 </div>
               </div>
             ) : null}
+            {embedded?.composerTop}
             <ChatInput
               botName={
                 focused

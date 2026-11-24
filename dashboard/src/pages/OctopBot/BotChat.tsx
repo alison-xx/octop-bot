@@ -151,6 +151,7 @@ export default function BotChat({
   inGroup,
   onChanged,
   onDelete,
+  composerTop,
 }: {
   bot: WorkspaceBot;
   roster: WorkspaceBot[];
@@ -161,6 +162,8 @@ export default function BotChat({
   inGroup: boolean;
   onChanged: () => void;
   onDelete: () => void;
+  /** Onboarding guide shown above the composer. */
+  composerTop?: React.ReactNode;
 }) {
   const { t } = useTranslation();
   const { agents, refresh } = useAgent();
@@ -283,8 +286,9 @@ export default function BotChat({
           />
         ) : null;
       },
+      composerTop,
     }),
-    [openSide, openReference, bot, roster, motion],
+    [openSide, openReference, bot, roster, motion, composerTop],
   );
   const standalone = isBotClient();
   const agent = agents.find((a) => a.agent_id === bot.agent_id);

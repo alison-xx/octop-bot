@@ -86,4 +86,44 @@ describe("confirmed creations in a Chief turn", () => {
       remaining: [unchanged],
     });
   });
+  it("shows each bot and the group from Chief's one-call team", () => {
+    const team = (output: object) =>
+      tool({
+        name: "octop_bot_create_team",
+        arguments: JSON.stringify({
+          team_name: "Export",
+          bots: [{ name: "Ada" }, { name: "Ben" }],
+          admin: "Ada",
+        }),
+        output: JSON.stringify(output),
+      });
+    expect(
+      separateCreations(
+        [
+          team({
+            group_id: "01TEAM",
+            name: "Export",
+            bot_ids: ["AAAAAA", "BBBBBB"],
+          }),
+        ],
+        true,
+      ).created,
+    ).toEqual([
+      { kind: "bot", id: "AAAAAA", name: "Ada", memberIds: ["AAAAAA"] },
+      { kind: "bot", id: "BBBBBB", name: "Ben", memberIds: ["BBBBBB"] },
+      {
+        kind: "group",
+        id: "01TEAM",
+        name: "Export",
+        memberIds: ["AAAAAA", "BBBBBB"],
+      },
+    ]);
+    // A team that stopped halfway still shows the bots it made, and no group.
+    const partial = team({ bot_ids: ["AAAAAA"], error: "AGENT_NAME_TAKEN" });
+    expect(separateCreations([partial], true).created).toEqual([
+      { kind: "bot", id: "AAAAAA", name: "Ada", memberIds: ["AAAAAA"] },
+    ]);
+    const failed = team({});
+    expect(separateCreations([failed], true).remaining).toEqual([failed]);
+  });
 });
