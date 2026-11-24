@@ -30,6 +30,8 @@ class Upstream:
     def __call__(self, req: httpx.Request) -> httpx.Response:
         assert req.url.host == "api.lynxce.cn" and req.url.scheme == "https"
         assert req.headers["X-Lynxce-Client"] == "web"
+        # New accounts made through Octop Bot are recorded as coming from it (admin 来源, WeCom notice).
+        assert req.headers["X-Lynxce-Signup-Site"] == "octop-bot"
         path = req.url.path
         self.counts[path] += 1
         if path == "/api/auth/logout":
