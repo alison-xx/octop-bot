@@ -10,7 +10,7 @@ from langchain_core.messages import SystemMessage, ToolMessage
 from langgraph.types import Command
 
 from octop.infra.bot_tasks import watchdog
-from octop.infra.bot_tasks.model import Budget, Task
+from octop.infra.bot_tasks.model import Budget, Criterion, Task
 from octop.infra.bot_tasks.store import TaskStore
 
 
@@ -102,6 +102,7 @@ def test_the_briefing_is_added_on_bot_turns_only(monkeypatch: pytest.MonkeyPatch
     class _Request:
         def __init__(self, system_message: SystemMessage | None) -> None:
             self.system_message = system_message
+            self.messages: list[Any] = []
 
         def override(self, *, system_message: SystemMessage) -> _Request:
             return _Request(system_message)
@@ -114,3 +115,64 @@ def test_the_briefing_is_added_on_bot_turns_only(monkeypatch: pytest.MonkeyPatch
     assert prompt(on).startswith("Hi.\n\n## Tasks") and "task_finish" in prompt(on)
     off, _store, _task = _setup(monkeypatch, bot_turn=False)
     assert prompt(off) == "Hi."
+
+
+def test_a_review_sub_agent_is_recorded_on_a_deep_task(monkeypatch: pytest.MonkeyPatch) -> None:
+    middleware, store, task = _setup(monkeypatch, steps=50)
+    task.tier = "deep"
+    store.save("thr1", task)
+
+    def reviewer(request: Any) -> Command[Any]:
+        return Command(
+            update={
+                "messages": [
+                    ToolMessage(content="1. met: 表格 42 行。2. not met: 缺折扣", tool_call_id="c1")
+                ]
+            }
+        )
+
+    def sub_agent(description: str) -> Any:
+        return SimpleNamespace(
+            tool_call={
+                "name": "task",
+                "id": "c1",
+                "args": {"description": description, "subagent_type": "general-purpose"},
+            }
+        )
+
+    middleware.wrap_tool_call(sub_agent("Collect prices from three sites"), reviewer)
+    assert store.running("thr1").reviews == 0  # delegating work is not a review
+    middleware.wrap_tool_call(sub_agent("Review: check each criterion"), reviewer)
+    reviewed = store.running("thr1")
+    assert reviewed.reviews == 1 and reviewed.reviewed_at is not None
+    assert reviewed.review.startswith("1. met")
+
+
+def test_a_task_dropped_by_compaction_is_put_back_in_the_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.messages import HumanMessage
+
+    middleware, store, task = _setup(monkeypatch)
+    task.criteria = [Criterion(text="三家都有", status="passed", evidence="42 行")]
+    store.save("thr1", task)
+
+    class _Request:
+        def __init__(self, messages: list[Any], system_message: Any = None) -> None:
+            self.messages = messages
+            self.system_message = system_message
+
+        def override(self, *, system_message: SystemMessage) -> _Request:
+            return _Request(self.messages, system_message)
+
+    def prompt(messages: list[Any]) -> str:
+        seen = middleware.wrap_model_call(_Request(messages), lambda r: r)  # type: ignore[arg-type,return-value]
+        return "".join(b["text"] for b in seen.system_message.content_blocks)  # type: ignore[attr-defined]
+
+    summarized = [HumanMessage(content="Summary of the conversation so far ...")]
+    restored = prompt(summarized)
+    assert "## Current task (restored" in restored
+    assert "1. [passed] 三家都有 - 42 行" in restored
+    # While a task result is still in the conversation, the prompt is unchanged.
+    still_there = [ToolMessage(content=f'{{"task": {{"id": "{task.id}"}}}}', tool_call_id="x")]
+    assert "Current task" not in prompt(still_there)

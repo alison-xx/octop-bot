@@ -18,6 +18,9 @@ MAX_CRITERIA = 8
 DEFAULT_BUDGET: dict[str, tuple[int, int]] = {"standard": (60, 30), "deep": (150, 90)}
 # A running task nobody touched for this long is treated as abandoned by the next plan.
 STALE_SECONDS = 6 * 60 * 60
+# A deep task is reviewed by an independent sub-agent before it may finish; after this many
+# reviews it may finish anyway (what is still wrong goes into its open issues).
+MAX_REVIEWS = 2
 
 
 class Criterion(BaseModel):
@@ -44,10 +47,23 @@ class Task(BaseModel):
     finished_at: float | None = None
     summary: str = Field(default="", max_length=2000)
     open_issues: list[str] = Field(default_factory=list, max_length=10)
+    # When a criterion last got a verdict, and the independent reviews of a deep task.
+    checked_at: float | None = None
+    reviewed_at: float | None = None
+    reviews: int = 0
+    review: str = Field(default="", max_length=1000)
 
     def unchecked(self) -> list[int]:
         """1-based numbers of criteria still without a verdict."""
         return [i + 1 for i, c in enumerate(self.criteria) if c.status == "pending"]
+
+    def needs_review(self) -> bool:
+        """A deep task must be reviewed after its latest verdicts (up to MAX_REVIEWS times)."""
+        if self.tier != "deep" or self.reviews >= MAX_REVIEWS:
+            return False
+        return self.reviewed_at is None or (
+            self.checked_at is not None and self.reviewed_at < self.checked_at
+        )
 
     def verdict(self) -> TaskStatus:
         return "done" if all(c.status == "passed" for c in self.criteria) else "partial"

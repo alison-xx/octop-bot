@@ -41,6 +41,15 @@ evidence you actually observed: a command's output, a file check (pages, rows), 
 you looked at, a message or receipt id. status: passed, failed (say what is wrong) or skipped \
 (say why). Never mark passed what you did not verify."""
 
+REVIEW_FIRST = (
+    "Refused: this is a deep task, so an independent reviewer checks it before it is done. "
+    'Call `task` with a description starting with "Review:" and give the reviewer only the '
+    "user's request, the acceptance criteria with your evidence, and where the results are, "
+    "not your reasoning. Ask it to report each criterion as met or not and why. Fix what it "
+    "finds (task_check again), then call task_finish. Anything still wrong after the second "
+    "review goes into open_issues."
+)
+
 FINISH_DESCRIPTION = """Close the task once every criterion has a verdict from task_check. \
 summary: one or two sentences on the result. open_issues: what is not done or not verified. \
 After this, reply briefly; the user sees the checklist as a card. Refused while a criterion \
@@ -132,7 +141,7 @@ def task_tools(store: TaskStore) -> list[StructuredTool]:
         task.criteria[criterion - 1] = Criterion(
             text=task.criteria[criterion - 1].text, status=status, evidence=proof[:1000]
         )
-        task.updated_at = time.time()
+        task.updated_at = task.checked_at = time.time()
         return snapshot(store.save(thread, task))
 
     def task_finish(summary: str, open_issues: list[str] | None = None) -> str:
@@ -147,6 +156,8 @@ def task_tools(store: TaskStore) -> list[StructuredTool]:
                 f"Refused: criteria {numbers} have no verdict yet. Verify them and call "
                 "task_check (passed, failed or skipped with a reason) first."
             )
+        if task.needs_review():
+            return REVIEW_FIRST
         now = time.time()
         task.status = task.verdict()
         task.summary = summary.strip()[:2000]

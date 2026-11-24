@@ -1,6 +1,9 @@
 """Keeps a Bot's task honest without calling a model.
 
-- Briefs the model on the task contract (when to plan, evidence, the finish gate).
+- Briefs the model on the task contract (when to plan, evidence, the finish gate), and puts the
+  running task back in the prompt when compacting the conversation dropped it.
+- Records the independent review of a deep task (a ``task`` sub-agent call whose description
+  starts with "Review:"), which ``task_finish`` waits for.
 - Counts the steps of the running task: a note at 80% of its step or time budget, and once
   the budget is spent, work tools are refused until the model finishes or asks the user.
 - The same tool failing the same way three times gets a note to stop retrying it.
@@ -14,7 +17,7 @@ from dataclasses import replace
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
-from langchain_core.messages import SystemMessage, ToolMessage
+from langchain_core.messages import BaseMessage, SystemMessage, ToolMessage
 from langgraph.config import get_config
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
@@ -39,7 +42,8 @@ otherwise write it down as an assumption and go on.
 output, a file check (pages, rows, opens without error), a screenshot you looked at, a \
 receipt or message id. Never mark passed what you did not check.
 4. Call `task_finish` last, then reply in a sentence or two; the user sees the checklist as a \
-card. If a criterion failed or was skipped, say plainly what is missing; never call it done."""
+card. If a criterion failed or was skipped, say plainly what is missing; never call it done. \
+A deep task is checked by an independent reviewer first; task_finish tells you how."""
 
 BUDGET_NEAR = (
     "Note: this task has used {used} of its {what} budget ({limit}). Wrap up: finish what "
@@ -49,6 +53,14 @@ BUDGET_SPENT = (
     "Refused: this task has used its whole {what} budget ({limit}). Call task_finish with what "
     "is done and what is not, or ask the user (ask_user_question) whether to continue."
 )
+RESTORED = """## Current task (restored: earlier messages were summarized)
+Goal: {goal} ({tier})
+Acceptance criteria:
+{criteria}{assumptions}
+Keep going from here; record verdicts with task_check and close with task_finish."""
+
+REVIEW_PREFIXES = ("review", "复核")
+
 SAME_ERROR = (
     "Note: `{tool}` has now failed the same way {count} times in this task. Do not try it "
     "again the same way: change the approach, or tell the user what is blocking you."
@@ -82,6 +94,33 @@ def _with_note(result: ToolMessage | Command[Any], note: str) -> ToolMessage | C
         messages = [noted(m) if isinstance(m, ToolMessage) else m for m in update["messages"]]
         return replace(result, update={**update, "messages": messages})
     return result
+
+
+def _result_text(result: ToolMessage | Command[Any]) -> str:
+    messages: list[Any] = [result]
+    if isinstance(result, Command) and isinstance(result.update, dict):
+        messages = list(result.update.get("messages") or [])
+    for message in messages:
+        if isinstance(message, ToolMessage):
+            return (
+                message.text() if callable(getattr(message, "text", None)) else str(message.content)
+            )
+    return ""
+
+
+def restored_task(task: Task) -> str:
+    lines = []
+    for number, item in enumerate(task.criteria, 1):
+        proof = f" - {item.evidence}" if item.evidence else ""
+        lines.append(f"{number}. [{item.status}] {item.text}{proof}")
+    assumptions = "\nAssumptions: " + "; ".join(task.assumptions) if task.assumptions else ""
+    return RESTORED.format(
+        goal=task.goal, tier=task.tier, criteria="\n".join(lines), assumptions=assumptions
+    )
+
+
+def _mentions(messages: list[BaseMessage], task_id: str) -> bool:
+    return any(task_id in str(message.content) for message in messages)
 
 
 def _error_text(result: ToolMessage | Command[Any]) -> str | None:
@@ -148,10 +187,17 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
     def _brief(self, request: ModelRequest[Any]) -> ModelRequest[Any]:
         if not self._active():
             return request
+        text = BRIEFING
+        thread = str(_configurable().get("thread_id") or "")
+        task = self._store.running(thread) if thread else None
+        # Only when compaction dropped every task result: the prompt stays the same (and
+        # cached) on ordinary turns.
+        if task is not None and not _mentions(list(request.messages), task.id):
+            text = f"{text}\n\n{restored_task(task)}"
         blocks: list[Any] = (
             list(request.system_message.content_blocks) if request.system_message else []
         )
-        blocks.append({"type": "text", "text": f"\n\n{BRIEFING}" if blocks else BRIEFING})
+        blocks.append({"type": "text", "text": f"\n\n{text}" if blocks else text})
         return request.override(system_message=SystemMessage(content_blocks=blocks))
 
     def wrap_model_call(
@@ -191,6 +237,7 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
     def _after(
         self, request: ToolCallRequest, task: Task, result: ToolMessage | Command[Any]
     ) -> ToolMessage | Command[Any]:
+        self._note_review(request, task, result)
         notes: list[str] = []
         error = _error_text(result)
         if error is not None:
@@ -202,6 +249,28 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         if near:
             notes.append(near)
         return _with_note(result, "\n".join(notes)) if notes else result
+
+    def _note_review(
+        self, request: ToolCallRequest, task: Task, result: ToolMessage | Command[Any]
+    ) -> None:
+        """A ``task`` sub-agent asked to review a deep task: remember that it ran, and its
+        findings, for task_finish and the delivery report."""
+        if task.tier != "deep" or request.tool_call.get("name") != "task":
+            return
+        args = request.tool_call.get("args")
+        description = str(args.get("description") or "") if isinstance(args, dict) else ""
+        if not description.strip().lower().startswith(REVIEW_PREFIXES):
+            return
+        if _error_text(result) is not None:
+            return
+        thread = str(_configurable().get("thread_id") or "")
+        fresh = self._store.running(thread)
+        if fresh is None or fresh.id != task.id:
+            return
+        fresh.reviews += 1
+        fresh.reviewed_at = fresh.updated_at = time.time()
+        fresh.review = _result_text(result).strip()[:1000]
+        self._store.save(thread, fresh)
 
     def wrap_tool_call(
         self,

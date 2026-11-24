@@ -121,3 +121,38 @@ def test_a_conversation_keeps_only_its_latest_tasks() -> None:
         store.save("t", Task(goal=f"g{i}", budget=Budget(steps=1, minutes=1), status="done"))
     goals = [t.goal for t in store.tasks("t")]
     assert len(goals) == KEEP_PER_THREAD and goals[-1] == f"g{KEEP_PER_THREAD + 2}"
+
+
+def test_a_deep_task_waits_for_an_independent_review_after_its_latest_verdicts(
+    kit: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tools, store = kit
+    clock = iter(range(1_000, 2_000))
+    monkeypatch.setattr(task_module.time, "time", lambda: float(next(clock)))
+    tools["task_plan"].invoke({"goal": "上线方案", "criteria": ["A"], "tier": "deep"})
+    tools["task_check"].invoke({"criterion": 1, "status": "passed", "evidence": "ok"})
+    refused = tools["task_finish"].invoke({"summary": "done"})
+    assert refused.startswith("Refused: this is a deep task") and '"Review:"' in refused
+
+    def review() -> None:
+        task = store.running("thr1")
+        task.reviews += 1
+        task.reviewed_at = float(next(clock))
+        store.save("thr1", task)
+
+    review()
+    # A verdict changed after the review: it must be reviewed again (second and last time).
+    tools["task_check"].invoke({"criterion": 1, "status": "failed", "evidence": "差一项"})
+    assert tools["task_finish"].invoke({"summary": "x"}).startswith("Refused: this is a deep")
+    review()
+    tools["task_check"].invoke({"criterion": 1, "status": "passed", "evidence": "补上了"})
+    # Two reviews done: it may finish even though the last verdict came after them.
+    finished = json.loads(tools["task_finish"].invoke({"summary": "完成"}))
+    assert finished["task"]["status"] == "done" and finished["task"]["reviews"] == 2
+
+
+def test_a_standard_task_needs_no_review(kit: Any) -> None:
+    tools, _store = kit
+    tools["task_plan"].invoke({"goal": "表", "criteria": ["A"]})
+    tools["task_check"].invoke({"criterion": 1, "status": "passed", "evidence": "ok"})
+    assert json.loads(tools["task_finish"].invoke({"summary": "ok"}))["task"]["status"] == "done"

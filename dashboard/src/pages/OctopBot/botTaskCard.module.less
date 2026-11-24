@@ -5,12 +5,14 @@
   --task-pass: #1a7f45;
   --task-fail: #c2410c;
   --task-skip: var(--bot-muted, #7f7f7f);
+  --task-wait: #b45309;
   --motion-base: 200ms;
   --motion-slow: 320ms;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   :global(html[data-theme="dark"]) & {
     --task-pass: #4ade80;
     --task-fail: #fb923c;
+    --task-wait: #fbbf24;
   }
   box-sizing: border-box;
   width: 100%;
@@ -60,6 +62,15 @@
 .phase_partial .phaseIcon,
 .reportPartial .phaseIcon {
   color: var(--task-fail);
+}
+// Waiting for the user: the one card in the chat that asks to be looked at.
+.phase_waiting {
+  border-left: 3px solid var(--task-wait);
+  transition: border-color var(--motion-base) var(--ease-standard);
+  .phaseIcon,
+  .phaseLabel {
+    color: var(--task-wait);
+  }
 }
 
 .goal {
@@ -230,6 +241,17 @@
   font-size: 13px;
   line-height: 20px;
 }
+.review {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .reportFooter {
   margin-top: 10px;
   font-size: 12px;
@@ -268,6 +290,14 @@
   }
   .step_completed .stepIcon {
     animation: taskCheck var(--motion-base) var(--ease-standard);
+  }
+  .phase_waiting {
+    animation: taskNudge 400ms var(--ease-standard);
+  }
+  @keyframes taskNudge {
+    50% {
+      transform: scale(1.02);
+    }
   }
   @keyframes taskEnter {
     from {

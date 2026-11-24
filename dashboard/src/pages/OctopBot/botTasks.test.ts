@@ -67,6 +67,17 @@ describe("botTasks", () => {
         }),
       ),
       tool("m5", "task_plan", task({ id: "T2", goal: "下一个" })),
+      {
+        id: "m6",
+        role: "assistant",
+        content: "",
+        timestamp: 0,
+        hitlData: {
+          status: "pending",
+          pending_id: "ab12",
+          action_requests: [],
+        },
+      } as unknown as ChatMessage,
     ];
     const index = indexBotTasks(messages);
     const first = index.byId.get("T1");
@@ -77,6 +88,9 @@ describe("botTasks", () => {
     expect(index.byMessage.get("m4")).toBe("T1");
     expect(index.byMessage.has("m3")).toBe(false);
     expect(index.latest).toBe("T2");
+    // The question after T2 started waits for the user; T1's span has none.
+    expect(index.byId.get("T2")?.waiting).toBe(true);
+    expect(first?.waiting).toBe(false);
   });
 
   it("counts time until the task finished", () => {

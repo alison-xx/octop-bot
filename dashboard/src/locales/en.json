@@ -9025,6 +9025,7 @@
     "duration": "Took {{time}}",
     "phase": {
       "live": "Working",
+      "waiting": "Needs you",
       "paused": "Paused",
       "done": "Done",
       "partial": "Partly done",
@@ -9035,6 +9036,7 @@
       "passed": "Passed",
       "failed": "Failed",
       "skipped": "Skipped"
-    }
+    },
+    "review": "Independent review"
   }
 }

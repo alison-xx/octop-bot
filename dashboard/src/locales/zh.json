@@ -9025,6 +9025,7 @@
     "duration": "用时 {{time}}",
     "phase": {
       "live": "进行中",
+      "waiting": "等你处理",
       "paused": "已暂停",
       "done": "已完成",
       "partial": "部分完成",
@@ -9035,6 +9036,7 @@
       "passed": "通过",
       "failed": "未通过",
       "skipped": "跳过"
-    }
+    },
+    "review": "独立复核"
   }
 }

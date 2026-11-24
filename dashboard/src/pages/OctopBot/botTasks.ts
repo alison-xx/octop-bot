@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../Chat/hooks/useChat";
+import { isResumableHitl } from "../Chat/utils/pendingHitl";
 import {
   collectWriteTodosFromMessages,
   type TodoListItem,
@@ -30,6 +31,9 @@ export interface BotTask {
   finished_at: number | null;
   summary: string;
   open_issues: string[];
+  /** Independent reviews of a deep task, and what the last one found. */
+  reviews?: number;
+  review?: string;
 }
 
 export interface BotTaskEntry {
@@ -39,6 +43,8 @@ export interface BotTaskEntry {
   firstMessageId: string;
   /** The plan (write_todos) kept while this task ran. */
   todos: TodoListItem[];
+  /** A question, approval or takeover in this task still waits for the user. */
+  waiting: boolean;
 }
 
 export interface BotTaskIndex {
@@ -85,17 +91,27 @@ export function indexBotTasks(messages: readonly ChatMessage[]): BotTaskIndex {
     if (known) {
       known.task = task;
     } else {
-      byId.set(task.id, { task, firstMessageId: message.id, todos: [] });
+      byId.set(task.id, {
+        task,
+        firstMessageId: message.id,
+        todos: [],
+        waiting: false,
+      });
       starts.push({ id: task.id, index });
     }
   });
   starts.forEach((start, i) => {
     const end = starts[i + 1]?.index ?? messages.length;
     const entry = byId.get(start.id);
-    if (entry)
-      entry.todos = collectWriteTodosFromMessages(
-        messages.slice(start.index, end),
-      );
+    if (!entry) return;
+    const span = messages.slice(start.index, end);
+    entry.todos = collectWriteTodosFromMessages(span);
+    entry.waiting = span.some(
+      (m) =>
+        m.hitlData !== undefined &&
+        (m.hitlData.status ?? "pending") === "pending" &&
+        isResumableHitl(m.hitlData),
+    );
   });
   return { byId, byMessage, latest: starts[starts.length - 1]?.id };
 }

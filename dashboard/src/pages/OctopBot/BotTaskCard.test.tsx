@@ -28,9 +28,10 @@ const base: BotTask = {
   open_issues: [],
 };
 
-const entry = (task: Partial<BotTask> = {}): BotTaskEntry => ({
+const entry = (task: Partial<BotTask> = {}, waiting = false): BotTaskEntry => ({
   task: { ...base, ...task },
   firstMessageId: "m1",
+  waiting,
   todos: [
     { id: "1", content: "收集价格", status: "completed" },
     { id: "2", content: "汇总", status: "in_progress" },
@@ -65,7 +66,32 @@ describe("BotTaskCard", () => {
   });
 });
 
+describe("BotTaskCard waiting", () => {
+  it("marks a task that waits for the user, whether or not the Bot is replying", () => {
+    render(<BotTaskCard entry={entry({}, true)} live={false} />);
+    expect(screen.getByText("botTask.phase.waiting")).toBeTruthy();
+    expect(screen.queryByText("botTask.phase.paused")).toBeNull();
+  });
+});
+
 describe("BotTaskReport", () => {
+  it("shows what the independent reviewer found on a deep task", () => {
+    render(
+      <BotTaskReport
+        task={{
+          ...base,
+          tier: "deep",
+          status: "done",
+          reviews: 1,
+          review: "1. met: 表格 42 行",
+          finished_at: base.started_at + 60,
+        }}
+      />,
+    );
+    expect(screen.getByText("botTask.review")).toBeTruthy();
+    expect(screen.getByText("1. met: 表格 42 行")).toBeTruthy();
+  });
+
   it("never reads as done when a criterion was skipped, and lists what is missing", () => {
     render(
       <BotTaskReport

@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
+  Hand,
   Minus,
   Pause,
   X,
@@ -19,11 +20,12 @@ import {
 } from "./botTasks";
 import styles from "./botTaskCard.module.less";
 
-type Phase = "live" | "paused" | "done" | "partial" | "stopped";
+type Phase = "live" | "waiting" | "paused" | "done" | "partial" | "stopped";
 
-function phaseOf(task: BotTask, live: boolean): Phase {
-  if (task.status === "running") return live ? "live" : "paused";
-  return task.status;
+function phaseOf(task: BotTask, live: boolean, waiting: boolean): Phase {
+  if (task.status !== "running") return task.status;
+  if (waiting) return "waiting";
+  return live ? "live" : "paused";
 }
 
 function useDuration(task: BotTask, ticking: boolean): string {
@@ -43,6 +45,7 @@ function useDuration(task: BotTask, ticking: boolean): string {
 function PhaseIcon({ phase }: { phase: Phase }) {
   if (phase === "live") return <span className={styles.spinner} aria-hidden />;
   if (phase === "paused") return <Pause size={14} aria-hidden />;
+  if (phase === "waiting") return <Hand size={14} aria-hidden />;
   if (phase === "done") return <Check size={15} aria-hidden />;
   if (phase === "stopped") return <Minus size={15} aria-hidden />;
   return <X size={15} aria-hidden />;
@@ -118,7 +121,7 @@ export default function BotTaskCard({
 }) {
   const { t } = useTranslation();
   const { task, todos } = entry;
-  const phase = phaseOf(task, live);
+  const phase = phaseOf(task, live, entry.waiting);
   const finished = task.status !== "running";
   const [open, setOpen] = useState(!finished);
   const [showCriteria, setShowCriteria] = useState(false);
@@ -236,6 +239,12 @@ export function BotTaskReport({ task }: { task: BotTask }) {
               <li key={index}>{item}</li>
             ))}
           </ul>
+        </>
+      )}
+      {Boolean(task.reviews && task.review) && (
+        <>
+          <h4 className={styles.sectionTitle}>{t("botTask.review")}</h4>
+          <p className={styles.review}>{task.review}</p>
         </>
       )}
       {task.assumptions.length > 0 && (
