@@ -107,6 +107,13 @@ export interface OctopDesktopBridge {
    * WorkBuddy sign-in window. Resolves with Lynxce's one-time hand-off code,
    * which the page exchanges for a Lynxce session. Absent on older shells.
    */
+  wechatLogin?: (
+    qrUrl: string,
+    redirectUri: string,
+  ) => Promise<
+    | { ok: true; code: string; state: string }
+    | { ok: false; reason: "cancelled" | "denied" | "failed" }
+  >;
   workbuddyLogin?: () => Promise<
     | { ok: true; code: string }
     | { ok: false; reason: "cancelled" | "denied" | "failed" }

@@ -290,6 +290,10 @@ async def _session_login(path: str, body: dict[str, str]) -> _Grant:
         if exc.status in {401, 403}:
             raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403) from None
         raise _rejected(exc.status) from None
+    return _grant_from_session(data)
+
+
+def _grant_from_session(data: Any) -> _Grant:
     profile = data.get("user") if isinstance(data, dict) else None
     if (
         not isinstance(profile, dict)

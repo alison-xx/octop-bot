@@ -121,6 +121,7 @@ import { isWindowOnScreen, presentWindows, shouldKeepWindowOnClose } from "./win
 import { BotOrb } from "./windows/bot-orb";
 import { createRemoteWindow } from "./windows/remote-window";
 import { ServerPicker } from "./windows/server-window";
+import { openWechatLogin } from "./windows/wechat-login";
 import { openWorkbuddyLogin } from "./windows/workbuddy-login";
 import { isMacPermission, requestMacPermission } from "./mac-permissions";
 import { sanitizeBadgeCount, sanitizeNotification, trayTooltip } from "./windows/attention";
@@ -752,6 +753,10 @@ function registerIpcHandlers(): void {
     const total = sanitizeBadgeCount(count);
     app.setBadgeCount(total);
     tray?.setToolTip(trayTooltip(productName, total, uiLocale()));
+  });
+  ipcMain.handle(IPC_CHANNELS.botWechatLogin, (event, qrUrl: string, redirectUri: string) => {
+    if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" as const });
+    return openWechatLogin(BrowserWindow.fromWebContents(event.sender), app.getLocale().toLowerCase().startsWith("zh"), qrUrl, redirectUri);
   });
   ipcMain.handle(IPC_CHANNELS.botWorkbuddyLogin, (event): Promise<WorkbuddyLoginResult> => {
     if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" });

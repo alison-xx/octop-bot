@@ -51,6 +51,10 @@ export interface BotNotification {
 }
 
 /** WorkBuddy sign-in window: Lynxce's one-time hand-off code, or why there is none. */
+export type WechatLoginResult =
+  | { ok: true; code: string; state: string }
+  | { ok: false; reason: "cancelled" | "denied" | "failed" };
+
 export type WorkbuddyLoginResult =
   | { ok: true; code: string }
   | { ok: false; reason: "cancelled" | "denied" | "failed" };
@@ -114,6 +118,7 @@ export const IPC_CHANNELS = {
   botNotify: "octop:bot:notify",
   botNotificationOpen: "octop:bot:notification-open",
   botUnreadBadge: "octop:bot:unread-badge",
+  botWechatLogin: "octop:bot:wechat-login",
   botWorkbuddyLogin: "octop:bot:workbuddy-login",
   /** Ask macOS for a privacy grant the Bot's computer needs; true when already granted. */
   botComputerPermission: "octop:bot:computer-permission",
