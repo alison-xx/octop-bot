@@ -23,12 +23,27 @@ def assert_agent_owner(row: Any, user: Any) -> None:
         raise OctopError(ErrorCode.FORBIDDEN, "agent not owned by user")
 
 
+def _runs_in_tenant_space(row: Any) -> bool:
+    """The agent runs on a cloud tenant's own object-store backend (not on the host)."""
+    from octop.infra.agents.settings.profile import parse_config_json  # noqa: PLC0415
+    from octop.infra.cloud.bot_cloud.files import BACKEND_TYPE  # noqa: PLC0415
+
+    backend = parse_config_json(getattr(row, "config_json", None)).get("backend")
+    return isinstance(backend, dict) and backend.get("type") == BACKEND_TYPE
+
+
 def _user_may_access(row: Any, user: Any, *, repos: Any | None = None) -> bool:
     if user.is_admin:
         return True
     if row.user_id is not None and row.user_id == user.id:
         return True
     if not agent_is_shared(row):
+        return False
+    from octop.api.common.bot_cloud import is_cloud_tenant  # noqa: PLC0415
+
+    if is_cloud_tenant(user) and not _runs_in_tenant_space(row):
+        # On a cloud server a tenant uses someone else's agent only if it runs in a tenant
+        # space like its own.
         return False
     if repos is None:
         return True

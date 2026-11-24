@@ -926,6 +926,8 @@ class AgentManager:
                     raise OctopError.localized(ErrorCode.FORBIDDEN)
                 # Only what a tenant may set; the server picks the folder, backend and layout.
                 config = strip_tenant_input(config)
+                # On a cloud server a tenant's agents stay its own.
+                spec = replace(spec, is_shared=False)
             if kind == "managed":
                 from octop.infra.agents.managed import (  # noqa: PLC0415
                     apply_managed_backend,
@@ -1345,6 +1347,9 @@ class AgentManager:
 
         if shared and is_private_bot(existing):
             raise OctopError(ErrorCode.FORBIDDEN, "private bot cannot be shared")
+        if shared and self._cloud_tenant(existing.user_id):
+            # On a cloud server a tenant's agents stay its own.
+            raise OctopError.localized(ErrorCode.FORBIDDEN)
         self._repos.agent_repo.set_shared(agent_id, shared)
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
