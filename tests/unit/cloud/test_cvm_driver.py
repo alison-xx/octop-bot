@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import re
 from types import SimpleNamespace
 from typing import Any
@@ -104,6 +106,20 @@ def test_config_needs_the_network_and_image() -> None:
     assert config.subnets == (("ap-guangzhou-6", "subnet-6"), ("ap-guangzhou-7", "subnet-7"))
     assert dict(config.types) == {"standard": "SA9.LARGE8", "pro": "SA9.2XLARGE16"}
     assert config.region == "ap-guangzhou"
+
+
+def test_instance_secret_outlives_a_cam_key_rotation() -> None:
+    old = CvmConfig.from_env(ENV)
+    assert old is not None
+    expected = hmac.new(b"secret-test", b"octop-cvm:token", hashlib.sha256).digest()
+    assert old.derive("token") == expected
+    rotated = CvmConfig.from_env(
+        {**ENV, "OCTOP_CVM_SECRET_KEY": "new-secret", "OCTOP_CVM_INSTANCE_SECRET": "secret-test"}
+    )
+    assert rotated is not None
+    assert rotated.secret_key == "new-secret"
+    assert rotated.derive("token") == old.derive("token")
+    assert rotated.derive("ca") == old.derive("ca")
 
 
 def test_states_map_a_stopped_computer_to_paused() -> None:
