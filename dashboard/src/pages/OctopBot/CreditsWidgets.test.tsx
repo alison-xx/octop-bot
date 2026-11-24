@@ -1,0 +1,129 @@
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { beforeEach, expect, it, vi } from "vitest";
+import { request } from "../../api/request";
+import type { LynxceWallet } from "../../api/modules/lynxceWallet";
+import { CreditsRequiredCard, LowCreditsBanner } from "./CreditsWidgets";
+import { formatCredits, resetCredits } from "./useLynxceCredits";
+
+vi.mock("../../api/request", () => ({ request: vi.fn() }));
+vi.mock("react-i18next", () => {
+  const t = (key: string, vars?: Record<string, string>) =>
+    vars?.value ? `${key}:${vars.value}` : key;
+  return { useTranslation: () => ({ t, i18n: { language: "en" } }) };
+});
+
+const wallet = (credits: number): LynxceWallet => ({
+  source: "cloud",
+  account_id: "user-a",
+  connection_id: null,
+  credits,
+  status: "available",
+  recharge_mode: "ticket",
+});
+const checkout = {
+  url: "https://admin.lynxce.cn/recharge?token=eyJjIjoxfQ." + "a".repeat(43),
+  expires_at: new Date(Date.now() + 900000).toISOString(),
+};
+
+let balance = 0;
+beforeEach(() => {
+  resetCredits();
+  localStorage.clear();
+  balance = 0;
+  vi.mocked(request).mockReset();
+  vi.mocked(request).mockImplementation(async (path: string) => {
+    if (path === "/octop-bot/server-info") return { edition: "cloud" };
+    if (path.startsWith("/octop-bot/wallet?")) return wallet(balance);
+    if (path === "/octop-bot/wallet/recharge") return checkout;
+    throw new Error("unexpected " + path);
+  });
+});
+
+it("formats large balances without cents and small ones with two decimals", () => {
+  expect(formatCredits(4454029.04, "en")).toBe("4,454,029");
+  expect(formatCredits(12.5, "en")).toBe("12.50");
+  expect(formatCredits(1280, "en")).toBe("1,280");
+});
+
+it("turns an out-of-credit reply into recharge, then continue once credits arrive", async () => {
+  const tab = { opener: {}, location: { href: "" }, close: vi.fn() };
+  const open = vi
+    .spyOn(window, "open")
+    .mockReturnValue(tab as unknown as Window);
+  const onContinue = vi.fn();
+  render(<CreditsRequiredCard onContinue={onContinue} />);
+  expect(screen.getByText("botCredits.outTitle")).toBeInTheDocument();
+  expect(
+    await screen.findByText("botCredits.balanceNow:0"),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "botCredits.recharge" }));
+  await waitFor(() => expect(tab.location.href).toBe(checkout.url));
+  expect(tab.opener).toBeNull();
+  expect(request).toHaveBeenCalledWith(
+    "/octop-bot/wallet/recharge",
+    expect.objectContaining({ method: "POST" }),
+  );
+
+  // Back from checkout: focusing the window reloads the balance.
+  balance = 500;
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  expect(await screen.findByText("botCredits.outReady")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "botCredits.recharge" }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "botCredits.continue" }));
+  expect(onContinue).toHaveBeenCalledOnce();
+  open.mockRestore();
+});
+
+it("warns below 100 credits until dismissed, and forgets the dismissal once topped up", async () => {
+  balance = 42;
+  const { unmount } = render(<LowCreditsBanner />);
+  expect(
+    await screen.findByText("botCredits.lowBanner:42"),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "botCredits.dismiss" }));
+  expect(screen.queryByText(/botCredits.lowBanner/)).not.toBeInTheDocument();
+  unmount();
+
+  resetCredits();
+  render(<LowCreditsBanner />);
+  await waitFor(() => expect(request).toHaveBeenCalled());
+  expect(screen.queryByText(/botCredits.lowBanner/)).not.toBeInTheDocument();
+
+  balance = 5000;
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  balance = 10;
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  expect(
+    await screen.findByText("botCredits.lowBanner:10"),
+  ).toBeInTheDocument();
+});
+
+it("tells a used-up daily limit apart from an empty wallet: no top-up, just continue later", async () => {
+  balance = 5000;
+  const onContinue = vi.fn();
+  render(<CreditsRequiredCard kind="limit" onContinue={onContinue} />);
+  expect(screen.getByText("botCredits.limitTitle")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "botCredits.recharge" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("link")).toHaveAttribute(
+    "href",
+    "https://admin.lynxce.cn",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "botCredits.continue" }));
+  expect(onContinue).toHaveBeenCalledOnce();
+});

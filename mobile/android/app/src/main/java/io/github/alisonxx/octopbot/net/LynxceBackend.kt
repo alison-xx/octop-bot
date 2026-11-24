@@ -49,7 +49,8 @@ class LynxceBackend(
 ) : ChatBackend, CreditAccount {
     override val definesBotsLocally = true
     override val supportsGroups = false
-    override val accountName get() = grant.displayName ?: grant.accountId
+    /** Lynxce's display name; never the numeric account id. */
+    override val accountName: String? get() = grant.displayName?.trim()?.takeIf { it.isNotEmpty() && it != grant.accountId }
     override val connectionLabel = "api.lynxce.cn"
 
     private val refreshLock = Mutex()
@@ -337,7 +338,7 @@ class LynxceBackend(
             response = connect() ?: return false
         }
         response.use {
-            if (!it.isSuccessful) throw ApiException.from(it.code, Http.errorMessage(it.body.string()))
+            if (!it.isSuccessful) throw ApiException.fromBody(it.code, it.body.string())
             var completed = false
             try {
                 it.body.source().forEachSseEvent { event ->
@@ -396,13 +397,15 @@ class LynxceBackend(
         return Base64.getDecoder().decode(encoded)
     }
 
-    override suspend fun balance(): String? =
-        runCatching { LynxceProtocol.balance(call("GET", "/api/user/quota")) }.getOrNull()
+    override val walletKey: String get() = "lynxce:" + grant.accountId
+
+    override suspend fun balance(): Double =
+        LynxceProtocol.balance(call("GET", "/api/user/quota")) ?: throw ApiException.badResponse()
 
     /** A signed-in link to Lynxce's recharge page for this account, valid for 15 minutes. */
     override suspend fun checkoutUrl(): String =
         LynxceProtocol.checkoutUrl(call("POST", "/api/billing/recharge/checkout-link") { Http.body(buildJsonObject {}) })
-            ?: throw ApiException.badResponse()
+            ?: throw CheckoutRefused()
 
     /** Ask Lynxce to delete this account; it is signed out everywhere and erased after a cooling-off period. */
     override suspend fun requestDeletion() {

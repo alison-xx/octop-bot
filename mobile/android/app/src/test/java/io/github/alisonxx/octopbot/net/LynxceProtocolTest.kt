@@ -135,8 +135,32 @@ class LynxceProtocolTest {
         assertEquals(1, LynxceProtocol.models(Http.parse("""[{"modelId":"b"}]""")).size)
 
         // The wallet, not an enterprise member's monthly allowance.
-        assertEquals("12,800.5", LynxceProtocol.balance(Http.parse("""{"creditsRemaining":12800.5,"effectiveCreditsRemaining":3}""")))
+        assertEquals(12800.5, LynxceProtocol.balance(Http.parse("""{"creditsRemaining":12800.5,"effectiveCreditsRemaining":3}""")))
         assertNull(LynxceProtocol.balance(Http.parse("""{"plan":"free","credits":12}""")))
+    }
+
+    @Test
+    fun creditsShowDecimalsOnlyBelowOneThousand() {
+        assertEquals("4,454,029", LynxceProtocol.formatCredits(4_454_029.04))
+        assertEquals("12,800", LynxceProtocol.formatCredits(12_800.0))
+        assertEquals("1,000", LynxceProtocol.formatCredits(1_000.99))
+        assertEquals("12.50", LynxceProtocol.formatCredits(12.5))
+        assertEquals("999.99", LynxceProtocol.formatCredits(999.999))
+        assertEquals("100", LynxceProtocol.formatCredits(100.0))
+        assertEquals("0", LynxceProtocol.formatCredits(0.0))
+    }
+
+    @Test
+    fun midStreamQuotaErrorIsOutOfCredits() {
+        fun kind(chunk: String) = try {
+            LynxceProtocol.parseChunk(chunk)
+            null
+        } catch (error: ApiException) {
+            error.kind
+        }
+        assertEquals(ApiException.Kind.Credits, kind("""{"error":{"code":"insufficient_quota","message":"no"}}"""))
+        assertEquals(ApiException.Kind.Credits, kind("""{"error":{"message":"Insufficient credits"}}"""))
+        assertEquals(ApiException.Kind.Server, kind("""{"error":{"message":"model overloaded"}}"""))
     }
 
     @Test

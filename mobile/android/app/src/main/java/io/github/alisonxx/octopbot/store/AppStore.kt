@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.GroupSummary
@@ -108,6 +109,7 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
         val installId = stringPreferencesKey("update.installId")
         val lastUpdateCheck = longPreferencesKey("update.lastCheck")
         val dismissedUpdate = intPreferencesKey("update.dismissedVersionCode")
+        val lowBalanceDismissed = stringSetPreferencesKey("wallet.lowBalanceDismissed")
     }
 
     private val stringMap = MapSerializer(String.serializer(), String.serializer())
@@ -202,6 +204,14 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
     /** The version code whose home banner was closed; that version never shows it again. */
     val dismissedUpdate: Flow<Int?> = store.data.map { it[Keys.dismissedUpdate] }
     suspend fun setDismissedUpdate(versionCode: Int) = store.edit { it[Keys.dismissedUpdate] = versionCode }
+
+    /** Wallets whose low-balance banner was closed; a wallet leaves the set once its balance is back to 100. */
+    val lowBalanceDismissed: Flow<Set<String>> = store.data.map { it[Keys.lowBalanceDismissed].orEmpty() }
+    suspend fun setLowBalanceDismissed(wallet: String, dismissed: Boolean) = store.edit {
+        val current = it[Keys.lowBalanceDismissed].orEmpty()
+        val next = if (dismissed) current + wallet else current - wallet
+        if (next != current) it[Keys.lowBalanceDismissed] = next
+    }
 
     /** Forget what belongs to the signed-in account: tokens and caches. Settings toggles stay. */
     suspend fun clearAccount() {

@@ -3,12 +3,18 @@ import Foundation
 /// Lynxce credits for whoever is signed in: straight with Lynxce (`LynxceBackend`), or through
 /// Octop Bot cloud, which holds the Lynxce session on the user's behalf (`ServerBackend.isCloud`).
 protocol CreditAccount: AnyObject {
-    func balance() async -> String?
+    func wallet() async throws -> Wallet
     func creditPacks() async throws -> (packs: [LynxceBackend.CreditPack], enabled: Bool)
     func purchaseIntent(packId: String) async throws -> (productId: String, accountToken: UUID)
     func submitTransaction(_ signedTransaction: String) async throws
-    /// Delete the Lynxce account; returns the cooling-off days.
-    func requestDeletion() async throws -> Int
+    /// Delete the Lynxce account; returns the cooling-off days when the server says.
+    func requestDeletion() async throws -> Int?
+}
+
+/// One read of the Lynxce wallet: the balance and whose it is.
+struct Wallet: Equatable {
+    var credits: Double
+    var accountId: String
 }
 
 extension LynxceBackend: CreditAccount {}
@@ -31,11 +37,13 @@ extension ServerBackend: CreditAccount {
         guard isCloud else { throw APIError(kind: .rejected, status: 404, message: nil) }
     }
 
-    func balance() async -> String? {
-        guard isCloud, let body = try? await json(.get, "/api/octop-bot/wallet", query: ["source": "cloud"]) as? [String: Any],
+    func wallet() async throws -> Wallet {
+        try requireCloud()
+        guard let body = try await json(.get, "/api/octop-bot/wallet", query: ["source": "cloud"]) as? [String: Any],
               let credits = body["credits"] as? NSNumber
-        else { return nil }
-        return LynxceBackend.formatCredits(credits.doubleValue)
+        else { throw APIError(kind: .server, status: 502, message: nil) }
+        let account = (body["account_id"] as? String) ?? (body["account_id"] as? NSNumber)?.stringValue
+        return Wallet(credits: credits.doubleValue, accountId: account ?? "\(host)/\(session.displayName)")
     }
 
     func creditPacks() async throws -> (packs: [LynxceBackend.CreditPack], enabled: Bool) {
@@ -53,9 +61,9 @@ extension ServerBackend: CreditAccount {
         _ = try await json(.post, "/api/octop-bot/wallet/apple/transaction", json: ["signed_transaction": signedTransaction])
     }
 
-    func requestDeletion() async throws -> Int {
+    func requestDeletion() async throws -> Int? {
         try requireCloud()
         let body = try await json(.post, "/api/octop-bot/account/delete") as? [String: Any]
-        return body?["cooling_days"] as? Int ?? 7
+        return (body?["cooling_days"] as? NSNumber)?.intValue
     }
 }

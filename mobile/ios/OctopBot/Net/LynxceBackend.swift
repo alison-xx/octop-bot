@@ -21,7 +21,11 @@ final class LynxceBackend: ChatBackend {
     private var refreshing: Task<Grant, Error>?
 
     var supportsGroups: Bool { false }
-    var accountName: String { grant.displayName ?? grant.accountId }
+    /// Never the raw account id: with no display name the UI shows a generic name.
+    var accountName: String {
+        let name = (grant.displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? L("account.genericName") : name
+    }
 
     init(grant: Grant, bots: LocalBots = .shared) {
         self.grant = grant
@@ -138,7 +142,7 @@ final class LynxceBackend: ChatBackend {
         }
         guard code == 0 else {
             let status = code == 402 ? 402 : (code == 401 ? 401 : 400)
-            throw APIError.from(status: status, message: envelope["message"] as? String)
+            throw APIError.from(status: status, message: envelope["message"] as? String, code: HTTP.errorCode(data))
         }
         return envelope["data"] ?? NSNull()
     }
@@ -456,7 +460,7 @@ final class LynxceBackend: ChatBackend {
         guard (200..<300).contains(response.statusCode) else {
             var data = Data()
             for try await byte in bytes { data.append(byte); if data.count > 16_384 { break } }
-            throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data))
+            throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data))
         }
         var completed = false
         for try await event in SSE.events(bytes) {
@@ -472,7 +476,9 @@ final class LynxceBackend: ChatBackend {
         guard let object = try? JSONSerialization.jsonObject(with: Data(data.utf8)) as? [String: Any] else { return [] }
         if let error = object["error"] {
             let message = (error as? [String: Any])?["message"] as? String ?? error as? String
-            throw APIError(kind: .server, status: 500, message: message)
+            let code = (error as? [String: Any])?["code"] as? String
+            if APIError.isDailyLimit(code) { throw APIError(kind: .dailyLimit, status: 429, message: message) }
+            throw APIError(kind: isCreditError(error) ? .credits : .server, status: isCreditError(error) ? 402 : 500, message: message)
         }
         guard let choice = (object["choices"] as? [[String: Any]])?.first,
               let delta = choice["delta"] as? [String: Any] else { return [] }
@@ -484,6 +490,15 @@ final class LynxceBackend: ChatBackend {
             events.append(.text(content))
         }
         return events
+    }
+
+    /// An OpenAI-style error object that means the wallet is empty.
+    static func isCreditError(_ error: Any) -> Bool {
+        guard let error = error as? [String: Any] else { return false }
+        if (error["code"] as? NSNumber)?.intValue == 402 || (error["status"] as? NSNumber)?.intValue == 402 { return true }
+        let tags = [error["code"], error["type"]].compactMap { ($0 as? String)?.lowercased() }
+        if tags.contains(where: { $0.contains("credit_limit_reached") }) { return false }
+        return tags.contains { $0 == APIError.creditsRequired.lowercased() || $0.contains("insufficient") }
     }
 
     /// Append the finished turn to the synced Lynxce session (idempotent on the server).
@@ -536,9 +551,11 @@ final class LynxceBackend: ChatBackend {
         ])
     }
 
-    func balance() async -> String? {
-        guard let data = try? await call(.get, "/api/user/quota") else { return nil }
-        return Self.credits(inQuota: data).map(Self.formatCredits)
+    func wallet() async throws -> Wallet {
+        guard let credits = Self.credits(inQuota: try await call(.get, "/api/user/quota")) else {
+            throw APIError(kind: .server, status: 502, message: nil)
+        }
+        return Wallet(credits: credits, accountId: grant.accountId)
     }
 
     /// The wallet balance from `/api/user/quota`, the figure a recharge adds to. (`effectiveCreditsRemaining`
@@ -547,11 +564,27 @@ final class LynxceBackend: ChatBackend {
         ((data as? [String: Any])?["creditsRemaining"] as? NSNumber)?.doubleValue
     }
 
-    /// Credits have a cent quantum: "1,280" or "12.5".
+    /// Credits have a cent quantum. Grouped whole numbers, with two decimals only below 1,000 and only
+    /// when there is a fraction: 4,454,029.04 → "4,454,029", 12.5 → "12.50", 12 → "12".
     static func formatCredits(_ value: Double) -> String {
+        let cents = (value * 100).rounded()
+        let small = abs(cents) < 100_000 && cents.truncatingRemainder(dividingBy: 100) != 0
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 2
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.usesGroupingSeparator = true
+        formatter.groupingSeparator = ","
+        formatter.minimumFractionDigits = small ? 2 : 0
+        formatter.maximumFractionDigits = small ? 2 : 0
+        // Large balances drop their cents rather than round up past what the wallet holds.
+        formatter.roundingMode = small ? .halfEven : .down
+        return formatter.string(from: NSNumber(value: cents / 100)) ?? String(value)
+    }
+
+    /// Whole token counts, grouped: 1234567 → "1,234,567".
+    static func formatCount(_ value: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.usesGroupingSeparator = true
         formatter.groupingSeparator = ","
@@ -595,9 +628,9 @@ final class LynxceBackend: ChatBackend {
 
     /// App Store rule 5.1.1(v): accounts created in the app can be deleted in the app. Lynxce keeps a
     /// cooling-off period before erasing the account; signing in is refused from now on.
-    func requestDeletion() async throws -> Int {
+    func requestDeletion() async throws -> Int? {
         let data = try await call(.post, "/api/user/account/deletion-request", json: ["confirm": "注销账号"])
-        return (data as? [String: Any])?["coolingDays"] as? Int ?? 7
+        return ((data as? [String: Any])?["coolingDays"] as? NSNumber)?.intValue
     }
 
     func signOut() async {

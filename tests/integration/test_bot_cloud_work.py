@@ -76,6 +76,8 @@ class HostedAPI:
             )
         identity = request.headers["Authorization"].removeprefix("Bearer access-")
         account = self.accounts[identity]
+        if path == "/api/user/personal-api-keys":  # desktop sign-in's chat key, not cloud work
+            return success({"id": "key-" + identity, "secret": "sk-" + identity})
         self.calls.append((identity, method, path, payload))
         if path == "/api/auth/logout":
             return success({})

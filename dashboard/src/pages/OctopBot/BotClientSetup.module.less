@@ -166,3 +166,22 @@
     justify-content: center;
   }
 }
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  &::before,
+  &::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid var(--fn-border);
+  }
+}
+.localHint {
+  margin-top: -6px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.6;
+}

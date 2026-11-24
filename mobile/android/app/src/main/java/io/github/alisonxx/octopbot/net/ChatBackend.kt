@@ -22,7 +22,8 @@ interface ChatBackend {
     /** Lynxce mode: Bots live on the phone and can be created with a persona. */
     val definesBotsLocally: Boolean
     val supportsGroups: Boolean
-    val accountName: String
+    /** The person's display name; null when there is none (the UI says "Lynxce user"). */
+    val accountName: String?
     /** Shown under Settings → Connection. */
     val connectionLabel: String
 
@@ -68,6 +69,5 @@ interface ChatBackend {
 
     /** Android v1 has no remote push (no Firebase); finished replies use local notifications. */
     suspend fun registerPush(token: String) = Unit
-    suspend fun balance(): String? = null
     suspend fun signOut()
 }

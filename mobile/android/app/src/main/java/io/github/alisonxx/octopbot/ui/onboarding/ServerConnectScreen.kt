@@ -46,9 +46,9 @@ import io.github.alisonxx.octopbot.ui.theme.LocalPalette
 import io.github.alisonxx.octopbot.ui.theme.OctopTheme
 import kotlinx.coroutines.launch
 
-private enum class Step { Address, Lynxce, LocalPassword, Password, Mfa }
+private enum class Step { Address, Lynxce, Unsupported }
 
-/** URL → probe (https, then http when no scheme was typed) → Lynxce or password sign-in → optional TOTP. */
+/** URL → probe (https, then http when no scheme was typed) → Lynxce sign-in, the only way in. */
 @Composable
 fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit) {
     val resources = LocalResources.current
@@ -59,11 +59,12 @@ fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit
     var address by rememberSaveable { mutableStateOf("") }
     var base by rememberSaveable { mutableStateOf("") }
     var unclaimed by rememberSaveable { mutableStateOf(false) }
-    var account by rememberSaveable { mutableStateOf("") }
+    // A multi-tenant server (Octop Bot cloud): any Lynxce account signs in, there is no owner.
+    var multiTenant by rememberSaveable { mutableStateOf(false) }
     val lynxce = rememberLynxceSignInState()
-    var password by rememberSaveable { mutableStateOf("") }
-    var mfaToken by rememberSaveable { mutableStateOf("") }
-    var code by rememberSaveable { mutableStateOf("") }
+    // Set up earlier with a local password: asked once, to bind the Lynxce owner.
+    var legacy by rememberSaveable { mutableStateOf(false) }
+    var legacyPassword by rememberSaveable { mutableStateOf("") }
     var busy by rememberSaveable { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
@@ -97,16 +98,13 @@ fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit
                     val probe = ServerBackend.probe(address.trim())
                     store.setLastServer(address.trim())
                     base = probe.base
-                    password = ""
                     lynxce.password = ""
-                    step = when (val mode = probe.mode) {
-                        is ServerBackend.Companion.SignInMode.Lynxce -> {
-                            unclaimed = !mode.claimed
-                            Step.Lynxce
-                        }
-                        ServerBackend.Companion.SignInMode.LocalPassword -> Step.LocalPassword
-                        ServerBackend.Companion.SignInMode.Password -> Step.Password
-                    }
+                    legacyPassword = ""
+                    val mode = probe.mode
+                    unclaimed = mode is ServerBackend.Companion.SignInMode.Lynxce && !mode.claimed
+                    multiTenant = mode is ServerBackend.Companion.SignInMode.Lynxce && mode.cloud
+                    legacy = mode == ServerBackend.Companion.SignInMode.Legacy
+                    step = if (mode == ServerBackend.Companion.SignInMode.Unsupported) Step.Unsupported else Step.Lynxce
                 }
             }
             // The server localizes its own errors (wrong code, owner mismatch, throttling), so its message wins.
@@ -115,33 +113,22 @@ fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit
                 resources.describeLynxce(failure, serverMessageFirst = true)
             }) {
                 if (!lynxce.canSubmit) return@run
+                val old = legacyPassword.takeIf { legacy }
                 val backend = if (lynxce.useCode) {
-                    ServerBackend.signInWithLynxceCode(base, lynxce.account, lynxce.code, store)
+                    ServerBackend.signInWithLynxceCode(base, lynxce.account, lynxce.code, store, old)
                 } else {
-                    ServerBackend.signInWithLynxce(base, lynxce.account.trim(), lynxce.password, store)
+                    ServerBackend.signInWithLynxce(base, lynxce.account.trim(), lynxce.password, store, old)
                 }
                 onConnected(backend)
             }
-            Step.LocalPassword, Step.Password -> run {
-                val username = if (step == Step.LocalPassword) "local" else account.trim()
-                when (val result = ServerBackend.signIn(base, username, password, store)) {
-                    is ServerBackend.Companion.SignIn.Done -> onConnected(result.backend)
-                    is ServerBackend.Companion.SignIn.NeedsMfa -> {
-                        mfaToken = result.mfaToken
-                        step = Step.Mfa
-                    }
-                }
-            }
-            Step.Mfa -> run { onConnected(ServerBackend.verifyMfa(base, mfaToken, code.trim(), store)) }
+            Step.Unsupported -> Unit
         }
     }
 
     val ready = !busy && when (step) {
         Step.Address -> address.isNotBlank()
-        Step.Lynxce -> lynxce.canSubmit
-        Step.Password -> account.isNotBlank() && password.isNotEmpty()
-        Step.LocalPassword -> password.isNotEmpty()
-        Step.Mfa -> code.trim().length >= 6
+        Step.Lynxce -> lynxce.canSubmit && (!legacy || legacyPassword.isNotEmpty())
+        Step.Unsupported -> false
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
@@ -176,8 +163,18 @@ fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit
                 }
                 Step.Lynxce -> {
                     Text(base, style = MaterialTheme.typography.titleMedium)
-                    Hint(stringResource(R.string.server_sign_in_lynxce))
+                    Hint(stringResource(if (multiTenant) R.string.server_sign_in_lynxce_cloud else R.string.server_sign_in_lynxce))
                     if (unclaimed) Hint(stringResource(R.string.server_unclaimed))
+                    if (legacy) {
+                        Hint(stringResource(R.string.server_legacy_hint))
+                        FormField(
+                            value = legacyPassword,
+                            onValueChange = { legacyPassword = it },
+                            label = stringResource(R.string.server_legacy_password),
+                            password = true,
+                            enabled = !busy,
+                        )
+                    }
                     LynxceSignInFields(
                         state = lynxce,
                         busy = busy,
@@ -190,52 +187,9 @@ fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit
                     )
                     LynxceModeSwitch(lynxce, busy, onSwitched = { error = null }, modifier = Modifier.align(Alignment.CenterHorizontally))
                 }
-                Step.Password -> {
+                Step.Unsupported -> {
                     Text(base, style = MaterialTheme.typography.titleMedium)
-                    Hint(stringResource(R.string.server_sign_in_password))
-                    FormField(
-                        value = account,
-                        onValueChange = { account = it },
-                        label = stringResource(R.string.server_username),
-                        enabled = !busy,
-                        modifier = Modifier.focusRequester(focus),
-                    )
-                    FormField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = stringResource(R.string.onboarding_password),
-                        password = true,
-                        imeAction = ImeAction.Go,
-                        onDone = ::next,
-                        enabled = !busy,
-                    )
-                }
-                Step.LocalPassword -> {
-                    Text(base, style = MaterialTheme.typography.titleMedium)
-                    Hint(stringResource(R.string.server_sign_in_local))
-                    FormField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = stringResource(R.string.onboarding_password),
-                        password = true,
-                        imeAction = ImeAction.Go,
-                        onDone = ::next,
-                        enabled = !busy,
-                        modifier = Modifier.focusRequester(focus),
-                    )
-                }
-                Step.Mfa -> {
-                    Hint(stringResource(R.string.server_mfa_hint))
-                    FormField(
-                        value = code,
-                        onValueChange = { value -> code = value.filter { it.isDigit() }.take(8) },
-                        label = stringResource(R.string.server_mfa),
-                        keyboardType = KeyboardType.NumberPassword,
-                        imeAction = ImeAction.Go,
-                        onDone = ::next,
-                        enabled = !busy,
-                        modifier = Modifier.focusRequester(focus),
-                    )
+                    Hint(stringResource(R.string.server_unsupported))
                 }
             }
             // The Lynxce fields show their own error line.
@@ -255,11 +209,7 @@ fun ServerConnectScreen(onBack: () -> Unit, onConnected: (ServerBackend) -> Unit
             } else {
                 Text(
                     stringResource(
-                        when (step) {
-                            Step.Address -> R.string.server_next
-                            Step.Mfa -> R.string.server_verify
-                            else -> R.string.onboarding_sign_in
-                        },
+                        if (step == Step.Address) R.string.server_next else R.string.onboarding_sign_in,
                     ),
                     style = MaterialTheme.typography.titleMedium,
                 )

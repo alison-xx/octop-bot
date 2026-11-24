@@ -13,6 +13,8 @@ struct OnboardingView: View {
     /// Octop Bot cloud answered: a Lynxce sign-in lands there (Bots, groups and schedules in the
     /// cloud). Until it is up, Lynxce sign-in talks to Lynxce directly.
     @State private var cloud: Bool?
+    /// The cloud check got no answer (even on a slower retry), so this sign-in goes to Lynxce directly.
+    @State private var cloudUnreachable = false
     @FocusState private var focus: Field?
 
     enum Field { case account, password }
@@ -79,8 +81,11 @@ struct OnboardingView: View {
 
     private func useCloud() async -> Bool {
         if let cloud { return cloud }
-        let available = await ServerBackend.lynxceCloudAvailable()
+        let check = await ServerBackend.lynxceCloudAvailable()
+        let available = check == .available
         cloud = available
+        // Say so rather than switching modes silently on a slow network.
+        cloudUnreachable = check == .unreachable
         return available
     }
     private var canSignIn: Bool {
@@ -89,6 +94,12 @@ struct OnboardingView: View {
 
     private var form: some View {
         VStack(spacing: 12) {
+            if let notice = model.signedOutNotice {
+                Text(notice)
+                    .font(.footnote)
+                    .foregroundStyle(Palette.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             Text("onboarding.lynxce")
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -127,6 +138,24 @@ struct OnboardingView: View {
                     .font(.footnote)
                     .foregroundStyle(Palette.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if cloudUnreachable {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("onboarding.cloudUnreachable", systemImage: "icloud.slash")
+                    Button("onboarding.cloudRetry") {
+                        cloud = nil
+                        cloudUnreachable = false
+                        entry.reset()
+                        error = nil
+                    }
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Palette.text)
+                    .disabled(busy)
+                }
+                .font(.footnote)
+                .foregroundStyle(Palette.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("cloudUnreachable")
             }
             Button(action: signIn) {
                 HStack {
@@ -235,28 +264,26 @@ struct ServerConnectView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("server.lastAddress") private var address = ""
     @FocusState private var addressFocused: Bool
-    @FocusState private var passwordFocused: Bool
+    @FocusState private var accountFocused: Bool
     /// The address the current probe answered for; editing it away starts over.
     @State private var probedAddress: String?
     @State private var probe: ServerBackend.SignInMode?
     @State private var account = ""
-    @State private var username = ""
     @State private var password = ""
-    @State private var mfaToken: String?
-    @State private var code = ""
+    /// Old local password, asked once when a server set up with one binds its Lynxce owner.
+    @State private var legacyPassword = ""
     /// Lynxce owners sign in with a code unless they switch to their password.
     @State private var entry = CodeEntry()
     @State private var lynxcePassword = false
     @State private var busy = false
     @State private var error: String?
 
-    private var lynxceCode: Bool {
-        if case .lynxce = probe { !lynxcePassword } else { false }
-    }
+    private var lynxceCode: Bool { probe != .unsupported && !lynxcePassword }
 
     private var ready: Bool {
         guard !address.isEmpty else { return false }
-        guard probe != nil else { return true }
+        guard let probe else { return true }
+        if probe == .unsupported || (probe == .legacy && legacyPassword.isEmpty) { return false }
         return lynxceCode ? LynxceBackend.CodeTarget(account) != nil && entry.isComplete : !password.isEmpty
     }
 
@@ -269,7 +296,7 @@ struct ServerConnectView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .onChange(of: address) {
-                            if address != probedAddress { probe = nil; mfaToken = nil; entry.reset() }
+                            if address != probedAddress { probe = nil; entry.reset() }
                         }
                         .onSubmit(next)
                         .focused($addressFocused)
@@ -279,56 +306,45 @@ struct ServerConnectView: View {
                 } footer: {
                     Text("server.address.footer")
                 }
-                if let probe {
+                if probe == .unsupported {
+                    Section { Text("server.unsupported") }
+                } else if let probe {
                     Section {
-                        switch probe {
-                        case .lynxce:
-                            TextField("onboarding.account", text: $account)
-                                .textContentType(.username)
-                                .keyboardType(.emailAddress)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .onChange(of: account) { entry.reset() }
-                        case .password:
-                            TextField("server.username", text: $username)
-                                .textContentType(.username)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        case .localPassword:
-                            EmptyView()
-                        }
+                        TextField("onboarding.account", text: $account)
+                            .textContentType(.username)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .focused($accountFocused)
+                            .onChange(of: account) { entry.reset() }
                         if lynxceCode {
                             CodeEntryRow(entry: entry, canSend: entry.canSend(to: account), boxed: false, send: sendCode, complete: next)
                         } else {
                             SecureField("onboarding.password", text: $password)
                                 .textContentType(.password)
                                 .onSubmit(next)
-                                .focused($passwordFocused)
                                 .accessibilityIdentifier("serverPassword")
                         }
-                        if mfaToken != nil {
-                            TextField("server.mfa", text: $code)
-                                .keyboardType(.numberPad)
-                                .textContentType(.oneTimeCode)
+                        // The server's old local password comes after the Lynxce account it is being bound to.
+                        if probe == .legacy {
+                            SecureField("server.legacyPassword", text: $legacyPassword)
+                                .textContentType(.password)
+                                .accessibilityIdentifier("serverLegacyPassword")
                         }
-                        if case .lynxce = probe {
-                            Button(lynxcePassword ? "onboarding.useCode" : "onboarding.usePassword") {
-                                lynxcePassword.toggle()
-                                error = nil
-                            }
-                            .foregroundStyle(Palette.text)
-                            .accessibilityIdentifier("serverLoginMode")
+                        Button(lynxcePassword ? "onboarding.useCode" : "onboarding.usePassword") {
+                            lynxcePassword.toggle()
+                            error = nil
                         }
+                        .foregroundStyle(Palette.text)
+                        .accessibilityIdentifier("serverLoginMode")
                     } header: {
-                        switch probe {
-                        case .lynxce: Text("server.signIn.lynxce")
-                        case .localPassword: Text("server.signIn.local")
-                        case .password: Text("server.signIn.password")
-                        }
+                        // "The account that owns this server" only fits a claimed self-hosted server.
+                        Text(probe == .lynxce(claimed: true) ? "server.signIn.lynxce" : "onboarding.lynxce")
                     } footer: {
                         VStack(alignment: .leading, spacing: 6) {
                             if lynxceCode && entry.sent { Text(entry.sentNote(for: account)) }
                             if probe == .lynxce(claimed: false) { Text("server.unclaimed") }
+                            if probe == .legacy { Text("server.legacy.footer") }
                         }
                     }
                 }
@@ -380,30 +396,21 @@ struct ServerConnectView: View {
                     probedAddress = reachable.absoluteString
                     address = reachable.absoluteString
                     self.probe = found
-                    if found == .localPassword {
-                        // The field appears in this update; focus it once it exists.
+                    if found == .legacy {
+                        // The fields appear in this update; focus the first once it exists.
                         try? await Task.sleep(for: .milliseconds(150))
-                        passwordFocused = true
+                        accountFocused = true
                     }
                     return
                 }
+                let legacy = probe == .legacy ? legacyPassword : nil
                 let backend: ServerBackend
-                if let mfaToken {
-                    backend = try await ServerBackend.verifyMFA(url, token: mfaToken, code: code)
-                } else if lynxceCode {
-                    backend = try await ServerBackend.signInWithLynxceCode(url, target: account, code: entry.code)
+                if lynxceCode {
+                    backend = try await ServerBackend.signInWithLynxceCode(url, target: account, code: entry.code, localPassword: legacy)
                     entry.code = ""
                     entry.reset()
-                } else if case .lynxce = probe {
-                    backend = try await ServerBackend.signInWithLynxce(url, account: account, password: password)
                 } else {
-                    let name = probe == .localPassword ? "local" : username.trimmingCharacters(in: .whitespaces)
-                    switch try await ServerBackend.signIn(url, username: name, password: password) {
-                    case .signedIn(let signedIn): backend = signedIn
-                    case .mfa(let token):
-                        mfaToken = token
-                        return
-                    }
+                    backend = try await ServerBackend.signInWithLynxce(url, account: account, password: password, localPassword: legacy)
                 }
                 await model.use(backend)
                 dismiss()

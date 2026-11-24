@@ -67,6 +67,7 @@ async def test_first_lynxce_sign_in_claims_a_fresh_instance(
             "enabled": True,
             "claimed": False,
             "cloud": False,
+            "legacy_owner": False,
         }
 
         res = await client.post(LOGIN, json={"account": "alice", "password": "test-password"})
@@ -91,6 +92,7 @@ async def test_first_lynxce_sign_in_claims_a_fresh_instance(
             "enabled": True,
             "claimed": True,
             "cloud": False,
+            "legacy_owner": False,
         }
 
         again = await client.post(LOGIN, json={"account": "alice", "password": "test-password"})
@@ -113,6 +115,42 @@ async def test_other_accounts_and_wrong_passwords_are_refused(
         wrong = await client.post(LOGIN, json={"account": "alice", "password": "wrong-password"})
         assert wrong.status_code == 403
         assert wrong.json()["error"]["code"] == "AUTH_FAILED"
+        assert srv.user_manager.count() == 1
+
+
+async def test_a_server_set_up_with_a_local_password_binds_once_with_that_password(
+    tmp_octop_home: Path, upstream: Upstream
+) -> None:
+    from octop.infra.users.identity import Role
+
+    async with octop_client(tmp_octop_home) as (client, srv):
+        local = await srv.user_manager.create(
+            username="local", password="Old-local-pass1", role=Role.ADMIN
+        )
+        assert (await client.get(STATUS)).json()["legacy_owner"] is True
+        body = {"account": "alice", "password": "test-password"}
+
+        missing = await client.post(LOGIN, json=body)
+        assert missing.status_code == 403
+        assert missing.json()["error"]["code"] == "LYNXCE_LEGACY_PASSWORD_REQUIRED"
+        wrong = await client.post(LOGIN, json={**body, "local_password": "guess"})
+        assert wrong.json()["error"]["code"] == "AUTH_FAILED"
+        assert owner_binding(srv.services.settings_repo) is None
+
+        bound = await client.post(LOGIN, json={**body, "local_password": "Old-local-pass1"})
+        assert bound.status_code == 200, bound.text
+        assert bound.json()["user"]["id"] == local.id
+        binding = owner_binding(srv.services.settings_repo)
+        assert binding is not None and binding.user_id == local.id
+        assert (await client.get(STATUS)).json()["legacy_owner"] is False
+
+        # From now on the Lynxce account alone signs in, and no one else can.
+        assert (await client.post(LOGIN, json=body)).json()["user"]["id"] == local.id
+        other = await client.post(
+            LOGIN,
+            json={"account": "mallory", "password": "test-password", "local_password": "x"},
+        )
+        assert other.json()["error"]["code"] == "LYNXCE_OWNER_MISMATCH"
         assert srv.user_manager.count() == 1
 
 

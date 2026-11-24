@@ -63,7 +63,7 @@ describe("Bot web sign-in", () => {
     expect(
       await screen.findByText("botOnboarding.loginCloudBody"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("botOnboarding.loginLocalBody")).toBeNull();
+    expect(screen.queryByLabelText("botOnboarding.legacyPassword")).toBeNull();
   });
 
   it("signs the bound owner in with their Lynxce account", async () => {
@@ -89,7 +89,7 @@ describe("Bot web sign-in", () => {
     expect(
       await screen.findByRole("heading", { name: "Workspace" }),
     ).toBeInTheDocument();
-    expect(login).toHaveBeenCalledWith("alice", "secret-pass", "en");
+    expect(login).toHaveBeenCalledWith("alice", "secret-pass", "en", "");
     expect(getAuthToken()).toBe("issued");
   });
 
@@ -121,28 +121,46 @@ describe("Bot web sign-in", () => {
     expect(
       await screen.findByRole("heading", { name: "Workspace" }),
     ).toBeInTheDocument();
-    expect(login).toHaveBeenCalledWith("13800000000", "123456", "en");
+    expect(login).toHaveBeenCalledWith("13800000000", "123456", "en", "");
     expect(getAuthToken()).toBe("issued");
   });
 
-  it("asks only for the password when the owner chose their own model", async () => {
+  it("binds a server set up with a local password once, through Lynxce", async () => {
     vi.spyOn(authApi, "getLynxceIdentityStatus").mockResolvedValue({
       enabled: true,
       claimed: false,
+      legacy_owner: true,
     });
     const login = vi
-      .spyOn(authApi, "login")
+      .spyOn(authApi, "lynxceLogin")
       .mockResolvedValue(session as never);
+    const passwordLogin = vi.spyOn(authApi, "login");
     open();
     await userEvent.type(
-      await screen.findByLabelText("botOnboarding.password"),
-      "own-pass{Enter}",
+      await screen.findByLabelText("botOnboarding.legacyPassword"),
+      "old-pass",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "lynxceSignIn.usePassword" }),
+    );
+    await userEvent.type(
+      screen.getByLabelText("lynxceSignIn.account"),
+      "13800000000",
+    );
+    await userEvent.type(
+      screen.getByLabelText("lynxceSignIn.password"),
+      "lynxce-pass{Enter}",
     );
     expect(
       await screen.findByRole("heading", { name: "Workspace" }),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText("lynxceSignIn.target")).toBeNull();
-    expect(login).toHaveBeenCalledWith("local", "own-pass");
+    expect(login).toHaveBeenCalledWith(
+      "13800000000",
+      "lynxce-pass",
+      "en",
+      "old-pass",
+    );
+    expect(passwordLogin).not.toHaveBeenCalled();
   });
 
   it("sends a fresh instance to setup", async () => {

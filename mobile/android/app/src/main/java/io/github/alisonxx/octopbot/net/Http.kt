@@ -26,16 +26,41 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/** A user-facing failure from Lynxce or an Octop server. [message] is null when the UI should use generic text. */
-class ApiException(val kind: Kind, val status: Int, message: String? = null) : IOException(message) {
-    enum class Kind { Unauthorized, Credits, Rejected, Network, Server }
+/**
+ * A user-facing failure from Lynxce or an Octop server. [message] is null when the UI should use generic text;
+ * [code] is the server's error code, when it sent one.
+ */
+class ApiException(val kind: Kind, val status: Int, message: String? = null, val code: String? = null) : IOException(message) {
+    /** [DailyLimit]: credits remain but Lynxce's per-key daily cap for Octop Bot is used up; recharging won't help. */
+    enum class Kind { Unauthorized, Credits, DailyLimit, Rejected, Network, Server }
 
     companion object {
-        fun from(status: Int, message: String?): ApiException = when (status) {
-            401 -> ApiException(Kind.Unauthorized, status, message)
-            402 -> ApiException(Kind.Credits, status, message)
-            in 400..499 -> ApiException(Kind.Rejected, status, message)
-            else -> ApiException(Kind.Server, status, message)
+        /** A turn or call billed to the Lynxce wallet ran out of credits (Octop Bot cloud). */
+        const val CREDITS_REQUIRED = "BOT_CLOUD_CREDITS_REQUIRED"
+        /** Octop Bot cloud: the account's daily Lynxce cap is used up (HTTP 429). */
+        const val DAILY_LIMIT = "BOT_LYNXCE_DAILY_LIMIT"
+
+        /** Lynxce's own code for the cap (`api_key_credit_limit_reached`), which direct mode may send as a 402. */
+        fun isDailyLimit(text: String?): Boolean = text != null && ("credit_limit_reached" in text || DAILY_LIMIT in text)
+
+        fun from(status: Int, message: String?, code: String? = null): ApiException = when {
+            isDailyLimit(code) -> ApiException(Kind.DailyLimit, 429, message, code)
+            code == CREDITS_REQUIRED || status == 402 -> ApiException(Kind.Credits, 402, message, code)
+            else -> fromStatus(status, message, code)
+        }
+
+        private fun fromStatus(status: Int, message: String?, code: String?): ApiException = when (status) {
+            401 -> ApiException(Kind.Unauthorized, status, message, code)
+            in 400..499 -> ApiException(Kind.Rejected, status, message, code)
+            else -> ApiException(Kind.Server, status, message, code)
+        }
+
+        /** An error response body (either envelope) → exception, keeping the Octop error code. */
+        fun fromBody(status: Int, body: String): ApiException {
+            val code = Http.errorCode(body)
+            // The cap check comes first: in direct mode it can arrive as a 402 that is not "out of credits".
+            if (isDailyLimit(code) || isDailyLimit(body)) return ApiException(Kind.DailyLimit, 429, Http.errorMessage(body), code ?: DAILY_LIMIT)
+            return from(status, Http.errorMessage(body), code)
         }
 
         fun network() = ApiException(Kind.Network, 0)
@@ -93,6 +118,12 @@ object Http {
             is JsonPrimitive -> error.contentOrNull
             else -> obj.str("detail") ?: obj.str("message")
         }
+    }
+
+    /** The Octop error code (`{error:{code}}`), when the body has one. */
+    fun errorCode(text: String): String? {
+        val obj = runCatching { json.parseToJsonElement(text) }.getOrNull() as? JsonObject ?: return null
+        return (obj["error"] as? JsonObject)?.str("code") ?: obj.str("error_code")
     }
 
     fun parse(text: String): JsonElement =

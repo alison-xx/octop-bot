@@ -42,6 +42,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -49,6 +50,7 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -104,6 +106,9 @@ import io.github.alisonxx.octopbot.ui.common.BackButton
 import io.github.alisonxx.octopbot.ui.common.BottomFade
 import io.github.alisonxx.octopbot.ui.common.TopBar
 import io.github.alisonxx.octopbot.ui.common.accentOf
+import io.github.alisonxx.octopbot.ui.common.LowBalanceColor
+import io.github.alisonxx.octopbot.ui.common.credits
+import io.github.alisonxx.octopbot.ui.common.openCheckout
 import io.github.alisonxx.octopbot.ui.common.rememberHaptics
 import io.github.alisonxx.octopbot.ui.common.shareText
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
@@ -121,6 +126,9 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
     val chat = remember(botId) { model.chat(botId) }
     val state by chat.state.collectAsStateWithLifecycle()
     val speakingMessage by model.speakingMessage.collectAsStateWithLifecycle()
+    val balance by model.balance.collectAsStateWithLifecycle()
+    val lowBalance by model.lowBalance.collectAsStateWithLifecycle()
+    val recharging by model.recharging.collectAsStateWithLifecycle()
     LaunchedEffect(botId) {
         model.noteBotOpened(botId)
         chat.openLatest()
@@ -158,6 +166,7 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
     val dictation = rememberDictation(model.voiceInput, backend) { heard ->
         draft = listOf(draft.trimEnd(), heard).filter { it.isNotEmpty() }.joinToString(" ")
     }
+    val recharge: (() -> Unit)? = if (balance != null) ({ model.recharge { openCheckout(context, it) } }) else null
     val photoFailed = stringResource(R.string.chat_photo_failed)
     val copied = stringResource(R.string.common_copied)
 
@@ -251,6 +260,9 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
             ),
             onCancelQueued = chat::cancelQueued,
             cloudFloat = cloudFloat,
+            lowBalance = lowBalance,
+            onRecharge = recharge,
+            onDismissLowBalance = model::dismissLowBalance,
             actionsFor = { message, isLastReply ->
                 MessageActions(
                     copy = { text ->
@@ -268,6 +280,9 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
                     retry = if (isLastReply && message.role == MessageRole.Assistant) chat::retry else null,
                     speaking = speakingMessage == message.id,
                     files = fileActions,
+                    recharge = recharge,
+                    balance = balance,
+                    recharging = recharging,
                 )
             },
         )
@@ -362,12 +377,17 @@ fun ChatContent(
     hitlActions: HitlCardActions? = null,
     onCancelQueued: (String) -> Unit = {},
     cloudFloat: CloudFloatState? = null,
+    /** Under 100 credits and not dismissed: a banner under the top bar. */
+    lowBalance: Double? = null,
+    onRecharge: (() -> Unit)? = null,
+    onDismissLowBalance: () -> Unit = {},
 ) {
     val density = LocalDensity.current
     var composerHeight by remember { mutableStateOf(96.dp) }
     Box(Modifier.fillMaxSize().imePadding()) {
         Column(Modifier.fillMaxSize()) {
             ChatTopBar(bot, state, onBack, onEditBot, onHistory, onVoice, onNewChat, cloudFloat)
+            if (lowBalance != null && onRecharge != null) LowBalanceBanner(lowBalance, onRecharge, onDismissLowBalance)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
                     state.loading && state.messages.isEmpty() ->
@@ -469,6 +489,37 @@ private fun ChatTopBar(
                     )
                 }
             }
+        }
+    }
+}
+
+/** "Credits running low: N left" with Top up and a close that holds until the balance is back to 100. */
+@Composable
+private fun LowBalanceBanner(amount: Double, onRecharge: () -> Unit, onDismiss: () -> Unit) {
+    val palette = LocalPalette.current
+    Row(
+        Modifier
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(palette.surface)
+            .padding(start = 14.dp, top = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.chat_low_balance, credits(amount)),
+            style = MaterialTheme.typography.bodyMedium,
+            color = LowBalanceColor,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onRecharge) { Text(stringResource(R.string.credits_recharge), color = palette.text) }
+        IconButton(onClick = onDismiss, modifier = Modifier.size(40.dp)) {
+            Icon(
+                Icons.Rounded.Close,
+                contentDescription = stringResource(R.string.common_close),
+                tint = palette.secondary,
+                modifier = Modifier.size(18.dp),
+            )
         }
     }
 }

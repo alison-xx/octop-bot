@@ -94,6 +94,12 @@ class Upstream:
                 },
             )
         bearer = req.headers["Authorization"].removeprefix("Bearer ")
+        if path == "/api/user/personal-api-keys":
+            # Desktop sign-in mints its chat key; not one of the operations under test.
+            self.counts[path] -= 1
+            return httpx.Response(
+                200, json={"code": 0, "data": {"id": "key", "secret": "sk-" + bearer}}
+            )
         self.observed.append(bearer)
         if path == "/api/auth/logout":
             return httpx.Response(503, text="unavailable")

@@ -43,10 +43,12 @@ object LynxceProtocol {
 
     /** Lynxce wraps results as `{code: 0, data}`; anything else is a failure. */
     fun unwrap(status: Int, body: String): JsonElement {
-        if (status !in 200..299) throw ApiException.from(status, Http.errorMessage(body))
+        if (status !in 200..299) throw ApiException.fromBody(status, body)
         val envelope = Http.parse(body) as? JsonObject ?: throw ApiException.badResponse()
-        val code = envelope.long("code") ?: throw ApiException.badResponse()
+        val code = envelope.long("code")
+            ?: throw if (ApiException.isDailyLimit(body)) ApiException.fromBody(429, body) else ApiException.badResponse()
         if (code != 0L) {
+            if (ApiException.isDailyLimit(body)) throw ApiException.fromBody(429, body)
             val mapped = when (code) { 401L -> 401; 402L -> 402; else -> 400 }
             throw ApiException.from(mapped, envelope.str("message"))
         }
@@ -58,6 +60,10 @@ object LynxceProtocol {
         val obj = Http.parse(data) as? JsonObject ?: return emptyList()
         obj["error"]?.takeIf { it !is JsonNull }?.let { error ->
             val message = (error as? JsonObject)?.str("message") ?: error.asString()
+            if (ApiException.isDailyLimit(error.toString())) {
+                throw ApiException(ApiException.Kind.DailyLimit, 429, message, ApiException.DAILY_LIMIT)
+            }
+            if (outOfCredits(error as? JsonObject, message)) throw ApiException(ApiException.Kind.Credits, 402, message)
             throw ApiException(ApiException.Kind.Server, 500, message)
         }
         val delta = obj.arr("choices")?.firstOrNull().asObject()?.obj("delta") ?: return emptyList()
@@ -66,6 +72,16 @@ object LynxceProtocol {
             (delta.str("reasoning_content") ?: delta.str("reasoning"))?.takeIf { it.isNotEmpty() }?.let { add(StreamEvent.Thinking(it)) }
             delta.str("content")?.takeIf { it.isNotEmpty() }?.let { add(StreamEvent.Text(it)) }
         }
+    }
+
+    /** A mid-stream gateway error that means the wallet ran out (402 / insufficient credits or quota). */
+    private fun outOfCredits(error: JsonObject?, message: String?): Boolean {
+        val code = error?.idString("code")?.lowercase().orEmpty()
+        val type = error?.str("type")?.lowercase().orEmpty()
+        val text = message?.lowercase().orEmpty()
+        return code == "402" || error?.long("status") == 402L ||
+            listOf(code, type).any { it.startsWith("insufficient_") } ||
+            "insufficient credit" in text || "insufficient balance" in text || "insufficient_quota" in text
     }
 
     /**
@@ -261,12 +277,27 @@ object LynxceProtocol {
      * The wallet balance from `/api/user/quota`, the figure a recharge adds to. (`effectiveCreditsRemaining`
      * can instead be an enterprise member's monthly allowance, so it is not shown next to "Recharge".)
      */
-    fun balance(data: JsonElement): String? = data.asObject()?.double("creditsRemaining")?.let(::formatCredits)
+    fun balance(data: JsonElement): Double? = data.asObject()?.double("creditsRemaining")
 
-    /** Credits have a cent quantum: "12,800" or "12.5". */
-    fun formatCredits(value: Double): String =
-        java.text.DecimalFormat("#,##0.##", java.text.DecimalFormatSymbols(java.util.Locale.US)).format(value)
+    /**
+     * Credits as every client shows them: grouped integers ("4,454,029"), and two decimals only below 1,000
+     * when there is a fraction ("12.50"). Never rounds up.
+     */
+    fun formatCredits(value: Double): String {
+        val symbols = java.text.DecimalFormatSymbols(java.util.Locale.US)
+        val cents = java.math.BigDecimal.valueOf(value).setScale(2, java.math.RoundingMode.DOWN)
+        val fractional = cents.remainder(java.math.BigDecimal.ONE).signum() != 0
+        val pattern = if (cents.abs() < java.math.BigDecimal(1000) && fractional) "#,##0.00" else "#,##0"
+        return java.text.DecimalFormat(pattern, symbols).apply { roundingMode = java.math.RoundingMode.DOWN }.format(cents)
+    }
 
+    /** Below this the balance shows in the warning colour and chat offers a recharge banner. */
+    const val LOW_BALANCE = 100.0
+
+    /** Lynxce's recharge site, for signing in there by hand (the out-of-credits card links it). */
+    const val RECHARGE_SITE = "https://admin.lynxce.cn/recharge"
+    /** Lynxce's account centre, where the daily cap for Octop Bot can be raised. */
+    const val ACCOUNT_CENTRE = "https://admin.lynxce.cn"
     const val CHECKOUT_PORTAL = "https://admin.lynxce.cn/recharge?token="
     private val CHECKOUT_TICKET = Regex("(?!mcrt1\\.)[A-Za-z0-9_-]{1,4096}\\.[A-Za-z0-9_-]{43}")
 

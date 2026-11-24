@@ -22,7 +22,15 @@ from octop_harness.teams.inbox import InboxMessage
 from octop_harness.teams.processor import ReplyEvent
 from octop_harness.teams.util import PeerCall, PeerSession
 
-from octop.i18n.domains.stream import format_stream_error
+from octop.i18n import tr
+from octop.i18n.domains.stream import (
+    INSUFFICIENT_BALANCE,
+    classify_stream_error_message,
+    exception_display_message,
+    format_stream_error,
+    unwrap_model_retry_message,
+)
+from octop.infra.agents.providers.lynxce import pays_with_account_credits
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
 from octop.infra.agents.settings.profile import parse_config_json
 from octop.infra.agents.teams import is_team_agent
@@ -33,7 +41,7 @@ from octop.infra.agents.teams.team_manager import (
     stamp_team_host_chunk as _maybe_stamp_team_host,
 )
 from octop.infra.agents.turn_resources import attach_turn_knowledge, resolve_turn_mcp
-from octop.infra.errors import OctopError
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.cli.events import message_event_to_cli_chunks
 from octop.infra.gateway.hitl.coordinator import (
     HitlAnswerOutcome,
@@ -118,10 +126,48 @@ def _inbound_thread_id(msg: InboundMessage) -> str | None:
     return None
 
 
-def _stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
+def _stream_error(
+    exc: Exception, locale: str, *, account_credits: bool = False
+) -> tuple[str, str | None]:
     if isinstance(exc, OctopError):
         return exc.localized_message(locale), exc.code.value
+    if account_credits and _daily_limit(exc):
+        # The account still has credits; Lynxce's per-key daily cap is used up.
+        code = ErrorCode.BOT_LYNXCE_DAILY_LIMIT
+        return tr(f"errors.{code.value}", locale), code.value
+    if account_credits and _out_of_credits(exc):
+        # Billed to the user's Lynxce wallet: a stable code lets every client offer a recharge.
+        code = ErrorCode.BOT_CLOUD_CREDITS_REQUIRED
+        return tr(f"errors.{code.value}", locale), code.value
     return format_stream_error(exc, locale), None
+
+
+def _daily_limit(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        text = f"{current} {getattr(current, 'body', '') or ''}"
+        if "credit_limit_reached" in text:
+            return True
+        current = current.__cause__ or (
+            None if current.__suppress_context__ else current.__context__
+        )
+    return False
+
+
+def _out_of_credits(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if getattr(current, "status_code", None) == 402:
+            return True
+        current = current.__cause__ or (
+            None if current.__suppress_context__ else current.__context__
+        )
+    detail = unwrap_model_retry_message(exception_display_message(exc))
+    return classify_stream_error_message(detail) == INSUFFICIENT_BALANCE
 
 
 def _overwrite_last_user_text(request: dict[str, Any], text: str) -> None:
@@ -196,6 +242,7 @@ class GlobalProcessor:
         self._audit_repo = audit_repo
         self._agent_repo = agent_repo
         self._user_repo = user_repo
+        self._settings_repo = settings_repo
         self._connector_repo = connector_repo
         self._knowledge_services = (
             SimpleNamespace(
@@ -1117,7 +1164,9 @@ class GlobalProcessor:
             await self._record_stream_error(
                 user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
             )
-            message, error_code = _stream_error(exc, locale)
+            message, error_code = _stream_error(
+                exc, locale, account_credits=self._account_credits(user_id)
+            )
             if error_code:
                 message = f"[{error_code}] {message}"
             history_tracker.observe(
@@ -1507,7 +1556,9 @@ class GlobalProcessor:
             await self._record_stream_error(
                 user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
             )
-            message, error_code = _stream_error(exc, locale)
+            message, error_code = _stream_error(
+                exc, locale, account_credits=self._account_credits(user_id)
+            )
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
@@ -1604,7 +1655,9 @@ class GlobalProcessor:
                 user_id=user_id,
                 channel_type="dashboard",
             )
-            message, error_code = _stream_error(exc, locale)
+            message, error_code = _stream_error(
+                exc, locale, account_credits=self._account_credits(user_id)
+            )
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
@@ -2002,6 +2055,12 @@ class GlobalProcessor:
             )
             return None
         return _ResolvedTurnMcp(harness=resolved.harness, shown=resolved.shown)
+
+    def _account_credits(self, user_id: int) -> bool:
+        try:
+            return pays_with_account_credits(self._settings_repo, self._user_repo, user_id)
+        except Exception:  # noqa: BLE001 - classification must never mask the turn's error
+            return False
 
     async def _record_stream_error(
         self,

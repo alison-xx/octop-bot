@@ -52,7 +52,8 @@ class ModelSelection(BaseModel):
 @router.get("/status", summary="Read my Lynxce connection and workspace model")
 def status(user: Owner, services: Services) -> AccountStatus:
     return AccountStatus(
-        connected=account.is_connected(services, user.id),
+        connected=account.is_connected(services, user.id)
+        or models.has_cloud_key(services, user.id),
         selected_model=models.selected_account_model(services, user.id),
     )
 

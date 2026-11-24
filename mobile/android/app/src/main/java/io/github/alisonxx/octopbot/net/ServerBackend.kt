@@ -56,7 +56,8 @@ class ServerBackend(
 
     override val definesBotsLocally = false
     override val supportsGroups = true
-    override val accountName get() = session.displayName
+    /** The person's display name; never a username (`sso_…`, `owner`, `local`). */
+    override val accountName: String? get() = ServerProtocol.personName(session.displayName)
     /** The full server address, e.g. `http://10.0.2.2:18790`. */
     val baseUrl: String get() = session.baseUrl
     /** Octop Bot cloud: Lynxce sign-in, and the server keeps the Lynxce wallet. */
@@ -84,28 +85,24 @@ class ServerBackend(
     }
 
     companion object {
-        /** How this server wants its owner to sign in, mirroring the dashboard's login route. */
+        /** How this server signs its owner in. Octop Bot signs in with Lynxce accounts only. */
         sealed interface SignInMode {
             /** Bot web build owned (or about to be claimed) by a Lynxce account. */
-            data class Lynxce(val claimed: Boolean) : SignInMode
-            /** Bot web build whose owner chose a local password (username `local`). */
-            data object LocalPassword : SignInMode
-            /** A regular Octop server: username and password. */
-            data object Password : SignInMode
+            /** [cloud]: a multi-tenant server (Octop Bot cloud) where every Lynxce account has its own space. */
+            data class Lynxce(val claimed: Boolean, val cloud: Boolean = false) : SignInMode
+            /** Set up earlier with a local password: the first Lynxce sign-in also gives that password once. */
+            data object Legacy : SignInMode
+            /** No Lynxce sign-in (a plain Octop server, or an Octop Bot too old to have it). */
+            data object Unsupported : SignInMode
         }
 
         class Probe(val base: String, val mode: SignInMode)
-
-        sealed interface SignIn {
-            data class Done(val backend: ServerBackend) : SignIn
-            data class NeedsMfa(val mfaToken: String) : SignIn
-        }
 
         private suspend fun anonymous(base: String, method: String, path: String, body: JsonObject? = null): JsonObject {
             val request = Http.request(base + path).method(method, body?.let(Http::body)).build()
             return Http.client.newCall(request).await().use { response ->
                 val text = withContext(Dispatchers.IO) { response.body.string() }
-                if (!response.isSuccessful) throw ApiException.from(response.code, Http.errorMessage(text))
+                if (!response.isSuccessful) throw ApiException.fromBody(response.code, text)
                 Http.parse(text).asObject() ?: JsonObject(emptyMap())
             }
         }
@@ -124,20 +121,26 @@ class ServerBackend(
 
         private suspend fun mode(base: String): SignInMode {
             val status = anonymous(base, "GET", "/api/setup/status")
-            if (status.bool("lynxce_login") != true) return SignInMode.Password
-            val setupRequired = status.bool("setup_required") == true
+            if (status.bool("lynxce_login") != true) return SignInMode.Unsupported
             val identity = runCatching { anonymous(base, "GET", "/api/auth/lynxce/status") }.getOrNull()
             // Octop Bot cloud: every Lynxce account signs in to its own account, nothing to claim.
-            if (identity?.bool("cloud") == true) return SignInMode.Lynxce(claimed = true)
-            val claimed = identity?.bool("claimed") == true
-            return if (setupRequired || claimed) SignInMode.Lynxce(claimed) else SignInMode.LocalPassword
+            if (identity?.bool("cloud") == true) return SignInMode.Lynxce(claimed = true, cloud = true)
+            if (identity?.bool("legacy_owner") == true) return SignInMode.Legacy
+            return SignInMode.Lynxce(claimed = identity?.bool("claimed") == true)
         }
 
-        suspend fun signInWithLynxce(base: String, account: String, password: String, store: AppStore): ServerBackend {
+        suspend fun signInWithLynxce(
+            base: String,
+            account: String,
+            password: String,
+            store: AppStore,
+            localPassword: String? = null,
+        ): ServerBackend {
             val body = buildJsonObject {
                 put("account", account)
                 put("password", password)
                 put("locale", if (Http.isChinese()) "zh" else "en")
+                if (!localPassword.isNullOrEmpty()) put("local_password", localPassword)
             }
             return finish(base, anonymous(base, "POST", "/api/auth/lynxce/login", body), store)
         }
@@ -148,30 +151,15 @@ class ServerBackend(
         }
 
         /** Owner sign-in with a Lynxce code; works for Lynxce accounts that never set a password. */
-        suspend fun signInWithLynxceCode(base: String, target: String, code: String, store: AppStore): ServerBackend {
-            val body = ServerProtocol.lynxceCodeLoginBody(target, code, Http.isChinese())
+        suspend fun signInWithLynxceCode(
+            base: String,
+            target: String,
+            code: String,
+            store: AppStore,
+            localPassword: String? = null,
+        ): ServerBackend {
+            val body = ServerProtocol.lynxceCodeLoginBody(target, code, Http.isChinese(), localPassword)
             return finish(base, anonymous(base, "POST", "/api/auth/lynxce/code-login", body), store)
-        }
-
-        /** Password sign-in; the Bot web build's local account is always `local`. */
-        suspend fun signIn(base: String, username: String, password: String, store: AppStore): SignIn {
-            val body = anonymous(base, "POST", "/api/auth/login", buildJsonObject {
-                put("username", username)
-                put("password", password)
-            })
-            if (body.bool("mfa_required") == true) {
-                return SignIn.NeedsMfa(body.str("mfa_token") ?: throw ApiException.badResponse())
-            }
-            return SignIn.Done(finish(base, body, store))
-        }
-
-        suspend fun verifyMfa(base: String, mfaToken: String, code: String, store: AppStore): ServerBackend {
-            val body = anonymous(base, "POST", "/api/auth/mfa/verify", buildJsonObject {
-                put("mfa_token", mfaToken)
-                put("method", "totp")
-                put("code", code)
-            })
-            return finish(base, body, store)
         }
 
         /** Is Octop Bot cloud up? Until it is, a Lynxce sign-in talks to Lynxce directly. */
@@ -186,7 +174,8 @@ class ServerBackend(
         private suspend fun finish(base: String, body: JsonObject, store: AppStore): ServerBackend {
             val token = body.str("access_token") ?: throw ApiException.badResponse()
             val user = body.obj("user")
-            val name = user?.str("display_name")?.takeIf { it.isNotBlank() } ?: user?.str("username") ?: "Octop"
+            // Only a display name is ever shown; without one the UI says "Lynxce user".
+            val name = user?.str("display_name")?.trim().orEmpty()
             // Octop Bot cloud says so in its sign-in response.
             val session = ServerSession(base, token, name, cloud = body.bool("cloud") == true)
             store.setServerSession(session)
@@ -213,7 +202,7 @@ class ServerBackend(
         val request = Http.request(url(path, query)).method(method, payload).build()
         return http.newCall(request).await().use { response ->
             val bytes = withContext(Dispatchers.IO) { response.body.bytes() }
-            if (!response.isSuccessful) throw ApiException.from(response.code, Http.errorMessage(bytes.decodeToString()))
+            if (!response.isSuccessful) throw ApiException.fromBody(response.code, bytes.decodeToString())
             bytes
         }
     }
@@ -230,25 +219,30 @@ class ServerBackend(
 
     @Volatile private var walletAccount: String? = null
 
-    override suspend fun balance(): String? {
-        if (!isCloud) return null
-        return runCatching {
-            val wallet = json("GET", "/api/octop-bot/wallet", mapOf("source" to "cloud")).asObject()
-            walletAccount = wallet?.str("account_id")
-            wallet?.double("credits")?.let(LynxceProtocol::formatCredits)
-        }.getOrNull()
+    override val walletKey: String? get() = walletAccount?.let { "cloud:$it" }
+
+    override suspend fun balance(): Double {
+        if (!isCloud) throw ApiException.badResponse()
+        val wallet = json("GET", "/api/octop-bot/wallet", mapOf("source" to "cloud")).asObject()
+        walletAccount = wallet?.str("account_id") ?: walletAccount
+        return wallet?.double("credits") ?: throw ApiException.badResponse()
     }
 
     override suspend fun checkoutUrl(): String {
-        if (!isCloud) throw ApiException.badResponse()
+        if (!isCloud) throw CheckoutRefused()
         val account = walletAccount ?: balance().let { walletAccount } ?: throw ApiException.badResponse()
         val link = json("POST", "/api/octop-bot/wallet/recharge", body = Http.body(buildJsonObject {
             put("source", "cloud")
             put("expected_account_id", account)
-        })).asObject()
-        // The server checked the ticket; only ever open Lynxce's own recharge page.
-        return link?.str("url")?.takeIf { it.startsWith(LynxceProtocol.CHECKOUT_PORTAL) } ?: throw ApiException.badResponse()
+        }))
+        // Check it again here: only ever open Lynxce's own recharge page with a fresh ticket.
+        return ServerProtocol.cloudCheckoutUrl(link) ?: throw CheckoutRefused()
     }
+
+    /** Token use over the last 30 days, by Bot (`by_agent`) or by model (`by_model`). */
+    suspend fun usage(granularity: String): ServerProtocol.UsageSummary =
+        ServerProtocol.usage(json("GET", "/api/usage/summary", mapOf("window" to "last_30d", "granularity" to granularity)))
+            ?: throw ApiException.badResponse()
 
     override suspend fun requestDeletion() {
         if (!isCloud) throw ApiException.badResponse()
@@ -458,9 +452,7 @@ class ServerBackend(
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    frames.close(
-                        if (response?.code == 401) ApiException(ApiException.Kind.Unauthorized, 401) else ApiException.network(),
-                    )
+                    frames.close(ServerProtocol.handshakeError(response?.code))
                 }
             },
         )
@@ -511,7 +503,7 @@ class ServerBackend(
             // Reading and closing both stay off the main thread: closing a body that still has bytes drains it.
             withContext(Dispatchers.IO) {
                 call.await().use { response ->
-                    if (!response.isSuccessful) throw ApiException.from(response.code, Http.errorMessage(response.body.string()))
+                    if (!response.isSuccessful) throw ApiException.fromBody(response.code, response.body.string())
                     response.body.source().forEachSseEvent { event ->
                         val frame = Http.parse(event.data).asObject() ?: return@forEachSseEvent true
                         when (val outcome = mapper.map(frame, conversation)) {

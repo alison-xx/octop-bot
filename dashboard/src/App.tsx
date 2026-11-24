@@ -149,7 +149,16 @@ function ThemedApp() {
           <Routes>
             <Route
               path="/login"
-              element={isBotWebClient() ? <BotLoginRoute /> : <LoginPage />}
+              element={
+                isBotWebClient() ? (
+                  <BotLoginRoute />
+                ) : botOnly ? (
+                  // Octop Bot desktop: Lynxce or this computer, never an Octop password.
+                  <BotClientSetupRoute />
+                ) : (
+                  <LoginPage />
+                )
+              }
             />
             <Route path="/login/oidc/complete" element={<OidcComplete />} />
             {/* Phones open a Bot's cloud computer here with a one-time ticket. */}
