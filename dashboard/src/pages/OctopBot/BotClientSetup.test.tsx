@@ -17,10 +17,16 @@ vi.mock("./BotCharacter", () => ({
   BotCharacter: () => null,
   octopCharacter: {},
 }));
-const desktopShell = vi.hoisted(() => ({ on: true }));
+const desktopShell = vi.hoisted(() => ({
+  on: true,
+  wechat: undefined as
+    | undefined
+    | (() => Promise<{ ok: true; code: string; state: string }>),
+}));
 vi.mock("../../utils/desktopBridge", () => ({
   isDesktopShell: () => desktopShell.on,
-  getDesktopBridge: () => undefined,
+  getDesktopBridge: () =>
+    desktopShell.wechat ? { wechatLogin: desktopShell.wechat } : undefined,
 }));
 vi.mock("../../api/desktopSession", () => ({
   desktopLocalAutoLoginHeld: () => false,
@@ -60,6 +66,8 @@ function openSetup(path = "/setup") {
 beforeEach(() => {
   vi.clearAllMocks();
   desktopShell.on = true;
+  desktopShell.wechat = undefined;
+  vi.unstubAllEnvs();
   vi.spyOn(authApi, "getAuthStatus").mockResolvedValue(fresh);
   vi.spyOn(wizardApi, "applyDatabase").mockResolvedValue({
     ok: true,
@@ -86,6 +94,44 @@ afterEach(() => {
 });
 
 describe("standalone onboarding", () => {
+  it("offers WeChat only with the flag and bridge, then shows phone binding for a new account", async () => {
+    vi.stubEnv("VITE_OCTOP_BOT_WECHAT_LOGIN", "1");
+    desktopShell.wechat = vi
+      .fn()
+      .mockResolvedValue({ ok: true, code: "test-code", state: "test-state" });
+    vi.spyOn(botCloudApi, "wechatStart").mockResolvedValue({
+      flow_id: "test-flow",
+      qr_url: "https://open.weixin.qq.com/",
+      redirect_uri: "https://example.test/callback",
+    });
+    vi.spyOn(botCloudApi, "wechatFinish").mockResolvedValue({
+      need_bind_phone: true,
+      nickname: "Test User",
+      avatar_url: null,
+    });
+    openSetup();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "botStart.wechatSignIn" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "botCloud.wechatBindTitle" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Test User")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "botCloud.wechatSubmit" }),
+    ).toBeInTheDocument();
+  });
+
+  it("hides WeChat when the build flag is off", async () => {
+    vi.stubEnv("VITE_OCTOP_BOT_WECHAT_LOGIN", "0");
+    desktopShell.wechat = vi.fn();
+    openSetup();
+    await screen.findByRole("button", { name: "botOnboarding.useLocal" });
+    expect(
+      screen.queryByRole("button", { name: "botStart.wechatSignIn" }),
+    ).toBeNull();
+  });
+
   it("signs a returning desktop user straight back in to this computer", async () => {
     vi.mocked(authApi.getAuthStatus).mockResolvedValue({
       ...fresh,

@@ -11,6 +11,7 @@ import {
   type UpdateCheckResult,
   type WindowChromeTheme,
   type WorkbuddyLoginResult,
+  type WechatLoginResult,
   type WsRelayEndpoint,
 } from "../shared/ipc-contract";
 
@@ -88,6 +89,10 @@ const bridge = {
     };
   },
   /** Open the WorkBuddy sign-in window; resolves with Lynxce's one-time hand-off code. */
+  wechatLogin(qrUrl: string, redirectUri: string): Promise<WechatLoginResult> {
+    if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" });
+    return ipcRenderer.invoke(IPC_CHANNELS.botWechatLogin, qrUrl, redirectUri);
+  },
   workbuddyLogin(): Promise<WorkbuddyLoginResult> {
     if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" });
     return ipcRenderer.invoke(IPC_CHANNELS.botWorkbuddyLogin);

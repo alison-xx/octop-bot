@@ -12,6 +12,7 @@ from octop.api.deps import current_user, get_server
 from octop.api.routers.bot_account import router as account_router
 from octop.api.routers.bot_avatar_library import router as avatar_library_router
 from octop.api.routers.bot_cloud_account import router as cloud_account_router
+from octop.api.routers.bot_cloud_account import wechat_router
 from octop.api.routers.bot_cloud_import import router as cloud_import_router
 from octop.api.routers.bot_cloud_move import router as cloud_move_router
 from octop.api.routers.bot_cloud_work import router as cloud_work_router
@@ -55,6 +56,7 @@ router.include_router(computers_router)
 router.include_router(screen_session_router)
 router.include_router(avatar_library_router)
 router.include_router(cloud_account_router)
+router.include_router(wechat_router)
 router.include_router(cloud_import_router)
 router.include_router(cloud_move_router)
 router.include_router(cloud_work_router)
