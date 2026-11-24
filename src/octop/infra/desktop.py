@@ -75,6 +75,25 @@ def bot_cloud_enabled() -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def bot_cloud_session_login_enabled() -> bool:
+    """Cloud accepts a Lynxce refresh token handed over by a desktop (``OCTOP_BOT_SESSION_LOGIN=1``).
+
+    Off by default: desktops no longer move their team to the cloud, and the account plan
+    replaces handing over refresh tokens.
+    """
+    raw = (os.environ.get("OCTOP_BOT_SESSION_LOGIN") or "").strip().lower()
+    return bot_cloud_enabled() and raw in {"1", "true", "yes", "on"}
+
+
+def bot_cloud_move_in_enabled() -> bool:
+    """Cloud receives a desktop's Bots, chats, groups and notes (``OCTOP_BOT_MOVE_IN=1``).
+
+    Off by default until request size, totals and rate limits are in place.
+    """
+    raw = (os.environ.get("OCTOP_BOT_MOVE_IN") or "").strip().lower()
+    return bot_cloud_enabled() and raw in {"1", "true", "yes", "on"}
+
+
 def bot_cloud_origin() -> str:
     """Where the desktop app's Lynxce mode keeps its data (``OCTOP_BOT_CLOUD_ORIGIN`` for tests)."""
     raw = (os.environ.get("OCTOP_BOT_CLOUD_ORIGIN") or "").strip().rstrip("/")
