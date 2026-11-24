@@ -182,7 +182,6 @@ export class BotOrb {
       item(zh ? "新建对话" : "New chat", "newChat"),
       item(zh ? "搜索团队和会话" : "Search team and chats", "search"),
       { type: "separator" },
-      item(zh ? "云端工作区" : "Cloud workspace", "cloud"),
       item(zh ? "账号与模型" : "Account and models", "settings"),
       { type: "separator" },
       {

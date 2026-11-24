@@ -212,13 +212,15 @@
     "resendIn": "Resend in {{seconds}}s",
     "sentPhone": "Code sent by text message. It is valid for a few minutes.",
     "sentEmail": "Code sent by email. Check spam if it does not arrive.",
-    "newAccountHint": "No Lynxce account yet? Signing in creates one; a new email also needs a sign-in password.",
+    "newAccountHint": "New numbers and emails get an account; a new email also sets a password.",
     "newPassword": "Set a sign-in password",
     "newPasswordHint": "At least 8 characters. You can also sign in to Lynxce with this email and password later.",
     "password": "Password",
-    "methods": "Sign-in method",
-    "tabCode": "Code",
-    "tabPassword": "Password"
+    "usePassword": "Use a password",
+    "useCode": "Use a code instead",
+    "missingTarget": "Enter your phone number or email first",
+    "missingCode": "Enter the 6-digit code",
+    "missingPassword": "Enter your password"
   },
   "botOnboarding": {
     "chiefName": "Chief",
@@ -227,16 +229,16 @@
     "account": "Phone or email",
     "accountPlaceholder": "Lynxce account",
     "lynxceHint": "Your password is only used to verify you with Lynxce. It is never stored on this device.",
-    "lynxceSubmit": "Sign in and start",
+    "lynxceSubmit": "Sign in",
     "loginTitle": "Sign in to Octop Bot",
     "loginCloudBody": "Sign in to Octop Bot Cloud with your Lynxce account. Your first sign-in sets it up; Bots and chats stay in the cloud, on every device.",
     "loginLynxceBody": "Sign in with the Lynxce account this Octop Bot was first bound to.",
     "startTitle": "Start using Octop Bot",
-    "startBody": "Sign in with a Lynxce account and every Bot gets its own cloud computer, paid for with credits. New accounts are created for you. Or skip signing in and use Octop Bot on this computer.",
-    "lynxceStart": "Sign in to Lynxce",
+    "startBody": "Sign in with your Lynxce account. New accounts are created for you.",
+    "lynxceStart": "Sign in",
     "or": "or",
-    "useLocal": "Use without signing in: set up my own models",
-    "useLocalHint": "Use Ollama on this computer, or your own API key from Tencent Cloud, Alibaba Bailian, DeepSeek and more. Data stays on this computer; you can sign in to Lynxce later.",
+    "useLocal": "Use on this computer only",
+    "useLocalHint": "Private: data never leaves this computer. Set a local password and models first.",
     "localFailed": "Could not open the local account. Try again.",
     "loginLegacyBody": "This Octop Bot used a local password. It now signs in with a Lynxce account. Enter the old password once with your first sign-in; after that only your Lynxce account is needed.",
     "legacyPassword": "Old local password (needed only this once)",
@@ -366,10 +368,13 @@
       "settings": "Settings",
       "settingsHint": "Models, appearance, language, notifications",
       "capabilitiesHint": "Skills, connectors, knowledge and more",
-      "cloudHint": "Tasks that keep running with your computer off",
       "lynxceSignIn": "Sign in to Lynxce",
-      "lynxceSignInHint": "A cloud computer for every Bot, paid with credits",
-      "lynxceSignOut": "Sign out of Lynxce"
+      "lynxceSignOut": "Sign out of Lynxce",
+      "credits": "credits",
+      "usage": "Usage",
+      "localHint": "Data stays on this computer. Sign in to Lynxce to sync devices and use Lynxce models and cloud computers.",
+      "accountCenter": "Account center",
+      "accountCenterHint": "Plans, orders and invoices"
     },
     "nav": {
       "general": "General",
@@ -9135,11 +9140,48 @@
   },
   "botStart": {
     "heroTitle": "An AI team on call",
-    "featureComputer": "Every Bot has a cloud computer and keeps working while you're away",
+    "heroSub": "Chief hires Bots, starts groups and hands out work. You just say what you need.",
+    "featureChief": "Chief leads: one sentence to hire a Bot or start a group",
     "featureDevices": "One team on desktop, phone and web",
-    "featureModels": "Lynxce models, your own API keys or local models",
+    "featureComputer": "Bots start a cloud computer when the job needs one",
     "lynxceAccount": "Lynxce account",
-    "recommended": "Recommended"
+    "recommended": "Recommended · Syncs everywhere",
+    "wechat": "WeChat",
+    "wechatSignIn": "Sign in with WeChat",
+    "crew": {
+      "finance": {
+        "role": "Finance",
+        "done": "reconciled this month's expenses"
+      },
+      "ops": {
+        "role": "Ops",
+        "done": "drafted today's 3 social posts"
+      },
+      "admin": {
+        "role": "Admin",
+        "done": "booked Friday's meeting room"
+      },
+      "support": {
+        "role": "Support",
+        "done": "answered 26 customer questions"
+      },
+      "teacher": {
+        "role": "Tutor",
+        "done": "graded class 2's essays"
+      },
+      "doctor": {
+        "role": "Clinic",
+        "done": "prepared tomorrow's follow-ups"
+      },
+      "boss": {
+        "role": "Assistant",
+        "done": "summed up the week in one page"
+      },
+      "staff": {
+        "role": "Clerk",
+        "done": "entered 120 order records"
+      }
+    }
   },
   "botModels": {
     "title": "Models",

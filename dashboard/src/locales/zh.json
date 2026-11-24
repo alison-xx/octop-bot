@@ -212,13 +212,15 @@
     "resendIn": "{{seconds}} 秒后重发",
     "sentPhone": "验证码已发送到手机，几分钟内有效。",
     "sentEmail": "验证码已发送到邮箱，没收到请看看垃圾邮件。",
-    "newAccountHint": "没有灵策账号也可以直接登录，会自动注册；用邮箱注册时还要设一个登录密码。",
+    "newAccountHint": "未注册的手机号或邮箱会自动注册；新邮箱还要设一个登录密码。",
     "newPassword": "设置登录密码",
     "newPasswordHint": "至少 8 位。以后也可以用这个邮箱和密码登录灵策。",
     "password": "密码",
-    "methods": "登录方式",
-    "tabCode": "验证码",
-    "tabPassword": "密码"
+    "usePassword": "用密码登录",
+    "useCode": "用验证码登录",
+    "missingTarget": "请先输入手机号或邮箱",
+    "missingCode": "请输入 6 位验证码",
+    "missingPassword": "请输入密码"
   },
   "botOnboarding": {
     "chiefName": "Chief",
@@ -227,16 +229,16 @@
     "account": "手机号或邮箱",
     "accountPlaceholder": "灵策智算账号",
     "lynxceHint": "密码只用于向灵策验证身份，不会保存在这台设备上。",
-    "lynxceSubmit": "登录并开始",
+    "lynxceSubmit": "登录",
     "loginTitle": "登录 Octop Bot",
     "loginCloudBody": "用灵策账号登录 Octop Bot 云端。第一次登录会自动开通，Bot 和对话都保存在云端，换设备也能接着用。",
     "loginLynxceBody": "使用首次绑定这台 Octop Bot 的灵策智算账号登录。",
     "startTitle": "开始使用 Octop Bot",
-    "startBody": "用灵策智算账号登录，每个 Bot 都有一台自己的云电脑，用积分付费；没有账号会自动注册。也可以不登录，直接在这台电脑上用。",
-    "lynxceStart": "登录灵策智算",
+    "startBody": "用灵策智算账号登录，没有账号会自动注册。",
+    "lynxceStart": "登录",
     "or": "或",
-    "useLocal": "本机使用，不登录：自己配置模型",
-    "useLocalHint": "用本地 Ollama，或者腾讯云、阿里云百炼、DeepSeek 等厂商的 API Key。数据只存在这台电脑，以后随时可以登录灵策智算。",
+    "useLocal": "不登录，仅在本机使用",
+    "useLocalHint": "隐私隔离，数据只留在这台电脑；需设置本机密码和模型。",
     "localFailed": "没能进入本机账户，请重试。",
     "loginLegacyBody": "这台 Octop Bot 以前用本地密码登录，现在改用灵策智算账号。第一次登录时再输入一次原来的密码，绑定后就只用灵策账号。",
     "legacyPassword": "原来的本地登录密码（只需输入这一次）",
@@ -366,10 +368,13 @@
       "settings": "设置",
       "settingsHint": "模型、外观、语言和通知",
       "capabilitiesHint": "技能、连接器、知识库等",
-      "cloudHint": "电脑关机也能继续跑的任务",
       "lynxceSignIn": "登录灵策智算",
-      "lynxceSignInHint": "每个 Bot 一台云电脑，用积分付费",
-      "lynxceSignOut": "退出灵策智算账号"
+      "lynxceSignOut": "退出灵策智算账号",
+      "credits": "积分",
+      "usage": "用量明细",
+      "localHint": "数据只在这台电脑，不上云。登录灵策智算后可以多端同步，用灵策模型和云电脑。",
+      "accountCenter": "个人中心",
+      "accountCenterHint": "会员、订单和发票"
     },
     "nav": {
       "general": "通用",
@@ -9135,11 +9140,48 @@
   },
   "botStart": {
     "heroTitle": "一支随叫随到的 AI 团队",
-    "featureComputer": "每个 Bot 一台云电脑，关机后照样干活",
+    "heroSub": "Chief 帮你招 Bot、拉群、分派任务，你只管说要什么。",
+    "featureChief": "Chief 带队：一句话建 Bot、拉群协作",
     "featureDevices": "电脑、手机、网页，同一个团队",
-    "featureModels": "灵策模型、你的 API Key、本地模型，随你选",
+    "featureComputer": "需要时，Bot 自己开一台云电脑干活",
     "lynxceAccount": "灵策智算账号",
-    "recommended": "推荐"
+    "recommended": "推荐 · 多端同步",
+    "wechat": "微信登录",
+    "wechatSignIn": "使用微信登录",
+    "crew": {
+      "finance": {
+        "role": "财务",
+        "done": "对完本月报销，3 笔差异已标出"
+      },
+      "ops": {
+        "role": "运营",
+        "done": "写好今天的 3 条小红书文案"
+      },
+      "admin": {
+        "role": "行政",
+        "done": "订好了周五下午的会议室"
+      },
+      "support": {
+        "role": "客服",
+        "done": "回复了 26 条客户咨询"
+      },
+      "teacher": {
+        "role": "助教",
+        "done": "批改完二班的作文"
+      },
+      "doctor": {
+        "role": "医助",
+        "done": "整理好明天的复诊名单"
+      },
+      "boss": {
+        "role": "老板助理",
+        "done": "把本周日报汇成了一页"
+      },
+      "staff": {
+        "role": "文员",
+        "done": "录完 120 条订单数据"
+      }
+    }
   },
   "botModels": {
     "title": "模型",

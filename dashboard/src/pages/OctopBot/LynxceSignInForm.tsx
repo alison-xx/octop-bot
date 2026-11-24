@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, Input } from "antd";
+import { Check, LockKeyhole, Mail, Smartphone, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { parseApiError } from "../../utils/apiError";
 import styles from "./LynxceSignInForm.module.less";
@@ -9,6 +10,7 @@ const CODE = /^\d{6}$/;
 const MIN_PASSWORD = 8;
 
 type Mode = "code" | "password";
+type Missing = "target" | "code" | "password" | "newPassword";
 
 export interface LynxceSignInFormProps {
   /** Prefix for input ids, unique per page. */
@@ -31,9 +33,16 @@ export interface LynxceSignInFormProps {
   children?: ReactNode;
 }
 
+/** An email address once it has an "@" or any letter; otherwise a phone number. */
+export function looksLikeEmail(value: string): boolean {
+  return /@|[a-z]/i.test(value);
+}
+
 /**
- * Lynxce sign-in: a one-time code by default (works for accounts that never
- * set a password, and creates new accounts), with the password as a fallback.
+ * Lynxce sign-in: one field for a phone number or an email, a one-time code by
+ * default (works for accounts that never set a password, and creates new
+ * accounts), and the password behind a link. The button stays clickable: an
+ * empty field is pointed at instead of greying the button out.
  */
 export default function LynxceSignInForm({
   idPrefix,
@@ -59,6 +68,9 @@ export default function LynxceSignInForm({
   const [sending, setSending] = useState(false);
   const [sentTo, setSentTo] = useState<"phone" | "email" | null>(null);
   const [wait, setWait] = useState(0);
+  const [missing, setMissing] = useState<Missing | null>(null);
+  // Bumped on every refused submit so the field shakes again.
+  const [nudge, setNudge] = useState(0);
   const tried = useRef("");
 
   useEffect(() => {
@@ -67,9 +79,24 @@ export default function LynxceSignInForm({
     return () => window.clearTimeout(timer);
   }, [wait]);
 
+  const id = (field: string) => `${idPrefix}-${field}`;
+  const focus = (field: string) =>
+    window.setTimeout(() => document.getElementById(id(field))?.focus());
+
+  const require = (field: Missing) => {
+    setMissing(field);
+    setNudge((n) => n + 1);
+    focus(field === "newPassword" ? "new-password" : field);
+  };
+
   const send = async () => {
-    if (sending || wait > 0 || !target.trim()) return;
+    if (sending || wait > 0) return;
+    if (!target.trim()) {
+      require("target");
+      return;
+    }
     setSending(true);
+    setMissing(null);
     onClearError();
     try {
       setSentTo(await sendCode(target.trim()));
@@ -77,7 +104,7 @@ export default function LynxceSignInForm({
       setCode("");
       setAskPassword(false);
       tried.current = "";
-      document.getElementById(`${idPrefix}-code`)?.focus();
+      focus("code");
     } catch (err) {
       onError(err);
     } finally {
@@ -91,6 +118,7 @@ export default function LynxceSignInForm({
   const submitCode = (value: string) => {
     if (busy || !target.trim() || !CODE.test(value) || !passwordReady) return;
     tried.current = value;
+    setMissing(null);
     onClearError();
     void onCode(
       target.trim(),
@@ -100,72 +128,97 @@ export default function LynxceSignInForm({
       if (parseApiError(failure)?.code === "LYNXCE_SIGNUP_PASSWORD_REQUIRED") {
         setAskPassword(true);
         // The code is still good: only the password is missing.
-        window.setTimeout(
-          () => document.getElementById(`${idPrefix}-new-password`)?.focus(),
-        );
+        focus("new-password");
       }
     });
   };
 
   const submit = () => {
     if (busy) return;
+    if (!target.trim()) return require("target");
     if (mode === "code") {
+      if (!CODE.test(code)) return require("code");
+      if (!passwordReady) return require("newPassword");
       submitCode(code);
       return;
     }
-    if (!target.trim() || !password) return;
+    if (!password) return require("password");
+    setMissing(null);
     onClearError();
     void onPassword(target.trim(), password);
   };
 
   const choose = (next: Mode) => {
-    if (next === mode) return;
     setMode(next);
+    setMissing(null);
     onClearError();
+    focus(next === "code" && target.trim() ? "code" : "target");
   };
+
+  const status = (field: Missing) =>
+    missing === field ? ("error" as const) : undefined;
+  // Two identical animations, alternated, replay the shake on every refused submit.
+  const shake = (field: Missing) =>
+    missing === field
+      ? nudge % 2
+        ? styles.shake
+        : styles.shakeAgain
+      : undefined;
+  const email = looksLikeEmail(target);
+  const TargetIcon =
+    mode === "password" ? UserRound : email ? Mail : Smartphone;
+  const hint =
+    missing === "target"
+      ? t("lynxceSignIn.missingTarget")
+      : missing === "code"
+      ? t("lynxceSignIn.missingCode")
+      : missing === "password"
+      ? t("lynxceSignIn.missingPassword")
+      : mode === "password"
+      ? passwordHint
+      : sentTo
+      ? t(
+          sentTo === "email"
+            ? "lynxceSignIn.sentEmail"
+            : "lynxceSignIn.sentPhone",
+        )
+      : t("lynxceSignIn.newAccountHint");
+  const hintIsError = missing !== null && missing !== "newPassword";
 
   return (
     <form
       className={styles.form}
+      noValidate
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
     >
-      <div
-        className={styles.tabs}
-        role="group"
-        aria-label={t("lynxceSignIn.methods")}
-      >
-        {(["code", "password"] as const).map((value) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={mode === value}
-            onClick={() => choose(value)}
-          >
-            {t(
-              value === "code"
-                ? "lynxceSignIn.tabCode"
-                : "lynxceSignIn.tabPassword",
-            )}
-          </button>
-        ))}
-      </div>
-      <label htmlFor={`${idPrefix}-target`}>
+      <label className={styles.srOnly} htmlFor={id("target")}>
         {t(mode === "code" ? "lynxceSignIn.target" : "lynxceSignIn.account")}
       </label>
       <Input
-        id={`${idPrefix}-target`}
+        id={id("target")}
+        className={shake("target")}
+        status={status("target")}
+        size="large"
         autoComplete="username"
         autoFocus={autoFocus}
-        required
         maxLength={200}
+        inputMode={mode === "code" && !email ? "tel" : "email"}
+        prefix={
+          <TargetIcon
+            size={17}
+            aria-hidden="true"
+            className={target.trim() ? styles.iconActive : styles.icon}
+          />
+        }
         value={target}
         onChange={(e) => {
           setTarget(e.target.value);
           setSentTo(null);
           setAskPassword(false);
+          if (missing === "target") setMissing(null);
         }}
         placeholder={t(
           mode === "code"
@@ -175,81 +228,121 @@ export default function LynxceSignInForm({
       />
       {mode === "code" ? (
         <>
-          <label htmlFor={`${idPrefix}-code`}>{t("lynxceSignIn.code")}</label>
-          <div className={styles.codeRow}>
-            <Input
-              id={`${idPrefix}-code`}
-              autoComplete="one-time-code"
-              inputMode="numeric"
-              maxLength={6}
-              value={code}
-              placeholder={t("lynxceSignIn.codePlaceholder")}
-              onChange={(e) => {
-                const next = e.target.value.replace(/\D/g, "").slice(0, 6);
-                setCode(next);
-                if (CODE.test(next) && next !== tried.current) submitCode(next);
-              }}
-            />
-            <Button
-              className={styles.send}
-              loading={sending}
-              disabled={!target.trim() || wait > 0 || busy}
-              onClick={() => void send()}
-            >
-              {wait > 0
-                ? t("lynxceSignIn.resendIn", { seconds: wait })
-                : t(sentTo ? "lynxceSignIn.resend" : "lynxceSignIn.send")}
-            </Button>
-          </div>
-          <small>
-            {sentTo
-              ? t(
-                  sentTo === "email"
-                    ? "lynxceSignIn.sentEmail"
-                    : "lynxceSignIn.sentPhone",
-                )
-              : t("lynxceSignIn.newAccountHint")}
-          </small>
-          {askPassword && (
-            <>
-              <label htmlFor={`${idPrefix}-new-password`}>
-                {t("lynxceSignIn.newPassword")}
-              </label>
-              <Input.Password
-                id={`${idPrefix}-new-password`}
-                autoComplete="new-password"
-                maxLength={256}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-              />
-              <small>{t("lynxceSignIn.newPasswordHint")}</small>
-            </>
-          )}
+          <label className={styles.srOnly} htmlFor={id("code")}>
+            {t("lynxceSignIn.code")}
+          </label>
+          <Input
+            id={id("code")}
+            className={[styles.code, shake("code")].filter(Boolean).join(" ")}
+            status={status("code")}
+            size="large"
+            autoComplete="one-time-code"
+            inputMode="numeric"
+            maxLength={6}
+            value={code}
+            placeholder={t("lynxceSignIn.codePlaceholder")}
+            prefix={
+              <Check size={17} aria-hidden="true" className={styles.icon} />
+            }
+            suffix={
+              <Button
+                type="link"
+                className={styles.send}
+                loading={sending}
+                disabled={wait > 0 || busy}
+                onClick={() => void send()}
+              >
+                {wait > 0
+                  ? t("lynxceSignIn.resendIn", { seconds: wait })
+                  : t(sentTo ? "lynxceSignIn.resend" : "lynxceSignIn.send")}
+              </Button>
+            }
+            onChange={(e) => {
+              const next = e.target.value.replace(/\D/g, "").slice(0, 6);
+              setCode(next);
+              if (missing === "code") setMissing(null);
+              if (CODE.test(next) && next !== tried.current) submitCode(next);
+            }}
+          />
         </>
       ) : (
         <>
-          <label htmlFor={`${idPrefix}-password`}>
+          <label className={styles.srOnly} htmlFor={id("password")}>
             {t("lynxceSignIn.password")}
           </label>
           <Input.Password
-            id={`${idPrefix}-password`}
+            id={id("password")}
+            className={shake("password")}
+            status={status("password")}
+            size="large"
             autoComplete="current-password"
             maxLength={256}
+            placeholder={t("lynxceSignIn.password")}
+            prefix={
+              <LockKeyhole
+                size={17}
+                aria-hidden="true"
+                className={styles.icon}
+              />
+            }
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (missing === "password") setMissing(null);
+            }}
           />
-          {passwordHint && <small>{passwordHint}</small>}
         </>
+      )}
+      <div className={styles.hintRow}>
+        <small
+          className={hintIsError ? styles.error : undefined}
+          role={hintIsError ? "alert" : undefined}
+        >
+          {hint}
+        </small>
+        <button
+          type="button"
+          className={styles.switch}
+          onClick={() => choose(mode === "code" ? "password" : "code")}
+        >
+          {t(
+            mode === "code"
+              ? "lynxceSignIn.usePassword"
+              : "lynxceSignIn.useCode",
+          )}
+        </button>
+      </div>
+      {mode === "code" && askPassword && (
+        <div className={styles.newPassword}>
+          <label htmlFor={id("new-password")}>
+            {t("lynxceSignIn.newPassword")}
+          </label>
+          <Input.Password
+            id={id("new-password")}
+            className={shake("newPassword")}
+            status={status("newPassword")}
+            size="large"
+            autoComplete="new-password"
+            maxLength={256}
+            value={newPassword}
+            onChange={(e) => {
+              setNewPassword(e.target.value);
+              if (missing === "newPassword") setMissing(null);
+            }}
+          />
+          <small
+            className={missing === "newPassword" ? styles.error : undefined}
+          >
+            {t("lynxceSignIn.newPasswordHint")}
+          </small>
+        </div>
       )}
       <Button
         type="primary"
         size="large"
         htmlType="submit"
+        className={styles.submit}
         loading={busy}
-        disabled={
-          !target.trim() ||
-          (mode === "code" ? !CODE.test(code) || !passwordReady : !password)
-        }
       >
         {submitLabel}
       </Button>
