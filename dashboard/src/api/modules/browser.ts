@@ -1,6 +1,9 @@
 import { scopedBrowserUrl } from "../../utils/browserProfile";
+import i18n from "../../i18n";
+import { requestStream } from "../request";
+import { apiErrorMessage } from "../../utils/apiError";
 import { bridgeAgentHeaders, request, getAuthToken } from "../request";
-import { getApiUrl, getWsUrl } from "../config";
+import { getWsUrl } from "../config";
 import type {
   BrowserReplayRequest,
   BrowserReplayResponse,
@@ -34,10 +37,9 @@ function streamBrowserSse(
   onDone: (success: boolean) => void,
 ): AbortController {
   const controller = new AbortController();
-  const url = getApiUrl(path);
   const token = getAuthToken();
 
-  fetch(url, {
+  requestStream(path, {
     method: "POST",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -45,10 +47,6 @@ function streamBrowserSse(
     signal: controller.signal,
   })
     .then(async (res) => {
-      if (!res.ok || !res.body) {
-        onDone(false);
-        return;
-      }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -88,8 +86,11 @@ function streamBrowserSse(
       }
       onDone(false);
     })
-    .catch(() => {
-      if (!controller.signal.aborted) onDone(false);
+    .catch((error: unknown) => {
+      if (!controller.signal.aborted) {
+        onLog(apiErrorMessage(error, "Request failed", i18n.t));
+        onDone(false);
+      }
     });
 
   return controller;
