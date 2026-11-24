@@ -82,6 +82,11 @@ export interface OctopUser {
    * ``null`` or omitted means unrestricted.
    */
   allowed_backend_types?: string[] | null;
+  /**
+   * Backend type preselected when this account creates an expert.
+   * ``null`` or omitted means local shell.
+   */
+  default_backend_type?: string | null;
 }
 
 export interface LoginResponse {
@@ -406,9 +411,13 @@ export const authApi = {
 
   /** Bot web build: whether an owner Lynxce account is already bound. */
   getLynxceIdentityStatus: () =>
-    request<{ enabled: boolean; claimed: boolean; cloud?: boolean }>(
-      "/auth/lynxce/status",
-    ),
+    request<{
+      enabled: boolean;
+      claimed: boolean;
+      cloud?: boolean;
+      /** Set up earlier with a local password; the first Lynxce sign-in confirms it once. */
+      legacy_owner?: boolean;
+    }>("/auth/lynxce/status"),
 
   /**
    * Bot web build: sign in with a Lynxce account. On a fresh instance the
@@ -419,10 +428,16 @@ export const authApi = {
     account: string,
     password: string,
     locale?: string,
+    localPassword?: string,
   ): Promise<LoginResponse> => {
     const raw = await request<RawLoginResponse>("/auth/lynxce/login", {
       method: "POST",
-      body: JSON.stringify({ account, password, locale }),
+      body: JSON.stringify({
+        account,
+        password,
+        locale,
+        local_password: localPassword || undefined,
+      }),
     });
     invalidateAuthStatusCache();
     clearSetupRequired();
@@ -441,10 +456,16 @@ export const authApi = {
     target: string,
     code: string,
     locale?: string,
+    localPassword?: string,
   ): Promise<LoginResponse> => {
     const raw = await request<RawLoginResponse>("/auth/lynxce/code-login", {
       method: "POST",
-      body: JSON.stringify({ target, code, locale }),
+      body: JSON.stringify({
+        target,
+        code,
+        locale,
+        local_password: localPassword || undefined,
+      }),
     });
     invalidateAuthStatusCache();
     clearSetupRequired();

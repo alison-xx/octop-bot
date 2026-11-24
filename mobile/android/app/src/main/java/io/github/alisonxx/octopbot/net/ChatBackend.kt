@@ -1,5 +1,6 @@
 package io.github.alisonxx.octopbot.net
 
+import io.github.alisonxx.octopbot.device.DeviceToolbox
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
@@ -21,7 +22,8 @@ interface ChatBackend {
     /** Lynxce mode: Bots live on the phone and can be created with a persona. */
     val definesBotsLocally: Boolean
     val supportsGroups: Boolean
-    val accountName: String
+    /** The person's display name; null when there is none (the UI says "Lynxce user"). */
+    val accountName: String?
     /** Shown under Settings → Connection. */
     val connectionLabel: String
 
@@ -34,7 +36,10 @@ interface ChatBackend {
         Transcript(messages(conversation, bot), pending = null)
     suspend fun models(): List<ModelOption>
 
-    /** Stream one reply. The first event is [StreamEvent.Conversation] when a new conversation was created. */
+    /**
+     * Stream one reply. The first event is [StreamEvent.Conversation] when a new conversation was created.
+     * [device] offers the phone's connectors that are on (PROTOCOL §C).
+     */
     fun send(
         text: String,
         images: List<ImageAttachment>,
@@ -42,11 +47,15 @@ interface ChatBackend {
         conversation: String?,
         history: List<ChatMessage>,
         model: String?,
+        device: DeviceToolbox = DeviceToolbox.None,
     ): Flow<StreamEvent>
 
     suspend fun stop(conversation: String, bot: BotProfile)
 
-    /** Server mode: answer a paused turn (one decision per action) and stream the continuation as a new reply. */
+    /**
+     * Answer a paused turn (one decision per action) and stream the continuation as a new reply: a server's HITL
+     * pause, or a device write the Lynxce tool loop is waiting on.
+     */
     fun resumeHitl(bot: BotProfile, conversation: String, pendingId: String?, decisions: List<HitlDecision>): Flow<StreamEvent> =
         emptyFlow()
     suspend fun deleteConversation(conversation: ConversationSummary, bot: BotProfile)
@@ -60,6 +69,5 @@ interface ChatBackend {
 
     /** Android v1 has no remote push (no Firebase); finished replies use local notifications. */
     suspend fun registerPush(token: String) = Unit
-    suspend fun balance(): String? = null
     suspend fun signOut()
 }

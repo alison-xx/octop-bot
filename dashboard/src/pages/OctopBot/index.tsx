@@ -18,6 +18,7 @@ import {
   PanelLeftOpen,
   Plus,
   Settings2,
+  Store,
   Users,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -40,6 +41,7 @@ import {
   BOT_CLOUD,
   BOT_GUIDE,
   BOT_HOME,
+  BOT_MARKET,
   botGuideSeenKey,
 } from "../../utils/botClientRoute";
 import { pickPreferredSession, toSession } from "../Chat/hooks/useSessions";
@@ -68,6 +70,7 @@ import GroupRoom from "./GroupRoom";
 import AccountMenu from "./AccountMenu";
 import RetainedFolders from "./RetainedFolders";
 import DeleteBotDialog from "./DeleteBotDialog";
+import DeleteGroupDialog from "./DeleteGroupDialog";
 import SectionEditor, {
   moveEntries,
   type SectionAction,
@@ -109,6 +112,9 @@ export default function OctopBotPage() {
   const mobile = useIsMobile();
   const [workspace, setWorkspace] = useState<BotWorkspace | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<WorkspaceBot | null>(null);
+  const [deleteGroupTarget, setDeleteGroupTarget] = useState<BotGroup | null>(
+    null,
+  );
   const [error, setError] = useState("");
   const [showList, setShowList] = useState(false);
   const { collapsed, toggle } = useListPanelCollapsed(
@@ -288,6 +294,10 @@ export default function OctopBotPage() {
     },
     [],
   );
+  const openMarket = useCallback(() => {
+    setShowList(false);
+    navigate(BOT_MARKET, { state: { from: location.pathname } });
+  }, [navigate, location.pathname]);
   const startGroupWithMembers = useCallback(
     (group: BotGroup) => {
       const section = workspace?.sections.find((s) =>
@@ -655,6 +665,11 @@ export default function OctopBotPage() {
       setDeleteTarget(item.bot);
       return;
     }
+    if (key === "deleteGroup" && item.group) {
+      setShowList(false);
+      setDeleteGroupTarget(item.group);
+      return;
+    }
     if (key === "create") {
       editSection({ kind: "create", entry: item.key });
       return;
@@ -894,6 +909,16 @@ export default function OctopBotPage() {
             onClick={() => setSearchOpen(true)}
           />
         )}
+        {standalone && navAllowed(user, "experts") && (
+          <Button
+            type="text"
+            className={directory.iconButton}
+            title={t("botMarket.entry")}
+            aria-label={t("botMarket.entry")}
+            icon={<Store size={16} />}
+            onClick={openMarket}
+          />
+        )}
         <Dropdown
           trigger={["click"]}
           {...directoryMenu.overflowProps("add")}
@@ -918,13 +943,15 @@ export default function OctopBotPage() {
                     { key: "bot", label: t("octopBot.newBot") },
                     ...(!standalone
                       ? [{ key: "managed", label: t("octopBot.newManaged") }]
-                      : []),
+                      : [{ key: "market", label: t("botMarket.menuEntry") }]),
                   ]
                 : []),
               { key: "group", label: t("octopBot.newGroup") },
             ],
             onClick: ({ key }) => {
-              if (key === "newChat") {
+              if (key === "market") {
+                openMarket();
+              } else if (key === "newChat") {
                 if (selectedGroup) startGroupWithMembers(selectedGroup);
                 else
                   startPrivateChat(
@@ -1008,6 +1035,19 @@ export default function OctopBotPage() {
                   }}
                 >
                   {t("botDirectory.addFirst")}
+                </Button>
+              )}
+            {!compactDirectory &&
+              all.length === 1 &&
+              navAllowed(user, "experts") && (
+                <Button
+                  className={directory.firstMember}
+                  type="text"
+                  block
+                  icon={<Store size={15} />}
+                  onClick={openMarket}
+                >
+                  {t("botMarket.browse")}
                 </Button>
               )}
           </>
@@ -1259,6 +1299,10 @@ export default function OctopBotPage() {
           onChoose={setNewLook}
           onClose={close}
           onCreated={onBotCreated}
+          onBrowseMarket={() => {
+            close();
+            openMarket();
+          }}
         />
       )}
       {dialog === "bot" && !standalone && (
@@ -1316,6 +1360,30 @@ export default function OctopBotPage() {
             );
             if (deleteTarget.is_private) setDialog("retained");
             void refreshAgents({ silent: true, force: true });
+            void refresh();
+          }}
+        />
+      )}
+      {deleteGroupTarget && (
+        <DeleteGroupDialog
+          group={deleteGroupTarget}
+          onClose={() => setDeleteGroupTarget(null)}
+          onDeleted={() => {
+            setDeleteGroupTarget(null);
+            if (deleteGroupTarget.group_id === groupId) {
+              jump(
+                BOT_HOME + "/bots/" + encodeURIComponent(workspace.chief_id),
+              );
+            }
+            setWorkspace(
+              (current) =>
+                current && {
+                  ...current,
+                  groups: current.groups.filter(
+                    (group) => group.group_id !== deleteGroupTarget.group_id,
+                  ),
+                },
+            );
             void refresh();
           }}
         />

@@ -55,7 +55,16 @@ export function compareVersions(a: string, b: string): number {
 }
 
 /** Pre-release stages in release order; PEP 440 and semver spellings mean the same stage. */
-const PRE_STAGES: Record<string, number> = { dev: 0, a: 1, alpha: 1, b: 2, beta: 2, c: 3, rc: 3, pre: 3 };
+const PRE_STAGES: Record<string, number> = {
+  dev: 0,
+  a: 1,
+  alpha: 1,
+  b: 2,
+  beta: 2,
+  c: 3,
+  rc: 3,
+  pre: 3,
+};
 
 /**
  * Order two pre-release tags: by stage, then by number, so ``b8`` (Python

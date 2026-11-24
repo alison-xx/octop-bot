@@ -119,7 +119,10 @@ function ThemedApp() {
     },
     components: isDark
       ? {
-          Modal: { headerBg: "#1a1c28", contentBg: "#1a1c28" },
+          Modal: {
+            headerBg: "var(--fn-bg-modal)",
+            contentBg: "var(--fn-bg-modal)",
+          },
           Input: { colorBgBase: "#0f1117" },
           InputNumber: { colorBgBase: "#0f1117" },
           Select: { colorBgBase: "#0f1117", selectorBg: "#0f1117" },
@@ -149,7 +152,16 @@ function ThemedApp() {
           <Routes>
             <Route
               path="/login"
-              element={isBotWebClient() ? <BotLoginRoute /> : <LoginPage />}
+              element={
+                isBotWebClient() ? (
+                  <BotLoginRoute />
+                ) : botOnly ? (
+                  // Octop Bot desktop: Lynxce or this computer, never an Octop password.
+                  <BotClientSetupRoute />
+                ) : (
+                  <LoginPage />
+                )
+              }
             />
             <Route path="/login/oidc/complete" element={<OidcComplete />} />
             {/* Phones open a Bot's cloud computer here with a one-time ticket. */}

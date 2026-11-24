@@ -34,10 +34,38 @@
   min-width: 104px;
   font-variant-numeric: tabular-nums;
 }
-.switch {
-  justify-self: center;
-  color: var(--fn-text-secondary);
-  &:hover {
-    color: var(--fn-text);
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: var(--fn-bg-tertiary);
+  button {
+    height: 34px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--fn-text-secondary);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s;
+    &:hover {
+      color: var(--fn-text-primary);
+    }
+    &:focus-visible {
+      outline: 2px solid var(--fn-border-focus);
+      outline-offset: 1px;
+    }
+  }
+  [aria-pressed="true"] {
+    background: var(--fn-bg-container);
+    color: var(--fn-text-primary);
+    font-weight: 600;
+    box-shadow: var(--fn-shadow-xs);
   }
 }

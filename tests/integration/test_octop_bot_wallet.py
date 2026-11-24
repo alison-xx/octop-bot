@@ -66,6 +66,8 @@ async def test_cloud_checkout_only_mints_for_displayed_wallet(
             }
         elif req.url.path == "/api/user/quota":
             data = {"creditsRemaining": -1.25, "effectiveCreditsRemaining": 0}
+        elif req.url.path == "/api/user/personal-api-keys":  # desktop sign-in's chat key
+            data = {"id": "key-" + account, "secret": "sk-" + account}
         else:
             assert req.url.path == "/api/billing/recharge/checkout-link" and req.method == "POST"
             assert not req.content

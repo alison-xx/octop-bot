@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import threading
 import time
 import uuid
@@ -591,6 +592,13 @@ class ComputerManager:
 
     # Screen and takeover
 
+    def screen_ssl(self, agent_id: str, user_id: int) -> Any:
+        """TLS settings for this computer's screen WebSocket when its provider pins its own CA
+        (CVM); ``None`` for public certificates (AGS)."""
+        instance = self.record(agent_id, user_id).instance_id
+        context = getattr(self._driver, "ssl_context_for", None)
+        return context(instance) if callable(context) and instance else None
+
     def screen(self, agent_id: str, user_id: int) -> tuple[str, dict[str, str]]:
         """Where to reach the running computer's desktop (VNC over WebSocket)."""
         instance = self.ensure_running(agent_id, user_id)
@@ -749,15 +757,35 @@ def shutdown_manager() -> None:
         manager.close()
 
 
+def computer_driver() -> ComputerDriver | None:
+    """The configured cloud-computer provider: Tencent Cloud CVM or AGS.
+
+    ``OCTOP_COMPUTER_PROVIDER`` picks one (``cvm`` / ``ags``). Unset, new computers start on
+    CVM when it is configured, and when AGS is configured too, computers made on AGS before the
+    switch keep running there. ``None`` when nothing usable is configured.
+    """
+    from octop.infra.cloud.computers.cvm import CvmConfig, CvmDriver  # noqa: PLC0415
+    from octop.infra.cloud.computers.mixed import MixedDriver  # noqa: PLC0415
+
+    choice = (os.environ.get("OCTOP_COMPUTER_PROVIDER") or "").strip().lower()
+    cvm_config = CvmConfig.from_env() if choice in ("", "cvm") else None
+    ags_config = AgsConfig.from_env() if choice in ("", "ags") else None
+    if cvm_config is not None and ags_config is not None:
+        return MixedDriver(CvmDriver(cvm_config), AgsDriver(ags_config))
+    if cvm_config is not None:
+        return CvmDriver(cvm_config)
+    return AgsDriver(ags_config) if ags_config is not None else None
+
+
 def computer_manager(services: SharedServices) -> ComputerManager | None:
-    """The process-wide manager, or ``None`` when AGS is not configured."""
+    """The process-wide manager, or ``None`` when no cloud-computer provider is configured."""
     global _manager
-    config = AgsConfig.from_env()
-    if config is None:
-        return None
     with _manager_lock:
         if _manager is None:
-            _manager = ComputerManager(services, AgsDriver(config), billing=billing_for(services))
+            driver = computer_driver()
+            if driver is None:
+                return None
+            _manager = ComputerManager(services, driver, billing=billing_for(services))
             # Computers left running by a previous process are billed and paused from now on,
             # not from their next tool call.
             _manager._start_reaper()

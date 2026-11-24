@@ -1,14 +1,18 @@
 """Authenticated local user's ordinary Lynxce Cloud login."""
 
+import asyncio
+import logging
 from collections.abc import Callable, Coroutine
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, SecretStr
 
 from octop.api.common.bot_desktop import Owner, Services
+from octop.api.deps import get_server
+from octop.infra.agents.providers import lynxce as account_models
 from octop.infra.auth.lynxce_cloud import (
     CloudAccountStatus,
     cloud_account,
@@ -20,6 +24,27 @@ from octop.infra.auth.lynxce_cloud import (
 )
 from octop.infra.desktop import bot_desktop_enabled
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.server import OctopServer
+
+logger = logging.getLogger(__name__)
+Server = Annotated[OctopServer, Depends(get_server)]
+
+
+async def _signed_in(
+    server: OctopServer, services: Services, user_id: int, status: CloudAccountStatus
+) -> CloudAccountStatus:
+    """Desktop: one Lynxce sign-in also brings the account's chat models (no browser grant)."""
+    if not bot_desktop_enabled() or not status.connected or not status.account_id:
+        return status
+    try:
+        changed = await account_models.adopt_cloud_account(services, user_id, status.account_id)
+    except OctopError:
+        # Sign-in still stands; Settings offers to connect a model again.
+        logger.warning("could not set up the Lynxce chat key for user %s", user_id)
+        return status
+    if changed and server.app_runtime is not None:
+        await server.app_runtime.agent_registry.on_account_model_selected(user_id)
+    return status
 
 
 class _AccountRoute(APIRoute):
@@ -51,8 +76,11 @@ async def status(user: Owner, services: Services) -> CloudAccountStatus:
 
 
 @router.post("/account", summary="Sign in to Lynxce Cloud with my existing account")
-async def login(body: CloudLogin, user: Owner, services: Services) -> CloudAccountStatus:
-    return await login_cloud(services, user.id, body.account, body.password.get_secret_value())
+async def login(
+    body: CloudLogin, user: Owner, services: Services, server: Server
+) -> CloudAccountStatus:
+    status = await login_cloud(services, user.id, body.account, body.password.get_secret_value())
+    return await _signed_in(server, services, user.id, status)
 
 
 class CodeRequest(BaseModel):
@@ -91,8 +119,11 @@ async def send_code(body: CodeRequest, user: Owner) -> CodeSent:
 
 
 @router.post("/account/code-login", summary="Sign in to Lynxce Cloud with a one-time code")
-async def login_code(body: CodeLogin, user: Owner, services: Services) -> CloudAccountStatus:
-    return await login_cloud_code(services, user.id, body.target, body.code.get_secret_value())
+async def login_code(
+    body: CodeLogin, user: Owner, services: Services, server: Server
+) -> CloudAccountStatus:
+    status = await login_cloud_code(services, user.id, body.target, body.code.get_secret_value())
+    return await _signed_in(server, services, user.id, status)
 
 
 class WorkbuddyLogin(BaseModel):
@@ -111,13 +142,17 @@ class WorkbuddyLogin(BaseModel):
     ),
 )
 async def login_workbuddy(
-    body: WorkbuddyLogin, user: Owner, services: Services
+    body: WorkbuddyLogin, user: Owner, services: Services, server: Server
 ) -> CloudAccountStatus:
-    return await login_cloud_workbuddy(services, user.id, body.handoff_code.get_secret_value())
+    status = await login_cloud_workbuddy(services, user.id, body.handoff_code.get_secret_value())
+    return await _signed_in(server, services, user.id, status)
 
 
 @router.delete("/account", summary="Sign out of Lynxce Cloud on this device")
 async def logout(
     user: Owner, services: Services, expected_account_id: str | None = None
 ) -> CloudAccountStatus:
-    return await logout_cloud(services, user.id, expected_account_id=expected_account_id)
+    status = await logout_cloud(services, user.id, expected_account_id=expected_account_id)
+    if bot_desktop_enabled() and not status.connected:
+        await asyncio.to_thread(account_models.release_cloud_account, services, user.id)
+    return status

@@ -223,3 +223,39 @@ async def test_iter_turn_chunks_persists_partial_when_cancelled() -> None:
     texts = [_wire_text(item) for item in appended[0]]
     assert any("continue this" in text for text in texts)
     assert "partial answer" in texts
+
+
+class _PaymentRequired(Exception):
+    status_code = 402
+
+
+def test_out_of_credits_on_the_users_own_wallet_gets_a_recharge_code() -> None:
+    from octop.infra.errors import ErrorCode
+
+    exc = RuntimeError("model call failed")
+    exc.__cause__ = _PaymentRequired("Error code: 402 - insufficient credits")
+    message, code = _stream_error(exc, "zh", account_credits=True)
+    assert code == ErrorCode.BOT_CLOUD_CREDITS_REQUIRED.value
+    assert "积分" in message
+    # A text-only 402 from a wrapped retry is recognised too.
+    _, code = _stream_error(
+        RuntimeError("Error code: 402 insufficient balance"), "en", account_credits=True
+    )
+    assert code == ErrorCode.BOT_CLOUD_CREDITS_REQUIRED.value
+    # Someone else's API key running dry is not a Lynxce top-up.
+    _, code = _stream_error(exc, "zh", account_credits=False)
+    assert code is None
+    _, code = _stream_error(RuntimeError("rate limited"), "zh", account_credits=True)
+    assert code is None
+
+
+def test_a_used_up_daily_key_limit_is_not_reported_as_an_empty_wallet() -> None:
+    from octop.infra.errors import ErrorCode
+
+    exc = RuntimeError("model call failed")
+    exc.__cause__ = _PaymentRequired(
+        "Error code: 402 - {'error': {'code': 'api_key_credit_limit_reached'}}"
+    )
+    message, code = _stream_error(exc, "zh", account_credits=True)
+    assert code == ErrorCode.BOT_LYNXCE_DAILY_LIMIT.value
+    assert "每日上限" in message

@@ -33,7 +33,7 @@
 
     <!-- Errors -->
     <string name="error_unauthorized">Your session expired. Please sign in again.</string>
-    <string name="error_credits">Your Lynxce balance is used up. Top it up and try again.</string>
+    <string name="error_credits">You\'re out of Lynxce credits. Top up to continue.</string>
     <string name="error_rejected">The request was rejected (%1$d).</string>
     <string name="error_network">Can\'t reach the server. Check your connection.</string>
     <string name="error_server">Server error (%1$d). Try again later.</string>
@@ -68,13 +68,7 @@
     <string name="server_address_invalid">Enter an http or https address.</string>
     <string name="server_next">Next</string>
     <string name="server_sign_in_lynxce">Sign in with the Lynxce account that owns this server</string>
-    <string name="server_sign_in_local">Sign in with the password you set for this server</string>
     <string name="server_unclaimed">This server has no owner yet. The first account to sign in becomes its owner.</string>
-    <string name="server_username">Username</string>
-    <string name="server_sign_in_password">Sign in to this Octop server</string>
-    <string name="server_mfa">Authenticator code</string>
-    <string name="server_mfa_hint">Enter the 6-digit code from your authenticator app.</string>
-    <string name="server_verify">Verify</string>
 
     <!-- Chat -->
     <string name="chat_history">Conversations</string>
@@ -228,7 +222,7 @@
     <string name="history_current">Open now</string>
     <string name="home_unread">Unread</string>
     <string name="bot_shuffle">Shuffle</string>
-    <string name="settings_balance_chip">Balance %1$s</string>
+    <string name="settings_balance_chip">Balance %1$s credits</string>
     <string name="settings_text_size">Chat text size</string>
     <string name="settings_text_small">Small</string>
     <string name="settings_text_standard">Standard</string>
@@ -294,7 +288,7 @@
     <string name="update_permission_title">Allow installing the update</string>
     <string name="update_permission_text">To install updates, allow Octop Bot to install unknown apps on the next screen, then come back. The update continues by itself.</string>
     <string name="update_permission_open">Open settings</string>
-    <string name="settings_recharge">Recharge credits</string>
+    <string name="settings_recharge">Credits &amp; top-up</string>
     <string name="settings_delete_account">Delete account</string>
     <string name="settings_delete_account_footer">Deletes this Lynxce account everywhere, including lynxce.cn and Octop Bot on other devices.</string>
     <string name="settings_delete_account_confirm">Delete your Lynxce account?</string>
@@ -321,6 +315,40 @@
     <string name="computer_view">View screen</string>
     <string name="computer_take_over">Take over</string>
     <string name="computer_hand_back">Hand back</string>
+    <!-- Device connectors (mobile/PROTOCOL.md §C) -->
+    <string name="settings_device">Device connectors</string>
+    <string name="settings_device_health">Health</string>
+    <string name="settings_device_calendar">Calendar</string>
+    <string name="settings_device_footer">Bots can read your daily health values and your calendar while chatting. Adding or changing an event always asks you first.</string>
+    <string name="settings_device_denied">Octop Bot doesn\'t have permission for this. Allow it in system settings, then turn the switch on again.</string>
+    <string name="settings_device_health_unavailable">Health Connect isn\'t available on this phone, so Health stays off.</string>
+    <string name="settings_device_health_update">Health needs Health Connect. Install or update it from the Play Store, then try again.</string>
+    <string name="settings_device_health_install">Get Health Connect</string>
+    <string name="device_tool_health_summary">Read health data</string>
+    <string name="device_tool_calendar_events">Read calendar</string>
+    <string name="device_tool_calendar_create">Add calendar event</string>
+    <string name="device_tool_calendar_update">Update calendar event</string>
+    <string name="device_preview_title">Title</string>
+    <string name="device_preview_time">Time</string>
+    <string name="device_preview_location">Location</string>
+    <string name="device_preview_notes">Notes</string>
+    <string name="device_preview_alert">Alert</string>
+    <string name="device_preview_alert_value">%1$s min before</string>
+    <string name="device_add">Add</string>
+    <string name="device_save">Save</string>
+    <string name="health_rationale_title">How Octop Bot uses your health data</string>
+    <string name="health_rationale_text">When you turn on Settings → Device connectors → Health, Octop Bot reads daily totals and averages (steps, active energy, exercise minutes, sleep, heart rate, resting heart rate and weight) from Health Connect, only when a Bot asks for them in a chat. The values are sent with that chat to the model that answers you, and are not stored anywhere else by Octop Bot. Octop Bot never writes health data. Turn the switch off, or revoke access in Health Connect, at any time.</string>
+    <string name="profile_entry">Activity and library</string>
+    <string name="profile_activity">Activity</string>
+    <string name="profile_library">Library</string>
+    <string name="profile_upcoming">Upcoming</string>
+    <string name="profile_no_upcoming">No scheduled tasks yet. Ask this Bot to do something on a schedule.</string>
+    <string name="profile_show_more">Show more</string>
+    <string name="profile_toggle">Run %1$s on schedule</string>
+    <string name="profile_no_files">Files this Bot makes for you will show up here.</string>
+    <string name="profile_today">Today</string>
+    <string name="profile_week">This week</string>
+    <string name="profile_older">Older</string>
     <string name="computer_activity_click">Clicking</string>
     <string name="computer_activity_command">Running a command</string>
     <string name="computer_activity_file">Working with files</string>
@@ -337,4 +365,39 @@
     <string name="computer_float_off">The computer is off. It starts when the Bot needs it.</string>
     <string name="computer_float_toggle">Cloud computer</string>
     <string name="computer_float_yours">You\'re in control</string>
+    <string name="server_unsupported">This server can\'t sign in with a Lynxce account. Ask its admin to update Octop Bot.</string>
+    <string name="server_legacy_password">Old local password (only this once)</string>
+    <string name="server_legacy_hint">This server used a local password. Enter it once with your first Lynxce sign-in; after that only your Lynxce account is needed.</string>
+    <!-- Account, credits and recharge -->
+    <string name="account_generic_name">Lynxce user</string>
+    <string name="mode_cloud">Lynxce cloud</string>
+    <string name="mode_lynxce">Lynxce account</string>
+    <string name="credits_amount">%1$s credits</string>
+    <string name="credits_title">Credits &amp; top-up</string>
+    <string name="credits_balance_label">Balance</string>
+    <string name="credits_unit">credits</string>
+    <string name="credits_recharge">Top up</string>
+    <string name="credits_low_note">Your credits are running low. Top up so your Bots can keep working.</string>
+    <string name="credits_usage_title">Last 30 days</string>
+    <string name="credits_usage_tokens">Tokens</string>
+    <string name="credits_usage_calls">Model calls</string>
+    <string name="credits_usage_by_bot">By Bot</string>
+    <string name="credits_usage_by_model">By model</string>
+    <string name="credits_usage_empty">No usage yet</string>
+    <string name="credits_usage_failed">Couldn\'t load usage. Pull down to try again.</string>
+    <string name="credits_footer">Your balance is shared with the Lynxce website and your other devices.</string>
+    <string name="credits_balance_failed">Couldn\'t load the balance</string>
+    <string name="chat_credits_title">Out of Lynxce credits</string>
+    <string name="chat_credits_body">This didn\'t finish. Top up your Lynxce credits, then press Continue to pick up where it stopped.</string>
+    <string name="chat_credits_balance">Balance: %1$s credits</string>
+    <string name="chat_continue">Continue</string>
+    <string name="chat_low_balance">Credits running low: %1$s left</string>
+    <string name="recharge_link_refused">The recharge link didn\'t look right, so it wasn\'t opened. Try again later, or top up on the Lynxce website.</string>
+    <string name="recharge_unavailable">Can\'t open the recharge page right now. Try again later.</string>
+    <string name="server_sign_in_lynxce_cloud">Sign in with your Lynxce account</string>
+    <string name="chat_credits_site_label">Or open in your browser:</string>
+    <string name="chat_limit_title">Daily limit reached</string>
+    <string name="chat_limit_body">Lynxce caps Octop Bot\'s daily usage to prevent runaway spending, and today\'s cap is used up. It resets at 00:00 UTC; press Continue then to pick up where it stopped.</string>
+    <string name="chat_limit_site_label">Need it now? Raise the limit in your Lynxce account centre:</string>
+    <string name="error_daily_limit">Today\'s Lynxce usage limit for Octop Bot is used up. It resets at 00:00 UTC.</string>
 </resources>

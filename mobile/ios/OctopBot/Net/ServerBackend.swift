@@ -20,7 +20,8 @@ final class ServerBackend: ChatBackend {
     private var sockets: [String: URLSessionWebSocketTask] = [:]
 
     var supportsGroups: Bool { true }
-    var accountName: String { session.displayName }
+    /// The person's display name; never the internal username (`sso_…`, `owner`).
+    var accountName: String { session.displayName.isEmpty ? L("account.genericName") : session.displayName }
     var host: String {
         guard let host = session.baseURL.host() else { return session.baseURL.absoluteString }
         return session.baseURL.port.map { "\(host):\($0)" } ?? host
@@ -34,14 +35,16 @@ final class ServerBackend: ChatBackend {
 
     // MARK: Sign-in
 
-    /// How this server wants its owner to sign in, mirroring the dashboard's login route.
+    /// How this server signs its owner in. Octop Bot signs in with Lynxce accounts only.
     enum SignInMode: Equatable {
         /// Bot web build owned (or about to be claimed) by a Lynxce account.
         case lynxce(claimed: Bool)
-        /// Bot web build whose owner chose a local password (username `local`).
-        case localPassword
-        /// A regular Octop server: username and password.
-        case password
+        /// Multi-tenant (Octop Bot cloud): every Lynxce account signs in to its own account.
+        case cloud
+        /// Set up earlier with a local password: the first Lynxce sign-in also gives that password once.
+        case legacy
+        /// No Lynxce sign-in (a plain Octop server, or an Octop Bot too old to have it).
+        case unsupported
     }
 
     /// Accepts "nas.local:8080" as well as a full URL.
@@ -69,36 +72,49 @@ final class ServerBackend: ChatBackend {
 
     static func probe(_ base: URL) async throws -> SignInMode {
         let status = try await anonymous(base, .get, "/api/setup/status")
-        guard status["lynxce_login"] as? Bool == true else { return .password }
-        let setupRequired = status["setup_required"] as? Bool ?? false
+        guard status["lynxce_login"] as? Bool == true else { return .unsupported }
         let identity = try? await anonymous(base, .get, "/api/auth/lynxce/status")
         // Octop Bot cloud: every Lynxce account signs in to its own account, nothing to claim.
-        if identity?["cloud"] as? Bool == true { return .lynxce(claimed: true) }
-        let claimed = identity?["claimed"] as? Bool ?? false
-        return setupRequired || claimed ? .lynxce(claimed: claimed) : .localPassword
+        if identity?["cloud"] as? Bool == true { return .cloud }
+        if identity?["legacy_owner"] as? Bool == true { return .legacy }
+        return .lynxce(claimed: identity?["claimed"] as? Bool ?? false)
     }
 
-    enum SignInResult {
-        case signedIn(ServerBackend)
-        case mfa(token: String)
-    }
-
-    static func signInWithLynxce(_ base: URL, account: String, password: String) async throws -> ServerBackend {
-        let body = try await anonymous(base, .post, "/api/auth/lynxce/login", json: [
-            "account": account, "password": password, "locale": Preferences.shared.language.isChinese ? "zh" : "en",
-        ])
+    static func signInWithLynxce(_ base: URL, account: String, password: String, localPassword: String? = nil) async throws -> ServerBackend {
+        var json = ["account": account, "password": password, "locale": Preferences.shared.language.isChinese ? "zh" : "en"]
+        if let localPassword, !localPassword.isEmpty { json["local_password"] = localPassword }
+        let body = try await anonymous(base, .post, "/api/auth/lynxce/login", json: json)
         return try finish(base, body)
     }
 
+    enum CloudCheck: Equatable {
+        case available
+        /// The cloud answered but is not open (yet): a Lynxce sign-in talks to Lynxce directly.
+        case closed
+        /// No answer, even after a slower second try.
+        case unreachable
+    }
+
     /// Is Octop Bot cloud up? Until it is, a Lynxce sign-in talks to Lynxce directly.
-    static func lynxceCloudAvailable() async -> Bool {
-        var request = URLRequest(url: lynxceCloud.appending(path: "/api/octop-bot/server-info"))
-        request.timeoutInterval = 4
-        guard let (data, response) = try? await HTTP.session.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200,
-              let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return false }
-        return isCloudInfo(info)
+    /// A slow network gets a second, longer try before it counts as unreachable.
+    static func lynxceCloudAvailable() async -> CloudCheck {
+        for timeout in [4.0, 10.0] {
+            var request = URLRequest(url: lynxceCloud.appending(path: "/api/octop-bot/server-info"))
+            request.timeoutInterval = timeout
+            guard let (data, response) = try? await HTTP.session.data(for: request),
+                  let http = response as? HTTPURLResponse
+            else {
+                if Task.isCancelled { return .unreachable }
+                continue
+            }
+            guard http.statusCode == 200, let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                // A 5xx is the cloud having trouble, not the cloud being closed.
+                if http.statusCode >= 500 { continue }
+                return .closed
+            }
+            return isCloudInfo(info) ? .available : .closed
+        }
+        return .unreachable
     }
 
     static func isCloudInfo(_ info: [String: Any]) -> Bool {
@@ -119,41 +135,47 @@ final class ServerBackend: ChatBackend {
         _ = try await anonymous(base, .post, "/api/auth/lynxce/code", json: lynxceCodeBody(target: target, chinese: chinese))
     }
 
-    static func signInWithLynxceCode(_ base: URL, target: String, code: String) async throws -> ServerBackend {
+    static func signInWithLynxceCode(_ base: URL, target: String, code: String, localPassword: String? = nil) async throws -> ServerBackend {
         guard LynxceBackend.isCode(code) else { throw APIError(kind: .rejected, status: 400, message: L("error.codeFormat")) }
         let chinese = Preferences.shared.language.isChinese
-        let body = try await anonymous(base, .post, "/api/auth/lynxce/code-login", json: lynxceCodeBody(target: target, code: code, chinese: chinese))
-        return try finish(base, body)
-    }
-
-    static func signIn(_ base: URL, username: String, password: String) async throws -> SignInResult {
-        let body = try await anonymous(base, .post, "/api/auth/login", json: ["username": username, "password": password])
-        if body["mfa_required"] as? Bool == true, let token = body["mfa_token"] as? String {
-            return .mfa(token: token)
-        }
-        return .signedIn(try finish(base, body))
-    }
-
-    static func verifyMFA(_ base: URL, token: String, code: String) async throws -> ServerBackend {
-        let body = try await anonymous(base, .post, "/api/auth/mfa/verify", json: ["mfa_token": token, "method": "totp", "code": code])
+        var json = lynxceCodeBody(target: target, code: code, chinese: chinese)
+        if let localPassword, !localPassword.isEmpty { json["local_password"] = localPassword }
+        let body = try await anonymous(base, .post, "/api/auth/lynxce/code-login", json: json)
         return try finish(base, body)
     }
 
     private static func finish(_ base: URL, _ body: [String: Any]) throws -> ServerBackend {
         guard let token = body["access_token"] as? String else { throw APIError(kind: .server, status: 502, message: nil) }
         let user = body["user"] as? [String: Any]
-        let name = (user?["display_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? user?["username"] as? String ?? "Octop"
+        // Never the username (`sso_…`, `owner`): with no display name the UI shows a generic name.
+        let name = displayName(user)
         // Octop Bot cloud says so in its sign-in response; it then also serves the Lynxce wallet.
         let session = Session(baseURL: base, token: token, displayName: name, cloud: body["cloud"] as? Bool == true ? true : nil)
         Keychain.setCodable(session, for: sessionKey)
         return ServerBackend(session: session)
     }
 
+    static func displayName(_ user: [String: Any]?) -> String {
+        ((user?["display_name"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Re-read the display name: it may change on the server, and older sign-ins saved the username.
+    /// Returns whether it changed.
+    @discardableResult
+    func refreshProfile() async -> Bool {
+        guard let me = try? await json(.get, "/api/auth/me") as? [String: Any] else { return false }
+        let name = Self.displayName(me)
+        guard name != session.displayName else { return false }
+        session.displayName = name
+        Keychain.setCodable(session, for: Self.sessionKey)
+        return true
+    }
+
     private static func anonymous(_ base: URL, _ method: HTTPMethod, _ path: String, json: Any? = nil) async throws -> [String: Any] {
         let request = try HTTP.request(base.appending(path: path), method: method, json: json)
         let (data, response) = try await HTTP.data(for: request)
         guard (200..<300).contains(response.statusCode) else {
-            throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data))
+            throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data))
         }
         return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
@@ -181,7 +203,7 @@ final class ServerBackend: ChatBackend {
             Keychain.setCodable(session, for: Self.sessionKey)
         }
         guard (200..<300).contains(response.statusCode) else {
-            throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data))
+            throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data))
         }
         return data
     }
@@ -343,22 +365,35 @@ final class ServerBackend: ChatBackend {
                 out[out.count - 1].tools += tools
                 attach(pending, to: out.count - 1)
                 pending = []
+                if row["status"] as? String == "error", let stopped = Self.stoppedStatus(row["error_code"] as? String) {
+                    out[out.count - 1].status = stopped
+                }
                 continue
             }
             var message = ChatMessage(role: role, text: text, thinking: thinking, tools: tools)
             if let ms = row["timestamp"] as? Double { message.createdAt = Date(timeIntervalSince1970: ms / 1000) }
-            if row["status"] as? String == "error" { message.status = .failed(L("chat.failed")) }
+            if row["status"] as? String == "error" {
+                message.status = Self.stoppedStatus(row["error_code"] as? String) ?? .failed(L("chat.failed"))
+            }
             if let id = row["id"] as? String { message.id = id }
             if role == .assistant {
                 message.attachments = pending
                 pending = []
             }
-            if !message.text.isEmpty || !message.tools.isEmpty || !message.thinking.isEmpty || !message.attachments.isEmpty {
+            // A turn stopped by credits or the daily cap may have written nothing; it still shows as its card.
+            if !message.text.isEmpty || !message.tools.isEmpty || !message.thinking.isEmpty || !message.attachments.isEmpty || message.status.isStoppedByLynxce {
                 out.append(message)
             }
         }
         if !pending.isEmpty { out.append(ChatMessage(role: .assistant, text: "", attachments: pending)) }
         return out
+    }
+
+    /// History `error_code`s that render as a card instead of a red error.
+    static func stoppedStatus(_ code: String?) -> MessageStatus? {
+        if code == APIError.creditsRequired { return .outOfCredits }
+        if APIError.isDailyLimit(code) { return .dailyLimit }
+        return nil
     }
 
     /// Whether `part` (non-empty) already appears in `whole`, ignoring whitespace.
@@ -398,7 +433,7 @@ final class ServerBackend: ChatBackend {
                     guard (200..<300).contains(http.statusCode) else {
                         var data = Data()
                         for try await byte in bytes { data.append(byte); if data.count > 16_384 { break } }
-                        throw APIError.from(status: http.statusCode, message: HTTP.errorMessage(data))
+                        throw APIError.from(status: http.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data))
                     }
                     var mapper = ServerFrameMapper(labels: toolLabels, endsOnDone: true)
                     loop: for try await event in SSE.events(bytes) {
@@ -449,6 +484,8 @@ final class ServerBackend: ChatBackend {
                         "messages": [["role": "user", "content": content, "id": UUID().uuidString]],
                     ]
                     if let model { turn["model"] = model }
+                    // Health, Calendar and Reminders run on this phone (PROTOCOL.md §C).
+                    turn["device_tools"] = DeviceConnectors.shared.offeredTools
 
                     var components = URLComponents(url: url("/api/agents/\(bot.id)/chat/ws"), resolvingAgainstBaseURL: false)!
                     components.scheme = components.scheme == "https" ? "wss" : "ws"
@@ -579,6 +616,49 @@ final class ServerBackend: ChatBackend {
         return (title, goal["status"] as? String ?? "draft")
     }
 
+    // MARK: Usage
+
+    struct UsageSummary: Equatable {
+        struct Bucket: Equatable, Identifiable {
+            var key: String
+            var label: String
+            var totalTokens: Int
+            var id: String { key }
+        }
+
+        var totalTokens = 0
+        var modelCalls = 0
+        var buckets: [Bucket] = []
+
+        static func parse(_ data: Any) -> UsageSummary {
+            let body = data as? [String: Any] ?? [:]
+            let number = { (value: Any?) in (value as? NSNumber)?.intValue ?? 0 }
+            let rows = body["buckets"] as? [[String: Any]] ?? []
+            return UsageSummary(
+                totalTokens: number(body["total_tokens"]),
+                modelCalls: number(body["model_calls"]),
+                buckets: rows.compactMap { row in
+                    let key = (row["key"] as? String) ?? (row["key"] as? NSNumber)?.stringValue ?? ""
+                    let label = (row["label"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? key
+                    let total = number(row["total_tokens"])
+                    guard !label.isEmpty, total > 0 else { return nil }
+                    return Bucket(key: key, label: label, totalTokens: total)
+                }
+            )
+        }
+    }
+
+    /// The last 30 days, by Bot and by model.
+    func usage() async throws -> (byBot: UsageSummary, byModel: UsageSummary) {
+        async let bots = usage(by: "by_agent")
+        async let models = usage(by: "by_model")
+        return (try await bots, try await models)
+    }
+
+    private func usage(by granularity: String) async throws -> UsageSummary {
+        UsageSummary.parse(try await json(.get, "/api/usage/summary", query: ["window": "last_30d", "granularity": granularity]))
+    }
+
     // MARK: Voice, push, account
 
     private func voiceSupport() async -> (stt: Bool, tts: Bool) {
@@ -652,7 +732,7 @@ struct ServerFrameMapper {
         case "attachment":
             return .events(FileAttachment.fromFrame(frame).map { [.attachment($0)] } ?? [])
         case "error":
-            throw APIError(kind: .server, status: 500, message: frame["message"] as? String)
+            throw Self.error(frame)
         case "hitl_required":
             guard let pause = HitlPause.parse(frame["request"], labels: labels) else {
                 throw APIError(kind: .rejected, status: 409, message: L("chat.needsApproval"))
@@ -661,10 +741,22 @@ struct ServerFrameMapper {
         case "done" where endsOnDone:
             return .finished
         case "turn.ended":
-            if frame["failed"] as? Bool == true { throw APIError(kind: .server, status: 500, message: nil) }
+            if frame["failed"] as? Bool == true { throw Self.error(frame, message: false) }
             return .finished
         default:
             return .events([])
         }
+    }
+
+    /// An error frame keeps its `error_code`, so running out of credits is told apart from a failure.
+    static func error(_ frame: [String: Any], message: Bool = true) -> APIError {
+        let text = message ? frame["message"] as? String : nil
+        if APIError.isDailyLimit(frame["error_code"] as? String) {
+            return APIError(kind: .dailyLimit, status: 429, message: text)
+        }
+        if frame["error_code"] as? String == APIError.creditsRequired {
+            return APIError(kind: .credits, status: 402, message: text)
+        }
+        return APIError(kind: .server, status: 500, message: text)
     }
 }

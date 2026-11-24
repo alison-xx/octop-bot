@@ -156,6 +156,9 @@ beforeEach(() => {
     return saved;
   });
 });
+function Location() {
+  return <span data-testid="location">{useLocation().pathname}</span>;
+}
 function CloudRoute() {
   return <output>{useLocation().state?.from}</output>;
 }
@@ -260,6 +263,73 @@ describe("directory sections", () => {
     expect(
       confirm.getByRole("button", { name: "octopBot.deleteBot" }),
     ).toBeDisabled();
+  });
+
+  it("confirms deletion of a group chat and leaves it for Chief", async () => {
+    const remove = vi
+      .spyOn(octopBotApi, "deleteGroup")
+      .mockRejectedValueOnce(new Error("Busy"))
+      .mockImplementation(async (id) => {
+        server.groups = server.groups.filter((g) => g.group_id !== id);
+      });
+    render(
+      <ConfigProvider theme={{ token: { motion: false } }}>
+        <MemoryRouter initialEntries={["/octop-bot/groups/team"]}>
+          <Location />
+          <Routes>
+            <Route path="/octop-bot/bots/:agentId" element={<OctopBotPage />} />
+            <Route
+              path="/octop-bot/groups/:groupId"
+              element={<OctopBotPage />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </ConfigProvider>,
+    );
+    const openDelete = async () => {
+      fireEvent.contextMenu(
+        await screen.findByRole("button", { name: "Editorial" }),
+      );
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: "octopBot.deleteGroup" }),
+      );
+      return within(
+        await screen.findByRole("dialog", {
+          name: "octopBot.deleteGroupTitle:Editorial",
+        }),
+      );
+    };
+    const first = await openDelete();
+    expect(first.getByText("octopBot.deleteGroupHint")).toBeInTheDocument();
+    fireEvent.click(first.getByRole("button", { name: "common.cancel" }));
+    expect(remove).not.toHaveBeenCalled();
+    const confirm = await openDelete();
+    fireEvent.click(
+      confirm.getByRole("button", { name: "octopBot.deleteGroup" }),
+    );
+    await confirm.findByText("Busy");
+    fireEvent.click(
+      confirm.getByRole("button", { name: "octopBot.deleteGroup" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Editorial" })).toBeNull(),
+    );
+    expect(remove).toHaveBeenCalledWith("team");
+    // Leaving for Chief can land a tick after the row disappears.
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "/octop-bot/bots/chief",
+      ),
+    );
+  });
+
+  it("does not offer group deletion on Bot rows", async () => {
+    openDirectory();
+    fireEvent.contextMenu(
+      await screen.findByRole("button", { name: "Writer" }),
+    );
+    const menu = within(await screen.findByRole("menu"));
+    expect(menu.queryByText("octopBot.deleteGroup")).toBeNull();
   });
 
   it("opens a fresh chat for the contact chosen from the directory", async () => {

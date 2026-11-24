@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.GroupSummary
@@ -55,6 +56,9 @@ data class UserSettings(
     val speechRate: SpeechRate = SpeechRate.Normal,
     /** Settings → About: also follow the `beta` update channel. */
     val receiveBeta: Boolean = false,
+    /** Settings → Device connectors (off by default; also needs the system permission). */
+    val deviceHealth: Boolean = false,
+    val deviceCalendar: Boolean = false,
 )
 
 /** Chat text size, as a multiple of the body style. */
@@ -100,9 +104,12 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
         val expandReasoning = booleanPreferencesKey("settings.expandReasoning")
         val speechRate = stringPreferencesKey("settings.speechRate")
         val receiveBeta = booleanPreferencesKey("settings.receiveBeta")
+        val deviceHealth = booleanPreferencesKey("settings.device.health")
+        val deviceCalendar = booleanPreferencesKey("settings.device.calendar")
         val installId = stringPreferencesKey("update.installId")
         val lastUpdateCheck = longPreferencesKey("update.lastCheck")
         val dismissedUpdate = intPreferencesKey("update.dismissedVersionCode")
+        val lowBalanceDismissed = stringSetPreferencesKey("wallet.lowBalanceDismissed")
     }
 
     private val stringMap = MapSerializer(String.serializer(), String.serializer())
@@ -132,6 +139,8 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
             expandReasoning = it[Keys.expandReasoning] ?: false,
             speechRate = SpeechRate.entries.firstOrNull { entry -> entry.name == it[Keys.speechRate] } ?: SpeechRate.Normal,
             receiveBeta = it[Keys.receiveBeta] ?: false,
+            deviceHealth = it[Keys.deviceHealth] ?: false,
+            deviceCalendar = it[Keys.deviceCalendar] ?: false,
         )
     }
 
@@ -166,6 +175,8 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
     suspend fun setExpandReasoning(value: Boolean) = store.edit { it[Keys.expandReasoning] = value }
     suspend fun setSpeechRate(value: SpeechRate) = store.edit { it[Keys.speechRate] = value.name }
     suspend fun setReceiveBeta(value: Boolean) = store.edit { it[Keys.receiveBeta] = value }
+    suspend fun setDeviceHealth(value: Boolean) = store.edit { it[Keys.deviceHealth] = value }
+    suspend fun setDeviceCalendar(value: Boolean) = store.edit { it[Keys.deviceCalendar] = value }
     suspend fun setModel(value: String?) = store.edit { if (value == null) it.remove(Keys.model) else it[Keys.model] = value }
 
     suspend fun lastBot(): String? = store.data.first()[Keys.lastBot]
@@ -193,6 +204,14 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
     /** The version code whose home banner was closed; that version never shows it again. */
     val dismissedUpdate: Flow<Int?> = store.data.map { it[Keys.dismissedUpdate] }
     suspend fun setDismissedUpdate(versionCode: Int) = store.edit { it[Keys.dismissedUpdate] = versionCode }
+
+    /** Wallets whose low-balance banner was closed; a wallet leaves the set once its balance is back to 100. */
+    val lowBalanceDismissed: Flow<Set<String>> = store.data.map { it[Keys.lowBalanceDismissed].orEmpty() }
+    suspend fun setLowBalanceDismissed(wallet: String, dismissed: Boolean) = store.edit {
+        val current = it[Keys.lowBalanceDismissed].orEmpty()
+        val next = if (dismissed) current + wallet else current - wallet
+        if (next != current) it[Keys.lowBalanceDismissed] = next
+    }
 
     /** Forget what belongs to the signed-in account: tokens and caches. Settings toggles stay. */
     suspend fun clearAccount() {

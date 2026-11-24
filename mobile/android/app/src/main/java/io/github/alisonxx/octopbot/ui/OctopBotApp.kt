@@ -51,11 +51,13 @@ import io.github.alisonxx.octopbot.app.SessionState
 import io.github.alisonxx.octopbot.net.ServerProtocol
 import io.github.alisonxx.octopbot.ui.chat.ChatScreen
 import io.github.alisonxx.octopbot.ui.common.ProvideUiPrefs
+import io.github.alisonxx.octopbot.ui.editor.BotActivityScreen
 import io.github.alisonxx.octopbot.ui.editor.BotEditorScreen
 import io.github.alisonxx.octopbot.ui.group.GroupRoomScreen
 import io.github.alisonxx.octopbot.ui.home.HomeScreen
 import io.github.alisonxx.octopbot.ui.onboarding.OnboardingScreen
 import io.github.alisonxx.octopbot.ui.onboarding.ServerConnectScreen
+import io.github.alisonxx.octopbot.ui.settings.CreditsScreen
 import io.github.alisonxx.octopbot.ui.settings.ModelPickerScreen
 import io.github.alisonxx.octopbot.ui.settings.SettingsScreen
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
@@ -74,13 +76,16 @@ private object Routes {
     const val HOME = "home"
     const val CHAT = "chat/{bot}"
     const val EDITOR = "editor?bot={bot}"
+    const val ACTIVITY = "activity/{bot}"
     const val VOICE = "voice/{bot}"
     const val GROUP = "group/{group}"
     const val SETTINGS = "settings"
     const val MODELS = "settings/model"
+    const val CREDITS = "settings/credits"
 
     fun chat(bot: String) = "chat/$bot"
     fun editor(bot: String?) = if (bot == null) "editor" else "editor?bot=$bot"
+    fun activity(bot: String) = "activity/$bot"
     fun voice(bot: String) = "voice/$bot"
     fun group(group: String) = "group/$group"
 }
@@ -184,6 +189,11 @@ private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<String?>)
     }
     AskForNotifications(model)
     InstallUpdates(model)
+    // Back from the recharge Custom Tab: show the new balance.
+    LifecycleResumeEffect(model) {
+        model.appResumed()
+        onPauseOrDispose {}
+    }
     NavHost(nav, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
             HomeScreen(
@@ -193,6 +203,7 @@ private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<String?>)
                 onEditBot = { nav.navigate(Routes.editor(it)) },
                 onNewBot = { nav.navigate(Routes.editor(null)) },
                 onSettings = { nav.navigate(Routes.SETTINGS) },
+                onCredits = { nav.navigate(Routes.CREDITS) },
                 onVoice = { nav.navigate(Routes.voice(it)) },
             )
         }
@@ -210,7 +221,15 @@ private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<String?>)
             Routes.EDITOR,
             listOf(navArgument("bot") { type = NavType.StringType; nullable = true; defaultValue = null }),
         ) { entry ->
-            BotEditorScreen(model, entry.arguments?.getString("bot"), onDone = { nav.back() })
+            BotEditorScreen(
+                model,
+                entry.arguments?.getString("bot"),
+                onDone = { nav.back() },
+                onActivity = { nav.navigate(Routes.activity(it)) },
+            )
+        }
+        composable(Routes.ACTIVITY, listOf(navArgument("bot") { type = NavType.StringType })) { entry ->
+            BotActivityScreen(model, entry.arguments?.getString("bot").orEmpty(), onBack = { nav.back() })
         }
         composable(Routes.VOICE, listOf(navArgument("bot") { type = NavType.StringType })) { entry ->
             VoiceScreen(model, entry.arguments?.getString("bot").orEmpty(), onClose = { nav.back() })
@@ -223,7 +242,11 @@ private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<String?>)
                 model = model,
                 onBack = { nav.back() },
                 onModels = { nav.navigate(Routes.MODELS) },
+                onCredits = { nav.navigate(Routes.CREDITS) },
             )
+        }
+        composable(Routes.CREDITS) {
+            CreditsScreen(model, onBack = { nav.back() })
         }
         composable(Routes.MODELS) {
             ModelPickerScreen(model, onBack = { nav.back() })

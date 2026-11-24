@@ -1,0 +1,255 @@
+.amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  &[data-low] {
+    color: var(--fn-color-warning-text, var(--fn-color-warning));
+    font-weight: 600;
+  }
+}
+.muted {
+  margin: 0;
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+// Settings → Account & credits: balance beside the last 30 days of usage.
+.panel {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+  margin-top: 16px;
+}
+@media (max-width: 860px) {
+  .panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.balanceCard,
+.usage {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 16px;
+  background: var(--fn-bg-container);
+  h3 {
+    margin: 0;
+    color: var(--fn-text-primary);
+    font-size: 14px;
+    font-weight: 600;
+  }
+}
+.balanceCard[data-low] {
+  border-color: var(--fn-color-warning-border, var(--fn-color-warning));
+}
+.balanceHead,
+.usageHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.big {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 52px;
+  strong {
+    font-size: 44px;
+    line-height: 1.1;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--fn-text-primary);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  span {
+    color: var(--fn-text-secondary);
+    font-size: 14px;
+  }
+}
+[data-low] .big strong {
+  color: var(--fn-color-warning-text, var(--fn-color-warning));
+}
+.lowNote {
+  margin: 0;
+  color: var(--fn-color-warning-text, var(--fn-color-warning));
+  font-size: 13px;
+  line-height: 1.6;
+}
+.balanceActions {
+  display: flex;
+  gap: 8px;
+  :global(.octop-btn) {
+    border-radius: 10px;
+  }
+  :global(.octop-btn-primary) {
+    flex: 1;
+  }
+}
+.segmented {
+  display: inline-grid;
+  grid-auto-flow: column;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--fn-bg-tertiary);
+  button {
+    height: 26px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--fn-text-secondary);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    &[aria-pressed="true"] {
+      background: var(--fn-bg-container);
+      color: var(--fn-text-primary);
+      font-weight: 600;
+      box-shadow: var(--fn-shadow-xs);
+    }
+    &:focus-visible {
+      outline: 2px solid var(--fn-border-focus);
+      outline-offset: 1px;
+    }
+  }
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  dd {
+    order: -1;
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  dt {
+    color: var(--fn-text-secondary);
+    font-size: 12px;
+  }
+  > div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+}
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  li {
+    display: grid;
+    grid-template-columns: minmax(64px, 120px) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    > span:first-child {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    b {
+      font-weight: 500;
+      color: var(--fn-text-secondary);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+  }
+}
+.bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--fn-bg-tertiary);
+  overflow: hidden;
+  > span {
+    display: block;
+    height: 100%;
+    border-radius: 4px;
+    background: var(--fn-text-primary);
+  }
+}
+
+// Chat: fewer than 100 credits left, under the top bar.
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px 8px 20px;
+  background: var(--fn-bg-warning-light);
+  border-bottom: 1px solid var(--fn-color-warning-border, transparent);
+  color: var(--fn-color-warning-text, var(--fn-text-primary));
+  font-size: 13px;
+  > svg {
+    flex: none;
+  }
+  > span {
+    flex: 1;
+    min-width: 0;
+  }
+  :global(.octop-btn-primary) {
+    border-radius: 7px;
+  }
+}
+
+// Chat: the reply that stopped for credits (out, ready to continue, or today's cap).
+.outCard {
+  display: grid;
+  gap: 10px;
+  max-width: 440px;
+  padding: 16px 18px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 16px;
+  background: var(--fn-bg-container);
+  box-shadow: var(--fn-shadow-xs);
+  p {
+    margin: 0;
+    color: var(--fn-text-primary);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  &[data-state="ready"] {
+    border-color: var(--fn-color-success-border, var(--fn-color-success));
+  }
+}
+.outHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  strong {
+    font-size: 15px;
+  }
+}
+.outIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: var(--fn-text-primary);
+  background: var(--fn-bg-tertiary);
+  [data-state="ready"] & {
+    color: var(--fn-color-success);
+    background: var(--fn-bg-success-light);
+  }
+}
+.outActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+  :global(.octop-btn) {
+    border-radius: 10px;
+  }
+}

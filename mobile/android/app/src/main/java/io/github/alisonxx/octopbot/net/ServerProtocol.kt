@@ -1,5 +1,6 @@
 package io.github.alisonxx.octopbot.net
 
+import io.github.alisonxx.octopbot.device.DeviceCatalog
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
@@ -106,10 +107,11 @@ object ServerProtocol {
     }
 
     /** `POST /api/auth/lynxce/code-login`: answers like `/api/auth/lynxce/login`. */
-    fun lynxceCodeLoginBody(target: String, code: String, chinese: Boolean) = buildJsonObject {
+    fun lynxceCodeLoginBody(target: String, code: String, chinese: Boolean, localPassword: String? = null) = buildJsonObject {
         put("target", target.trim())
         put("code", code)
         put("locale", if (chinese) "zh" else "en")
+        if (!localPassword.isNullOrEmpty()) put("local_password", localPassword)
     }
 
     /** Accepts "nas.local:8080" as well as a full URL; returns the origin without a trailing slash. */
@@ -119,6 +121,16 @@ object ServerProtocol {
         if ("://" !in raw) raw = "https://$raw"
         val url = raw.toHttpUrlOrNull() ?: return null
         return url.toString().trimEnd('/')
+    }
+
+    /** Usernames that are ids, not names: Octop's SSO accounts and the Bot web build's built-in users. */
+    private val INTERNAL_NAME = Regex("^sso_[A-Za-z0-9_-]+$")
+
+    /** A display name fit to show, or null for the generic "Lynxce user" (sessions saved before display names). */
+    fun personName(name: String?): String? {
+        val trimmed = name?.trim().orEmpty()
+        if (trimmed.isEmpty() || trimmed == "owner" || trimmed == "local" || trimmed == "Octop" || INTERNAL_NAME.matches(trimmed)) return null
+        return trimmed
     }
 
     fun bot(row: JsonObject): BotProfile? {
@@ -264,7 +276,15 @@ object ServerProtocol {
                 images = images,
                 tools = tools,
                 attachments = files,
-                status = if (row.str("status") == "error") MessageStatus.Failed(null) else MessageStatus.Done,
+                status = if (row.str("status") == "error") {
+                    MessageStatus.Failed(
+                        null,
+                        credits = row.str("error_code") == ApiException.CREDITS_REQUIRED,
+                        dailyLimit = row.str("error_code") == ApiException.DAILY_LIMIT,
+                    )
+                } else {
+                    MessageStatus.Done
+                },
                 createdAt = timestamp ?: System.currentTimeMillis(),
             )
         }
@@ -272,7 +292,7 @@ object ServerProtocol {
         return out
     }
 
-    private val fileDeliveryTools = setOf("send_file", "send_file_to_user")
+    private val fileDeliveryTools = setOf("send_file", "send_file_to_user", "generate_image", "generate_video")
 
     /** Files in a history `role:"tool"` row of `send_file_to_user` (its `output` is a JSON block or a list of them). */
     fun sentFiles(row: JsonObject, agentId: String?): List<FileAttachment> =
@@ -283,11 +303,25 @@ object ServerProtocol {
             val output = block.str("output")?.trim().orEmpty()
             if (output.isEmpty() || output[0] !in "{[") return@flatMap emptyList()
             when (val parsed = Http.parse(output)) {
-                is JsonObject -> listOfNotNull(sentFile(parsed, agentId))
+                is JsonObject -> generatedFiles(parsed, agentId) ?: listOfNotNull(sentFile(parsed, agentId))
                 is JsonArray -> parsed.objects().mapNotNull { sentFile(it, agentId) }
                 else -> emptyList()
             }
         }
+
+    /** A `generate_image` / `generate_video` result: its `images` / `videos` rows, or null for other blocks. */
+    private fun generatedFiles(result: JsonObject, agentId: String?): List<FileAttachment>? {
+        val field = when (result.str("type")) {
+            "image_gen_tool_result" -> "images"
+            "video_gen_tool_result" -> "videos"
+            else -> return null
+        }
+        return result.arr(field)?.objects().orEmpty().mapNotNull { row ->
+            val path = row.str("path")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val url = agentId?.let { workspaceDownloadPath(it, path) } ?: return@mapNotNull null
+            FileAttachment(url, FileCards.baseName(path), row.str("mediaType"))
+        }
+    }
 
     private fun sentFile(block: JsonObject, agentId: String?): FileAttachment? {
         val type = block.str("type")
@@ -319,7 +353,8 @@ object ServerProtocol {
         return FileAttachment(url, name, frame.str("mime_type"))
     }
 
-    fun userTurn(threadId: String, text: String, content: JsonElement, model: String?): JsonObject = buildJsonObject {
+    /** [deviceTools]: the phone's tools that are on (PROTOCOL §C); sent on every turn so the server can drop them. */
+    fun userTurn(threadId: String, text: String, content: JsonElement, model: String?, deviceTools: List<String> = emptyList()): JsonObject = buildJsonObject {
         put("type", "user_turn")
         put("thread_id", threadId)
         put("text", text)
@@ -331,6 +366,7 @@ object ServerProtocol {
             }
         }
         model?.let { put("model", it) }
+        putJsonArray("device_tools") { deviceTools.forEach { add(JsonPrimitive(it)) } }
     }
 
     fun cancel(threadId: String) = buildJsonObject {
@@ -372,13 +408,16 @@ object ServerProtocol {
         val actions = obj.arr("action_requests")?.objects().orEmpty().mapNotNull { action ->
             val name = action.str("name") ?: return@mapNotNull null
             val args = argsObject(action["args"])
+            val device = DeviceCatalog.isDevice(name)
             HitlAction(
                 name = name,
                 label = toolLabels[name] ?: name,
-                description = action.str("description")?.takeIf { it.isNotBlank() },
-                details = if (name == ASK_USER_QUESTION) emptyList() else keyArgs(args),
+                // Device tools show a preview of their arguments instead (the server's text is for the model).
+                description = action.str("description")?.takeIf { it.isNotBlank() && !device },
+                details = if (name == ASK_USER_QUESTION || device) emptyList() else keyArgs(args),
                 questions = if (name == ASK_USER_QUESTION) questions(args) else null,
                 allowedDecisions = allowed[name]?.takeIf { it.isNotEmpty() },
+                args = if (device) args ?: JsonObject(emptyMap()) else null,
             )
         }
         if (actions.isEmpty()) return null
@@ -489,10 +528,10 @@ object ServerProtocol {
                 "attachment" -> Outcome.Events(listOfNotNull(attachmentFrame(frame)?.let { StreamEvent.Attachment(it) }))
                 // A pause for the user is not a failure: the reply ends normally and the card opens.
                 "hitl_required" -> Outcome.Events(listOfNotNull(hitlRequest(frame["request"], toolLabels)?.let { StreamEvent.Hitl(it) }))
-                "error" -> throw ApiException(ApiException.Kind.Server, 500, frame.str("message"))
+                "error" -> throw streamError(frame, frame.str("message"))
                 "done" -> if (endsOnDone) Outcome.Finished else Outcome.Events(emptyList())
                 "turn.ended" -> {
-                    if (frame.bool("failed") == true) throw ApiException(ApiException.Kind.Server, 500)
+                    if (frame.bool("failed") == true) throw streamError(frame, null)
                     Outcome.Finished
                 }
                 else -> Outcome.Events(emptyList())
@@ -501,6 +540,60 @@ object ServerProtocol {
 
         private inline fun text(frame: JsonObject, event: (String) -> StreamEvent): Outcome =
             Outcome.Events(listOfNotNull(frame.str("content")?.takeIf { it.isNotEmpty() }?.let(event)))
+    }
+
+    /** A failed turn; out of Lynxce credits keeps its code so the chat shows the recharge card. */
+    fun streamError(frame: JsonObject, message: String?): ApiException {
+        val code = frame.str("error_code")
+        if (code == ApiException.DAILY_LIMIT) return ApiException(ApiException.Kind.DailyLimit, 429, message, code)
+        return if (code == ApiException.CREDITS_REQUIRED) {
+            ApiException(ApiException.Kind.Credits, 402, message, code)
+        } else {
+            ApiException(ApiException.Kind.Server, 500, message, code)
+        }
+    }
+
+    /** A failed socket handshake: 401 signs out, 402 is out of credits, anything else is the network. */
+    fun handshakeError(status: Int?): ApiException = when (status) {
+        401 -> ApiException(ApiException.Kind.Unauthorized, 401)
+        402 -> ApiException(ApiException.Kind.Credits, 402, code = ApiException.CREDITS_REQUIRED)
+        else -> ApiException.network()
+    }
+
+    /** `GET /api/usage/summary` over the last 30 days, by Bot or by model. */
+    data class UsageSummary(val totalTokens: Long, val modelCalls: Long, val buckets: List<UsageBucket>)
+
+    data class UsageBucket(val key: String, val label: String, val totalTokens: Long)
+
+    fun usage(body: JsonElement): UsageSummary? {
+        val obj = body.asObject() ?: return null
+        val buckets = obj.arr("buckets")?.objects().orEmpty().mapNotNull { row ->
+            val key = row.idString("key")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            UsageBucket(key, row.str("label")?.takeIf { it.isNotBlank() } ?: key, row.long("total_tokens") ?: 0L)
+        }.filter { it.totalTokens > 0 }.sortedByDescending { it.totalTokens }
+        return UsageSummary(obj.long("total_tokens") ?: 0L, obj.long("model_calls") ?: 0L, buckets)
+    }
+
+    private val CLOUD_TICKET = Regex("(?!mcrt1\\.)[A-Za-z0-9_-]{1,4096}\\.[A-Za-z0-9_-]{43}")
+
+    /**
+     * `POST /api/octop-bot/wallet/recharge` → the checkout to open, or null. Only Lynxce's own recharge page
+     * (`https://admin.lynxce.cn/recharge?token=…`, nothing else in the URL) with a ticket expiring within 16 minutes.
+     */
+    fun cloudCheckoutUrl(data: JsonElement, now: java.time.Instant = java.time.Instant.now()): String? {
+        val obj = data.asObject() ?: return null
+        val raw = obj.str("url") ?: return null
+        val url = raw.toHttpUrlOrNull() ?: return null
+        if (url.scheme != "https" || url.host != "admin.lynxce.cn" || url.port != 443) return null
+        if ("@" in raw || "#" in raw || url.username.isNotEmpty() || url.password.isNotEmpty() || url.fragment != null) return null
+        if (url.encodedPath != "/recharge" || url.querySize != 1 || url.queryParameterName(0) != "token") return null
+        val ticket = url.queryParameterValue(0) ?: return null
+        if (!CLOUD_TICKET.matches(ticket)) return null
+        if (!raw.startsWith("https://admin.lynxce.cn/recharge?token=")) return null
+        val expires = obj.str("expires_at")?.let { runCatching { java.time.OffsetDateTime.parse(it).toInstant() }.getOrNull() }
+            ?: return null
+        val left = java.time.Duration.between(now, expires)
+        return raw.takeIf { !left.isNegative && !left.isZero && left <= java.time.Duration.ofMinutes(16) }
     }
 
     /** WebSocket close codes → user-facing failures. */

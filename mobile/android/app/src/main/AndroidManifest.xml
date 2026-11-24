@@ -7,6 +7,16 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- In-app updates hand a verified APK to the system installer. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Device connectors (mobile/PROTOCOL.md §C): the calendar, and Health Connect read only. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" />
 
     <!-- Package visibility for on-device speech recognition and synthesis (Android 11+). -->
     <queries>
@@ -21,6 +31,8 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:mimeType="*/*" />
         </intent>
+        <!-- Health Connect as an app (Android 13 and lower). -->
+        <package android:name="com.google.android.apps.healthdata" />
     </queries>
 
     <!-- Self-hosted servers on a home network are often plain http. -->
@@ -47,6 +59,27 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Health Connect shows this when the user asks why Octop Bot reads health data. -->
+        <activity
+            android:name=".device.HealthRationaleActivity"
+            android:exported="true"
+            android:theme="@style/Theme.OctopBot">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <!-- Android 14+: the same screen from the system's permission usage view. -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
+            android:targetActivity=".device.HealthRationaleActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- Lets AppCompat persist the in-app language on Android 12 and lower. -->
         <service

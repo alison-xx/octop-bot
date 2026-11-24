@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_database
+from octop.api.routers.setup import LOCAL_DESKTOP_USERNAME as LEGACY_OWNER_USERNAME
 from octop.infra.auth import lynxce_cloud
 from octop.infra.auth.lynxce_owner import OWNER_USERNAME, bind_owner, owner_binding
 from octop.infra.auth.mfa.service import MfaService
@@ -41,6 +42,12 @@ class LynxceLoginBody(BaseModel):
     account: str = Field(min_length=1, max_length=200, description="Lynxce phone or email.")
     password: str = Field(min_length=1, max_length=4096)
     locale: str | None = Field(default=None, max_length=16)
+    local_password: str | None = Field(
+        default=None,
+        max_length=4096,
+        description="Only for a Bot web instance set up with a local password before Lynxce "
+        "sign-in: that password, once, to bind this Lynxce account to the existing owner.",
+    )
 
 
 class LynxceCodeBody(BaseModel):
@@ -56,11 +63,22 @@ class LynxceCodeLoginBody(BaseModel):
     target: str = Field(min_length=1, max_length=256, description="Lynxce phone or email.")
     code: str = Field(min_length=1, max_length=16, description="Six-digit code Lynxce sent.")
     locale: str | None = Field(default=None, max_length=16)
+    local_password: str | None = Field(
+        default=None,
+        max_length=4096,
+        description="Only for a Bot web instance set up with a local password before Lynxce "
+        "sign-in: that password, once, to bind this Lynxce account to the existing owner.",
+    )
 
 
 class LynxceIdentityStatus(BaseModel):
     enabled: bool = Field(description="This build signs its owner in with a Lynxce account.")
     claimed: bool = Field(description="An owner Lynxce account is already bound.")
+    legacy_owner: bool = Field(
+        default=False,
+        description="Not bound yet, but set up earlier with a local password: the first "
+        "Lynxce sign-in must also give that password once.",
+    )
     cloud: bool = Field(
         default=False,
         description="Octop Bot cloud: every Lynxce account signs in to an account of its own.",
@@ -100,7 +118,8 @@ async def lynxce_identity_status(server: Any = Depends(get_server)) -> LynxceIde
     if not bot_web_enabled() or not server.database_bound:
         return LynxceIdentityStatus(enabled=bot_web_enabled(), claimed=False)
     binding = await asyncio.to_thread(owner_binding, server.services.settings_repo)
-    return LynxceIdentityStatus(enabled=True, claimed=binding is not None)
+    legacy = binding is None and server.user_manager.get(LEGACY_OWNER_USERNAME) is not None
+    return LynxceIdentityStatus(enabled=True, claimed=binding is not None, legacy_owner=legacy)
 
 
 async def _claim(server: Any, account_id: str, display_name: str | None, locale: str) -> Any:
@@ -151,6 +170,7 @@ async def lynxce_login(
         request,
         body.locale,
         lambda: lynxce_cloud.verify_account(body.account, body.password),
+        body.local_password,
     )
 
 
@@ -200,6 +220,7 @@ async def lynxce_code_login(
         request,
         body.locale,
         lambda: lynxce_cloud.verify_account_code(body.target, body.code),
+        body.local_password,
     )
 
 
@@ -253,6 +274,7 @@ async def _sign_in(
     request: Request,
     requested_locale: str | None,
     verify: Callable[[], Awaitable[lynxce_cloud.CloudAccountStatus]],
+    local_password: str | None = None,
 ) -> dict[str, Any]:
     _require_enabled()
     require_database(server)
@@ -268,6 +290,21 @@ async def _sign_in(
             user = server.user_manager.get_by_id(binding.user_id)
         elif binding is None and server.user_manager.count() == 0:
             user = await _claim(server, identity.account_id, identity.display_name, locale)
+        elif binding is None and server.user_manager.get(LEGACY_OWNER_USERNAME) is not None:
+            # Set up with a local password before Lynxce sign-in: proving that password once
+            # binds this Lynxce account to the existing owner, data and all. Without it,
+            # anyone with a Lynxce account could take the instance over.
+            if not local_password:
+                raise OctopError.localized(ErrorCode.LYNXCE_LEGACY_PASSWORD_REQUIRED)
+            legacy = await server.user_manager.authenticate(LEGACY_OWNER_USERNAME, local_password)
+            if legacy is None:
+                _failures.setdefault(ip, []).append(time.time())
+                raise OctopError.localized(ErrorCode.AUTH_FAILED)
+            await asyncio.to_thread(bind_owner, settings, identity.account_id, legacy.id)
+            server.services.audit_repo.write(
+                actor=legacy.username, action="auth.lynxce_bound", target=identity.account_id
+            )
+            user = legacy
         if user is None:
             _failures.setdefault(ip, []).append(time.time())
             raise OctopError.localized(ErrorCode.LYNXCE_OWNER_MISMATCH, status=403)

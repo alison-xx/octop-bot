@@ -8,6 +8,7 @@ struct HomeView: View {
     @State private var path = NavigationPath()
     @State private var selection: Route?
     @State private var showSettings = false
+    @State private var showCredits = false
     @State private var editing: BotProfile?
     @State private var creating = false
     @State private var creatingGroup = false
@@ -61,6 +62,7 @@ struct HomeView: View {
             AppUpdater.shared.checkIfDue()
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
+        .sheet(isPresented: $showCredits) { CreditsSheet() }
         .sheet(item: $editing) { bot in BotEditor(bot: bot) }
         .sheet(isPresented: $creating) {
             BotEditor(
@@ -79,6 +81,12 @@ struct HomeView: View {
         List(selection: selection) {
             if let release = AppUpdater.shared.bannerRelease {
                 UpdateBanner(release: release)
+                    .listRowBackground(Palette.background)
+                    .listRowSeparator(.hidden)
+            }
+            // The Lynxce balance, for accounts with a wallet here (not a self-hosted server).
+            if model.balance != nil && query.isEmpty {
+                HomeAccountRow { showCredits = true }
                     .listRowBackground(Palette.background)
                     .listRowSeparator(.hidden)
             }

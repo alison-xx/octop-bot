@@ -22,7 +22,20 @@ final class AppModel {
         didSet { UserDefaults.standard.set(lastBotId, forKey: "chat.bot") }
     }
     var models: [ModelOption] = []
-    var balance: String?
+    /// The signed-in person's display name (never an internal username or account id).
+    private(set) var accountName = ""
+
+    /// The Lynxce wallet balance as shown: loading, failed (retry), or the number of credits.
+    enum Balance: Equatable { case loading, failed, value(Double) }
+    /// Below this the balance turns to a warning and chat offers a top-up.
+    static let lowBalance: Double = 100
+    /// nil when this account has no Lynxce wallet here (a self-hosted server).
+    private(set) var balance: Balance?
+    /// The wallet the balance belongs to; low-balance dismissals are remembered per wallet.
+    private var walletAccount: String?
+    private(set) var lowBalanceDismissed = false
+    /// Shown once on the sign-in screen (e.g. after deleting the account).
+    var signedOutNotice: String?
     var loadError: String?
     var isLoading = false
     private(set) var previews: [String: Preview]
@@ -66,6 +79,27 @@ final class AppModel {
         return nil
     }
     var server: ServerBackend? { backend as? ServerBackend }
+    var isCloud: Bool { server?.isCloud == true }
+
+    /// Where the account lives: 灵策云端 (cloud), 灵策智算账号 (direct Lynxce), or a self-hosted server's host.
+    var modeLabel: String {
+        if isLynxce { return L("account.mode.lynxce") }
+        guard let server else { return "" }
+        return server.isCloud ? L("settings.lynxce") : server.host
+    }
+
+    var modeSymbol: String {
+        if isLynxce { return "person.crop.circle.fill" }
+        return isCloud ? "cloud.fill" : "server.rack"
+    }
+
+    var credits: Double? {
+        if case .value(let credits) = balance { return credits }
+        return nil
+    }
+
+    var isLowBalance: Bool { credits.map { $0 < Self.lowBalance } ?? false }
+    var showsLowBalanceBanner: Bool { isLowBalance && !lowBalanceDismissed }
     var lastBot: BotProfile? { bots.first { $0.id == lastBotId } ?? bots.first { $0.isChief } ?? bots.first }
 
     /// The directory as shown: Chief pinned, then the newest reply first, then directory order.
@@ -96,6 +130,11 @@ final class AppModel {
     func use(_ backend: ChatBackend) async {
         self.backend = backend
         sessions = [:]
+        accountName = backend.accountName
+        signedOutNotice = nil
+        balance = creditAccount == nil ? nil : .loading
+        walletAccount = nil
+        lowBalanceDismissed = false
         let first = Task { await refresh() }
         if phase == .launching {
             // Keep the launch art up until the directory is in, but never longer than a moment.
@@ -119,9 +158,34 @@ final class AppModel {
     }
 
     func refreshBalance() async {
-        guard let account = creditAccount else { return }
-        if let fresh = await account.balance() { balance = fresh }
+        guard let account = creditAccount else {
+            balance = nil
+            return
+        }
+        // A number already on screen stays while it refreshes, and through a failed refresh.
+        if credits == nil { balance = .loading }
+        do {
+            let wallet = try await account.wallet()
+            guard creditAccount === account else { return }
+            balance = .value(wallet.credits)
+            walletAccount = wallet.accountId
+            let key = Self.lowDismissedKey(wallet.accountId)
+            // Back above the line: the next time it runs low, the banner shows again.
+            if wallet.credits >= Self.lowBalance { UserDefaults.standard.removeObject(forKey: key) }
+            lowBalanceDismissed = UserDefaults.standard.bool(forKey: key)
+        } catch {
+            guard creditAccount === account else { return }
+            if credits == nil { balance = .failed }
+        }
     }
+
+    /// Hide the low-balance banner for this wallet until the balance is back at 100 or more.
+    func dismissLowBalance() {
+        lowBalanceDismissed = true
+        if let walletAccount { UserDefaults.standard.set(true, forKey: Self.lowDismissedKey(walletAccount)) }
+    }
+
+    private static func lowDismissedKey(_ account: String) -> String { "credits.lowDismissed.\(account)" }
 
     func refresh() async {
         guard let backend else { return }
@@ -139,7 +203,11 @@ final class AppModel {
         } catch {
             loadError = error.localizedDescription
         }
-        if let server { groups = (try? await server.groups()) ?? groups }
+        if let server {
+            groups = (try? await server.groups()) ?? groups
+            await server.refreshProfile()
+            accountName = server.accountName
+        }
         models = (try? await backend.models()) ?? []
         await refreshBalance()
     }
@@ -201,8 +269,9 @@ final class AppModel {
 
     /// Settings → "Switch account or server".
     func switchAccount() async {
-        // Set first: the first screen reads it as it appears.
-        reopenServerSheet = server != nil
+        // Set first: the first screen reads it as it appears. Cloud users start over at the Lynxce
+        // sign-in, not in the own-server sheet filled with the cloud's address.
+        reopenServerSheet = server != nil && !isCloud
         await signOut()
     }
 
@@ -238,14 +307,14 @@ final class AppModel {
         await refresh()
     }
 
-    /// Settings → Delete account: Lynxce starts its cooling-off period, then this phone signs out.
-    /// Returns the cooling-off days to tell the user.
-    func deleteAccount() async throws -> Int {
-        guard let account = creditAccount else { return 0 }
+    /// Settings → Delete account: Lynxce starts its cooling-off period, then this phone signs out and
+    /// the sign-in screen says how long the account can still be restored.
+    func deleteAccount() async throws {
+        guard let account = creditAccount else { return }
         let days = try await account.requestDeletion()
         LocalBots.shared.deleteAll()
         await signOut()
-        return days
+        signedOutNotice = days.map { L("account.deleted.days %lld", $0) } ?? L("account.deleted")
     }
 
     func signOut() async {
@@ -256,6 +325,9 @@ final class AppModel {
         bots = []
         groups = []
         balance = nil
+        walletAccount = nil
+        lowBalanceDismissed = false
+        accountName = ""
         // Previews belong to the account that wrote them.
         previews = [:]
         unread = []

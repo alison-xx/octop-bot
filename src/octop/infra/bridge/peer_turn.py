@@ -16,6 +16,7 @@ USER_TURN_WS_KEYS = frozenset(
         "reasoning_mode",
         "reasoning_effort",
         "bot_browser",
+        "device_tools",
         "conversation_mode",
         "session_mode",
         "hitl_policy",

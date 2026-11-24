@@ -18,8 +18,8 @@
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="preload" as="image" href="assets/screen-team-zh.webp">
-  <link rel="stylesheet" href="assets/site.css?v=11">
-  <script src="assets/site.js?v=10" defer></script>
+  <link rel="stylesheet" href="assets/site.css?v=12">
+  <script src="assets/site.js?v=13" defer></script>
 </head>
 <body>
   <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
@@ -30,7 +30,9 @@
       <nav class="nav" aria-label="主导航" data-en-aria-label="Main">
         <a href="index.html" aria-current="page" data-en="Home">首页</a>
         <a href="features.html" data-en="Features">功能</a>
+        <a href="market.html" data-en="Bot Market">Bot 市场</a>
         <a href="download.html" data-en="Download">下载</a>
+        <a href="https://bot.lynxce.cn" data-en="Web app">网页版</a>
         <a href="guide.html" data-en="Guide">使用指南</a>
         <a href="download.html#changelog" data-en="Changelog">更新日志</a>
       </nav>
@@ -45,7 +47,9 @@
     <nav class="mobile-nav" id="mobile-nav" aria-label="主导航" data-en-aria-label="Main">
       <a href="index.html" aria-current="page" data-en="Home">首页</a>
       <a href="features.html" data-en="Features">功能</a>
+        <a href="market.html" data-en="Bot Market">Bot 市场</a>
       <a href="download.html" data-en="Download">下载</a>
+      <a href="https://bot.lynxce.cn" data-en="Web app">网页版</a>
       <a href="guide.html" data-en="Guide">使用指南</a>
       <a href="download.html#changelog" data-en="Changelog">更新日志</a>
       <div class="gh-stars"><a class="gh-star" href="https://github.com/alison-xx/octop-bot" title="github.com/alison-xx/octop-bot"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop Bot">Octop Bot</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="alison-xx/octop-bot">6</b></span></a><a class="gh-star upstream" href="https://github.com/TencentCloud/Octop" title="github.com/TencentCloud/Octop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop">Octop</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="TencentCloud/Octop">12.4k</b></span></a></div>
@@ -58,11 +62,12 @@
     <section class="hero">
       <div class="wrap">
         <div class="hero-copy">
-          <span class="chip reveal"><b data-en="New">全新</b><span><span data-en="Version">版本</span> <span data-version>1.0.3-beta.7</span> · <span data-en="free &amp; open source">免费开源</span></span></span>
+          <span class="chip reveal"><b data-en="New">全新</b><span><span data-en="Version">版本</span> <span data-version>1.0.4</span> · <span data-en="free &amp; open source">免费开源</span></span></span>
           <h1 class="display reveal" style="--delay:.05s" data-en="One sentence.<br>A whole AI team.">一句话，<br>组建你的 AI 团队。</h1>
           <p class="lead reveal" style="--delay:.1s" data-en="Tell Chief what you want done. It finds the right bots, brings them into one group chat and keeps the work moving until it is finished.">告诉 Chief 你想完成什么。它会找来合适的 Bot，拉进同一个群聊，分工、接力、验收，直到把事情做完。</p>
           <div class="hero-cta reveal" style="--delay:.15s">
             <a class="btn btn-primary btn-lg" href="download.html" data-download-primary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg><span data-en="Download the app">下载客户端</span></a>
+            <a class="btn btn-ghost btn-lg" href="https://bot.lynxce.cn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z"/></svg><span data-en="Use in your browser">在浏览器里使用</span></a>
             <button class="btn btn-ghost btn-lg" type="button" data-film><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10.5-6.5a1 1 0 0 0 0-1.8L9.5 4.6A1 1 0 0 0 8 5.5Z"/></svg><span data-en="Watch the film">观看介绍片</span><span class="sub">0:32</span></button>
           </div>
           <p class="hero-meta reveal" style="--delay:.2s" data-download-note data-en="Windows x64 · Mac with Apple silicon · MIT licensed">Windows x64 · Apple 芯片 Mac · MIT 开源</p>
@@ -229,6 +234,7 @@
         <p class="lead" data-en="Free for Windows and Macs with Apple silicon. Connect a model, then hand Chief your first task.">Windows 和 Apple 芯片 Mac 免费下载。连接一个模型，就能把第一件事交给 Chief。</p>
         <div class="hero-cta">
           <a class="btn btn-primary btn-lg" href="download.html" data-download-primary><span data-en="Download">下载</span></a>
+          <a class="btn btn-ghost btn-lg" href="https://bot.lynxce.cn" data-en="Use the web app">使用网页版</a>
           <a class="btn btn-ghost btn-lg" href="download.html" data-en="All downloads">全部版本</a>
         </div>
       </div>
@@ -245,8 +251,10 @@
         <div>
           <h4 data-en="Product">产品</h4>
           <ul>
-            <li><a href="features.html" data-en="Features">功能</a></li>
+            <li><a href="features.html" data-en="Features">功能</a>
+        <a href="market.html" data-en="Bot Market">Bot 市场</a></li>
             <li><a href="download.html" data-en="Download">下载</a></li>
+            <li><a href="https://bot.lynxce.cn" data-en="Web app ↗">网页版 ↗</a></li>
             <li><a href="download.html#changelog" data-en="Changelog">更新日志</a></li>
           </ul>
         </div>

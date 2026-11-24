@@ -36,7 +36,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.app.AppViewModel
+import io.github.alisonxx.octopbot.app.BalanceState
 import io.github.alisonxx.octopbot.app.SessionState
 import io.github.alisonxx.octopbot.character.BotCharacter
 import io.github.alisonxx.octopbot.character.GroupCharacter
@@ -73,7 +76,9 @@ import io.github.alisonxx.octopbot.model.GroupSummary
 import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.store.BotPreview
 import io.github.alisonxx.octopbot.store.Previews
+import io.github.alisonxx.octopbot.ui.common.BalanceText
 import io.github.alisonxx.octopbot.ui.common.SearchField
+import io.github.alisonxx.octopbot.ui.common.accountName
 import io.github.alisonxx.octopbot.ui.common.accentOf
 import io.github.alisonxx.octopbot.ui.common.relativeTime
 import io.github.alisonxx.octopbot.ui.common.rememberHaptics
@@ -93,7 +98,11 @@ data class DirectoryState(
     val error: String? = null,
     /** A newer version, until its banner is closed. */
     val update: UpdateBanner? = null,
+    /** The Lynxce wallet chip; null on a self-hosted server, which has none. */
+    val account: AccountChipState? = null,
 )
+
+data class AccountChipState(val name: String, val balance: BalanceState)
 
 data class UpdateBanner(val version: String, val versionCode: Int, val urgent: Boolean, val phase: UpdatePhase)
 
@@ -105,6 +114,7 @@ fun HomeScreen(
     onEditBot: (String) -> Unit,
     onNewBot: () -> Unit,
     onSettings: () -> Unit,
+    onCredits: () -> Unit,
     onVoice: (String) -> Unit,
 ) {
     var newGroup by rememberSaveable { mutableStateOf(false) }
@@ -119,6 +129,7 @@ fun HomeScreen(
     val refreshing by model.refreshing.collectAsStateWithLifecycle()
     val update by model.update.collectAsStateWithLifecycle()
     val dismissedUpdate by model.dismissedUpdate.collectAsStateWithLifecycle()
+    val balance by model.balance.collectAsStateWithLifecycle()
     Directory(
         state = DirectoryState(
             bots = bots,
@@ -129,6 +140,7 @@ fun HomeScreen(
             error = error,
             update = update.offer?.takeIf { UpdateSelection.showBanner(it, dismissedUpdate) }
                 ?.let { UpdateBanner(it.version, it.versionCode, it.urgent, update.phase) },
+            account = balance?.let { AccountChipState(accountName(backend), it) },
         ),
         refreshing = refreshing,
         onRefresh = model::refreshDirectory,
@@ -146,6 +158,8 @@ fun HomeScreen(
         onUpdate = model::startUpdate,
         onCancelUpdate = model::cancelUpdateDownload,
         onDismissUpdate = { model.dismissUpdate(it) },
+        onCredits = onCredits,
+        onRetryBalance = model::refreshBalance,
     )
     if (newGroup) NewGroupSheet(bots, onCreate = model::createGroup, onDismiss = { newGroup = false })
 }
@@ -169,6 +183,8 @@ fun Directory(
     onCancelUpdate: () -> Unit = {},
     /** The version code whose banner was closed. */
     onDismissUpdate: (Int) -> Unit = {},
+    onCredits: () -> Unit = {},
+    onRetryBalance: () -> Unit = {},
 ) {
     val palette = LocalPalette.current
     var query by rememberSaveable { mutableStateOf("") }
@@ -188,6 +204,7 @@ fun Directory(
                 IconButton(onClick = onSettings) {
                     Icon(Icons.Rounded.Settings, contentDescription = stringResource(R.string.settings_title))
                 }
+                state.account?.let { AccountChip(it, onCredits, onRetryBalance) }
                 Spacer(Modifier.weight(1f))
                 // On a server "+" also creates groups.
                 var addMenu by remember { mutableStateOf(false) }
@@ -287,6 +304,31 @@ fun Directory(
             },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
+    }
+}
+
+/** Who is signed in and the Lynxce balance; opens Credits & top-up, or retries when the balance failed to load. */
+@Composable
+private fun AccountChip(account: AccountChipState, onCredits: () -> Unit, onRetry: () -> Unit) {
+    val palette = LocalPalette.current
+    val failed = account.balance == BalanceState.Failed
+    val label = stringResource(R.string.credits_title)
+    Row(
+        Modifier
+            .clip(CircleShape)
+            .clickable(onClick = if (failed) onRetry else onCredits)
+            .background(palette.surface)
+            .semantics { contentDescription = account.name + ", " + label }
+            .padding(start = 6.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.AccountCircle, contentDescription = null, tint = palette.secondary, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(6.dp))
+        BalanceText(account.balance, style = MaterialTheme.typography.labelLarge)
+        if (failed) {
+            Spacer(Modifier.width(6.dp))
+            Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.chat_retry), tint = palette.secondary, modifier = Modifier.size(16.dp))
+        }
     }
 }
 

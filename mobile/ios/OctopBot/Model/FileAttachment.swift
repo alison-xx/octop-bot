@@ -73,7 +73,8 @@ struct FileAttachment: Hashable, Identifiable {
             guard let first = trimmed.first, first == "{" || first == "[" else { return [] }
             value = try? JSONSerialization.jsonObject(with: Data(trimmed.utf8))
         }
-        let blocks = (value as? [[String: Any]]) ?? (value as? [String: Any]).map { [$0] } ?? []
+        let blocks = ((value as? [[String: Any]]) ?? (value as? [String: Any]).map { [$0] } ?? [])
+            .flatMap(generatedFiles)
         return blocks.compactMap { block in
             let type = block["type"] as? String
             let path = (block["path"] as? String).flatMap { $0.isEmpty ? nil : $0 }
@@ -95,11 +96,28 @@ struct FileAttachment: Hashable, Identifiable {
         }
     }
 
+    /// A `generate_image` / `generate_video` result lists its files under `images` / `videos`;
+    /// other blocks pass through.
+    private static func generatedFiles(_ block: [String: Any]) -> [[String: Any]] {
+        let field: String
+        switch block["type"] as? String {
+        case "image_gen_tool_result": field = "images"
+        case "video_gen_tool_result": field = "videos"
+        default: return [block]
+        }
+        return (block[field] as? [[String: Any]] ?? []).compactMap { row in
+            guard let path = row["path"] as? String, !path.isEmpty else { return nil }
+            var file: [String: Any] = ["type": "file", "path": path]
+            file["media_type"] = row["mediaType"] as? String
+            return file
+        }
+    }
+
     /// Tools whose results are files for the user.
     static func isDeliveryTool(_ name: String?) -> Bool {
         guard let name else { return false }
         let base = name.split(separator: "/").last.map(String.init) ?? name
-        return base == "send_file" || base == "send_file_to_user"
+        return ["send_file", "send_file_to_user", "generate_image", "generate_video"].contains(base)
     }
 }
 

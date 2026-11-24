@@ -1,8 +1,12 @@
 package io.github.alisonxx.octopbot.net
 
+import io.github.alisonxx.octopbot.device.DeviceCatalog
+import io.github.alisonxx.octopbot.device.DeviceToolbox
+import io.github.alisonxx.octopbot.device.ToolCallAccumulator
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
+import io.github.alisonxx.octopbot.model.HitlDecision
 import io.github.alisonxx.octopbot.model.ImageAttachment
 import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.model.ModelOption
@@ -15,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
@@ -23,12 +28,14 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import okhttp3.Call
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.RequestBody
 import okhttp3.Response
 import java.util.Base64
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -42,7 +49,8 @@ class LynxceBackend(
 ) : ChatBackend, CreditAccount {
     override val definesBotsLocally = true
     override val supportsGroups = false
-    override val accountName get() = grant.displayName ?: grant.accountId
+    /** Lynxce's display name; never the numeric account id. */
+    override val accountName: String? get() = grant.displayName?.trim()?.takeIf { it.isNotEmpty() && it != grant.accountId }
     override val connectionLabel = "api.lynxce.cn"
 
     private val refreshLock = Mutex()
@@ -55,9 +63,14 @@ class LynxceBackend(
     }
 
     companion object {
+        /** Requests per turn in the device tool loop. */
+        private const val MAX_ROUNDS = 6
+
         private fun headers(bearer: String?) = buildMap {
             // 'web' is Lynxce's multi-session channel; signing in here never signs other devices out.
             put("X-Lynxce-Client", "web")
+            // Lynxce serves Octop Bot only the Tencent Cloud TokenHub models and records sign-ups made here.
+            put("X-Lynxce-App", "octopbot")
             bearer?.let { put("Authorization", "Bearer $it") }
         }
 
@@ -152,6 +165,35 @@ class LynxceBackend(
 
     // Chat
 
+    /** One turn of the local tool loop (PROTOCOL §C): the first request, the loop's messages and what gets synced. */
+    private class Turn(
+        val sessionId: String,
+        val user: String,
+        val startedAt: Long,
+        val model: String?,
+        val first: JsonObject,
+        val device: DeviceToolbox,
+        /** Names of the device tools offered in [first]. */
+        val offered: Set<String>,
+    ) {
+        val loop = mutableListOf<JsonObject>()
+        var rounds = 0
+        var withTools = offered.isNotEmpty()
+        /** The visible answer across rounds and pauses; synced when the turn ends. */
+        val answer = StringBuilder()
+        val thinking = StringBuilder()
+    }
+
+    /** Device writes waiting for the approval card: that round's calls and the read results already known. */
+    private class Pause(
+        val turn: Turn,
+        val calls: List<ToolCallAccumulator.Call>,
+        val results: Map<String, String>,
+        val writes: List<ToolCallAccumulator.Call>,
+    )
+
+    private val pauses = ConcurrentHashMap<String, Pause>()
+
     override fun send(
         text: String,
         images: List<ImageAttachment>,
@@ -159,6 +201,7 @@ class LynxceBackend(
         conversation: String?,
         history: List<ChatMessage>,
         model: String?,
+        device: DeviceToolbox,
     ): Flow<StreamEvent> = channelFlow {
         val sessionId = conversation ?: LynxceProtocol.newSessionId()
         val startedAt = System.currentTimeMillis()
@@ -166,62 +209,156 @@ class LynxceBackend(
             store.updateSessionBots { it[sessionId] = bot.id }
             send(StreamEvent.Conversation(sessionId))
         }
-        val body = LynxceProtocol.chatBody(text, images.map { it.jpeg }, bot, history, sessionId, model)
-        val answer = StringBuilder()
-        val thinking = StringBuilder()
+        val tools = device.offered()
+        val body = LynxceProtocol.chatBody(text, images.map { it.jpeg }, bot, history, sessionId, model, tools = tools)
+        drive(Turn(sessionId, text, startedAt, model, body, device, tools.map { it.name }.toSet()))
+    }
 
-        fun open(token: String): Call = streamClient.newCall(
-            Http.request(url("/api/proxy/v1/chat/completions"), headers(token))
-                .header("Accept", "text/event-stream")
-                .post(Http.body(body))
-                .build(),
+    /** The approval card answered a device write: finish that round's tool results and continue the loop. */
+    override fun resumeHitl(
+        bot: BotProfile,
+        conversation: String,
+        pendingId: String?,
+        decisions: List<HitlDecision>,
+    ): Flow<StreamEvent> = channelFlow {
+        val pause = pendingId?.let(pauses::remove) ?: return@channelFlow
+        val turn = pause.turn
+        val results = pause.results.toMutableMap()
+        pause.writes.forEachIndexed { index, call ->
+            results[call.id] = when (val decision = decisions.getOrNull(index)) {
+                is HitlDecision.Respond -> decision.message
+                HitlDecision.Approve -> turn.device.run(call.name, DeviceCatalog.args(call.arguments)).toString()
+                is HitlDecision.Reject -> LynxceProtocol.declined(decision.message).toString()
+                null -> LynxceProtocol.declined(null).toString()
+            }
+        }
+        pause.calls.forEach { turn.loop += LynxceProtocol.toolResult(it.id, results[it.id] ?: LynxceProtocol.declined(null).toString()) }
+        drive(turn)
+    }
+
+    /**
+     * Run the loop on the IO dispatcher: request, run reads, request again (at most [MAX_ROUNDS]); a device write
+     * pauses it with [StreamEvent.Hitl]. Closing the flow cancels the request in flight.
+     */
+    private suspend fun ProducerScope<StreamEvent>.drive(turn: Turn) {
+        val worker = launch(Dispatchers.IO) {
+            var stopped = false
+            var paused = false
+            var shown = false
+            val failure = runCatching {
+                while (true) {
+                    turn.rounds++
+                    val calls = ToolCallAccumulator()
+                    val round = StringBuilder()
+                    if (!request(turn, calls) { event ->
+                            if (event is StreamEvent.Text) {
+                                // Text of a later round starts a new paragraph.
+                                if (round.isEmpty() && shown) {
+                                    send(StreamEvent.Text("\n\n"))
+                                    turn.answer.append("\n\n")
+                                }
+                                round.append(event.delta)
+                                turn.answer.append(event.delta)
+                                shown = true
+                            }
+                            if (event is StreamEvent.Thinking) turn.thinking.append(event.delta)
+                            send(event)
+                        }
+                    ) {
+                        stopped = true
+                        break
+                    }
+                    val asked = calls.calls()
+                    if (asked.isEmpty() || turn.rounds >= MAX_ROUNDS) break
+                    turn.loop += LynxceProtocol.assistantToolCalls(round.toString(), asked)
+                    val writes = asked.filter { it.name in turn.offered && turn.device.tool(it.name)?.writes == true }
+                    val results = mutableMapOf<String, String>()
+                    for (call in asked - writes.toSet()) {
+                        val label = turn.device.label(call.name)
+                        send(StreamEvent.Tool(call.id, label, done = false))
+                        results[call.id] = if (call.name in turn.offered) {
+                            turn.device.run(call.name, DeviceCatalog.args(call.arguments)).toString()
+                        } else {
+                            DeviceCatalog.error("${call.name} is not available.").toString()
+                        }
+                        send(StreamEvent.Tool(call.id, label, done = true))
+                    }
+                    if (writes.isNotEmpty()) {
+                        val pendingId = UUID.randomUUID().toString()
+                        pauses[pendingId] = Pause(turn, asked, results, writes)
+                        writes.forEach { send(StreamEvent.Tool(it.id, turn.device.label(it.name), done = false)) }
+                        send(StreamEvent.Hitl(LynxceProtocol.devicePause(pendingId, writes, turn.device::label)))
+                        paused = true
+                        break
+                    }
+                    asked.forEach { turn.loop += LynxceProtocol.toolResult(it.id, results.getValue(it.id)) }
+                }
+            }.exceptionOrNull()
+            running.remove(turn.sessionId)
+            // Only the user's text and the answer are saved; a paused turn is saved when it ends.
+            if (!paused) sync(turn.sessionId, turn.user, turn.startedAt, turn.answer.toString(), turn.thinking.toString(), turn.model)
+            close(failure?.takeUnless { stopped })
+        }
+        awaitClose {
+            if (worker.isActive) running[turn.sessionId]?.call?.cancel()
+        }
+    }
+
+    /**
+     * One streamed request of [turn]; tool-call pieces go to [calls], deltas to [onEvent]. Refreshes the token once
+     * on 401 and drops `tools` once on 400. Returns false when the user stopped it.
+     */
+    private suspend fun request(turn: Turn, calls: ToolCallAccumulator, onEvent: suspend (StreamEvent) -> Unit): Boolean {
+        fun open(token: String): RunningStream = RunningStream(
+            streamClient.newCall(
+                Http.request(url("/api/proxy/v1/chat/completions"), headers(token))
+                    .header("Accept", "text/event-stream")
+                    .post(Http.body(LynxceProtocol.roundBody(turn.first, turn.loop, turn.withTools)))
+                    .build(),
+            ),
         )
 
-        var stream = RunningStream(open(grant.accessToken))
+        var stream = open(grant.accessToken)
         // Stopped before the reply started: end quietly instead of reporting the cancelled call.
         suspend fun connect(): Response? = try {
-            running[sessionId] = stream
+            running[turn.sessionId] = stream
             stream.call.await()
         } catch (error: ApiException) {
             if (stream.stopped) null else throw error
         }
-        var response = connect() ?: return@channelFlow
+        var response = connect() ?: return false
         if (response.code == 401) {
             response.close()
-            stream = RunningStream(open(refreshed(grant.accessToken).accessToken))
-            response = connect() ?: return@channelFlow
+            stream = open(refreshed(grant.accessToken).accessToken)
+            response = connect() ?: return false
         }
-        val reader = launch(Dispatchers.IO) {
-            val failure = runCatching {
-                response.use {
-                    if (!it.isSuccessful) throw ApiException.from(it.code, Http.errorMessage(it.body.string()))
-                    var completed = false
-                    it.body.source().forEachSseEvent { event ->
-                        if (event.data == "[DONE]") {
-                            completed = true
-                            return@forEachSseEvent false
-                        }
-                        for (parsed in LynxceProtocol.parseChunk(event.data)) {
-                            when (parsed) {
-                                is StreamEvent.Text -> answer.append(parsed.delta)
-                                is StreamEvent.Thinking -> thinking.append(parsed.delta)
-                                else -> Unit
-                            }
-                            send(parsed)
-                        }
-                        true
+        if (response.code == 400 && turn.withTools) {
+            // The gateway refused function calling: answer without tools.
+            response.close()
+            turn.withTools = false
+            stream = open(grant.accessToken)
+            response = connect() ?: return false
+        }
+        response.use {
+            if (!it.isSuccessful) throw ApiException.fromBody(it.code, it.body.string())
+            var completed = false
+            try {
+                it.body.source().forEachSseEvent { event ->
+                    if (event.data == "[DONE]") {
+                        completed = true
+                        return@forEachSseEvent false
                     }
-                    // A stream that ends without [DONE] is an interrupted reply.
-                    if (!completed && !stream.stopped) throw ApiException.network()
+                    for (parsed in LynxceProtocol.parseChunk(event.data, calls)) onEvent(parsed)
+                    true
                 }
-            }.exceptionOrNull()
-            running.remove(sessionId)
-            sync(sessionId, text, startedAt, answer.toString(), thinking.toString(), model)
-            close(failure?.takeUnless { stream.stopped })
+            } catch (error: java.io.IOException) {
+                if (!stream.stopped) throw error
+            }
+            if (stream.stopped) return false
+            // A stream that ends without [DONE] is an interrupted reply.
+            if (!completed) throw ApiException.network()
         }
-        awaitClose {
-            if (reader.isActive) stream.call.cancel()
-        }
+        return true
     }
 
     /** Append the finished turn to the synced Lynxce session (idempotent on the server). */
@@ -262,13 +399,15 @@ class LynxceBackend(
         return Base64.getDecoder().decode(encoded)
     }
 
-    override suspend fun balance(): String? =
-        runCatching { LynxceProtocol.balance(call("GET", "/api/user/quota")) }.getOrNull()
+    override val walletKey: String get() = "lynxce:" + grant.accountId
+
+    override suspend fun balance(): Double =
+        LynxceProtocol.balance(call("GET", "/api/user/quota")) ?: throw ApiException.badResponse()
 
     /** A signed-in link to Lynxce's recharge page for this account, valid for 15 minutes. */
     override suspend fun checkoutUrl(): String =
         LynxceProtocol.checkoutUrl(call("POST", "/api/billing/recharge/checkout-link") { Http.body(buildJsonObject {}) })
-            ?: throw ApiException.badResponse()
+            ?: throw CheckoutRefused()
 
     /** Ask Lynxce to delete this account; it is signed out everywhere and erased after a cooling-off period. */
     override suspend fun requestDeletion() {

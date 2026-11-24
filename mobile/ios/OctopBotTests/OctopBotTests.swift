@@ -528,7 +528,80 @@ final class CreditTests: XCTestCase {
         XCTAssertEqual(LynxceBackend.credits(inQuota: ["creditsRemaining": 1280.5, "effectiveCreditsRemaining": 10]), 1280.5)
         XCTAssertNil(LynxceBackend.credits(inQuota: ["balance": 3]))
         XCTAssertEqual(LynxceBackend.formatCredits(12800), "12,800")
-        XCTAssertEqual(LynxceBackend.formatCredits(12.5), "12.5")
+        XCTAssertEqual(LynxceBackend.formatCredits(12.5), "12.50")
+        XCTAssertEqual(LynxceBackend.formatCredits(12), "12")
+        XCTAssertEqual(LynxceBackend.formatCredits(0.29), "0.29")
+        XCTAssertEqual(LynxceBackend.formatCredits(999.99), "999.99")
+        XCTAssertEqual(LynxceBackend.formatCredits(4_454_029.04), "4,454,029")
+        XCTAssertEqual(LynxceBackend.formatCredits(1000.99), "1,000")
+    }
+
+    func testOutOfCreditsIsToldApartFromFailures() {
+        XCTAssertEqual(ServerFrameMapper.error(["type": "error", "message": "x", "error_code": "BOT_CLOUD_CREDITS_REQUIRED"]).kind, .credits)
+        XCTAssertEqual(ServerFrameMapper.error(["type": "error", "message": "x"]).kind, .server)
+        var mapper = ServerFrameMapper()
+        XCTAssertThrowsError(try mapper.map(["type": "error", "error_code": "BOT_CLOUD_CREDITS_REQUIRED"])) { error in
+            XCTAssertEqual((error as? APIError)?.kind, .credits)
+        }
+        XCTAssertEqual(APIError.from(status: 402, message: nil).kind, .credits)
+        XCTAssertEqual(APIError.from(status: 400, message: nil, code: "BOT_CLOUD_CREDITS_REQUIRED").kind, .credits)
+        XCTAssertEqual(HTTP.errorCode(Data(#"{"error":{"code":"BOT_CLOUD_CREDITS_REQUIRED","message":"m"}}"#.utf8)), "BOT_CLOUD_CREDITS_REQUIRED")
+        XCTAssertTrue(LynxceBackend.isCreditError(["code": 402, "message": "no credits"]))
+        XCTAssertFalse(LynxceBackend.isCreditError(["code": "rate_limited"]))
+
+        let rows: [[String: Any]] = [
+            ["role": "user", "content": "go"],
+            ["role": "assistant", "content": [], "status": "error", "error_code": "BOT_CLOUD_CREDITS_REQUIRED"],
+        ]
+        let messages = ServerBackend.history(rows)
+        XCTAssertEqual(messages.count, 2)
+        XCTAssertEqual(messages[1].status, .outOfCredits)
+    }
+
+    func testDailyLimitIsNotOutOfCredits() {
+        XCTAssertEqual(ServerFrameMapper.error(["type": "error", "error_code": "BOT_LYNXCE_DAILY_LIMIT"]).kind, .dailyLimit)
+        XCTAssertEqual(APIError.from(status: 429, message: nil, code: "BOT_LYNXCE_DAILY_LIMIT").kind, .dailyLimit)
+        // Direct Lynxce can send the cap as a 402; it must not become "out of credits".
+        let body = Data(#"{"code":402,"message":"limit","data":{"code":"api_key_credit_limit_reached"}}"#.utf8)
+        XCTAssertThrowsError(try LynxceBackend.unwrap(body, status: 200)) { XCTAssertEqual(($0 as? APIError)?.kind, .dailyLimit) }
+        XCTAssertThrowsError(try LynxceBackend.unwrap(body, status: 402)) { XCTAssertEqual(($0 as? APIError)?.kind, .dailyLimit) }
+        XCTAssertThrowsError(try LynxceBackend.parseChunk(#"{"error":{"code":"api_key_credit_limit_reached","message":"m"}}"#)) {
+            XCTAssertEqual(($0 as? APIError)?.kind, .dailyLimit)
+        }
+        XCTAssertEqual(APIError.from(status: 402, message: nil, code: nil).kind, .credits)
+        let rows: [[String: Any]] = [
+            ["role": "user", "content": "go"],
+            ["role": "assistant", "content": [], "status": "error", "error_code": "BOT_LYNXCE_DAILY_LIMIT"],
+        ]
+        XCTAssertEqual(ServerBackend.history(rows).last?.status, .dailyLimit)
+    }
+
+    func testServerMessageLinksAreTappable() {
+        let message = "灵策积分不足，到 https://admin.lynxce.cn/recharge 充值后就能继续。"
+        let links = LinkedText.links(in: message)
+        XCTAssertEqual(links.map(\.url.absoluteString), ["https://admin.lynxce.cn/recharge"])
+        XCTAssertEqual(String(LinkedText.attributed(message).characters), message)
+        XCTAssertFalse(LinkedText.hasLink("灵策积分不足"))
+    }
+
+    func testUsageSummaryParses() {
+        let usage = ServerBackend.UsageSummary.parse([
+            "total_tokens": 1500, "model_calls": 3,
+            "buckets": [["key": "a1", "label": "Chief", "total_tokens": 1200], ["key": "a2", "label": "", "total_tokens": 300], ["key": "z", "total_tokens": 0]],
+        ])
+        XCTAssertEqual(usage.totalTokens, 1500)
+        XCTAssertEqual(usage.modelCalls, 3)
+        XCTAssertEqual(usage.buckets.map(\.label), ["Chief", "a2"])
+        XCTAssertEqual(LynxceBackend.formatCount(1_234_567), "1,234,567")
+    }
+
+    func testNamesNeverShowInternalIds() {
+        XCTAssertEqual(ServerBackend.displayName(["username": "sso_abc"]), "")
+        XCTAssertEqual(ServerBackend.displayName(["username": "owner", "display_name": "138****5678"]), "138****5678")
+        let server = ServerBackend(session: .init(baseURL: URL(string: "https://bot.lynxce.cn")!, token: "t", displayName: "", cloud: true))
+        XCTAssertEqual(server.accountName, L("account.genericName"))
+        let lynxce = LynxceBackend(grant: .init(accountId: "acc_123", displayName: nil, accessToken: "a", refreshToken: "r"))
+        XCTAssertEqual(lynxce.accountName, L("account.genericName"))
     }
 
     func testOnlyPacksWithAnAppStoreProductAreListed() {
@@ -709,5 +782,161 @@ final class FileAttachmentTests: XCTestCase {
         XCTAssertEqual(orphan.count, 1)
         XCTAssertEqual(orphan[0].role, .assistant)
         XCTAssertTrue(orphan[0].attachments[0].isImage)
+    }
+
+    func testHistoryAttachesGeneratedImagesAndVideos() {
+        let image = #"{"type":"image_gen_tool_result","images":[{"path":"generated/images/cat.png","mediaType":"image/png"}]}"#
+        let video = #"{"type":"video_gen_tool_result","videos":[{"path":"generated/videos/sea.mp4","mediaType":"video/mp4"}]}"#
+        let messages = ServerBackend.history([
+            ["role": "user", "content": "画一只猫，再做一段海浪的视频"],
+            ["role": "tool", "content": [["type": "tool_result", "name": "generate_image", "output": image]]],
+            ["role": "tool", "content": [["type": "tool_result", "name": "generate_video", "output": video]]],
+            ["role": "assistant", "content": [["type": "text", "text": "好了。"]]],
+        ], agent: "A1")
+        XCTAssertEqual(messages[1].attachments.map(\.name), ["cat.png", "sea.mp4"])
+        XCTAssertEqual(messages[1].attachments.map(\.url), [
+            "/api/agents/A1/workspace/download?path=generated/images/cat.png",
+            "/api/agents/A1/workspace/download?path=generated/videos/sea.mp4",
+        ])
+        XCTAssertTrue(messages[1].attachments[0].isImage)
+        XCTAssertEqual(messages[1].attachments[1].mime, "video/mp4")
+    }
+}
+
+@MainActor
+final class DeviceConnectorTests: XCTestCase {
+    func testToolCallDeltasJoinByIndex() {
+        var calls = ToolCallAccumulator()
+        calls.add(#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"device_calendar_create_event","arguments":"{\"title\":"}}]}}]}"#)
+        calls.add(#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"开会\",\"start\":\"2026-11-25T14:00\"}"}}]}}]}"#)
+        calls.add(#"{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"c2","function":{"name":"device_reminders","arguments":"{}"}}]}}]}"#)
+        calls.add(#"{"choices":[{"delta":{"content":"hi"}}]}"#)
+        XCTAssertEqual(calls.calls.map(\.id), ["c1", "c2"])
+        XCTAssertEqual(calls.calls[0].name, "device_calendar_create_event")
+        XCTAssertEqual(DeviceArgs.object(calls.calls[0].arguments)["title"] as? String, "开会")
+        let message = ToolCallAccumulator.assistantMessage(text: "", calls: calls.calls)
+        XCTAssertTrue(message["content"] is NSNull)
+        XCTAssertEqual((message["tool_calls"] as? [[String: Any]])?.count, 2)
+    }
+
+    func testDatesWithoutOffsetAreLocalAndBareDatesAreDays() throws {
+        let shanghai = try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai"))
+        let local = try XCTUnwrap(DeviceDates.parse("2026-11-25T14:00", zone: shanghai))
+        XCTAssertFalse(local.dateOnly)
+        XCTAssertEqual(DeviceDates.stamp(local.date, zone: shanghai), "2026-11-25T14:00:00+08:00")
+        let zoned = try XCTUnwrap(DeviceDates.parse("2026-11-25T06:00:00Z", zone: shanghai))
+        XCTAssertEqual(zoned.date, local.date)
+        let day = try XCTUnwrap(DeviceDates.parse("2026-11-25", zone: shanghai))
+        XCTAssertTrue(day.dateOnly)
+        XCTAssertNil(DeviceDates.parse("tomorrow"))
+    }
+
+    func testDevicePausesSplitReadsFromWrites() throws {
+        let reads = try XCTUnwrap(HitlPause.parse([
+            "action_requests": [["name": "device_health_summary", "args": #"{"metrics":["steps"]}"#, "description": "Runs on the user's phone."]],
+        ]))
+        XCTAssertTrue(reads.runsUnattended)
+        XCTAssertNil(reads.actions[0].description)
+        let write = try XCTUnwrap(HitlPause.parse([
+            "action_requests": [
+                ["name": "device_calendar_events", "args": ["start": "2026-11-25", "end": "2026-11-26"]],
+                ["name": "device_calendar_create_event", "args": ["title": "评审会", "start": "2026-11-25T14:00", "end": "2026-11-25T15:00", "location": "3F"]],
+            ],
+        ]))
+        XCTAssertFalse(write.runsUnattended)
+        XCTAssertTrue(write.hasDeviceActions)
+        let values = write.actions[1].details.map(\.value)
+        XCTAssertTrue(values.contains("评审会"))
+        XCTAssertTrue(values.contains("3F"))
+        XCTAssertEqual(DeviceArgs.object(write.actions[1].args)["title"] as? String, "评审会")
+    }
+
+    func testDecisionsBecomeToolMessagesInOrder() {
+        let messages: [[String: Any]] = [
+            ["role": "user", "content": "x"],
+            ToolCallAccumulator.assistantMessage(text: "", calls: [
+                .init(id: "a", name: "device_reminders", arguments: "{}"),
+                .init(id: "b", name: "device_reminder_create", arguments: #"{"title":"交报告"}"#),
+            ]),
+        ]
+        let out = LynxceBackend.answering(messages, decisions: [
+            ["type": "respond", "message": #"{"reminders":[]}"#],
+            ["type": "reject", "message": "The user declined."],
+        ])
+        XCTAssertEqual(out.count, 4)
+        XCTAssertEqual(out[2]["tool_call_id"] as? String, "a")
+        XCTAssertEqual(out[2]["content"] as? String, #"{"reminders":[]}"#)
+        XCTAssertEqual(out[3]["content"] as? String, #"{"error":"The user declined."}"#)
+    }
+
+    func testChatBodyOffersToolsWithTheTime() throws {
+        let bot = BotProfile(id: "b", name: "Chief", look: .chief, isChief: true)
+        let tools = DeviceConnectors.loadSpecs().filter { $0.capability == .calendar }.map(\.openAITool)
+        XCTAssertEqual(tools.count, 3)
+        let zone = try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai"))
+        let body = LynxceBackend.chatBody(
+            text: "明天下午三点开会", images: [], bot: bot, history: [], sessionId: "s", model: nil,
+            tools: tools, now: Date(timeIntervalSince1970: 1_795_000_000), zone: zone
+        )
+        XCTAssertEqual(body["tool_choice"] as? String, "auto")
+        XCTAssertEqual((body["tools"] as? [[String: Any]])?.count, 3)
+        let system = (body["messages"] as? [[String: Any]])?.first { ($0["content"] as? String)?.hasPrefix("Now:") == true }
+        XCTAssertEqual(system?["content"] as? String, "Now: 2026-11-18T19:06:40+08:00 (Asia/Shanghai).")
+        let plain = LynxceBackend.chatBody(text: "hi", images: [], bot: bot, history: [], sessionId: "s", model: nil)
+        XCTAssertNil(plain["tools"])
+    }
+
+    func testSleepIntervalsCountOverlapsOnce() {
+        let t0 = Date(timeIntervalSince1970: 0)
+        let hours = HealthMetric.union([
+            DateInterval(start: t0, duration: 3 * 3600),
+            DateInterval(start: t0.addingTimeInterval(2 * 3600), duration: 2 * 3600),
+            DateInterval(start: t0.addingTimeInterval(6 * 3600), duration: 3600),
+        ]) / 3600
+        XCTAssertEqual(hours, 5)
+    }
+}
+
+@MainActor
+final class BotActivityTests: XCTestCase {
+    func testUpcomingKeepsServerOrderAndSchedules() {
+        let jobs = ServerBackend.UpcomingJob.parse([
+            "timezone": "Asia/Shanghai",
+            "jobs": [
+                ["id": "a", "name": "Morning brief", "enabled": true, "schedule": "工作日 8:50", "can_toggle": true],
+                ["id": "b", "name": "Script", "enabled": false, "schedule": "自定义", "can_toggle": false],
+                ["name": "no id"],
+            ],
+        ])
+        XCTAssertEqual(jobs.map(\.id), ["a", "b"])
+        XCTAssertEqual(jobs[0].schedule, "工作日 8:50")
+        XCTAssertTrue(jobs[0].enabled && jobs[0].canToggle)
+        XCTAssertFalse(jobs[1].canToggle)
+        XCTAssertFalse(jobs[0].with(enabled: false).enabled)
+    }
+
+    func testLibraryGroupsByRecencyInServerOrder() {
+        func row(_ name: String, _ period: String) -> [String: Any] {
+            ["name": name, "path": "outbound/" + name, "period": period, "mime": NSNull(),
+             "url": "/api/agents/A/workspace/download?path=outbound%2F" + name]
+        }
+        let files = ServerBackend.LibraryFile.parse(["files": [
+            row("new.pdf", "today"), row("old.xlsx", "older"), row("mid.md", "week"), row("b.png", "today"),
+        ]])
+        let groups = ServerBackend.LibraryFile.grouped(files)
+        XCTAssertEqual(groups.map(\.0), [.today, .week, .older])
+        XCTAssertEqual(groups[0].1.map(\.name), ["new.pdf", "b.png"])
+        XCTAssertTrue(ServerBackend.isWorkspaceDownload(URL(string: files[0].url)!))
+        XCTAssertEqual(ServerBackend.LibraryFile.grouped([]).count, 0)
+    }
+
+    func testLibraryIcons() {
+        func file(_ name: String, _ mime: String? = nil) -> ServerBackend.LibraryFile {
+            .init(name: name, path: name, mime: mime, period: .today, url: "")
+        }
+        XCTAssertEqual(file("a.png", "image/png").symbol, "photo")
+        XCTAssertEqual(file("deck.KEY").symbol, "rectangle.on.rectangle")
+        XCTAssertEqual(file("sheet.csv").symbol, "tablecells")
+        XCTAssertEqual(file("blob.bin").symbol, "doc")
     }
 }

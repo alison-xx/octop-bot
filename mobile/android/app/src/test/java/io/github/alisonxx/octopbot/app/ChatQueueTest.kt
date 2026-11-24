@@ -1,5 +1,6 @@
 package io.github.alisonxx.octopbot.app
 
+import io.github.alisonxx.octopbot.device.DeviceToolbox
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
@@ -56,6 +57,7 @@ class ChatQueueTest {
             conversation: String?,
             history: List<ChatMessage>,
             model: String?,
+            device: DeviceToolbox,
         ): Flow<StreamEvent> = flow {
             sent += text
             val reply = CompletableDeferred<String>().also { replies += it }
@@ -77,7 +79,10 @@ class ChatQueueTest {
         override suspend fun model(): String? = null
         override fun replyStarted(botId: String) = Unit
         override fun replyEnded(bot: BotProfile, messageId: String, text: String?) = Unit
-        override fun failed(error: Throwable) = Unit
+        val failures = mutableListOf<Throwable>()
+        override fun failed(error: Throwable) {
+            failures += error
+        }
         override val hitlTexts = HitlTexts("decide", "closed", { "Approved: $it" }, { "Declined: $it" })
     }
 
@@ -115,5 +120,28 @@ class ChatQueueTest {
             chat.state.value.messages.filter { it.text.isNotEmpty() }.map { it.text },
         )
         assertEquals(MessageRole.Assistant, chat.state.value.messages.last().role)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun outOfCreditsShowsTheCardAndContinueRunsTheTurnAgain() = runTest {
+        val backend = Backend()
+        val host = Host(backend)
+        val chat = ChatSession("b", this, host)
+        chat.send("plan my week", emptyList())
+        runCurrent()
+        backend.replies[0].completeExceptionally(
+            io.github.alisonxx.octopbot.net.ApiException(io.github.alisonxx.octopbot.net.ApiException.Kind.Credits, 402, "灵策积分不足"),
+        )
+        runCurrent()
+        assertEquals(io.github.alisonxx.octopbot.model.MessageStatus.Failed(null, credits = true), chat.state.value.messages.last().status)
+        // No snackbar: the reply itself is the message.
+        assertTrue(host.failures.isEmpty())
+
+        chat.retry()
+        runCurrent()
+        assertEquals(listOf("plan my week", "plan my week"), backend.sent)
+        backend.replies[1].complete("done")
+        runCurrent()
     }
 }

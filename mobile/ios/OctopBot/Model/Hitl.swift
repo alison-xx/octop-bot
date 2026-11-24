@@ -21,6 +21,13 @@ struct HitlPause: Hashable, Identifiable {
         var description: String?
         /// Key arguments worth showing before approving, e.g. ("command", "ls -la").
         var details: [Detail]
+        /// The call's arguments as JSON text (device tools run them on the phone).
+        var args: String = "{}"
+        /// Device tools that only read; they run without a card.
+        var readOnly = false
+
+        /// A tool the phone runs itself (mobile/PROTOCOL.md → "C. Device connectors").
+        var isDevice: Bool { name.hasPrefix("device_") }
     }
 
     struct Detail: Hashable {
@@ -36,9 +43,12 @@ struct HitlPause: Hashable, Identifiable {
     var questions: [Question]
 
     var isQuestion: Bool { actions.contains { $0.name == Self.askTool } }
+    var hasDeviceActions: Bool { actions.contains(where: \.isDevice) }
+    /// Only device tools that read: answered at once, without asking the user.
+    var runsUnattended: Bool { !actions.isEmpty && actions.allSatisfy { $0.isDevice && $0.readOnly } }
 
     /// Parse a `hitl_required.request` or `history.hitl_pending` payload.
-    static func parse(_ raw: Any?, labels: [String: String] = [:]) -> HitlPause? {
+    static func parse(_ raw: Any?, labels: [String: String] = [:], readOnly: Set<String> = DeviceCatalog.readOnly) -> HitlPause? {
         guard var request = raw as? [String: Any] else { return nil }
         for _ in 0..<3 where !(request["action_requests"] is [Any]) {
             guard let inner = request["value"] as? [String: Any] else { break }
@@ -53,15 +63,20 @@ struct HitlPause: Hashable, Identifiable {
             if name == askTool, questions.isEmpty {
                 questions = Self.questions(args["questions"] ?? args)
             }
-            let details = ["command", "cmd", "url", "path", "file_path", "query"].compactMap { key -> Detail? in
-                guard let value = args[key] else { return nil }
-                let text = (value as? String) ?? "\(value)"
-                return text.isEmpty ? nil : Detail(key: key, value: String(text.prefix(400)))
-            }
-            let description = (row["description"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let device = name.hasPrefix("device_")
+            let details = device
+                ? DevicePreview.lines(name, args: args, locale: Locale(identifier: L("device.locale"))).map { Detail(key: $0.0, value: $0.1) }
+                : ["command", "cmd", "url", "path", "file_path", "query"].compactMap { key -> Detail? in
+                    guard let value = args[key] else { return nil }
+                    let text = (value as? String) ?? "\(value)"
+                    return text.isEmpty ? nil : Detail(key: key, value: String(text.prefix(400)))
+                }
+            // A device tool's server-side description ("Runs on the user's phone.") says nothing to the user.
+            let description = device ? nil : (row["description"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             actions.append(Action(
-                name: name, label: labels[name] ?? name,
-                description: description?.isEmpty == false ? description : nil, details: details
+                name: name, label: labels[name] ?? (device ? L("device.tool.\(name)") : name),
+                description: description?.isEmpty == false ? description : nil, details: details,
+                args: DeviceArgs.string(args), readOnly: device && readOnly.contains(name)
             ))
         }
         return HitlPause(pendingId: request["pending_id"] as? String, actions: actions, questions: questions)

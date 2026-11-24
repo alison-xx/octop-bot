@@ -19,3 +19,9 @@ export function getBotUsage(agentId: string, window: UsageWindow) {
   });
   return request<BotUsageSummary>(`/usage/summary?${query}`);
 }
+
+/** The signed-in account's usage across all its Bots over the last 30 days. */
+export function getAccountUsage(granularity: "by_agent" | "by_model") {
+  const query = new URLSearchParams({ window: "last_30d", granularity });
+  return request<BotUsageSummary>(`/usage/summary?${query}`);
+}

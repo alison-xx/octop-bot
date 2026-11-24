@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "tools": [
+    {
+      "name": "device_health_summary",
+      "capability": "health",
+      "writes": false,
+      "description": "Read the user's health data from their phone (Apple Health or Health Connect), one value per day. Use it for diet, exercise, weight or sleep advice. Returns {\"from\", \"to\", \"units\", \"days\": [{\"date\", <metric>: value}]}; a metric the user did not allow or has no data for is left out. Tell the user which days and metrics you used.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "steps",
+                "active_energy",
+                "exercise_minutes",
+                "sleep_hours",
+                "heart_rate",
+                "resting_heart_rate",
+                "weight"
+              ]
+            },
+            "minItems": 1,
+            "description": "Daily totals: steps, active_energy (kcal), exercise_minutes, sleep_hours. Daily averages: heart_rate and resting_heart_rate (bpm). Latest of the day: weight (kg)."
+          },
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30,
+            "default": 7,
+            "description": "How many days back from today, today included."
+          }
+        },
+        "required": ["metrics"]
+      }
+    },
+    {
+      "name": "device_calendar_events",
+      "capability": "calendar",
+      "writes": false,
+      "description": "List events in the calendars on the user's phone between start and end (at most 62 days apart). Returns {\"events\": [{\"id\", \"title\", \"start\", \"end\", \"all_day\", \"location\", \"notes\", \"calendar\"}]}. Use it to check for clashes or find an event to change.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "description": "ISO 8601 date or date-time. Without an offset it is in the phone's time zone."
+          },
+          "end": {
+            "type": "string",
+            "description": "ISO 8601 date or date-time, after start."
+          }
+        },
+        "required": ["start", "end"]
+      }
+    },
+    {
+      "name": "device_calendar_create_event",
+      "capability": "calendar",
+      "writes": true,
+      "description": "Add an event to the default calendar on the user's phone. The user sees a preview and must confirm first. Put meeting links, dial-in numbers and attendee names in notes. Returns {\"id\", \"title\", \"start\", \"end\", \"calendar\"}.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "start": {
+            "type": "string",
+            "description": "ISO 8601 date-time (or date for an all-day event). Without an offset it is in the phone's time zone."
+          },
+          "end": {
+            "type": "string",
+            "description": "ISO 8601 date-time, after start. For an all-day event, the last day."
+          },
+          "all_day": { "type": "boolean", "default": false },
+          "location": { "type": "string", "maxLength": 300 },
+          "notes": { "type": "string", "maxLength": 4000 },
+          "alarm_minutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10080,
+            "description": "Alert this many minutes before the start."
+          }
+        },
+        "required": ["title", "start", "end"]
+      }
+    },
+    {
+      "name": "device_calendar_update_event",
+      "capability": "calendar",
+      "writes": true,
+      "description": "Change an event on the user's phone, by the id from device_calendar_events. Only the fields you pass change. The user sees a preview and must confirm first. Returns the updated event.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "event_id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "start": { "type": "string", "description": "ISO 8601 date-time." },
+          "end": { "type": "string", "description": "ISO 8601 date-time." },
+          "location": { "type": "string", "maxLength": 300 },
+          "notes": { "type": "string", "maxLength": 4000 }
+        },
+        "required": ["event_id"]
+      }
+    },
+    {
+      "name": "device_reminders",
+      "capability": "reminders",
+      "writes": false,
+      "description": "List reminders (to-dos) from the Reminders app on the user's phone. Returns {\"reminders\": [{\"id\", \"title\", \"due\", \"completed\", \"priority\", \"notes\", \"list\"}]}, soonest due first.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "include_completed": { "type": "boolean", "default": false },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+        }
+      }
+    },
+    {
+      "name": "device_reminder_create",
+      "capability": "reminders",
+      "writes": true,
+      "description": "Add a reminder (to-do) to the Reminders app on the user's phone. The user sees a preview and must confirm first. Returns {\"id\", \"title\", \"due\", \"list\"}.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "due": {
+            "type": "string",
+            "description": "ISO 8601 date or date-time. A date-time also sets an alert at that time. Without an offset it is in the phone's time zone."
+          },
+          "notes": { "type": "string", "maxLength": 4000 },
+          "priority": { "type": "string", "enum": ["none", "low", "medium", "high"], "default": "none" },
+          "list": {
+            "type": "string",
+            "description": "Name of an existing Reminders list. The default list when omitted or not found."
+          }
+        },
+        "required": ["title"]
+      }
+    }
+  ]
+}

@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authApi, type AuthStatus } from "../../api/modules/auth";
+import { botCloudApi } from "../../api/modules/botCloud";
+import { renewDesktopSession } from "../../api/desktopSession";
 import { getAuthToken } from "../../api/request";
 import { wizardApi, wizardSession } from "../Setup/wizardClient";
 import BotClientSetup from "./BotClientSetup";
@@ -15,7 +17,18 @@ vi.mock("./BotCharacter", () => ({
   BotCharacter: () => null,
   octopCharacter: {},
 }));
-vi.mock("../../utils/desktopBridge", () => ({ isDesktopShell: () => true }));
+const desktopShell = vi.hoisted(() => ({ on: true }));
+vi.mock("../../utils/desktopBridge", () => ({
+  isDesktopShell: () => desktopShell.on,
+  getDesktopBridge: () => undefined,
+}));
+vi.mock("../../api/desktopSession", () => ({
+  desktopLocalAutoLoginHeld: () => false,
+  // A token for the desktop "local" account: {"uname":"local"}.
+  isLocalDesktopUser: (token: string) => token.startsWith("local"),
+  releaseDesktopLocalAutoLogin: vi.fn(),
+  renewDesktopSession: vi.fn(),
+}));
 
 const fresh: AuthStatus = {
   setup_required: true,
@@ -46,6 +59,7 @@ function openSetup(path = "/setup") {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  desktopShell.on = true;
   vi.spyOn(authApi, "getAuthStatus").mockResolvedValue(fresh);
   vi.spyOn(wizardApi, "applyDatabase").mockResolvedValue({
     ok: true,
@@ -72,6 +86,47 @@ afterEach(() => {
 });
 
 describe("standalone onboarding", () => {
+  it("signs a returning desktop user straight back in to this computer", async () => {
+    vi.mocked(authApi.getAuthStatus).mockResolvedValue({
+      ...fresh,
+      setup_required: false,
+      setup_done: true,
+      database_bound: true,
+      local_account: true,
+    });
+    vi.mocked(renewDesktopSession).mockResolvedValue({
+      access_token: "local-renewed",
+    } as never);
+    openSetup();
+    expect(
+      await screen.findByRole("heading", { name: "Chat" }),
+    ).toBeInTheDocument();
+    expect(getAuthToken()).toBe("local-renewed");
+    expect(wizardApi.createAdmin).not.toHaveBeenCalled();
+  });
+
+  it("offers this computer again when the silent sign-in fails, with no Octop password", async () => {
+    vi.mocked(authApi.getAuthStatus).mockResolvedValue({
+      ...fresh,
+      setup_required: false,
+      setup_done: true,
+      database_bound: true,
+      local_account: true,
+    });
+    vi.mocked(renewDesktopSession).mockResolvedValue({
+      access_token: "local-again",
+    } as never);
+    openSetup();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "botOnboarding.useLocal" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Chat" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/password/i)).toBeNull();
+    expect(wizardApi.createAdmin).not.toHaveBeenCalled();
+  });
+
   it("creates the account in place of a separate start step and resumes after account and finish failures", async () => {
     vi.mocked(wizardApi.createAdmin).mockRejectedValueOnce(
       new Error("Account unavailable"),
@@ -81,7 +136,7 @@ describe("standalone onboarding", () => {
     );
     openSetup();
     const later = await screen.findByRole("button", {
-      name: "botClient.later",
+      name: "botOnboarding.useLocal",
     });
     expect(
       screen.queryByRole("button", { name: /botClient.begin/ }),
@@ -92,7 +147,8 @@ describe("standalone onboarding", () => {
     await screen.findByText("Finish unavailable");
     fireEvent.click(later);
     expect(
-      await screen.findByRole("heading", { name: "Team guide" }),
+      // A fresh local owner chooses its models before meeting the team.
+      await screen.findByRole("heading", { name: "Settings" }),
     ).toBeInTheDocument();
     expect(wizardApi.applyDatabase).toHaveBeenCalledTimes(1);
     expect(wizardApi.createAdmin).toHaveBeenCalledTimes(2);
@@ -113,18 +169,12 @@ describe("standalone onboarding", () => {
       database_bound: true,
     });
     openSetup("/setup?localAccount=1");
-    const registration = await screen.findByRole("link", {
-      name: "botClient.lynxce.register",
-    });
-    expect(registration).toHaveAttribute("target", "_blank");
-    expect(registration).toHaveAccessibleDescription(
-      "botClient.lynxce.registerHint",
-    );
     fireEvent.click(
-      await screen.findByRole("button", { name: /botClient.lynxce.source/ }),
+      await screen.findByRole("button", { name: "botOnboarding.useLocal" }),
     );
     expect(
-      await screen.findByRole("heading", { name: "Settings lynxce" }),
+      // A fresh local owner chooses its models before meeting the team.
+      await screen.findByRole("heading", { name: "Settings" }),
     ).toBeInTheDocument();
     expect(wizardApi.applyDatabase).not.toHaveBeenCalled();
     expect(wizardApi.finish).toHaveBeenCalledWith(
@@ -133,14 +183,37 @@ describe("standalone onboarding", () => {
     );
   });
 
-  it("keeps other providers accessible at first launch", async () => {
+  it("signs in to Lynxce on first launch, after creating the local owner silently", async () => {
+    const login = vi.spyOn(botCloudApi, "login").mockResolvedValue({
+      connected: true,
+      account_id: "13800000000",
+      display_name: "Alice",
+    });
     openSetup();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "botClient.lynxce.other" }),
+    await userEvent.click(
+      await screen.findByRole("button", { name: "lynxceSignIn.tabPassword" }),
+    );
+    await userEvent.type(
+      screen.getByLabelText("lynxceSignIn.account"),
+      "13800000000",
+    );
+    await userEvent.type(
+      screen.getByLabelText("lynxceSignIn.password"),
+      "lynxce-pass{Enter}",
     );
     expect(
-      await screen.findByRole("heading", { name: "Settings other" }),
+      await screen.findByRole("heading", { name: "Settings lynxce" }),
     ).toBeInTheDocument();
+    expect(login).toHaveBeenCalledWith("13800000000", "lynxce-pass");
+    // The local owner comes first, without a password, and only once.
+    expect(wizardApi.createAdmin).toHaveBeenCalledTimes(1);
+    expect(wizardApi.createAdmin).toHaveBeenCalledWith(
+      { username: "local", display_name: null, locale: "zh" },
+      "wizard-session",
+    );
+    expect(login.mock.invocationCallOrder[0]).toBeGreaterThan(
+      vi.mocked(wizardApi.finish).mock.invocationCallOrder[0],
+    );
   });
 
   it("signs the web owner in with a Lynxce account without any local account or setup password", async () => {
@@ -157,7 +230,7 @@ describe("standalone onboarding", () => {
     } as never);
     openSetup();
     await userEvent.click(
-      await screen.findByRole("button", { name: "lynxceSignIn.usePassword" }),
+      await screen.findByRole("button", { name: "lynxceSignIn.tabPassword" }),
     );
     await userEvent.type(
       screen.getByLabelText("lynxceSignIn.account"),
@@ -180,32 +253,22 @@ describe("standalone onboarding", () => {
     expect(getAuthToken()).toBe("lynxce-session");
   });
 
-  it("lets a web owner who brings their own model choose a sign-in password", async () => {
+  it("offers web owners only the Lynxce account, never a local password", async () => {
+    desktopShell.on = false;
     vi.mocked(authApi.getAuthStatus).mockResolvedValue({
       ...fresh,
       lynxce_login: true,
     });
     openSetup();
-    fireEvent.click(await screen.findByText("botOnboarding.localTab"));
-    await userEvent.type(
-      await screen.findByLabelText("botOnboarding.localPassword"),
-      "Own-model-pass1{Enter}",
-    );
     expect(
-      await screen.findByRole("heading", { name: "Settings other" }),
+      await screen.findByRole("button", { name: "lynxceSignIn.tabPassword" }),
     ).toBeInTheDocument();
-    expect(wizardApi.createAdmin).toHaveBeenCalledWith(
-      {
-        username: "local",
-        display_name: null,
-        locale: "zh",
-        password: "Own-model-pass1",
-      },
-      "wizard-session",
-    );
+    expect(screen.queryByText("botOnboarding.useLocal")).toBeNull();
+    expect(screen.queryByLabelText("wizard.admin.password")).toBeNull();
   });
 
   it("returns to password verification when the saved wizard token expires before form submission", async () => {
+    desktopShell.on = false;
     vi.mocked(authApi.getAuthStatus).mockResolvedValue({
       ...fresh,
       wizard_password_required: true,

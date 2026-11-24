@@ -24,6 +24,14 @@ from octop.infra.errors import ErrorCode, OctopError
 logger = logging.getLogger(__name__)
 
 _ORIGIN = "https://api.lynxce.cn"
+# Sent on every Lynxce call Octop Bot makes: Lynxce serves Octop Bot's chats only from the
+# Tencent Cloud TokenHub models, and records accounts created here as Octop Bot sign-ups.
+LYNXCE_APP_HEADERS: Mapping[str, str] = {"X-Lynxce-App": "octopbot"}
+# A Lynxce account created through Octop Bot's sign-in (cloud, web or desktop; a new phone or
+# email signs up) records Octop Bot as where it came from: Lynxce shows it in the admin's 来源
+# column and the WeCom sign-up notice. It only counts when the account is created, and only for
+# a site registered in Lynxce (中台应用 `octop-bot`).
+SIGNUP_SITE = "octop-bot"
 _ID = r"(?!\.{1,2}(?:/|$))[A-Za-z0-9_.-]{1,256}"
 _WEB_ID = r"[A-Za-z0-9._:-]{4,96}"
 CHECKOUT_PATH = "/api/billing/recharge/checkout-link"
@@ -177,7 +185,13 @@ async def _send(
 ) -> Any:
     # 'web' is Lynxce's supported multi-session channel. Exchanging a desktop auth code
     # would revoke the user's existing Lynxce desktop session and its API keys.
-    sent = {**(headers or {}), "Accept": "application/json", "X-Lynxce-Client": "web"}
+    sent = {
+        **(headers or {}),
+        **LYNXCE_APP_HEADERS,
+        "Accept": "application/json",
+        "X-Lynxce-Client": "web",
+        "X-Lynxce-Signup-Site": SIGNUP_SITE,
+    }
     if bearer:
         sent["Authorization"] = f"Bearer {bearer}"
     try:
@@ -216,6 +230,28 @@ def _token(data: Any, name: str) -> str:
     return value
 
 
+def _masked(value: str) -> str | None:
+    value = value.strip()
+    if "@" in value:
+        local, _, domain = value.partition("@")
+        return f"{local[:2]}***@{domain}" if local and domain else None
+    digits = "".join(ch for ch in value if ch.isdigit())
+    return f"{digits[:3]}****{digits[-4:]}" if len(digits) >= 7 else None
+
+
+def display_name(profile: dict[str, Any]) -> str | None:
+    """The account's nickname; otherwise its masked phone or email, never an internal id."""
+    for field_name in ("displayName", "nickname", "name"):
+        value = profile.get(field_name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:64]
+    for field_name in ("phone", "mobile", "email"):
+        value = profile.get(field_name)
+        if isinstance(value, str) and (masked := _masked(value)):
+            return masked
+    return None
+
+
 async def _session_login(path: str, body: dict[str, str]) -> _Grant:
     """Open a Lynxce 'web' session through one of its sign-in endpoints."""
     try:
@@ -231,10 +267,9 @@ async def _session_login(path: str, body: dict[str, str]) -> _Grant:
         or not profile["id"].strip()
     ):
         raise OctopError.localized(ErrorCode.NETWORK_ERROR)
-    name = profile.get("displayName")
     return _Grant(
         profile["id"],
-        name if isinstance(name, str) else None,
+        display_name(profile),
         uuid4().hex,
         _token(data, "accessToken"),
         _token(data, "refreshToken"),
@@ -516,9 +551,12 @@ async def keep_session(services: SharedServices, user_id: int, session: CloudSes
 
 
 _IAP_HEADERS = {"X-Lynxce-Iap-App": "cn.lynxce.octopbot"}
+_MODEL_KEY_CALL = ("POST", "/api/user/personal-api-keys")
 # What cloud mode may do with a tenant's stored Lynxce session, besides request_cloud.
 _TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
     ("POST", "/api/user/personal-api-keys"): {},
+    # The tenant's own model key only, e.g. adding the media scopes (bot_cloud/accounts.py).
+    ("PATCH", "/api/user/personal-api-keys/{id}"): {},
     ("POST", "/api/user/account/deletion-request"): {},
     ("GET", "/api/billing/app/recharge-packages"): _IAP_HEADERS,
     ("POST", "/api/billing/apple/purchase-intents"): _IAP_HEADERS,
@@ -533,6 +571,12 @@ _TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
 _SERVICE_KEY_PATHS = frozenset(
     {"/api/billing/octop-bot/compute/reserve", "/api/billing/octop-bot/compute/settle"}
 )
+
+
+def _route(path: str) -> str:
+    """``/api/user/personal-api-keys/<id>`` as its allow-list entry; other paths unchanged."""
+    match = re.fullmatch(r"/api/user/personal-api-keys/[A-Za-z0-9_-]{1,64}", path)
+    return "/api/user/personal-api-keys/{id}" if match else path
 
 
 def _service_headers(path: str) -> dict[str, str]:
@@ -553,8 +597,10 @@ async def tenant_call(
     json: dict[str, Any] | None = None,
 ) -> Any:
     """Cloud mode: one of a few account operations, as the tenant's stored Lynxce session."""
-    allowed = _TENANT_CALLS.get((method, path))
-    if not bot_cloud_enabled() or allowed is None:
+    allowed = _TENANT_CALLS.get((method, _route(path)))
+    # The desktop mints its own chat key with the signed-in session; the rest is cloud only.
+    desktop_key = bot_desktop_enabled() and (method, path) == _MODEL_KEY_CALL
+    if not (bot_cloud_enabled() or desktop_key) or allowed is None:
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     extra = {**allowed, **_service_headers(path)}
     async with _lock(services, user_id):

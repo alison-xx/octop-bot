@@ -119,6 +119,15 @@ export const DirectoryItem = memo(function DirectoryItem({
                   },
                 ]
               : []),
+            ...(item.group
+              ? [
+                  {
+                    key: "deleteGroup",
+                    label: t("octopBot.deleteGroup"),
+                    danger: true,
+                  },
+                ]
+              : []),
           ],
       onClick: ({ key }) => onAction(item, key),
     };

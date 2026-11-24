@@ -64,6 +64,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -74,6 +76,7 @@ import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.rememberMarkdownState
 import io.github.alisonxx.octopbot.R
+import io.github.alisonxx.octopbot.app.BalanceState
 import io.github.alisonxx.octopbot.app.QueuedMessage
 import io.github.alisonxx.octopbot.character.BotCharacter
 import io.github.alisonxx.octopbot.model.BotMotion
@@ -84,6 +87,9 @@ import io.github.alisonxx.octopbot.model.MessageRole
 import io.github.alisonxx.octopbot.model.MessageStatus
 import io.github.alisonxx.octopbot.model.Timeline
 import io.github.alisonxx.octopbot.model.ToolStep
+import io.github.alisonxx.octopbot.ui.common.BalanceText
+import io.github.alisonxx.octopbot.ui.common.openCheckout
+import io.github.alisonxx.octopbot.net.LynxceProtocol
 import io.github.alisonxx.octopbot.ui.common.LocalUiPrefs
 import io.github.alisonxx.octopbot.ui.common.chatText
 import io.github.alisonxx.octopbot.ui.common.rememberHaptics
@@ -106,6 +112,12 @@ class MessageActions(
     val speaking: Boolean,
     /** Server mode: file cards under a reply. */
     val files: AttachmentActions? = null,
+    /** Opens Lynxce's recharge page (accounts with a Lynxce wallet). */
+    val recharge: (() -> Unit)? = null,
+    /** The wallet balance, shown on the out-of-credits card. */
+    val balance: BalanceState? = null,
+    /** A recharge link is being fetched. */
+    val recharging: Boolean = false,
 )
 
 @Composable
@@ -293,7 +305,10 @@ private fun AssistantReply(message: ChatMessage, bot: BotProfile, motion: BotMot
                 }
                 if (files.isNotEmpty()) AttachmentStrip(files, fileActions, Modifier.padding(top = 2.dp))
             }
-            (message.status as? MessageStatus.Failed)?.let { failed ->
+            (message.status as? MessageStatus.Failed)?.takeIf { it.credits || it.dailyLimit }?.let {
+                CreditsCard(it.dailyLimit, actions.balance, actions.recharge, actions.recharging, onContinue = actions.retry)
+            }
+            (message.status as? MessageStatus.Failed)?.takeUnless { it.credits || it.dailyLimit }?.let { failed ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         failed.message ?: stringResource(R.string.chat_failed),
@@ -317,6 +332,94 @@ private fun AssistantReply(message: ChatMessage, bot: BotProfile, motion: BotMot
                 }
             }
             if (message.status == MessageStatus.Done && message.text.isNotEmpty()) ReplyActions(message, actions)
+        }
+    }
+}
+
+/**
+ * The reply stopped because the Lynxce wallet ran out: not a red error but a card with the balance,
+ * Top up, and Continue (re-runs the turn like retry; only on the last reply). With [dailyLimit] the account still
+ * has credits but today's cap is used up: no balance or Top up, a link to raise the cap, and Continue.
+ */
+@Composable
+private fun CreditsCard(
+    dailyLimit: Boolean,
+    balance: BalanceState?,
+    onRecharge: (() -> Unit)?,
+    recharging: Boolean,
+    onContinue: (() -> Unit)?,
+) {
+    val palette = LocalPalette.current
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(palette.surface)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            stringResource(if (dailyLimit) R.string.chat_limit_title else R.string.chat_credits_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = palette.text,
+        )
+        Text(
+            stringResource(if (dailyLimit) R.string.chat_limit_body else R.string.chat_credits_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = palette.secondary,
+        )
+        balance?.takeUnless { dailyLimit }?.let {
+            BalanceText(
+                it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = palette.secondary,
+                format = { amount -> stringResource(R.string.chat_credits_balance, amount) },
+            )
+        }
+        val context = LocalContext.current
+        val site = if (dailyLimit) LynxceProtocol.ACCOUNT_CENTRE else LynxceProtocol.RECHARGE_SITE
+        Column {
+            Text(
+                stringResource(if (dailyLimit) R.string.chat_limit_site_label else R.string.chat_credits_site_label),
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.secondary,
+            )
+            Text(
+                site.removePrefix("https://"),
+                style = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.Underline),
+                color = palette.text,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable { openCheckout(context, site) }
+                    .padding(vertical = 4.dp),
+            )
+        }
+        Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            onRecharge?.takeUnless { dailyLimit }?.let { recharge ->
+                Text(
+                    stringResource(R.string.credits_recharge),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = palette.background,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(palette.text)
+                        .clickable(enabled = !recharging, onClick = recharge)
+                        .alpha(if (recharging) 0.5f else 1f)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+            onContinue?.let { proceed ->
+                Text(
+                    stringResource(R.string.chat_continue),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = palette.text,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable(onClick = proceed)
+                        .background(palette.raised)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
         }
     }
 }
@@ -524,7 +627,8 @@ private fun MessageMenu(message: ChatMessage, expanded: Boolean, onDismiss: () -
             MenuItem(Icons.AutoMirrored.Rounded.VolumeUp, stringResource(R.string.chat_read_aloud), onDismiss) { actions.readAloud(message) }
         }
         MenuItem(Icons.Rounded.Share, stringResource(R.string.chat_share), onDismiss) { actions.share(message.text) }
-        actions.retry?.let { MenuItem(Icons.Rounded.Refresh, stringResource(R.string.chat_retry), onDismiss, it) }
+        val credits = (message.status as? MessageStatus.Failed)?.let { it.credits || it.dailyLimit } == true
+        actions.retry?.let { MenuItem(Icons.Rounded.Refresh, stringResource(if (credits) R.string.chat_continue else R.string.chat_retry), onDismiss, it) }
     }
 }
 

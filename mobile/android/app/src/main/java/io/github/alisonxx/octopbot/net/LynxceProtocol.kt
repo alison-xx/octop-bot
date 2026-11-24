@@ -1,8 +1,15 @@
 package io.github.alisonxx.octopbot.net
 
+import io.github.alisonxx.octopbot.device.DeviceCatalog
+import io.github.alisonxx.octopbot.device.DeviceDecisions
+import io.github.alisonxx.octopbot.device.DeviceTool
+import io.github.alisonxx.octopbot.device.ToolCallAccumulator
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
+import io.github.alisonxx.octopbot.model.HitlAction
+import io.github.alisonxx.octopbot.model.HitlDecision
+import io.github.alisonxx.octopbot.model.HitlRequest
 import io.github.alisonxx.octopbot.model.MessageRole
 import io.github.alisonxx.octopbot.model.MessageStatus
 import io.github.alisonxx.octopbot.model.ModelOption
@@ -19,12 +26,17 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Base64
 import java.util.UUID
 
 /** Pure Lynxce wire mapping (no I/O), shared by [LynxceBackend] and unit tests. */
 object LynxceProtocol {
     const val ORIGIN = "https://api.lynxce.cn"
+    /** Lynxce's Octop Bot line: every model it offers Octop Bot is named `tencent/…`. */
+    const val MODEL_PREFIX = "tencent/"
     /** Same prefix the desktop client uses, so desktop and phone list each other's conversations. */
     const val SESSION_PREFIX = "octop-bot-v1-"
     private const val ROLE_MARKER = "\n\n[Octop Bot role/v1] "
@@ -33,30 +45,51 @@ object LynxceProtocol {
 
     /** Lynxce wraps results as `{code: 0, data}`; anything else is a failure. */
     fun unwrap(status: Int, body: String): JsonElement {
-        if (status !in 200..299) throw ApiException.from(status, Http.errorMessage(body))
+        if (status !in 200..299) throw ApiException.fromBody(status, body)
         val envelope = Http.parse(body) as? JsonObject ?: throw ApiException.badResponse()
-        val code = envelope.long("code") ?: throw ApiException.badResponse()
+        val code = envelope.long("code")
+            ?: throw if (ApiException.isDailyLimit(body)) ApiException.fromBody(429, body) else ApiException.badResponse()
         if (code != 0L) {
+            if (ApiException.isDailyLimit(body)) throw ApiException.fromBody(429, body)
             val mapped = when (code) { 401L -> 401; 402L -> 402; else -> 400 }
             throw ApiException.from(mapped, envelope.str("message"))
         }
         return envelope["data"] ?: JsonNull
     }
 
-    /** One OpenAI-style chunk → text / thinking deltas. Error chunks throw. */
-    fun parseChunk(data: String): List<StreamEvent> {
+    /** One OpenAI-style chunk → text / thinking deltas; `delta.tool_calls` pieces go to [toolCalls]. Error chunks throw. */
+    fun parseChunk(data: String, toolCalls: ToolCallAccumulator? = null): List<StreamEvent> {
         val obj = Http.parse(data) as? JsonObject ?: return emptyList()
         obj["error"]?.takeIf { it !is JsonNull }?.let { error ->
             val message = (error as? JsonObject)?.str("message") ?: error.asString()
+            if (ApiException.isDailyLimit(error.toString())) {
+                throw ApiException(ApiException.Kind.DailyLimit, 429, message, ApiException.DAILY_LIMIT)
+            }
+            if (outOfCredits(error as? JsonObject, message)) throw ApiException(ApiException.Kind.Credits, 402, message)
             throw ApiException(ApiException.Kind.Server, 500, message)
         }
         val delta = obj.arr("choices")?.firstOrNull().asObject()?.obj("delta") ?: return emptyList()
+        delta.arr("tool_calls")?.let { toolCalls?.add(it) }
         return buildList {
             (delta.str("reasoning_content") ?: delta.str("reasoning"))?.takeIf { it.isNotEmpty() }?.let { add(StreamEvent.Thinking(it)) }
             delta.str("content")?.takeIf { it.isNotEmpty() }?.let { add(StreamEvent.Text(it)) }
         }
     }
 
+    /** A mid-stream gateway error that means the wallet ran out (402 / insufficient credits or quota). */
+    private fun outOfCredits(error: JsonObject?, message: String?): Boolean {
+        val code = error?.idString("code")?.lowercase().orEmpty()
+        val type = error?.str("type")?.lowercase().orEmpty()
+        val text = message?.lowercase().orEmpty()
+        return code == "402" || error?.long("status") == 402L ||
+            listOf(code, type).any { it.startsWith("insufficient_") } ||
+            "insufficient credit" in text || "insufficient balance" in text || "insufficient_quota" in text
+    }
+
+    /**
+     * The first request of a turn. With device [tools] on (PROTOCOL §C) it adds `tools`, `tool_choice` and a
+     * system line with the phone's time ([now]).
+     */
     fun chatBody(
         text: String,
         images: List<ByteArray>,
@@ -65,11 +98,15 @@ object LynxceProtocol {
         sessionId: String,
         model: String?,
         turnId: String = UUID.randomUUID().toString().lowercase(),
+        tools: List<DeviceTool> = emptyList(),
+        now: ZonedDateTime = ZonedDateTime.now(),
     ): JsonObject = buildJsonObject {
         putJsonArray("messages") {
-            bot.systemPrompt?.takeIf { it.isNotBlank() }?.let { prompt ->
-                addJsonObject { put("role", "system"); put("content", prompt) }
-            }
+            val system = listOfNotNull(
+                bot.systemPrompt?.takeIf { it.isNotBlank() },
+                if (tools.isEmpty()) null else nowLine(now),
+            )
+            if (system.isNotEmpty()) addJsonObject { put("role", "system"); put("content", system.joinToString("\n\n")) }
             history.filter { it.status == MessageStatus.Done && it.text.isNotEmpty() && it.role != MessageRole.Note }.takeLast(20).forEach { message ->
                 addJsonObject {
                     put("role", if (message.role == MessageRole.User) "user" else "assistant")
@@ -96,11 +133,79 @@ object LynxceProtocol {
         put("stream", true)
         putJsonObject("stream_options") { put("include_usage", true) }
         put("sessionId", sessionId)
-        model?.let { put("model", it) }
+        // A choice saved before Lynxce moved Octop Bot to its Tencent line falls back to the default.
+        model?.takeIf { it.startsWith(MODEL_PREFIX) }?.let { put("model", it) }
         putJsonObject("metadata") {
             put("client", "octop-bot-android")
             put("turnId", turnId)
         }
+        if (tools.isNotEmpty()) {
+            put("tools", DeviceCatalog.openAiTools(tools))
+            put("tool_choice", "auto")
+        }
+    }
+
+    /** `Now: 2026-11-24T15:00:00+08:00 (Asia/Shanghai).` */
+    fun nowLine(now: ZonedDateTime): String =
+        "Now: ${now.truncatedTo(ChronoUnit.SECONDS).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)} (${now.zone.id})."
+
+    /**
+     * A later request of the tool loop: [first] plus the loop's assistant/tool messages; without `tools` and
+     * `tool_choice` when [withTools] is false (the gateway refused them).
+     */
+    fun roundBody(first: JsonObject, loop: List<JsonObject>, withTools: Boolean): JsonObject = JsonObject(
+        first.toMutableMap().apply {
+            put("messages", JsonArray(first.arr("messages").orEmpty() + loop))
+            if (!withTools) {
+                remove("tools")
+                remove("tool_choice")
+            }
+        },
+    )
+
+    /** The assistant turn that asked for tools: its text so far (or null) and the calls. */
+    fun assistantToolCalls(text: String, calls: List<ToolCallAccumulator.Call>): JsonObject = buildJsonObject {
+        put("role", "assistant")
+        put("content", text.takeIf { it.isNotEmpty() }?.let(::JsonPrimitive) ?: JsonNull)
+        putJsonArray("tool_calls") {
+            for (call in calls) addJsonObject {
+                put("id", call.id)
+                put("type", "function")
+                putJsonObject("function") {
+                    put("name", call.name)
+                    put("arguments", call.arguments.ifBlank { "{}" })
+                }
+            }
+        }
+    }
+
+    /** The tool result of a declined device write; text the user typed instead goes along. */
+    fun declined(message: String?): JsonObject = buildJsonObject {
+        put("error", DeviceDecisions.DECLINED)
+        message?.takeIf { it.isNotBlank() && it != DeviceDecisions.DECLINED && it != HitlDecision.REJECTED }?.let { put("user_message", it) }
+    }
+
+    /** Device writes waiting for the user, shaped like a server HITL pause so the same card answers them. */
+    fun devicePause(pendingId: String, writes: List<ToolCallAccumulator.Call>, label: (String) -> String): HitlRequest =
+        HitlRequest(
+            pendingId,
+            writes.map { call ->
+                HitlAction(
+                    name = call.name,
+                    label = label(call.name),
+                    description = null,
+                    details = emptyList(),
+                    questions = null,
+                    allowedDecisions = setOf("respond", "reject"),
+                    args = DeviceCatalog.args(call.arguments),
+                )
+            },
+        )
+
+    fun toolResult(callId: String, content: String): JsonObject = buildJsonObject {
+        put("role", "tool")
+        put("tool_call_id", callId)
+        put("content", content)
     }
 
     /** The body for `POST /web-chat-sessions/{id}/items` after a turn finishes. */
@@ -175,12 +280,27 @@ object LynxceProtocol {
      * The wallet balance from `/api/user/quota`, the figure a recharge adds to. (`effectiveCreditsRemaining`
      * can instead be an enterprise member's monthly allowance, so it is not shown next to "Recharge".)
      */
-    fun balance(data: JsonElement): String? = data.asObject()?.double("creditsRemaining")?.let(::formatCredits)
+    fun balance(data: JsonElement): Double? = data.asObject()?.double("creditsRemaining")
 
-    /** Credits have a cent quantum: "12,800" or "12.5". */
-    fun formatCredits(value: Double): String =
-        java.text.DecimalFormat("#,##0.##", java.text.DecimalFormatSymbols(java.util.Locale.US)).format(value)
+    /**
+     * Credits as every client shows them: grouped integers ("4,454,029"), and two decimals only below 1,000
+     * when there is a fraction ("12.50"). Never rounds up.
+     */
+    fun formatCredits(value: Double): String {
+        val symbols = java.text.DecimalFormatSymbols(java.util.Locale.US)
+        val cents = java.math.BigDecimal.valueOf(value).setScale(2, java.math.RoundingMode.DOWN)
+        val fractional = cents.remainder(java.math.BigDecimal.ONE).signum() != 0
+        val pattern = if (cents.abs() < java.math.BigDecimal(1000) && fractional) "#,##0.00" else "#,##0"
+        return java.text.DecimalFormat(pattern, symbols).apply { roundingMode = java.math.RoundingMode.DOWN }.format(cents)
+    }
 
+    /** Below this the balance shows in the warning colour and chat offers a recharge banner. */
+    const val LOW_BALANCE = 100.0
+
+    /** Lynxce's recharge site, for signing in there by hand (the out-of-credits card links it). */
+    const val RECHARGE_SITE = "https://admin.lynxce.cn/recharge"
+    /** Lynxce's account centre, where the daily cap for Octop Bot can be raised. */
+    const val ACCOUNT_CENTRE = "https://admin.lynxce.cn"
     const val CHECKOUT_PORTAL = "https://admin.lynxce.cn/recharge?token="
     private val CHECKOUT_TICKET = Regex("(?!mcrt1\\.)[A-Za-z0-9_-]{1,4096}\\.[A-Za-z0-9_-]{43}")
 

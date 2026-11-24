@@ -21,7 +21,11 @@ final class LynxceBackend: ChatBackend {
     private var refreshing: Task<Grant, Error>?
 
     var supportsGroups: Bool { false }
-    var accountName: String { grant.displayName ?? grant.accountId }
+    /// Never the raw account id: with no display name the UI shows a generic name.
+    var accountName: String {
+        let name = (grant.displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? L("account.genericName") : name
+    }
 
     init(grant: Grant, bots: LocalBots = .shared) {
         self.grant = grant
@@ -112,10 +116,14 @@ final class LynxceBackend: ChatBackend {
     /// Picks Octop Bot's App Store products on Lynxce's in-app purchase endpoints without moving
     /// the sign-in out of the multi-session 'web' channel.
     nonisolated static let iapApp = "cn.lynxce.octopbot"
+    /// Lynxce's Octop Bot line: every model it offers Octop Bot is named `tencent/…`.
+    nonisolated static let modelPrefix = "tencent/"
 
     private static func headers(_ bearer: String?, iap: Bool = false) -> [String: String] {
         // 'web' is Lynxce's multi-session channel; signing in here never signs other devices out.
         var headers = ["X-Lynxce-Client": "web"]
+        // Lynxce serves Octop Bot only the Tencent Cloud TokenHub models and records sign-ups made here.
+        headers["X-Lynxce-App"] = "octopbot"
         if let bearer { headers["Authorization"] = "Bearer \(bearer)" }
         if iap { headers["X-Lynxce-Iap-App"] = iapApp }
         return headers
@@ -138,7 +146,7 @@ final class LynxceBackend: ChatBackend {
         }
         guard code == 0 else {
             let status = code == 402 ? 402 : (code == 401 ? 401 : 400)
-            throw APIError.from(status: status, message: envelope["message"] as? String)
+            throw APIError.from(status: status, message: envelope["message"] as? String, code: HTTP.errorCode(data))
         }
         return envelope["data"] ?? NSNull()
     }
@@ -257,37 +265,104 @@ final class LynxceBackend: ChatBackend {
     // MARK: Chat
 
     private var running: [String: Task<Void, Never>] = [:]
+    /// Turns waiting on device tools the phone runs (PROTOCOL.md §C, Lynxce mode), by conversation.
+    private var loops: [String: ToolLoop] = [:]
+    private static let maxToolRounds = 6
+
+    /// One turn's function-calling loop: the request so far and what to sync when it ends.
+    struct ToolLoop {
+        var body: [String: Any]
+        var user: String
+        var startedAt: Date
+        var model: String?
+        var answer = ""
+        var thinking = ""
+        var rounds = 0
+        var pendingId = ""
+    }
 
     func send(
         _ text: String, images: [Data], to bot: BotProfile, conversation: String?,
         history: [ChatMessage], model: String?
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         let sessionId = conversation ?? Self.sessionPrefix + UUID().uuidString.lowercased()
-        let startedAt = Date()
-        return AsyncThrowingStream { continuation in
+        loops[sessionId] = nil
+        let tools = DeviceConnectors.shared.offeredSpecs.map(\.openAITool)
+        let body = Self.chatBody(
+            text: text, images: images, bot: bot, history: history, sessionId: sessionId, model: model, tools: tools
+        )
+        let loop = ToolLoop(body: body, user: text, startedAt: Date(), model: model)
+        return run(loop, sessionId: sessionId, announce: conversation == nil ? bot : nil)
+    }
+
+    func resume(
+        _ pause: HitlPause, decisions: [[String: Any]], conversation: String, bot: BotProfile
+    ) -> AsyncThrowingStream<StreamEvent, Error> {
+        guard var loop = loops.removeValue(forKey: conversation), loop.pendingId == pause.id else {
+            return AsyncThrowingStream { $0.finish(throwing: APIError(kind: .server, status: 409, message: L("device.expired"))) }
+        }
+        loop.body["messages"] = Self.answering(loop.body["messages"], decisions: decisions)
+        return run(loop, sessionId: conversation, announce: nil)
+    }
+
+    func openPause(in conversation: ConversationSummary) -> HitlPause? { nil }
+
+    /// Stream completions until the model answers without tool calls, or pauses for the phone's tools.
+    private func run(_ start: ToolLoop, sessionId: String, announce bot: BotProfile?) -> AsyncThrowingStream<StreamEvent, Error> {
+        AsyncThrowingStream { continuation in
             let task = Task {
-                if conversation == nil {
+                var loop = start
+                if let bot {
                     sessionBots[sessionId] = bot.id
                     continuation.yield(.conversation(sessionId))
                 }
-                var answer = ""
-                var thinking = ""
                 do {
-                    let body = Self.chatBody(text: text, images: images, bot: bot, history: history, sessionId: sessionId, model: model)
-                    try await streamCompletion(body) { event in
-                        switch event {
-                        case .text(let delta): answer += delta
-                        case .thinking(let delta): thinking += delta
-                        default: break
+                    while true {
+                        var calls = ToolCallAccumulator()
+                        var text = ""
+                        if loop.rounds >= Self.maxToolRounds { loop.body["tools"] = nil; loop.body["tool_choice"] = nil }
+                        var body = loop.body
+                        try await streamWithToolFallback(&body, calls: &calls) { event in
+                            switch event {
+                            case .text(let delta): text += delta
+                            case .thinking(let delta): loop.thinking += delta
+                            default: break
+                            }
+                            continuation.yield(event)
                         }
-                        continuation.yield(event)
+                        loop.body = body
+                        loop.answer += text
+                        let made = calls.calls
+                        guard !made.isEmpty else { break }
+                        loop.rounds += 1
+                        var messages = loop.body["messages"] as? [[String: Any]] ?? []
+                        messages.append(ToolCallAccumulator.assistantMessage(text: text, calls: made))
+                        loop.body["messages"] = messages
+                        for call in made {
+                            continuation.yield(.tool(id: call.id, name: DeviceConnectors.isDeviceTool(call.name) ? L("device.tool.\(call.name)") : call.name, done: false))
+                        }
+                        let pending = "local-" + UUID().uuidString.lowercased()
+                        let raw: [String: Any] = [
+                            "pending_id": pending,
+                            "action_requests": made.map { ["name": $0.name, "args": $0.arguments] },
+                        ]
+                        if let pause = HitlPause.parse(raw) {
+                            loop.pendingId = pause.id
+                            loops[sessionId] = loop
+                            continuation.yield(.pause(pause))
+                        }
+                        // The chat answers the pause (at once for reads) and `resume` carries on.
+                        continuation.yield(.done)
+                        continuation.finish()
+                        running[sessionId] = nil
+                        return
                     }
                     continuation.yield(.done)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
-                await sync(sessionId: sessionId, user: text, startedAt: startedAt, answer: answer, thinking: thinking, model: model)
+                await sync(sessionId: sessionId, user: loop.user, startedAt: loop.startedAt, answer: loop.answer, thinking: loop.thinking, model: loop.model)
                 running[sessionId] = nil
             }
             running[sessionId] = task
@@ -295,12 +370,48 @@ final class LynxceBackend: ChatBackend {
         }
     }
 
+    /// The model's tool calls answered in order: a result, or the user's refusal.
+    static func answering(_ messages: Any?, decisions: [[String: Any]]) -> [[String: Any]] {
+        var list = messages as? [[String: Any]] ?? []
+        let calls = (list.last?["tool_calls"] as? [[String: Any]]) ?? []
+        for (index, call) in calls.enumerated() {
+            let decision = index < decisions.count ? decisions[index] : [:]
+            let content: String
+            if decision["type"] as? String == "respond", let message = decision["message"] as? String {
+                content = message
+            } else {
+                content = DeviceConnectors.json(["error": (decision["message"] as? String) ?? "The user declined."])
+            }
+            list.append(["role": "tool", "tool_call_id": call["id"] as? String ?? "", "content": content])
+        }
+        return list
+    }
+
+    /// Some gateway models refuse `tools`: then ask once more without them.
+    private func streamWithToolFallback(
+        _ body: inout [String: Any], calls: inout ToolCallAccumulator, onEvent: (StreamEvent) -> Void
+    ) async throws {
+        do {
+            try await streamCompletion(body, calls: &calls, onEvent: onEvent)
+        } catch let error as APIError where error.status == 400 && body["tools"] != nil {
+            body["tools"] = nil
+            body["tool_choice"] = nil
+            calls = ToolCallAccumulator()
+            try await streamCompletion(body, calls: &calls, onEvent: onEvent)
+        }
+    }
+
     static func chatBody(
-        text: String, images: [Data], bot: BotProfile, history: [ChatMessage], sessionId: String, model: String?
+        text: String, images: [Data], bot: BotProfile, history: [ChatMessage], sessionId: String, model: String?,
+        tools: [[String: Any]] = [], now: Date = .now, zone: TimeZone = .current
     ) -> [String: Any] {
         var messages: [[String: Any]] = []
         if let prompt = bot.systemPrompt, !prompt.isEmpty {
             messages.append(["role": "system", "content": prompt])
+        }
+        if !tools.isEmpty {
+            // Device tools take local times; the model needs to know "now" to resolve "tomorrow afternoon".
+            messages.append(["role": "system", "content": "Now: \(DeviceDates.stamp(now, zone: zone)) (\(zone.identifier))."])
         }
         for message in history.suffix(20) where message.status == .done && !message.text.isEmpty {
             messages.append(["role": message.role.rawValue, "content": message.text])
@@ -322,10 +433,16 @@ final class LynxceBackend: ChatBackend {
             "metadata": ["client": "octop-bot-ios", "turnId": UUID().uuidString.lowercased()],
         ]
         if let model { body["model"] = model }
+        if !tools.isEmpty {
+            body["tools"] = tools
+            body["tool_choice"] = "auto"
+        }
         return body
     }
 
-    private func streamCompletion(_ body: [String: Any], onEvent: (StreamEvent) -> Void) async throws {
+    private func streamCompletion(
+        _ body: [String: Any], calls: inout ToolCallAccumulator, onEvent: (StreamEvent) -> Void
+    ) async throws {
         func open(_ token: String) async throws -> (URLSession.AsyncBytes, HTTPURLResponse) {
             var request = try HTTP.request(Self.url("/api/proxy/v1/chat/completions"), method: .post, headers: Self.headers(token), json: body)
             request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
@@ -347,12 +464,13 @@ final class LynxceBackend: ChatBackend {
         guard (200..<300).contains(response.statusCode) else {
             var data = Data()
             for try await byte in bytes { data.append(byte); if data.count > 16_384 { break } }
-            throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data))
+            throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data))
         }
         var completed = false
         for try await event in SSE.events(bytes) {
             if event.data == "[DONE]" { completed = true; break }
             for parsed in try Self.parseChunk(event.data) { onEvent(parsed) }
+            calls.add(event.data)
         }
         if !completed && !Task.isCancelled { throw APIError.network }
     }
@@ -362,7 +480,9 @@ final class LynxceBackend: ChatBackend {
         guard let object = try? JSONSerialization.jsonObject(with: Data(data.utf8)) as? [String: Any] else { return [] }
         if let error = object["error"] {
             let message = (error as? [String: Any])?["message"] as? String ?? error as? String
-            throw APIError(kind: .server, status: 500, message: message)
+            let code = (error as? [String: Any])?["code"] as? String
+            if APIError.isDailyLimit(code) { throw APIError(kind: .dailyLimit, status: 429, message: message) }
+            throw APIError(kind: isCreditError(error) ? .credits : .server, status: isCreditError(error) ? 402 : 500, message: message)
         }
         guard let choice = (object["choices"] as? [[String: Any]])?.first,
               let delta = choice["delta"] as? [String: Any] else { return [] }
@@ -374,6 +494,15 @@ final class LynxceBackend: ChatBackend {
             events.append(.text(content))
         }
         return events
+    }
+
+    /// An OpenAI-style error object that means the wallet is empty.
+    static func isCreditError(_ error: Any) -> Bool {
+        guard let error = error as? [String: Any] else { return false }
+        if (error["code"] as? NSNumber)?.intValue == 402 || (error["status"] as? NSNumber)?.intValue == 402 { return true }
+        let tags = [error["code"], error["type"]].compactMap { ($0 as? String)?.lowercased() }
+        if tags.contains(where: { $0.contains("credit_limit_reached") }) { return false }
+        return tags.contains { $0 == APIError.creditsRequired.lowercased() || $0.contains("insufficient") }
     }
 
     /// Append the finished turn to the synced Lynxce session (idempotent on the server).
@@ -426,9 +555,11 @@ final class LynxceBackend: ChatBackend {
         ])
     }
 
-    func balance() async -> String? {
-        guard let data = try? await call(.get, "/api/user/quota") else { return nil }
-        return Self.credits(inQuota: data).map(Self.formatCredits)
+    func wallet() async throws -> Wallet {
+        guard let credits = Self.credits(inQuota: try await call(.get, "/api/user/quota")) else {
+            throw APIError(kind: .server, status: 502, message: nil)
+        }
+        return Wallet(credits: credits, accountId: grant.accountId)
     }
 
     /// The wallet balance from `/api/user/quota`, the figure a recharge adds to. (`effectiveCreditsRemaining`
@@ -437,11 +568,27 @@ final class LynxceBackend: ChatBackend {
         ((data as? [String: Any])?["creditsRemaining"] as? NSNumber)?.doubleValue
     }
 
-    /// Credits have a cent quantum: "1,280" or "12.5".
+    /// Credits have a cent quantum. Grouped whole numbers, with two decimals only below 1,000 and only
+    /// when there is a fraction: 4,454,029.04 → "4,454,029", 12.5 → "12.50", 12 → "12".
     static func formatCredits(_ value: Double) -> String {
+        let cents = (value * 100).rounded()
+        let small = abs(cents) < 100_000 && cents.truncatingRemainder(dividingBy: 100) != 0
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 2
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.usesGroupingSeparator = true
+        formatter.groupingSeparator = ","
+        formatter.minimumFractionDigits = small ? 2 : 0
+        formatter.maximumFractionDigits = small ? 2 : 0
+        // Large balances drop their cents rather than round up past what the wallet holds.
+        formatter.roundingMode = small ? .halfEven : .down
+        return formatter.string(from: NSNumber(value: cents / 100)) ?? String(value)
+    }
+
+    /// Whole token counts, grouped: 1234567 → "1,234,567".
+    static func formatCount(_ value: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.usesGroupingSeparator = true
         formatter.groupingSeparator = ","
@@ -485,9 +632,9 @@ final class LynxceBackend: ChatBackend {
 
     /// App Store rule 5.1.1(v): accounts created in the app can be deleted in the app. Lynxce keeps a
     /// cooling-off period before erasing the account; signing in is refused from now on.
-    func requestDeletion() async throws -> Int {
+    func requestDeletion() async throws -> Int? {
         let data = try await call(.post, "/api/user/account/deletion-request", json: ["confirm": "注销账号"])
-        return (data as? [String: Any])?["coolingDays"] as? Int ?? 7
+        return ((data as? [String: Any])?["coolingDays"] as? NSNumber)?.intValue
     }
 
     func signOut() async {

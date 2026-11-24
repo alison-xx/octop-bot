@@ -2,6 +2,7 @@ package io.github.alisonxx.octopbot.app
 
 import android.app.Application
 import androidx.appcompat.app.AppCompatDelegate
+import io.github.alisonxx.octopbot.device.DeviceConnectors
 import io.github.alisonxx.octopbot.net.Http
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -20,12 +21,15 @@ class OctopApplication : Application() {
         private set
     lateinit var updater: Updater
         private set
+    lateinit var device: DeviceConnectors
+        private set
 
     override fun onCreate() {
         super.onCreate()
         store = AppStore(this)
         localBots = LocalBots(this, store)
         notifier = ReplyNotifier(this)
+        device = DeviceConnectors(this, store)
         updater = Updater(this, store, MainScope()).also { it.watchForeground() }
         Http.locale = AppLocale::current
         // Apply the saved appearance before the first activity draws (a tiny DataStore read).

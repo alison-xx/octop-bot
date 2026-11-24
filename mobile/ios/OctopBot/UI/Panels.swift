@@ -164,6 +164,16 @@ struct BotEditor: View {
                         .padding(.vertical, 8)
                     }
                 }
+                if !isNew, let server = model.server {
+                    Section {
+                        NavigationLink {
+                            BotActivityView(server: server, bot: bot)
+                        } label: {
+                            Label("profile.entry", systemImage: "clock.arrow.circlepath")
+                        }
+                        .accessibilityIdentifier("botActivity")
+                    }
+                }
                 if !isNew, let server = model.server, server.isCloud {
                     CloudComputerSection(server: server, botId: bot.id)
                 }
@@ -317,6 +327,8 @@ struct SettingsView: View {
                     if model.isLynxce { Text("settings.model.footer") }
                 }
 
+                DeviceConnectorsSection()
+
                 Section {
                     Toggle(isOn: $model.notifyOnReply) { row("settings.notify", "bell.badge", .red) }
                         .tint(.green)
@@ -350,7 +362,7 @@ struct SettingsView: View {
                 }
 
                 Section("settings.account") {
-                    LabeledContent { Text(model.backend?.accountName ?? "") } label: {
+                    LabeledContent { Text(model.accountName) } label: {
                         row("settings.signedInAs", "person", .blue)
                     }
                     if model.creditAccount != nil {
@@ -358,12 +370,20 @@ struct SettingsView: View {
                             CreditsView()
                         } label: {
                             LabeledContent {
-                                Text(verbatim: model.balance ?? "")
+                                BalanceLabel(allowsRetry: false)
                             } label: { row("credits.title", "creditcard", .orange) }
                         }
                         .accessibilityIdentifier("credits")
+                    } else if model.server != nil {
+                        // A self-hosted server has no wallet here: usage only, and a note that nothing is billed.
+                        NavigationLink {
+                            CreditsView()
+                        } label: { row("usage.title", "chart.bar", .orange) }
+                        .accessibilityIdentifier("usage")
                     }
-                    if let server = model.server {
+                    if model.isCloud {
+                        LabeledContent { Text("settings.lynxce") } label: { row("settings.connection", "cloud", .cyan) }
+                    } else if let server = model.server {
                         Button {
                             UIPasteboard.general.string = server.session.baseURL.absoluteString
                             Haptics.success()
@@ -377,7 +397,7 @@ struct SettingsView: View {
                         }
                         .foregroundStyle(Palette.text)
                     } else {
-                        LabeledContent { Text("settings.lynxce") } label: { row("settings.connection", "cloud", .cyan) }
+                        LabeledContent { Text("account.connection.lynxce") } label: { row("settings.connection", "cloud", .cyan) }
                     }
                     Button {
                         dismiss()
@@ -479,7 +499,7 @@ struct SettingsView: View {
         deleteError = nil
         Task {
             do {
-                _ = try await model.deleteAccount()
+                try await model.deleteAccount()
                 dismiss()
             } catch {
                 deleteError = error.localizedDescription
@@ -514,20 +534,19 @@ struct SettingsView: View {
         HStack(spacing: 14) {
             CharacterView(look: .chief, size: 56)
             VStack(alignment: .leading, spacing: 4) {
-                Text(model.backend?.accountName ?? "").font(.headline).lineLimit(1)
+                Text(model.accountName).font(.headline).lineLimit(1)
                 HStack(spacing: 5) {
-                    Image(systemName: model.isLynxce ? "cloud.fill" : "server.rack").font(.caption)
-                    Text(model.isLynxce ? L("settings.lynxce") : (model.server?.host ?? "")).lineLimit(1)
+                    Image(systemName: model.modeSymbol).font(.caption)
+                    Text(model.modeLabel).lineLimit(1)
                 }
                 .font(.subheadline)
                 .foregroundStyle(Palette.secondary)
-                if let balance = model.balance {
-                    Text("settings.balance.chip \(balance)")
+                if model.balance != nil {
+                    BalanceLabel()
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
                         .background(Palette.raised, in: Capsule())
-                        .foregroundStyle(Palette.text)
                 }
             }
             Spacer(minLength: 0)
