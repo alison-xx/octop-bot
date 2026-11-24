@@ -756,6 +756,14 @@ class ComputerManager:
             self._save(record)
             return record
 
+    def release_takeover_if_held(self, agent_id: str, user_id: int) -> None:
+        with self._lock(agent_id):
+            record = self.record(agent_id, user_id)
+            if record.takeover:
+                record.takeover = False
+                record.active_at = self._clock()
+                self._save(record)
+
     def taken_over(self, agent_id: str, user_id: int) -> bool:
         return self.record(agent_id, user_id).controlled(self._clock())
 
