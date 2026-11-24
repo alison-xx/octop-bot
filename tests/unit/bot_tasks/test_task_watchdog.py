@@ -234,3 +234,49 @@ def test_no_plan_request_when_task_plan_is_in_the_same_batch(
         state={"messages": [batch]},
     )
     assert middleware.wrap_tool_call(request, _ok).content == "fine"
+
+
+def _sent(tmp: Any, name: str, body: bytes) -> Any:
+    path = tmp / name
+    path.write_bytes(body)
+
+    def handler(request: Any) -> ToolMessage:
+        return ToolMessage(
+            content=[
+                {
+                    "type": "file",
+                    "path": name,
+                    "filename": name,
+                    "source": {"type": "url", "url": path.as_uri(), "media_type": "text/csv"},
+                }
+            ],
+            tool_call_id="c1",
+            name="send_file_to_user",
+        )
+
+    return handler
+
+
+def test_a_file_that_fails_the_checks_never_reaches_the_user(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    middleware, store, _task = _setup(monkeypatch)
+    refused = middleware.wrap_tool_call(
+        _call("send_file_to_user"), _sent(tmp_path, "output.csv", b"a\n")
+    )
+    assert refused.status == "error" and refused.content.startswith("Not sent to the user:")
+    assert "does not say what it is" in refused.content and "no data rows" in refused.content
+    assert store.running("thr1").deliverables == []
+
+
+def test_delivered_files_are_kept_on_the_task_with_versions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    middleware, store, _task = _setup(monkeypatch)
+    send = _sent(tmp_path, "价格对比.csv", "公司,价格\nA,1\n".encode())
+    for _ in range(2):
+        result = middleware.wrap_tool_call(_call("send_file_to_user"), send)
+        assert result.status != "error"
+    delivered = store.running("thr1").deliverables
+    assert [(d.name, d.version) for d in delivered] == [("价格对比.csv", 1), ("价格对比.csv", 2)]
+    assert delivered[0].facts == [{"k": "rows", "n": 1}] and delivered[0].size > 0

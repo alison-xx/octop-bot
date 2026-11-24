@@ -13,10 +13,15 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
@@ -24,7 +29,8 @@ from langgraph.config import get_config
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
-from octop.infra.bot_tasks.model import Task
+from octop.infra.bot_tasks.deliverables import inspect_file
+from octop.infra.bot_tasks.model import Deliverable, Task
 from octop.infra.bot_tasks.store import TaskStore
 from octop.infra.bot_tasks.tools import TASK_TOOL_NAMES
 
@@ -45,7 +51,10 @@ otherwise write it down as an assumption and go on.
 3. Verify each criterion and record it with `task_check` and real evidence: a command's \
 output, a file check (pages, rows, opens without error), a screenshot you looked at, a \
 receipt or message id. Never mark passed what you did not check.
-4. Call `task_finish` last, then reply in a sentence or two; the user sees the checklist as a \
+4. Hand files to the user with `send_file_to_user` (writing a file alone does not deliver \
+it). It is checked first: it must open, have real content and a name that says what it is \
+(not output.xlsx); fix and resend if it is refused.
+5. Call `task_finish` last, then reply in a sentence or two; the user sees the checklist as a \
 card. If a criterion failed or was skipped, say plainly what is missing; never call it done. \
 A deep task is checked by an independent reviewer first; task_finish tells you how."""
 
@@ -70,6 +79,13 @@ Acceptance criteria:
 Keep going from here; record verdicts with task_check and close with task_finish."""
 
 REVIEW_PREFIXES = ("review", "复核")
+
+DELIVERY_TOOL = "send_file_to_user"
+# Bigger files are sent without the content checks (only the name is checked).
+MAX_INSPECT_BYTES = 50 * 1024 * 1024
+NOT_SENT = (
+    "Not sent to the user: {problems}. Fix the file (or its name) and call send_file_to_user again."
+)
 
 SAME_ERROR = (
     "Note: `{tool}` has now failed the same way {count} times in this task. Do not try it "
@@ -153,6 +169,31 @@ def _sibling_calls(request: ToolCallRequest) -> set[str]:
 
 def _mentions(messages: list[BaseMessage], task_id: str) -> bool:
     return any(task_id in str(message.content) for message in messages)
+
+
+def _sent_file(result: ToolMessage | Command[Any]) -> dict[str, Any] | None:
+    """The media block send_file_to_user returned: path, filename and a file:// URI."""
+    if not isinstance(result, ToolMessage) or result.status == "error":
+        return None
+    content: Any = result.content
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except ValueError:
+            return None
+    blocks = content if isinstance(content, list) else [content]
+    for block in blocks:
+        if isinstance(block, dict) and isinstance(block.get("source"), dict):
+            return block
+    return None
+
+
+def _local_file(block: dict[str, Any]) -> Path | None:
+    url = str(block["source"].get("url") or "")
+    if not url.startswith("file:"):
+        return None
+    path = Path(url2pathname(urlparse(url).path))
+    return path if path.is_file() else None
 
 
 def _error_text(result: ToolMessage | Command[Any]) -> str | None:
@@ -326,6 +367,49 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
             fresh.review = _result_text(result).strip()[:1000]
             self._store.save(thread, fresh)
 
+    def _deliver(
+        self, request: ToolCallRequest, result: ToolMessage | Command[Any]
+    ) -> ToolMessage | Command[Any]:
+        """Check a file the Bot sends before the user gets it; keep it on the running task."""
+        if request.tool_call.get("name") != DELIVERY_TOOL or not self._active():
+            return result
+        block = _sent_file(result)
+        local = _local_file(block) if block is not None else None
+        if block is None or local is None:
+            return result
+        name = str(block.get("filename") or block.get("path") or "file")
+        size = local.stat().st_size
+        # Past the cap only the name is checked: a stand-in byte keeps it from reading as empty.
+        inspection = inspect_file(name, local.read_bytes() if size <= MAX_INSPECT_BYTES else b"x")
+        if size > MAX_INSPECT_BYTES:
+            inspection.facts = []
+        if not inspection.ok:
+            return ToolMessage(
+                content=NOT_SENT.format(problems="; ".join(inspection.problems)),
+                name=DELIVERY_TOOL,
+                tool_call_id=str(request.tool_call.get("id") or ""),
+                status="error",
+            )
+        thread = str(_configurable().get("thread_id") or "")
+        if thread:
+            with self._store.locked(thread):
+                task = self._store.running(thread)
+                if task is not None:
+                    same = [d for d in task.deliverables if d.name == name]
+                    task.deliverables = [
+                        *task.deliverables[-29:],
+                        Deliverable(
+                            name=name[:300],
+                            path=str(block.get("path") or name)[:1000],
+                            size=size,
+                            version=len(same) + 1,
+                            facts=inspection.facts,
+                        ),
+                    ]
+                    task.updated_at = time.time()
+                    self._store.save(thread, task)
+        return result
+
     def wrap_tool_call(
         self,
         request: ToolCallRequest,
@@ -334,7 +418,7 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         task, refused = self._before(request)
         if refused is not None:
             return refused
-        result = handler(request)
+        result = self._deliver(request, handler(request))
         return self._after(request, task, result) if task is not None else result
 
     async def awrap_tool_call(
@@ -346,4 +430,6 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         if refused is not None:
             return refused
         result = await handler(request)
+        # Reading and checking the file is blocking work: off the event loop.
+        result = await asyncio.to_thread(self._deliver, request, result)
         return self._after(request, task, result) if task is not None else result

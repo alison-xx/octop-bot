@@ -208,6 +208,36 @@
   color: var(--bot-muted, var(--fn-text-secondary));
 }
 
+.deliverables {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.deliverable {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+.deliverableBody {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.deliverableName {
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.version {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--bot-incoming, var(--fn-bg-secondary));
+  font-size: 11px;
+  color: var(--bot-muted, var(--fn-text-secondary));
+}
+
 // Delivery report
 .report {
   padding: 12px 14px 10px;

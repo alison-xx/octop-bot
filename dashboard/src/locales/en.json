@@ -9039,6 +9039,19 @@
     },
     "review": "Independent review",
     "showReview": "Show the review",
-    "hideReview": "Hide"
+    "hideReview": "Hide",
+    "deliverables": "Deliverables",
+    "checked": "Checked: {{facts}}",
+    "opens": "opens",
+    "fact": {
+      "pages": "{{count}} pages",
+      "rows": "{{count}} data rows",
+      "sheets": "{{count}} sheets",
+      "slides": "{{count}} slides",
+      "chars": "{{count}} characters",
+      "lines": "{{count}} lines",
+      "files": "{{count}} files",
+      "pixels": "{{w}}×{{h}}"
+    }
   }
 }

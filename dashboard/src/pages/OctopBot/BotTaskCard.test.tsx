@@ -117,4 +117,40 @@ describe("BotTaskReport", () => {
       "botTask.minutes",
     );
   });
+
+  it("lists the delivered files once each, with their newest version and what was checked", () => {
+    render(
+      <BotTaskReport
+        task={{
+          ...base,
+          status: "done",
+          finished_at: base.started_at + 60,
+          deliverables: [
+            {
+              name: "价格对比.xlsx",
+              path: "价格对比.xlsx",
+              size: 2048,
+              version: 1,
+              facts: [],
+              at: 1,
+            },
+            {
+              name: "价格对比.xlsx",
+              path: "价格对比.xlsx",
+              size: 4096,
+              version: 2,
+              facts: [{ k: "sheets", n: 3 }],
+              at: 2,
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText("botTask.deliverables")).toBeTruthy();
+    expect(screen.getAllByText(/价格对比.xlsx/)).toHaveLength(1);
+    expect(screen.getByText("v2")).toBeTruthy();
+    expect(screen.getByText(/botTask.checked/).textContent).toContain(
+      "botTask.fact.sheets",
+    );
+  });
 });

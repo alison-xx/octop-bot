@@ -18,6 +18,31 @@ export interface BotTaskCriterion {
   evidence: string;
 }
 
+/** What the server checked on a delivered file, worded by the client. */
+export interface BotDeliverableFact {
+  k:
+    | "pages"
+    | "rows"
+    | "sheets"
+    | "slides"
+    | "chars"
+    | "lines"
+    | "files"
+    | "pixels";
+  n: number;
+  w?: number;
+  h?: number;
+}
+
+export interface BotDeliverable {
+  name: string;
+  path: string;
+  size: number;
+  version: number;
+  facts: BotDeliverableFact[];
+  at: number;
+}
+
 export interface BotTask {
   id: string;
   goal: string;
@@ -34,6 +59,8 @@ export interface BotTask {
   /** Independent reviews of a deep task, and what the last one found. */
   reviews?: number;
   review?: string;
+  /** Files handed to the user during the task, after they passed the checks. */
+  deliverables?: BotDeliverable[];
 }
 
 export interface BotTaskEntry {

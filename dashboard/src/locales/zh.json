@@ -9039,6 +9039,19 @@
     },
     "review": "独立复核",
     "showReview": "展开复核结论",
-    "hideReview": "收起"
+    "hideReview": "收起",
+    "deliverables": "产物",
+    "checked": "已检查：{{facts}}",
+    "opens": "能打开",
+    "fact": {
+      "pages": "{{count}} 页",
+      "rows": "{{count}} 行数据",
+      "sheets": "{{count}} 个工作表",
+      "slides": "{{count}} 页幻灯片",
+      "chars": "{{count}} 字",
+      "lines": "{{count}} 行",
+      "files": "{{count}} 个文件",
+      "pixels": "{{w}}×{{h}}"
+    }
   }
 }

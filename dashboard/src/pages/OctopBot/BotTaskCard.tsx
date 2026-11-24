@@ -12,9 +12,17 @@ import {
   X,
 } from "lucide-react";
 import Markdown from "../../components/Markdown";
+import FileTypeIcon from "../../components/FileCard/FileTypeIcon";
+import {
+  fileTypeLabel,
+  fileTypeOf,
+  formatFileSize,
+  middleEllipsis,
+} from "../../components/FileCard/fileCardMeta";
 import type { TodoListItem } from "../../utils/parseWriteTodos";
 import {
   taskSeconds,
+  type BotDeliverable,
   type BotTask,
   type BotTaskCriterion,
   type BotTaskEntry,
@@ -104,6 +112,49 @@ function Steps({ todos, live }: { todos: TodoListItem[]; live: boolean }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+function Deliverables({ items }: { items: BotDeliverable[] }) {
+  const { t } = useTranslation();
+  // A file sent again replaces its earlier version in the list.
+  const latest = new Map<string, BotDeliverable>();
+  for (const item of items) latest.set(item.name, item);
+  return (
+    <ul className={styles.deliverables}>
+      {[...latest.values()].map((item) => {
+        const facts = item.facts.map((fact) =>
+          t(`botTask.fact.${fact.k}`, { count: fact.n, w: fact.w, h: fact.h }),
+        );
+        return (
+          <li key={item.name} className={styles.deliverable}>
+            <FileTypeIcon
+              kind={fileTypeOf(item.name)}
+              label={fileTypeLabel(item.name)}
+              size={28}
+            />
+            <span className={styles.deliverableBody}>
+              <span className={styles.deliverableName} title={item.name}>
+                {middleEllipsis(item.name, 40)}
+                {item.version > 1 && (
+                  <span className={styles.version}>v{item.version}</span>
+                )}
+              </span>
+              <small className={styles.evidence}>
+                {[
+                  formatFileSize(item.size),
+                  t("botTask.checked", {
+                    facts: facts.length
+                      ? facts.join(" · ")
+                      : t("botTask.opens"),
+                  }),
+                ].join(" · ")}
+              </small>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -231,6 +282,12 @@ export function BotTaskReport({ task }: { task: BotTask }) {
         </span>
       </header>
       {task.summary && <p className={styles.summary}>{task.summary}</p>}
+      {Boolean(task.deliverables?.length) && (
+        <>
+          <h4 className={styles.sectionTitle}>{t("botTask.deliverables")}</h4>
+          <Deliverables items={task.deliverables ?? []} />
+        </>
+      )}
       <h4 className={styles.sectionTitle}>{t("botTask.acceptance")}</h4>
       <Criteria criteria={task.criteria} />
       {task.open_issues.length > 0 && (

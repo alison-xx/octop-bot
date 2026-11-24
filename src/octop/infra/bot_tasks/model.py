@@ -29,6 +29,17 @@ class Criterion(BaseModel):
     evidence: str = Field(default="", max_length=1000)
 
 
+class Deliverable(BaseModel):
+    """A file the Bot handed to the user during the task, after it passed the checks."""
+
+    name: str = Field(max_length=300)
+    path: str = Field(max_length=1000)
+    size: int = 0
+    version: int = 1
+    facts: list[dict[str, int | str]] = Field(default_factory=list, max_length=10)
+    at: float = Field(default_factory=time.time)
+
+
 class Budget(BaseModel):
     steps: int = Field(ge=1, le=500)
     minutes: int = Field(ge=1, le=600)
@@ -52,6 +63,7 @@ class Task(BaseModel):
     reviewed_at: float | None = None
     reviews: int = 0
     review: str = Field(default="", max_length=1000)
+    deliverables: list[Deliverable] = Field(default_factory=list, max_length=30)
 
     def unchecked(self) -> list[int]:
         """1-based numbers of criteria still without a verdict."""
