@@ -1,6 +1,6 @@
 # Octop Bot 与官方 Octop 共轨方案（issue #28）
 
-> 状态：设计稿（2026-11-24）。对应 [issue #28](https://github.com/alison-xx/octop-bot/issues/28)。腾讯云 Token 消耗接入在另一条线上做，本文不涉及。
+> 状态：进行中（2026-11-24 更新）。对应 [issue #28](https://github.com/alison-xx/octop-bot/issues/28)。腾讯云 Token 消耗接入在另一条线上做，本文不涉及。
 
 ## 0. 结论先行
 
@@ -15,7 +15,7 @@
 |------|------|------|
 | 新增后端文件 | 70 个，约 1.3 万行（`bot_*` 路由、`infra/bot_groups`、`infra/cloud`、`infra/auth/lynxce*`、`agents/bot_*` 等） | 原样搬进 `octop_bot` |
 | 改过的上游后端文件 | 64 个，约 30 处挂钩点；`infra/agents/manager.py` 一个文件就 +478 行 | 每处挂钩要么提成上游通用修复，要么换成扩展点调用 |
-| 迁移 `026_bot_groups` | 6 张表，占用了上游下一个迁移号 026 | **最急**：上游自己出 026 时会撞号。#3130 合并后改成 `octop_bot` 命名空间下的 `001_bot_groups`，已有数据库的表靠 `IF NOT EXISTS` 原样接管 |
+| 迁移 `027_bot_groups`（原 026） | 6 张表 | 上游已发 `026_invite_redemptions`，已在 #39 改为 027 过渡。#3130 合并后改成 `octop_bot` 命名空间下的 `001_bot_groups`，已有数据库的表靠 `IF NOT EXISTS` 原样接管 |
 | 新增前端文件 | 183 个（其中 `pages/OctopBot` 135 个） | 独立 Bot SPA |
 | 改过的上游前端文件 | 54 个（Chat、Experts、Settings/Models、locales） | 拷进 Bot SPA 维护，上游那份还原 |
 | desktop / mobile / website / fnos | 各自独立 | 不变 |
@@ -42,7 +42,7 @@ octop_bot = "octop_bot.extension:extension"
 | E8 回合 | `prepare_turn`、`route_turn`、`resolve_user_model`、`classify_turn_error` | 处理器与 `AgentManager.stream/call/resume/cancel` | 群聊回合、个人账号模型、灵策积分不足等错误 |
 | E9 / E10 / E11 | `wrap_channel_processor`；`on_turn_state`；`setup_flavor` / `update_provider` | 网关、历史投影、安装向导和更新 | 群聊 IM、压缩边界、免密安装和 Bot 自带更新 |
 
-E1 已提交为 [TencentCloud/Octop#3129](https://github.com/TencentCloud/Octop/pull/3129)（`docs/extensions.md` 是接口说明），带一段 RFC 式说明，后面几批都在它上面加方法，不改加载机制。如果上游对某一批有不同看法，以上游的形态为准，fork 跟着改。
+E1 已合入上游 [TencentCloud/Octop#3129](https://github.com/TencentCloud/Octop/pull/3129)（`docs/extensions.md` 是接口说明；评审后补了启动失败时按逆序回滚已启动扩展）。E5 的 i18n、供应商预设、HITL 排除工具、侧栏键、虚拟渠道五项已提交 [TencentCloud/Octop#3141](https://github.com/TencentCloud/Octop/pull/3141)；错误码（`StrEnum` 无法运行时扩展）和存储后端类型（需要 resolver 函数）另行讨论。E6 的配置规范化、共享检查、删除检查、对其他 Agent 隐藏四个钩子已提交 [TencentCloud/Octop#3142](https://github.com/TencentCloud/Octop/pull/3142)；删除时跳过清理、浏览器档案、宿主文件开关、线程分享规则不适合简单钩子，留到后续批次。如果上游对某一批有不同看法，以上游的形态为准，fork 跟着改。
 
 ## 3. 可直接提给上游的通用修复
 
@@ -94,8 +94,8 @@ Bot 层后续的“对话里创建 Bot”等能力直接复用这个工具，不
 
 | 阶段 | 内容 | 依赖 |
 |------|------|------|
-| S0（现在） | 上游 PR：`octop_api` 工具（#3128）、E1 地基（#3129）、通用修复若干；本文档 | 无 |
-| S1 | 上游 PR：E2 存储（#3130 迁移、#3131 仓库，解决 026 撞号）、E5、E6 | 上游对 E1 的反馈 |
+| S0（完成） | E1 地基 #3129 已合；通用修复 #3115–#3125、#3132、#1284、#2023 已合；`octop_api` 工具 #3128 按评审修改中 | 无 |
+| S1（进行中） | 上游 PR：E2 存储（#3130 迁移、#3131 仓库）、E5 #3141、E6 #3142 | 上游评审 |
 | S2 | 在飞分支全部合进 main；fork 同步 `upstream/develop`；用 fork 内的扩展点把 Bot 代码搬进 `octop_bot` | 在飞分支收口 |
 | S3 | E7–E11 上游 PR；Bot SPA 独立 | S2 |
 | S4 | 上游发版带齐扩展点后，删除 vendored 的 `src/octop`，改为依赖 PyPI 的 `octop` | 上游发版 |
