@@ -9,7 +9,7 @@ import {
   Select,
   Spin,
 } from "antd";
-import { Cloud, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { octopCronApi } from "../../api/modules/cronjob";
@@ -35,7 +35,6 @@ import {
   oneShotPhaseLabelKey,
 } from "../Control/CronJobs/onceSchedule";
 import styles from "./BotActivity.module.less";
-import { cloudDraftFromTimer } from "./cloudScheduleDraft";
 
 type Frequency = "daily" | "weekdays" | "weekly" | "once";
 const weekdays = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
@@ -251,7 +250,6 @@ export default function BotSchedulesDialog({
   threadId,
   edition,
   onClose,
-  onOpenCloud,
 }: {
   agentId: string;
   name: string;
@@ -259,7 +257,6 @@ export default function BotSchedulesDialog({
   /** Where the server runs: only "desktop" runs tasks on this computer. */
   edition?: "desktop" | "web" | "cloud" | "server";
   onClose: () => void;
-  onOpenCloud?: (job?: OctopCronRow) => void;
 }) {
   const { t, i18n } = useTranslation();
   const [data, setData] = useState<{
@@ -389,14 +386,6 @@ export default function BotSchedulesDialog({
                 {t("cronJobs.scheduleTimezone")} · {data.timezone}
               </span>
               <div className={styles.actions}>
-                {onOpenCloud && (
-                  <Button
-                    icon={<Cloud size={15} />}
-                    onClick={() => onOpenCloud()}
-                  >
-                    {t("botCloud.schedules")}
-                  </Button>
-                )}
                 <Button
                   aria-label={t("common.refresh")}
                   title={t("common.refresh")}
@@ -479,14 +468,6 @@ export default function BotSchedulesDialog({
                           job.last_status === "waiting") &&
                           job.last_error && <small>{job.last_error}</small>}
                       </div>
-                      {onOpenCloud &&
-                        !job.enabled &&
-                        !pastOnce &&
-                        cloudDraftFromTimer(job) && (
-                          <Button size="small" onClick={() => onOpenCloud(job)}>
-                            {t("botCloud.copyTimer")}
-                          </Button>
-                        )}
                       {!pastOnce && job.task_type !== "script" && (
                         <Button
                           size="small"
