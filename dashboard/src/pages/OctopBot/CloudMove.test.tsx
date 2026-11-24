@@ -37,15 +37,13 @@ it("moves the team after a Lynxce sign-in and reopens on the cloud", async () =>
     account_id: "lx1",
     display_name: "Alison",
   });
-  api.moveStatus
-    .mockResolvedValueOnce(idle)
-    .mockResolvedValue({
-      ...idle,
-      state: "done",
-      done: 3,
-      total: 3,
-      access_token: "cloud-jwt",
-    });
+  api.moveStatus.mockResolvedValueOnce(idle).mockResolvedValue({
+    ...idle,
+    state: "done",
+    done: 3,
+    total: 3,
+    access_token: "cloud-jwt",
+  });
   api.move.mockResolvedValue({ ...idle, state: "running", total: 3 });
 
   render(<CloudMove />);

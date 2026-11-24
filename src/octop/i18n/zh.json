@@ -442,6 +442,7 @@
     "LYNXCE_CODE_INVALID": "验证码错误或已过期，请重新获取。",
     "LYNXCE_CODE_TARGET_INVALID": "请输入正确的手机号或邮箱。",
     "LYNXCE_CODE_THROTTLED": "验证码发送太频繁，请稍后再试。",
+    "LYNXCE_SIGNUP_PASSWORD_REQUIRED": "这个邮箱还没有灵策账号。请设置一个至少 8 位的登录密码来注册，再用同一个验证码登录。",
     "BOT_CLOUD_REQUEST_REJECTED": "灵策云未能执行此操作。",
     "BOT_CLOUD_CREDITS_REQUIRED": "灵策积分不足，到 https://admin.lynxce.cn/recharge 充值后就能继续。",
     "BOT_LYNXCE_DAILY_LIMIT": "今天的灵策用量已到每日上限，北京时间早上 8 点自动恢复。急用的话，可以到灵策账户中心 https://admin.lynxce.cn 调高「Octop Bot」这把 Key 的每日上限。",

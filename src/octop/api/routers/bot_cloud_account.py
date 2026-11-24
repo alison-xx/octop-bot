@@ -101,6 +101,11 @@ class CodeSent(BaseModel):
 class CodeLogin(BaseModel):
     target: str = Field(min_length=1, max_length=256, description="The phone number or email.")
     code: SecretStr = Field(description="Six-digit code from the text message or email.")
+    password: SecretStr | None = Field(
+        default=None,
+        description="Only after a `LYNXCE_SIGNUP_PASSWORD_REQUIRED` reply: the sign-in password "
+        "for the new Lynxce account (a new email needs one). Sent with the same code.",
+    )
 
 
 @router.post(
@@ -108,7 +113,7 @@ class CodeLogin(BaseModel):
     summary="Send me a Lynxce sign-in code",
     description=(
         "Lynxce texts or emails a six-digit code. Accounts that do not exist yet are created "
-        "on first sign-in and need no password."
+        "on first sign-in; a new email also needs a sign-in password."
     ),
 )
 async def send_code(body: CodeRequest, user: Owner) -> CodeSent:
@@ -122,7 +127,10 @@ async def send_code(body: CodeRequest, user: Owner) -> CodeSent:
 async def login_code(
     body: CodeLogin, user: Owner, services: Services, server: Server
 ) -> CloudAccountStatus:
-    status = await login_cloud_code(services, user.id, body.target, body.code.get_secret_value())
+    password = body.password.get_secret_value() if body.password else None
+    status = await login_cloud_code(
+        services, user.id, body.target, body.code.get_secret_value(), password
+    )
     return await _signed_in(server, services, user.id, status)
 
 

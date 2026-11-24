@@ -62,6 +62,12 @@ class LynxceCodeSent(BaseModel):
 class LynxceCodeLoginBody(BaseModel):
     target: str = Field(min_length=1, max_length=256, description="Lynxce phone or email.")
     code: str = Field(min_length=1, max_length=16, description="Six-digit code Lynxce sent.")
+    password: str | None = Field(
+        default=None,
+        max_length=4096,
+        description="Only after a `LYNXCE_SIGNUP_PASSWORD_REQUIRED` reply: the sign-in password "
+        "for the new Lynxce account (a new email needs one). Sent with the same code.",
+    )
     locale: str | None = Field(default=None, max_length=16)
     local_password: str | None = Field(
         default=None,
@@ -206,20 +212,22 @@ async def lynxce_code_login(
 ) -> dict[str, Any]:
     """Same as ``/lynxce/login``, proved with the code from ``/lynxce/code``.
 
-    Works for Lynxce accounts that never set a password.
+    Works for Lynxce accounts that never set a password. A new email account needs one:
+    Lynxce answers ``LYNXCE_SIGNUP_PASSWORD_REQUIRED``, and the client signs in again with
+    the same code and ``password``.
     """
     if bot_cloud_enabled():
         return await _cloud_sign_in(
             server,
             request,
             body.locale,
-            lambda: lynxce_cloud.open_code_session(body.target, body.code),
+            lambda: lynxce_cloud.open_code_session(body.target, body.code, body.password),
         )
     return await _sign_in(
         server,
         request,
         body.locale,
-        lambda: lynxce_cloud.verify_account_code(body.target, body.code),
+        lambda: lynxce_cloud.verify_account_code(body.target, body.code, body.password),
         body.local_password,
     )
 

@@ -65,7 +65,10 @@ export default function CloudWorkspace() {
       window.removeEventListener("focus", loadAccount);
     };
   }, [loadAccount]);
-  async function signIn(attempt: () => Promise<CloudAccount>) {
+  /** Resolves with the error when sign-in failed (shown here, inspected by the form). */
+  async function signIn(
+    attempt: () => Promise<CloudAccount>,
+  ): Promise<unknown> {
     setBusy(true);
     setError("");
     try {
@@ -74,6 +77,7 @@ export default function CloudWorkspace() {
       setAccount(next);
     } catch (err) {
       setError(apiErrorMessage(err, t("octopBot.failed"), t));
+      return err;
     } finally {
       setBusy(false);
     }
@@ -185,8 +189,8 @@ export default function CloudWorkspace() {
                   )
                 ).channel
               }
-              onCode={(target, code) =>
-                signIn(() => botCloudApi.codeLogin(target, code))
+              onCode={(target, code, password) =>
+                signIn(() => botCloudApi.codeLogin(target, code, password))
               }
               onPassword={(account, password) =>
                 signIn(() => botCloudApi.login(account, password))

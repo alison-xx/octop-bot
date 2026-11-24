@@ -147,7 +147,7 @@ describe("the hosted Bot chat", () => {
       },
     );
     await waitFor(() =>
-      expect(login).toHaveBeenCalledWith("13800000000", "123456"),
+      expect(login).toHaveBeenCalledWith("13800000000", "123456", undefined),
     );
   });
   it("signs in with the WorkBuddy hand-off code from the desktop window", async () => {

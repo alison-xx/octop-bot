@@ -446,18 +446,21 @@ export const authApi = {
       body: JSON.stringify({ target, locale }),
     }),
 
-  /** Bot web build: sign in with a Lynxce one-time code (no password needed). */
+  /** Bot web build: sign in with a Lynxce one-time code. `password` only after
+   *  LYNXCE_SIGNUP_PASSWORD_REQUIRED: a new email account needs one. */
   lynxceCodeLogin: async (
     target: string,
     code: string,
     locale?: string,
     localPassword?: string,
+    password?: string,
   ): Promise<LoginResponse> => {
     const raw = await request<RawLoginResponse>("/auth/lynxce/code-login", {
       method: "POST",
       body: JSON.stringify({
         target,
         code,
+        password: password || undefined,
         locale,
         local_password: localPassword || undefined,
       }),

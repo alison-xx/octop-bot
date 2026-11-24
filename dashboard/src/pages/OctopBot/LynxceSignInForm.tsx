@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, Input } from "antd";
 import { useTranslation } from "react-i18next";
+import { parseApiError } from "../../utils/apiError";
 import styles from "./LynxceSignInForm.module.less";
 
 const RESEND_SECONDS = 60;
 const CODE = /^\d{6}$/;
+const MIN_PASSWORD = 8;
 
 type Mode = "code" | "password";
 
@@ -18,8 +20,12 @@ export interface LynxceSignInFormProps {
   autoFocus?: boolean;
   /** Ask Lynxce to text or email a code; resolves to where it went. */
   sendCode: (target: string) => Promise<"phone" | "email">;
-  onCode: (target: string, code: string) => Promise<void>;
-  onPassword: (account: string, password: string) => Promise<void>;
+  /**
+   * Sign in with the code; the caller shows any error, and resolves with it.
+   * `password` is set only after Lynxce asked for one to create a new (email) account.
+   */
+  onCode: (target: string, code: string, password?: string) => Promise<unknown>;
+  onPassword: (account: string, password: string) => Promise<unknown>;
   onError: (error: unknown) => void;
   onClearError: () => void;
   children?: ReactNode;
@@ -47,6 +53,9 @@ export default function LynxceSignInForm({
   const [target, setTarget] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
+  // Lynxce creates a new email account only with a password; asked after the first try.
+  const [askPassword, setAskPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
   const [sending, setSending] = useState(false);
   const [sentTo, setSentTo] = useState<"phone" | "email" | null>(null);
   const [wait, setWait] = useState(0);
@@ -66,6 +75,7 @@ export default function LynxceSignInForm({
       setSentTo(await sendCode(target.trim()));
       setWait(RESEND_SECONDS);
       setCode("");
+      setAskPassword(false);
       tried.current = "";
       document.getElementById(`${idPrefix}-code`)?.focus();
     } catch (err) {
@@ -75,11 +85,26 @@ export default function LynxceSignInForm({
     }
   };
 
+  const passwordReady =
+    !askPassword || newPassword.trim().length >= MIN_PASSWORD;
+
   const submitCode = (value: string) => {
-    if (busy || !target.trim() || !CODE.test(value)) return;
+    if (busy || !target.trim() || !CODE.test(value) || !passwordReady) return;
     tried.current = value;
     onClearError();
-    void onCode(target.trim(), value);
+    void onCode(
+      target.trim(),
+      value,
+      askPassword ? newPassword : undefined,
+    ).then((failure) => {
+      if (parseApiError(failure)?.code === "LYNXCE_SIGNUP_PASSWORD_REQUIRED") {
+        setAskPassword(true);
+        // The code is still good: only the password is missing.
+        window.setTimeout(
+          () => document.getElementById(`${idPrefix}-new-password`)?.focus(),
+        );
+      }
+    });
   };
 
   const submit = () => {
@@ -140,6 +165,7 @@ export default function LynxceSignInForm({
         onChange={(e) => {
           setTarget(e.target.value);
           setSentTo(null);
+          setAskPassword(false);
         }}
         placeholder={t(
           mode === "code"
@@ -184,6 +210,21 @@ export default function LynxceSignInForm({
                 )
               : t("lynxceSignIn.newAccountHint")}
           </small>
+          {askPassword && (
+            <>
+              <label htmlFor={`${idPrefix}-new-password`}>
+                {t("lynxceSignIn.newPassword")}
+              </label>
+              <Input.Password
+                id={`${idPrefix}-new-password`}
+                autoComplete="new-password"
+                maxLength={256}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+              <small>{t("lynxceSignIn.newPasswordHint")}</small>
+            </>
+          )}
         </>
       ) : (
         <>
@@ -206,7 +247,8 @@ export default function LynxceSignInForm({
         htmlType="submit"
         loading={busy}
         disabled={
-          !target.trim() || (mode === "code" ? !CODE.test(code) : !password)
+          !target.trim() ||
+          (mode === "code" ? !CODE.test(code) || !passwordReady : !password)
         }
       >
         {submitLabel}

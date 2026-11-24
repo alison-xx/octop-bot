@@ -122,11 +122,12 @@ export const botCloudApi = {
       root + "/account/code",
       json("POST", { target, locale }),
     ),
-  /** Sign in with the one-time code (also works for password-less accounts). */
-  codeLogin: (target: string, code: string) =>
+  /** Sign in with the one-time code (also works for password-less accounts).
+   *  `password` only after LYNXCE_SIGNUP_PASSWORD_REQUIRED: a new email needs one. */
+  codeLogin: (target: string, code: string, password?: string) =>
     request<CloudAccount>(
       root + "/account/code-login",
-      json("POST", { target, code }),
+      json("POST", { target, code, password: password || undefined }),
     ),
   loginWorkbuddy: (handoffCode: string) =>
     request<CloudAccount>(
