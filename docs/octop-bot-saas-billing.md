@@ -55,14 +55,14 @@
 | 位置 | 内容 |
 |---|---|
 | 左 | 图标 + Octop Bot，点击回首页（去掉单独的「首页」） |
-| 中 | 功能 · Bot 市场 · 定价 · 帮助 ▾（使用指南、更新日志、常见问题、GitHub） |
-| 右（未登录） | 网页版 · EN · 外观 ｜ 登录 · **下载** |
-| 右（已登录） | 网页版 · EN · 外观 ｜ 头像 + 积分余额，点开进个人中心 |
+| 中 | 功能 · Bot 市场 · 定价 · 帮助 ▾（使用指南、更新日志、常见问题） |
+| 右（未登录） | GitHub 星标：Octop Bot、上游 Octop ｜ 网页版 · EN · 外观 ｜ 登录 · **下载** |
+| 右（已登录） | GitHub 星标 ｜ 网页版 · EN · 外观 ｜ 头像 + 积分余额，点开进个人中心 |
 
 - 去掉导航里的「下载」链接，只留右上角的下载按钮。
-- 两个 GitHub 星标从顶栏移到「帮助」菜单和页脚。
+- 两个 GitHub 星标（Octop Bot 和上游 Octop，带 star 数）留在顶栏右侧；窄屏时只显示图标和数字。
 - 当前页加粗；在更新日志页时「帮助」加粗。
-- 手机宽度：顶栏只留图标、下载按钮和菜单按钮；菜单按上面的顺序平铺，帮助里的四项直接展开。
+- 手机宽度：顶栏只留图标、下载按钮和菜单按钮；菜单按上面的顺序平铺，帮助里的三项直接展开，星标放在菜单底部。
 
 ![导航栏和帮助菜单](assets/octop-bot-saas-billing/nav.png)
 
@@ -74,7 +74,7 @@
 | 定价·加油包 | `/pricing.html#credits` | 左边金额卡片（含自定义金额），右边固定的结算栏（价格、到账、有效期、购买；底部引导看会员）。客户端「买加油包」打开这一页 | ![](assets/octop-bot-saas-billing/packs.png) |
 | 登录 | `/login.html?next=…` | 验证码 / 密码两个标签，WorkBuddy；没有账号自动注册（带 `X-Lynxce-Signup-Site: octopbot`）；登录后回到 `next` | ![](assets/octop-bot-saas-billing/login.png) |
 | 支付结果 | `/pay/result.html?order=…` | 到账多少、当前余额；「返回 Octop Bot」和「查看订单」 | ![](assets/octop-bot-saas-billing/result.png) |
-| 个人中心·概览 | `/account/` | 积分余额（会过期 / 永久，最近到期日，扣费顺序说明）、当前套餐和到期日、本月已用；本月用量按类别、按 Bot | ![](assets/octop-bot-saas-billing/account.png) |
+| 个人中心·概览 | `/account/` | 积分余额（会过期 / 永久，最近到期日，扣费顺序说明）、当前套餐和到期日、本月已用；本月用量按类别、按 Bot；「积分活动」：近一年每天用掉的积分，像 GitHub 贡献图一样按周排成 7 行，颜色越深用得越多，悬停看当天数字，可切换每日 / 每周 / 累计，上方写近一年总量、用过的天数和最长连续天数，「分享」生成一张图 | ![](assets/octop-bot-saas-billing/account.png) |
 | 用量明细 | `/account/#usage` | 按月；类别：文本对话、作图、做视频、云电脑、云电脑磁盘；维度切换 Bot / 模型 / 类别；导出 CSV | ![](assets/octop-bot-saas-billing/usage.png) |
 | 订单与发票 | `/account/#orders` | 汇总（累计支付、可开票、已开票）；订单列表；单张或批量开票 | ![](assets/octop-bot-saas-billing/orders.png) |
 | 套餐 | `/account/#plan` | 当前档位和到期日、续费、改年付、升级 | ![](assets/octop-bot-saas-billing/plan.png) |
