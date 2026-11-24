@@ -2,6 +2,9 @@
  "data": {
   "textModels": [
    {
+    "modelId": "deepseek-flash",
+    "routeId": "yunxin::deepseek-flash",
+    "routeCostRank": 2,
     "modelName": "DeepSeek V4.1 Flash",
     "providerLabel": "DeepSeek",
     "supportsImage": true,
@@ -10,6 +13,9 @@
     "creditsPerKOutputTokens": 1.536
    },
    {
+    "modelId": "qwen3.8-flash",
+    "routeId": "qianwen::qwen3.8-flash",
+    "routeCostRank": 7,
     "modelName": "Qwen3.8 Flash",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -18,6 +24,9 @@
     "creditsPerKOutputTokens": 1.35
    },
    {
+    "modelId": "glm-5.3-flash",
+    "routeId": "bigmodel::glm-5.3-flash",
+    "routeCostRank": 8,
     "modelName": "GLM-5.3 Flash",
     "providerLabel": "智谱 GLM",
     "supportsImage": true,
@@ -26,6 +35,9 @@
     "creditsPerKOutputTokens": 0.84
    },
    {
+    "modelId": "deepseek-flash",
+    "routeId": "deepseek::deepseek-flash",
+    "routeCostRank": 11,
     "modelName": "DeepSeek V4.1 Flash",
     "providerLabel": "DeepSeek",
     "supportsImage": true,
@@ -34,6 +46,9 @@
     "creditsPerKOutputTokens": 1.2
    },
    {
+    "modelId": "deepseek-ai/DeepSeek-V4-Flash",
+    "routeId": "deepseek::deepseek-ai/DeepSeek-V4-Flash",
+    "routeCostRank": 11,
     "modelName": "DeepSeek V4.1 Flash",
     "providerLabel": "DeepSeek",
     "supportsImage": false,
@@ -42,6 +57,9 @@
     "creditsPerKOutputTokens": 1.2
    },
    {
+    "modelId": "deepseek-v4-flash-vision-exp",
+    "routeId": "deepseek::deepseek-v4-flash-vision-exp",
+    "routeCostRank": 11,
     "modelName": "DeepSeek V4.1 Flash",
     "providerLabel": "DeepSeek",
     "supportsImage": true,
@@ -50,6 +68,9 @@
     "creditsPerKOutputTokens": 1.2
    },
    {
+    "modelId": "deepseek-v4.1-flash-expires-on-0910",
+    "routeId": "deepseek::deepseek-v4.1-flash-expires-on-0910",
+    "routeCostRank": 11,
     "modelName": "DeepSeek V4.1 Flash",
     "providerLabel": "DeepSeek",
     "supportsImage": true,
@@ -58,6 +79,9 @@
     "creditsPerKOutputTokens": 1.2
    },
    {
+    "modelId": "deepseek-ai/DeepSeek-V4-Pro",
+    "routeId": "deepseek::deepseek-ai/DeepSeek-V4-Pro",
+    "routeCostRank": 11,
     "modelName": "DeepSeek V4 Pro",
     "providerLabel": "DeepSeek",
     "supportsImage": false,
@@ -66,6 +90,9 @@
     "creditsPerKOutputTokens": 1.2
    },
    {
+    "modelId": "qwen3.7-plus",
+    "routeId": "qianwen::qwen3.7-plus",
+    "routeCostRank": 18,
     "modelName": "Qwen3.7 Plus",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -74,6 +101,9 @@
     "creditsPerKOutputTokens": 3.2
    },
    {
+    "modelId": "doubao-seed-character-260628",
+    "routeId": "ark::doubao-seed-character-260628",
+    "routeCostRank": 17,
     "modelName": "Doubao Seed Character",
     "providerLabel": "字节豆包",
     "supportsImage": true,
@@ -82,6 +112,9 @@
     "creditsPerKOutputTokens": 6
    },
    {
+    "modelId": "doubao-seed-2.0-pro",
+    "routeId": "ark::doubao-seed-2.0-pro",
+    "routeCostRank": 27,
     "modelName": "Doubao Seed 2.0 Pro",
     "providerLabel": "字节豆包",
     "supportsImage": true,
@@ -90,6 +123,9 @@
     "creditsPerKOutputTokens": 16
    },
    {
+    "modelId": "doubao-seed-2-1-pro-260628",
+    "routeId": "ark::doubao-seed-2-1-pro-260628",
+    "routeCostRank": 33,
     "modelName": "Doubao Seed 2.1 Pro",
     "providerLabel": "字节豆包",
     "supportsImage": true,
@@ -98,6 +134,9 @@
     "creditsPerKOutputTokens": 4
    },
    {
+    "modelId": "deepseek-v4.1-flash",
+    "routeId": "qianwen::deepseek-v4.1-flash",
+    "routeCostRank": 11,
     "modelName": "DeepSeek V4.1 Flash",
     "providerLabel": "DeepSeek",
     "supportsImage": true,
@@ -106,6 +145,9 @@
     "creditsPerKOutputTokens": 1.2
    },
    {
+    "modelId": "deepseek-v4.1-flash-1017",
+    "routeId": "qianwen::deepseek-v4.1-flash-1017",
+    "routeCostRank": 11,
     "modelName": "DeepSeek V4.1 Flash",
     "providerLabel": "DeepSeek",
     "supportsImage": true,
@@ -114,6 +156,9 @@
     "creditsPerKOutputTokens": 1.2
    },
    {
+    "modelId": "deepseek-v4-flash-0731",
+    "routeId": "qianwen::deepseek-v4-flash-0731",
+    "routeCostRank": 14,
     "modelName": "DeepSeek V4 Flash",
     "providerLabel": "DeepSeek",
     "supportsImage": false,
@@ -122,6 +167,9 @@
     "creditsPerKOutputTokens": 1.35
    },
    {
+    "modelId": "deepseek-v4-pro-0813",
+    "routeId": "qianwen::deepseek-v4-pro-0813",
+    "routeCostRank": 24,
     "modelName": "DeepSeek V4 Pro",
     "providerLabel": "DeepSeek",
     "supportsImage": false,
@@ -130,6 +178,9 @@
     "creditsPerKOutputTokens": 4.05
    },
    {
+    "modelId": "deepseek-v4-pro",
+    "routeId": "qianwen::deepseek-v4-pro",
+    "routeCostRank": 25,
     "modelName": "DeepSeek V4 Pro",
     "providerLabel": "DeepSeek",
     "supportsImage": false,
@@ -138,6 +189,9 @@
     "creditsPerKOutputTokens": 3.6
    },
    {
+    "modelId": "qwen3.6-flash",
+    "routeId": "qianwen::qwen3.6-flash",
+    "routeCostRank": 10,
     "modelName": "Qwen3.6 Flash",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -146,6 +200,9 @@
     "creditsPerKOutputTokens": 1.08
    },
    {
+    "modelId": "qwen3.7-max",
+    "routeId": "qianwen::qwen3.7-max",
+    "routeCostRank": 29,
     "modelName": "Qwen3.7 Max",
     "providerLabel": "Qwen",
     "supportsImage": false,
@@ -154,6 +211,9 @@
     "creditsPerKOutputTokens": 5.4
    },
    {
+    "modelId": "qwen3.8-max",
+    "routeId": "qianwen::qwen3.8-max",
+    "routeCostRank": 29,
     "modelName": "Qwen3.8 Max",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -162,6 +222,9 @@
     "creditsPerKOutputTokens": 5.4
    },
    {
+    "modelId": "qwen4-max-preview",
+    "routeId": "qianwen::qwen4-max-preview",
+    "routeCostRank": 29,
     "modelName": "Qwen4 Max Preview",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -170,6 +233,9 @@
     "creditsPerKOutputTokens": 5.4
    },
    {
+    "modelId": "qwen-auto",
+    "routeId": "qianwen::qwen-auto",
+    "routeCostRank": 29,
     "modelName": "Qwen Auto",
     "providerLabel": "Qwen",
     "supportsImage": false,
@@ -178,6 +244,9 @@
     "creditsPerKOutputTokens": 5.4
    },
    {
+    "modelId": "ZHIPU/GLM-5.2",
+    "routeId": "qianwen::ZHIPU/GLM-5.2",
+    "routeCostRank": 25,
     "modelName": "GLM-5.2",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -186,6 +255,9 @@
     "creditsPerKOutputTokens": 4.2
    },
    {
+    "modelId": "glm-5.3",
+    "routeId": "qianwen::glm-5.3",
+    "routeCostRank": 25,
     "modelName": "GLM-5.3",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -194,6 +266,9 @@
     "creditsPerKOutputTokens": 4.2
    },
    {
+    "modelId": "glm-5.3",
+    "routeId": "yunxin::glm-5.3",
+    "routeCostRank": 32,
     "modelName": "GLM-5.3",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -202,6 +277,9 @@
     "creditsPerKOutputTokens": 19.04
    },
    {
+    "modelId": "glm-5.2",
+    "routeId": "yunxin::glm-5.2",
+    "routeCostRank": 32,
     "modelName": "GLM-5.2",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -210,6 +288,9 @@
     "creditsPerKOutputTokens": 19.04
    },
    {
+    "modelId": "glm-5.1",
+    "routeId": "yunxin::glm-5.1",
+    "routeCostRank": 30,
     "modelName": "GLM-5.1",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -218,6 +299,9 @@
     "creditsPerKOutputTokens": 16.32
    },
    {
+    "modelId": "glm-5-turbo",
+    "routeId": "yunxin::glm-5-turbo",
+    "routeCostRank": 28,
     "modelName": "GLM-5 Turbo",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -226,6 +310,9 @@
     "creditsPerKOutputTokens": 14.96
    },
    {
+    "modelId": "glm-5",
+    "routeId": "yunxin::glm-5",
+    "routeCostRank": 26,
     "modelName": "GLM-5",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -234,6 +321,9 @@
     "creditsPerKOutputTokens": 12.24
    },
    {
+    "modelId": "kimi-k3",
+    "routeId": "yunxin::kimi-k3",
+    "routeCostRank": 35,
     "modelName": "Kimi K3",
     "providerLabel": "月之暗面 Kimi",
     "supportsImage": false,
@@ -242,6 +332,9 @@
     "creditsPerKOutputTokens": 70.4
    },
    {
+    "modelId": "kimi-k2.7-code",
+    "routeId": "yunxin::kimi-k2.7-code",
+    "routeCostRank": 31,
     "modelName": "Kimi K2.7 Code",
     "providerLabel": "月之暗面 Kimi",
     "supportsImage": false,
@@ -250,6 +343,9 @@
     "creditsPerKOutputTokens": 19.008
    },
    {
+    "modelId": "kimi-k2.6",
+    "routeId": "yunxin::kimi-k2.6",
+    "routeCostRank": 31,
     "modelName": "Kimi K2.6",
     "providerLabel": "月之暗面 Kimi",
     "supportsImage": false,
@@ -258,6 +354,9 @@
     "creditsPerKOutputTokens": 19.008
    },
    {
+    "modelId": "qwen3.8-max",
+    "routeId": "yunxin::qwen3.8-max",
+    "routeCostRank": 33,
     "modelName": "Qwen3.8 Max",
     "providerLabel": "Qwen",
     "supportsImage": false,
@@ -266,6 +365,9 @@
     "creditsPerKOutputTokens": 21.6
    },
    {
+    "modelId": "qwen3.7-plus",
+    "routeId": "yunxin::qwen3.7-plus",
+    "routeCostRank": 13,
     "modelName": "Qwen3.7 Plus",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -274,6 +376,9 @@
     "creditsPerKOutputTokens": 3.84
    },
    {
+    "modelId": "qwen3.5-flash",
+    "routeId": "yunxin::qwen3.5-flash",
+    "routeCostRank": 1,
     "modelName": "Qwen3.5 Flash",
     "providerLabel": "Qwen",
     "supportsImage": false,
@@ -282,6 +387,9 @@
     "creditsPerKOutputTokens": 1.2
    },
    {
+    "modelId": "doubao-seed-2.1-turbo",
+    "routeId": "yunxin::doubao-seed-2.1-turbo",
+    "routeCostRank": 22,
     "modelName": "Doubao Seed 2.1 Turbo",
     "providerLabel": "字节豆包",
     "supportsImage": false,
@@ -290,6 +398,9 @@
     "creditsPerKOutputTokens": 10.2
    },
    {
+    "modelId": "doubao-seed-2-0-pro-260215",
+    "routeId": "yunxin::doubao-seed-2-0-pro-260215",
+    "routeCostRank": 23,
     "modelName": "Doubao Seed 2.0 Pro",
     "providerLabel": "字节豆包",
     "supportsImage": false,
@@ -298,6 +409,9 @@
     "creditsPerKOutputTokens": 10.88
    },
    {
+    "modelId": "MiniMax-M2.5",
+    "routeId": "yunxin::MiniMax-M2.5",
+    "routeCostRank": 20,
     "modelName": "MiniMax M2.5",
     "providerLabel": "MiniMax",
     "supportsImage": false,
@@ -306,6 +420,9 @@
     "creditsPerKOutputTokens": 5.712
    },
    {
+    "modelId": "MiniMax-M3",
+    "routeId": "yunxin::MiniMax-M3",
+    "routeCostRank": 12,
     "modelName": "MiniMax M3",
     "providerLabel": "MiniMax",
     "supportsImage": false,
@@ -314,6 +431,9 @@
     "creditsPerKOutputTokens": 3.36
    },
    {
+    "modelId": "yunxin/MiniMax-M3.1-Flash",
+    "routeId": "yunxin::yunxin/MiniMax-M3.1-Flash",
+    "routeCostRank": 9,
     "modelName": "MiniMax M3.1 Flash",
     "providerLabel": "MiniMax",
     "supportsImage": true,
@@ -322,6 +442,9 @@
     "creditsPerKOutputTokens": 0.9
    },
    {
+    "modelId": "yunxin/doubao-seed-2-0-lite-260428",
+    "routeId": "yunxin::yunxin/doubao-seed-2-0-lite-260428",
+    "routeCostRank": 6,
     "modelName": "Doubao Seed 2.0 Lite",
     "providerLabel": "字节豆包",
     "supportsImage": true,
@@ -330,6 +453,9 @@
     "creditsPerKOutputTokens": 0.81
    },
    {
+    "modelId": "yunxin/doubao-seed-2-0-mini-260428",
+    "routeId": "yunxin::yunxin/doubao-seed-2-0-mini-260428",
+    "routeCostRank": 1,
     "modelName": "Doubao Seed 2.0 Mini",
     "providerLabel": "字节豆包",
     "supportsImage": true,
@@ -338,6 +464,9 @@
     "creditsPerKOutputTokens": 0.45
    },
    {
+    "modelId": "yunxin/doubao-seed-2-1-lite-260915",
+    "routeId": "yunxin::yunxin/doubao-seed-2-1-lite-260915",
+    "routeCostRank": 3,
     "modelName": "Doubao Seed 2.1 Lite",
     "providerLabel": "字节豆包",
     "supportsImage": true,
@@ -346,6 +475,9 @@
     "creditsPerKOutputTokens": 0.6075
    },
    {
+    "modelId": "yunxin/doubao-seed-2-1-pro-260628",
+    "routeId": "yunxin::yunxin/doubao-seed-2-1-pro-260628",
+    "routeCostRank": null,
     "modelName": "Doubao Seed 2.1 Pro",
     "providerLabel": "字节豆包",
     "supportsImage": true,
@@ -354,6 +486,9 @@
     "creditsPerKOutputTokens": 4
    },
    {
+    "modelId": "yunxin/doubao-seed-character-260628",
+    "routeId": "yunxin::yunxin/doubao-seed-character-260628",
+    "routeCostRank": null,
     "modelName": "Doubao Seed Character",
     "providerLabel": "字节豆包",
     "supportsImage": true,
@@ -362,6 +497,9 @@
     "creditsPerKOutputTokens": 6
    },
    {
+    "modelId": "yunxin/glm-4.6v",
+    "routeId": "yunxin::yunxin/glm-4.6v",
+    "routeCostRank": 5,
     "modelName": "GLM-4.6v",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -370,6 +508,9 @@
     "creditsPerKOutputTokens": 0.675
    },
    {
+    "modelId": "yunxin/glm-4.7",
+    "routeId": "yunxin::yunxin/glm-4.7",
+    "routeCostRank": 19,
     "modelName": "GLM-4.7",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -378,6 +519,9 @@
     "creditsPerKOutputTokens": 2.04
    },
    {
+    "modelId": "yunxin/glm-5.3-flash",
+    "routeId": "yunxin::yunxin/glm-5.3-flash",
+    "routeCostRank": 4,
     "modelName": "GLM-5.3 Flash",
     "providerLabel": "智谱 GLM",
     "supportsImage": true,
@@ -386,6 +530,9 @@
     "creditsPerKOutputTokens": 0.63
    },
    {
+    "modelId": "yunxin/glm-5.3-flashx",
+    "routeId": "yunxin::yunxin/glm-5.3-flashx",
+    "routeCostRank": 16,
     "modelName": "GLM-5.3 Flashx",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -394,6 +541,9 @@
     "creditsPerKOutputTokens": 1.575
    },
    {
+    "modelId": "yunxin/kimi-k2.5",
+    "routeId": "yunxin::yunxin/kimi-k2.5",
+    "routeCostRank": null,
     "modelName": "Kimi K2.5",
     "providerLabel": "月之暗面 Kimi",
     "supportsImage": true,
@@ -402,6 +552,9 @@
     "creditsPerKOutputTokens": 10.5
    },
    {
+    "modelId": "yunxin/kimi-k3.1-pro",
+    "routeId": "yunxin::yunxin/kimi-k3.1-pro",
+    "routeCostRank": 34,
     "modelName": "Kimi K3.1 Pro",
     "providerLabel": "月之暗面 Kimi",
     "supportsImage": true,
@@ -410,6 +563,9 @@
     "creditsPerKOutputTokens": 15.3
    },
    {
+    "modelId": "yunxin/qwen3.5-plus",
+    "routeId": "yunxin::yunxin/qwen3.5-plus",
+    "routeCostRank": 10,
     "modelName": "Qwen3.5 Plus",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -418,6 +574,9 @@
     "creditsPerKOutputTokens": 1.08
    },
    {
+    "modelId": "yunxin/qwen3.6-flash",
+    "routeId": "yunxin::yunxin/qwen3.6-flash",
+    "routeCostRank": 15,
     "modelName": "Qwen3.6 Flash",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -426,6 +585,9 @@
     "creditsPerKOutputTokens": 1.62
    },
    {
+    "modelId": "yunxin/qwen3.6-plus",
+    "routeId": "yunxin::yunxin/qwen3.6-plus",
+    "routeCostRank": 21,
     "modelName": "Qwen3.6 Plus",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -434,6 +596,9 @@
     "creditsPerKOutputTokens": 6
    },
    {
+    "modelId": "yunxin/qwen3.7-flash",
+    "routeId": "yunxin::yunxin/qwen3.7-flash",
+    "routeCostRank": 0,
     "modelName": "Qwen3.7 Flash",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -442,6 +607,9 @@
     "creditsPerKOutputTokens": 0.18
    },
    {
+    "modelId": "yunxin/qwen3.7-max",
+    "routeId": "yunxin::yunxin/qwen3.7-max",
+    "routeCostRank": 33,
     "modelName": "Qwen3.7 Max",
     "providerLabel": "Qwen",
     "supportsImage": false,
@@ -450,6 +618,9 @@
     "creditsPerKOutputTokens": 8.1
    },
    {
+    "modelId": "yunxin/qwen3.8-flash",
+    "routeId": "yunxin::yunxin/qwen3.8-flash",
+    "routeCostRank": 3,
     "modelName": "Qwen3.8 Flash",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -458,6 +629,9 @@
     "creditsPerKOutputTokens": 0.6075
    },
    {
+    "modelId": "yunxin/qwen3.8-max-0902",
+    "routeId": "yunxin::yunxin/qwen3.8-max-0902",
+    "routeCostRank": 33,
     "modelName": "Qwen3.8 Max",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -468,6 +642,7 @@
   ],
   "imageModels": [
    {
+    "modelId": "gpt-image-2.6-flare",
     "displayName": "image2.6",
     "provider": "OpenAI",
     "pricing": {
@@ -476,6 +651,7 @@
     }
    },
    {
+    "modelId": "gpt-image-2.5",
     "displayName": "image2.5",
     "provider": "OpenAI",
     "pricing": {
@@ -484,6 +660,7 @@
     }
    },
    {
+    "modelId": "gpt-image-2.5-hq",
     "displayName": "image2.5 Sunburst",
     "provider": "OpenAI",
     "pricing": {
@@ -492,6 +669,7 @@
     }
    },
    {
+    "modelId": "gpt-image-2",
     "displayName": "image2.0",
     "provider": "OpenAI",
     "pricing": {
@@ -500,6 +678,7 @@
     }
    },
    {
+    "modelId": "qwen-image-2.0-pro",
     "displayName": "Qwen Image 2.0 Pro",
     "provider": "Qwen",
     "pricing": {
@@ -508,6 +687,7 @@
     }
    },
    {
+    "modelId": "doubao-seedream-5-0-260128",
     "displayName": "Doubao Seedream 5.0",
     "provider": "字节豆包",
     "pricing": {
@@ -516,6 +696,7 @@
     }
    },
    {
+    "modelId": "qwen-image-3.0-pro",
     "displayName": "Qwen Image 3.0 Pro",
     "provider": "Qwen",
     "pricing": {
@@ -524,6 +705,7 @@
     }
    },
    {
+    "modelId": "wan2.7-image",
     "displayName": "万相 2.7 图像",
     "provider": "Qwen",
     "pricing": {
@@ -532,6 +714,7 @@
     }
    },
    {
+    "modelId": "wan2.6-t2i",
     "displayName": "万相 2.6 文生图",
     "provider": "Qwen",
     "pricing": {
@@ -540,6 +723,7 @@
     }
    },
    {
+    "modelId": "wan2.7-image-pro",
     "displayName": "万相 2.7 图像 Pro",
     "provider": "Qwen",
     "pricing": {
@@ -548,6 +732,7 @@
     }
    },
    {
+    "modelId": "z-image-turbo",
     "displayName": "Z-Image Turbo",
     "provider": "Qwen",
     "pricing": {
@@ -556,6 +741,7 @@
     }
    },
    {
+    "modelId": "kling/kling-v3-image-generation",
     "displayName": "可灵 Kling V3 图像",
     "provider": "快手可灵",
     "pricing": {
@@ -564,6 +750,7 @@
     }
    },
    {
+    "modelId": "kling/kling-v3-omni-image-generation",
     "displayName": "可灵 Kling V3 Omni 图像",
     "provider": "快手可灵",
     "pricing": {
@@ -574,6 +761,7 @@
   ],
   "videoModels": [
    {
+    "modelId": "ucloud/MiniMax-H3",
     "displayName": "MiniMax H3",
     "provider": "MiniMax",
     "pricing": {
@@ -587,6 +775,7 @@
     }
    },
    {
+    "modelId": "kling/kling-v3-video-generation",
     "displayName": "可灵 Kling V3 视频",
     "provider": "快手可灵",
     "pricing": {
@@ -599,6 +788,7 @@
     }
    },
    {
+    "modelId": "vidu/viduq3-turbo_text2video",
     "displayName": "Vidu Q3 Turbo 文生视频",
     "provider": "生数 Vidu",
     "pricing": {
@@ -612,6 +802,7 @@
     }
    },
    {
+    "modelId": "seedance",
     "displayName": "Seedance 2.0",
     "provider": "字节豆包",
     "pricing": {
@@ -625,6 +816,7 @@
     }
    },
    {
+    "modelId": "vidu/viduq3-turbo_img2video",
     "displayName": "Vidu Q3 Turbo 首帧生视频",
     "provider": "生数 Vidu",
     "pricing": {
@@ -638,6 +830,7 @@
     }
    },
    {
+    "modelId": "vidu/viduq3-turbo_start-end2video",
     "displayName": "Vidu Q3 Turbo 首尾帧视频",
     "provider": "生数 Vidu",
     "pricing": {
@@ -651,6 +844,7 @@
     }
    },
    {
+    "modelId": "vidu/viduq3-turbo_reference2video",
     "displayName": "Vidu Q3 Turbo 参考生视频",
     "provider": "生数 Vidu",
     "pricing": {
@@ -664,11 +858,13 @@
     }
    },
    {
+    "modelId": "doubao-seedance-2-5-260628",
     "displayName": "Seedance 2.5",
     "provider": "字节豆包",
     "pricing": {}
    },
    {
+    "modelId": "doubao-seedance-2-0-mini-260615",
     "displayName": "Seedance 2.0 Mini",
     "provider": "字节豆包",
     "pricing": {
@@ -681,6 +877,7 @@
     }
    },
    {
+    "modelId": "happyhorse-1.1-t2v",
     "displayName": "HappyHorse 文生视频",
     "provider": "HappyHorse",
     "pricing": {
@@ -694,6 +891,7 @@
     }
    },
    {
+    "modelId": "happyhorse-1.1-i2v",
     "displayName": "HappyHorse 图生视频",
     "provider": "HappyHorse",
     "pricing": {
@@ -707,6 +905,7 @@
     }
    },
    {
+    "modelId": "happyhorse-1.1-r2v",
     "displayName": "HappyHorse 参考生视频",
     "provider": "HappyHorse",
     "pricing": {
@@ -720,6 +919,7 @@
     }
    },
    {
+    "modelId": "wan3.0-video",
     "displayName": "万相 3.0 视频",
     "provider": "Qwen",
     "pricing": {
@@ -733,6 +933,7 @@
     }
    },
    {
+    "modelId": "kling",
     "displayName": "可灵 Kling（5 秒）",
     "provider": "快手可灵",
     "pricing": {
