@@ -69,7 +69,7 @@ Octop Bot 设置页有一块「关于与更新」：当前版本、状态（已�
 ## 发版步骤
 
 1. 打 tag `octop-bot-v<版本>`，构建各平台安装包和 NAS 镜像：
-   - Windows：在 x64 Windows 上 `pnpm run package:bot:win`（`desktop/src`）。
+   - Windows：在 x64 Windows 上 `pnpm run package:bot:win`（`desktop/src`），或者在 Actions 里手动运行「Octop Bot Windows」工作流（`.github/workflows/octop-bot-windows.yml`，选发版的 tag 或分支），产物里有安装包、便携 ZIP 和各自的 `.sha256`。这个工作流只能手动触发，推 tag 不会自动打 Windows 包；安装包还没有代码签名，首次运行会被 SmartScreen 提示。
    - macOS：在 Apple 芯片 Mac 上 `pnpm run package:bot:mac`（`desktop/src`），或者推 tag 后用「Octop Bot macOS」工作流打。脚本会签名、公证、钉票据并核对，任何一项不过就失败，签名公证后的 dmg 和 `.sha256` 会复制到 `dist/<版本>/`。不要上传 `--unsigned` 打出来的包。
 2. 把安装包上传到 `https://dl.lynxce.cn/releases/octop-bot/<版本>/`，本地留一份同样的文件夹（下面的 `dist/<版本>`）。
 3. 先发到测试通道，保留稳定通道原样：
