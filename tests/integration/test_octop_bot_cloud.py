@@ -306,6 +306,9 @@ async def test_with_ags_configured_each_bot_gets_its_own_computer(
         mine = await client.get(path, headers={"Authorization": f"Bearer {alice['access_token']}"})
         assert mine.status_code == 200
         assert mine.json()["state"] == "none"
+        assert mine.json()["disk_gb"] == 0
+        assert mine.json()["disk_paid_through"] is None
+        assert mine.json()["disk_overdue_days"] == 0
         theirs = await client.get(path, headers={"Authorization": f"Bearer {bob['access_token']}"})
         assert theirs.status_code == 404
 

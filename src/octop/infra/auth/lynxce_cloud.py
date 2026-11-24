@@ -674,12 +674,18 @@ _TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
     # Cloud computers: minutes reserved before running, settled by the second at pause.
     ("POST", "/api/billing/octop-bot/compute/reserve"): {},
     ("POST", "/api/billing/octop-bot/compute/settle"): {},
+    # A CVM computer's disk, prepaid per Beijing day (it is billed even while stopped).
+    ("POST", "/api/billing/octop-bot/compute/disk/charge"): {},
 }
 # Compute billing also proves the caller is the cloud Octop server, not the tenant (who holds
 # their own token and could otherwise settle a running computer at 0 s). The key is shared
 # with Lynxce, set there by the operator, and never leaves this server.
 _SERVICE_KEY_PATHS = frozenset(
-    {"/api/billing/octop-bot/compute/reserve", "/api/billing/octop-bot/compute/settle"}
+    {
+        "/api/billing/octop-bot/compute/reserve",
+        "/api/billing/octop-bot/compute/settle",
+        "/api/billing/octop-bot/compute/disk/charge",
+    }
 )
 
 

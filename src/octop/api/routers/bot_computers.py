@@ -14,7 +14,11 @@ from fastapi import APIRouter, Depends, Query, WebSocket
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
-from octop.infra.cloud.computers.manager import computer_manager
+from octop.infra.cloud.computers.manager import (
+    DISK_DAILY_CREDITS_PER_GB,
+    computer_manager,
+    disk_billing_enabled,
+)
 from octop.infra.cloud.computers.rfb import RfbClientFilter
 from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.errors import ErrorCode, OctopError
@@ -60,6 +64,23 @@ class ComputerStatus(BaseModel):
         "move, drag, scroll, type, key, wait, elements, zoom or command.",
     )
     activity_at: float | None = Field(default=None, description="Unix time of that action.")
+    disk_gb: int = Field(default=0, description="Provider-billed disk size in GB; zero if none.")
+    disk_daily_credits: float = Field(default=0, description="Estimated daily disk fee in credits.")
+    disk_billing: bool = Field(default=False, description="Whether disk billing is enabled.")
+    disk_paid_through: str | None = Field(
+        default=None, description="Last paid Beijing day (YYYY-MM-DD)."
+    )
+    disk_overdue_days: int = Field(
+        default=0, description="Days since the first failed charge, inclusive."
+    )
+
+    reclaim_notified: bool = Field(default=False, description="A reclaim reminder was delivered.")
+    idle_days: int = Field(default=0, description="Complete days since last use.")
+    reclaim_state: Literal["reminded", "pending_reclaim"] | None = Field(
+        default=None,
+        description="Reclaim eligibility; a reminder may be disabled by configuration.",
+    )
+    reclaim_at: float | None = Field(default=None, description="Reclaim deadline as Unix time.")
 
 
 class ComputerGlance(BaseModel):
@@ -81,9 +102,22 @@ def _owned(server: Any, user: User, agent_id: str) -> Any:
 
 def _status(manager: Any, agent_id: str, user_id: int) -> ComputerStatus:
     record = manager.record(agent_id, user_id)
+    size, overdue = manager.disk_status(record)
+    idle_days, reclaim_state, reclaim_at = manager.reclaim_status(record)
+    disk: dict[str, Any] = {
+        "reclaim_notified": record.reminded_at is not None,
+        "idle_days": idle_days,
+        "reclaim_state": reclaim_state,
+        "reclaim_at": reclaim_at,
+        "disk_gb": size,
+        "disk_daily_credits": round(size * DISK_DAILY_CREDITS_PER_GB, 2),
+        "disk_billing": disk_billing_enabled(),
+        "disk_paid_through": record.disk_paid_day or None,
+        "disk_overdue_days": overdue,
+    }
     if record.instance_id is None:
         return ComputerStatus(
-            state="none", spec=record.spec, takeover=record.controlled(time.time())
+            state="none", spec=record.spec, takeover=record.controlled(time.time()), **disk
         )
     last = manager.activity(agent_id)
     return ComputerStatus(
@@ -95,6 +129,7 @@ def _status(manager: Any, agent_id: str, user_id: int) -> ComputerStatus:
         busy=record.running and manager.busy(agent_id),
         activity=last[0] if last else None,
         activity_at=last[1] if last else None,
+        **disk,
     )
 
 

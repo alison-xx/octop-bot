@@ -9063,6 +9063,10 @@
     "soundHint": "Play a short chime when a new message arrives"
   },
   "cloudComputer": {
+    "diskFee": "Disk {{gb}} GB · {{credits}} credits per day",
+    "diskBillingOff": "Billing currently off",
+    "reclaimWarning": "This computer and its disk files are scheduled for removal. Your Bot, chats, and cloud storage files stay.",
+    "diskOverdue": "Disk fees are {{days}} days overdue.",
     "section": "Cloud computer",
     "state": {
       "none": "Not started",

@@ -1440,5 +1440,9 @@
     "summary_dry_run": "{migrated} to migrate, {skipped} skipped, {failed} failed.",
     "dry_run_hint": "Dry run: nothing was written. Run again without --dry-run to apply.",
     "restart_hint": "If `octop run` is running, restart it to load the migrated providers and channels."
+  },
+  "computer_reclaim": {
+    "idle": "Your cloud computer has been idle. In 7 days, on {date}, this computer and the files on its disk will be removed. Your Bot, chats, and files kept in cloud storage (generated/, outbound/, and its context) stay. Use the computer to cancel.",
+    "unpaid": "Your cloud computer disk fees are unpaid. In 7 days, on {date}, this computer and the files on its disk will be removed. Your Bot, chats, and files kept in cloud storage (generated/, outbound/, and its context) stay. Use the computer or pay to cancel."
   }
 }

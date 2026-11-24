@@ -9063,6 +9063,10 @@
     "soundHint": "收到新消息时播放一声短提示音"
   },
   "cloudComputer": {
+    "diskFee": "盘 {{gb}} GB · 每天 {{credits}} 积分",
+    "diskBillingOff": "暂未收费",
+    "reclaimWarning": "云电脑及磁盘文件即将回收；Bot、聊天记录和云存储文件会保留。",
+    "diskOverdue": "磁盘费欠费 {{days}} 天。",
     "section": "云电脑",
     "state": {
       "none": "未开机",
