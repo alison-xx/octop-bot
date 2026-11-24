@@ -14,7 +14,9 @@ export interface ServerChoice {
   recent: string[];
 }
 
-export type AddressCheck = { ok: true; origin: string } | { ok: false; reason: "empty" | "invalid" | "insecure" };
+export type AddressCheck =
+  | { ok: true; origin: string }
+  | { ok: false; reason: "empty" | "invalid" | "insecure" | "loopback" };
 
 const MAX_RECENT = 5;
 
@@ -29,6 +31,20 @@ export function isLocalNetworkHost(hostname: string): boolean {
   if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
   const [a = -1, b = -1] = parts;
   return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+/** This computer itself: localhost, 127.0.0.0/8 or ::1. */
+export function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return host === "localhost" || host.endsWith(".localhost") || host === "::1" || /^127(\.\d{1,3}){3}$/.test(host);
+}
+
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    return isLoopbackHost(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
 }
 
 /** "octop.example.com" → "https://octop.example.com". Paths and queries are dropped. */
@@ -92,6 +108,54 @@ export class ServerChoiceStore {
     writeFileSync(this.filePath, JSON.stringify(next, null, 2), "utf8");
     return next;
   }
+
+  /**
+   * Forget servers on this computer's loopback address. The released app never talks to
+   * one: its own service is chosen as `current: null`, so a loopback origin here is left
+   * over from a development or test run that shared this profile.
+   */
+  dropLoopback(): ServerChoice {
+    const previous = this.load();
+    const recent = previous.recent.filter((o) => !isLoopbackOrigin(o));
+    const current = previous.current && isLoopbackOrigin(previous.current) ? null : previous.current;
+    if (current === previous.current && recent.length === previous.recent.length) return previous;
+    const next: ServerChoice = { current, recent };
+    writeFileSync(this.filePath, JSON.stringify(next, null, 2), "utf8");
+    return next;
+  }
+}
+
+/** Development and test runs keep their own profile, so they never change the released app's settings. */
+export function botProfileName(productName: string, isPackaged: boolean): string {
+  return isPackaged ? productName : `${productName} Dev`;
+}
+
+export type RemoteFailureAction = "local" | "another" | "retry";
+
+/** The dialog shown when the server chosen last time does not answer. */
+export function remoteFailurePrompt(
+  origin: string,
+  description: string,
+  zh: boolean,
+): {
+  message: string;
+  detail: string;
+  buttons: string[];
+  actions: RemoteFailureAction[];
+  defaultId: number;
+  cancelId: number;
+} {
+  const host = new URL(origin).host;
+  return {
+    message: zh ? `上次连接的服务器 ${host} 暂时连不上` : `Can't reach ${host}, the server you used last time`,
+    detail: zh
+      ? `服务器可能没有开，或者网络断了。你可以改用这台电脑，或者换一个服务器。\n（${description}）`
+      : `The server may be off, or the network may be down. You can use this computer instead, or pick another server.\n(${description})`,
+    buttons: zh ? ["改用本机", "换一个服务器…", "重试"] : ["Use This Computer", "Another Server…", "Retry"],
+    actions: ["local", "another", "retry"],
+    defaultId: 0,
+    cancelId: 2,
+  };
 }
 
 export function defaultServerChoicePath(userDataDir: string): string {
