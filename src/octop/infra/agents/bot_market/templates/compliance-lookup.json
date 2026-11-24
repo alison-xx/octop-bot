@@ -2,6 +2,7 @@
   "slug": "compliance-lookup",
   "version": 1,
   "category": "legal",
+  "roles": ["legal", "marketing"],
   "featured": false,
   "name": { "zh": "合规速查", "en": "Compliance Check" },
   "tagline": {

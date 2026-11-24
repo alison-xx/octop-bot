@@ -41,9 +41,20 @@ class MarketCategory(BaseModel):
     count: int
 
 
+class MarketRole(BaseModel):
+    id: str
+    name: str
+    blurb: str
+    count: int
+    onboarding: int | None = Field(
+        description="Position in the new-user role picker; null means market filter only."
+    )
+
+
 class MarketCard(BaseModel):
     slug: str
     category: str
+    roles: list[str] = Field(description="Job role ids, see Market.roles.")
     featured: bool
     name: str
     tagline: str
@@ -85,6 +96,9 @@ class MarketDetail(MarketCard):
 
 class Market(BaseModel):
     categories: list[MarketCategory]
+    roles: list[MarketRole] = Field(
+        description="Job roles in display order, for the second filter."
+    )
     templates: list[MarketCard]
 
 
@@ -129,6 +143,7 @@ def _card(catalog: Catalog, t: Template, loc: Locale) -> MarketCard:
     return MarketCard(
         slug=t.slug,
         category=t.category,
+        roles=list(t.roles),
         featured=t.featured,
         name=t.name.get(loc),
         tagline=t.tagline.get(loc),
@@ -161,14 +176,27 @@ async def market(request: Request, locale: LocaleParam = None) -> Market:
     loc = _locale(request, locale)
     catalog = await _catalog()
     counts: dict[str, int] = {}
+    role_counts: dict[str, int] = {}
     for t in catalog.templates:
         counts[t.category] = counts.get(t.category, 0) + 1
+        for role in t.roles:
+            role_counts[role] = role_counts.get(role, 0) + 1
     return Market(
         categories=[
             MarketCategory(
                 id=c.id, name=c.name.get(loc), blurb=c.blurb.get(loc), count=counts.get(c.id, 0)
             )
             for c in catalog.categories
+        ],
+        roles=[
+            MarketRole(
+                id=r.id,
+                name=r.name.get(loc),
+                blurb=r.blurb.get(loc),
+                count=role_counts.get(r.id, 0),
+                onboarding=r.onboarding,
+            )
+            for r in catalog.roles
         ],
         templates=[_card(catalog, t, loc) for t in catalog.templates],
     )

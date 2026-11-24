@@ -2,6 +2,7 @@
   "slug": "cash-flow-weekly",
   "version": 1,
   "category": "finance",
+  "roles": ["finance", "founder"],
   "featured": false,
   "name": { "zh": "现金流周报", "en": "Weekly Cash Flow" },
   "tagline": {

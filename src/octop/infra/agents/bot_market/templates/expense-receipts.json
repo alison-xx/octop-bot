@@ -2,6 +2,7 @@
   "slug": "expense-receipts",
   "version": 1,
   "category": "finance",
+  "roles": ["finance", "admin"],
   "featured": false,
   "name": { "zh": "报销票据整理", "en": "Expense Receipt Sorter" },
   "tagline": {

@@ -17,6 +17,12 @@ async def test_catalog_is_public_and_localized(env_admin_alice):
     assert card["name"] == "店铺经营日报"
     assert next(t for t in en["templates"] if t["slug"] == SLUG)["name"] == "Store Daily Brief"
     assert sum(c["count"] for c in zh["categories"]) == len(zh["templates"])
+    assert [r["id"] for r in zh["roles"]] == [r.id for r in load_catalog().roles]
+    assert zh["roles"][0]["name"] == "老板 / 创业者" and zh["roles"][0]["onboarding"] == 1
+    assert card["roles"] == ["operations", "founder"]
+    assert next(r for r in zh["roles"] if r["id"] == "sales")["count"] == sum(
+        "sales" in t["roles"] for t in zh["templates"]
+    )
 
     detail = (await client.get(f"{BASE}/market/{SLUG}", params={"locale": "zh"})).json()
     assert detail["routines"][0]["when"] == "每天 8:30"

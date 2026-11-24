@@ -2,6 +2,7 @@
   "slug": "contract-reviewer",
   "version": 1,
   "category": "legal",
+  "roles": ["legal", "founder"],
   "featured": true,
   "name": { "zh": "合同审阅助手", "en": "Contract Reviewer" },
   "tagline": {

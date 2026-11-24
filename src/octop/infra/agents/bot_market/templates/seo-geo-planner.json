@@ -2,6 +2,7 @@
   "slug": "seo-geo-planner",
   "version": 1,
   "category": "marketing",
+  "roles": ["marketing"],
   "featured": false,
   "name": { "zh": "搜索内容策划", "en": "Search Content Planner" },
   "tagline": {

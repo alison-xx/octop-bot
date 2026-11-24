@@ -1,8 +1,9 @@
 """Bot market: ready-made Bot templates by industry, bundled with the server.
 
 Each template is one ``templates/<slug>.json`` file holding every zh/en string, plus an
-optional ``avatars/<slug>.webp`` portrait. ``categories.json`` lists the industries in
-display order. The website exports the same files (``scripts/export_bot_market.py``), so
+optional ``avatars/<slug>.webp`` portrait. ``categories.json`` lists the industries and
+``roles.json`` the job roles, each in display order; every template names one industry and
+one to three roles. The website exports the same files (``scripts/export_bot_market.py``), so
 the market on octop-bot.lynxce.cn and the one inside the app never drift apart.
 """
 
@@ -92,6 +93,9 @@ class Template(BaseModel):
     slug: str = Field(pattern=SLUG, max_length=48)
     version: int = Field(default=1, ge=1)
     category: str = Field(pattern=SLUG)
+    roles: list[str] = Field(
+        min_length=1, max_length=3, description="Job roles (ids in roles.json) the Bot suits."
+    )
     featured: bool = False
     name: Text
     tagline: Text = Field(description="One line for cards.")
@@ -125,8 +129,20 @@ class Category(BaseModel):
     blurb: Text
 
 
+class Role(BaseModel):
+    id: str = Field(pattern=SLUG)
+    name: Text
+    blurb: Text
+    onboarding: int | None = Field(
+        default=None,
+        ge=1,
+        description="Position in the new-user role picker; null shows it only in the market.",
+    )
+
+
 class Catalog(BaseModel):
     categories: list[Category]
+    roles: list[Role]
     templates: list[Template]
     portraits: frozenset[str] = Field(
         default=frozenset(), description="Slugs that ship a portrait, read once at load."
@@ -154,6 +170,9 @@ def load_catalog() -> Catalog:
     raw = json.loads((ROOT / "categories.json").read_text(encoding="utf-8"))
     categories = [Category.model_validate(item) for item in raw]
     order = {c.id: i for i, c in enumerate(categories)}
+    roles_raw = json.loads((ROOT / "roles.json").read_text(encoding="utf-8"))
+    roles = [Role.model_validate(item) for item in roles_raw]
+    role_ids = {r.id for r in roles}
     templates = []
     for path in sorted(TEMPLATES_DIR.glob("*.json")):
         template = Template.model_validate_json(path.read_text(encoding="utf-8"))
@@ -161,7 +180,10 @@ def load_catalog() -> Catalog:
             raise ValueError(f"{path.name}: slug {template.slug!r} must match the file name")
         if template.category not in order:
             raise ValueError(f"{path.name}: unknown category {template.category!r}")
+        unknown = [r for r in template.roles if r not in role_ids]
+        if unknown or len(set(template.roles)) != len(template.roles):
+            raise ValueError(f"{path.name}: unknown or repeated roles {template.roles!r}")
         templates.append(template)
     templates.sort(key=lambda t: (order[t.category], t.slug))
     portraits = frozenset(t.slug for t in templates if avatar_path(t.slug) is not None)
-    return Catalog(categories=categories, templates=templates, portraits=portraits)
+    return Catalog(categories=categories, roles=roles, templates=templates, portraits=portraits)

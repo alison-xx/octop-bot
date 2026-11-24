@@ -2,6 +2,7 @@
   "slug": "short-video-director",
   "version": 1,
   "category": "content",
+  "roles": ["creator"],
   "featured": false,
   "name": { "zh": "短视频编导", "en": "Short Video Director" },
   "tagline": {

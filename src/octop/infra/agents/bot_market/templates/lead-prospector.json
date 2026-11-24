@@ -2,6 +2,7 @@
   "slug": "lead-prospector",
   "version": 1,
   "category": "sales",
+  "roles": ["sales"],
   "featured": false,
   "name": { "zh": "线索开发助手", "en": "Lead Prospector" },
   "tagline": {
