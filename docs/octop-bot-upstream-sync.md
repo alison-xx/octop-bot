@@ -4,7 +4,7 @@
 
 ## 0. 结论先行
 
-1. **终点是“官方 pip 包 + Bot 扩展包”。** 本仓库不再带一份 `src/octop` 拷贝。改为依赖 PyPI 上的 `octop==x.y`，Bot 层做成独立包 `octop_bot`，通过官方的扩展点接入。桌面、iOS、Android、官网和 fnOS 包照旧放在本仓库。
+1. **终点是“官方 Octop + Octop Bot 插件”（2026-11-25 用户批准的路线调整，详见 [octop-bot-plugin-route.md](octop-bot-plugin-route.md)）。** 本仓库不再带一份 `src/octop` 拷贝。Bot 层做成一个官方插件，靠给官方插件机制补的能力接入；服务端能力仍挂在下面的扩展点上，插件只是换了装载方式。桌面、iOS、Android、官网和 fnOS 包照旧放在本仓库。
 2. **先和上游对齐扩展点，再搬家。** 上游目前只有 harness 级插件（`tool` / `skill` / `hook` / `channel`），没有服务端扩展点，账号、路由、数据表、启动钩子都挂不上去。所以先向 TencentCloud/Octop 提扩展点 PR。fork 里用同一份代码过渡，等上游发版后删掉 vendored 的 `src/octop`。
 3. **前端拆成独立 Bot SPA。** `pages/OctopBot` 和它改过的 Chat 组件搬进本仓库自己的 Vite 应用，由 `octop_bot` 挂载提供。上游 dashboard 原样保留，当管理后台用。
 4. **在飞分支先收口再搬。** 现有 p0–p5、cvm、media、device、cards 等分支合进 main 之后，再从 main 一次性搬目录，免得和十几条并行分支大面积冲突。在这之前只做三件事：上游扩展点、上游通用修复、第三条的 Skill 安全调用。
@@ -32,15 +32,15 @@ octop_bot = "octop_bot.extension:extension"
 
 按迁移的紧迫程度分批提给上游。每批一个 PR，只解决一类问题：
 
-| 批次 | 扩展点 | 上游调用位置 | 覆盖的 Bot 代码 |
-|------|--------|--------------|-----------------|
-| E1 地基 | `load_extensions()`；`on_startup(server)` / `on_shutdown(server)`；`configure_app(app, server)`；`public_paths()` | `OctopServer` 启停、`build_app` 末尾、`deps._JWT_EXEMPT_*`、`setup_lockdown` | 全部 `bot_*` 路由和 `auth_lynxce`、AGS 电脑管理器、群聊恢复任务、免登录路径 |
-| E2 存储 | `migrations() -> ExtensionMigrations(namespace, dir)`，独立水位表 `_extension_schema`（已提交 [TencentCloud/Octop#3130](https://github.com/TencentCloud/Octop/pull/3130)）；`repos(db)` → `RepoBundle.extension(name)`（已提交 [TencentCloud/Octop#3131](https://github.com/TencentCloud/Octop/pull/3131)） | `run_migrations` 之后、`RepoBundle.build` | 026 的 6 张表、Bot 仓库类 |
-| E5 静态贡献 | `i18n_bundles`、`provider_presets`、`backend_kinds`、`thread_channels`、`error_codes`、`hitl_excluded_tools`、`nav_keys` | 各自的注册表 | 灵策预设、`bot_cloud` 后端、群聊线程渠道、`BOT_*` 错误码、文案 |
-| E6 Agent 策略 | `normalize_agent_config`、`can_share`、`before_delete`、`peer_visible`、`host_files_allowed`、`browser_profile`、删除事件 | `AgentManager` 创建/合并/共享/删除、团队、媒体导入 | 私密 Bot、云租户工作区、每个 Bot 独立浏览器档案 |
-| E7 运行配置 | `harness_config(row, cfg, ctx) -> cfg` | `AgentManager._build_harness_config` 末尾 | Bot 工具、中间件、审批项、Chief 引导 |
-| E8 回合 | `prepare_turn`、`route_turn`、`resolve_user_model`、`classify_turn_error` | 处理器与 `AgentManager.stream/call/resume/cancel` | 群聊回合、个人账号模型、灵策积分不足等错误 |
-| E9 / E10 / E11 | `wrap_channel_processor`；`on_turn_state`；`setup_flavor` / `update_provider` | 网关、历史投影、安装向导和更新 | 群聊 IM、压缩边界、免密安装和 Bot 自带更新 |
+| 批次 | 扩展点 | 上游调用位置 | 覆盖的 Bot 代码 | 对应插件批次 |
+|------|--------|--------------|-----------------|------|
+| E1 地基 | `load_extensions()`；`on_startup(server)` / `on_shutdown(server)`；`configure_app(app, server)`；`public_paths()` | `OctopServer` 启停、`build_app` 末尾、`deps._JWT_EXEMPT_*`、`setup_lockdown` | 全部 `bot_*` 路由和 `auth_lynxce`、AGS 电脑管理器、群聊恢复任务、免登录路径 | P2（插件可以交出扩展对象） |
+| E2 存储 | `migrations() -> ExtensionMigrations(namespace, dir)`，独立水位表 `_extension_schema`（已提交 [TencentCloud/Octop#3130](https://github.com/TencentCloud/Octop/pull/3130)）；`repos(db)` → `RepoBundle.extension(name)`（已提交 [TencentCloud/Octop#3131](https://github.com/TencentCloud/Octop/pull/3131)） | `run_migrations` 之后、`RepoBundle.build` | 026 的 6 张表、Bot 仓库类 | P2 |
+| E5 静态贡献 | `i18n_bundles`、`provider_presets`、`backend_kinds`、`thread_channels`、`error_codes`、`hitl_excluded_tools`、`nav_keys` | 各自的注册表 | 灵策预设、`bot_cloud` 后端、群聊线程渠道、`BOT_*` 错误码、文案 | P3 |
+| E6 Agent 策略 | `normalize_agent_config`、`can_share`、`before_delete`、`peer_visible`、`host_files_allowed`、`browser_profile`、删除事件 | `AgentManager` 创建/合并/共享/删除、团队、媒体导入 | 私密 Bot、云租户工作区、每个 Bot 独立浏览器档案 | P4 |
+| E7 运行配置 | `harness_config(row, cfg, ctx) -> cfg` | `AgentManager._build_harness_config` 末尾 | Bot 工具、中间件、审批项、Chief 引导 | P4 |
+| E8 回合 | `prepare_turn`、`route_turn`、`resolve_user_model`、`classify_turn_error` | 处理器与 `AgentManager.stream/call/resume/cancel` | 群聊回合、个人账号模型、灵策积分不足等错误 | P4 |
+| E9 / E10 / E11 | `wrap_channel_processor`；`on_turn_state`；`setup_flavor` / `update_provider` | 网关、历史投影、安装向导和更新 | 群聊 IM、压缩边界、免密安装和 Bot 自带更新 | P5 |
 
 E1 已合入上游 [TencentCloud/Octop#3129](https://github.com/TencentCloud/Octop/pull/3129)（`docs/extensions.md` 是接口说明；评审后补了启动失败时按逆序回滚已启动扩展）。E5 的 i18n、供应商预设、HITL 排除工具、侧栏键、虚拟渠道五项已提交 [TencentCloud/Octop#3141](https://github.com/TencentCloud/Octop/pull/3141)；错误码（`StrEnum` 无法运行时扩展）和存储后端类型（需要 resolver 函数）另行讨论。E6 的配置规范化、共享检查、删除检查、对其他 Agent 隐藏四个钩子已提交 [TencentCloud/Octop#3142](https://github.com/TencentCloud/Octop/pull/3142)；删除时跳过清理、浏览器档案、宿主文件开关、线程分享规则不适合简单钩子，留到后续批次。如果上游对某一批有不同看法，以上游的形态为准，fork 跟着改。
 
@@ -95,7 +95,7 @@ Bot 层后续的“对话里创建 Bot”等能力直接复用这个工具，不
 | 阶段 | 内容 | 依赖 |
 |------|------|------|
 | S0（完成） | E1 地基 #3129 已合；通用修复 #3115–#3125、#3132、#1284、#2023 已合；`octop_api` 工具 #3128 按评审修改中 | 无 |
-| S1（进行中） | 上游 PR：E2 存储（#3130 迁移、#3131 仓库）、E5 #3141、E6 #3142 | 上游评审 |
-| S2 | 在飞分支全部合进 main；fork 同步 `upstream/develop`；用 fork 内的扩展点把 Bot 代码搬进 `octop_bot` | 在飞分支收口 |
-| S3 | E7–E11 上游 PR；Bot SPA 独立 | S2 |
-| S4 | 上游发版带齐扩展点后，删除 vendored 的 `src/octop`，改为依赖 PyPI 的 `octop` | 上游发版 |
+| P1 | 插件清单 v2 + 插件携带系统配置（供应商预设、供应商、默认模型、白名单设置）、Octop 版本约束；octop-harness#303 和 Octop 各一个 PR | 无 |
+| P2–P7 | 服务端能力与存储（#3130、#3131）、配置注册表（#3141 加错误码和存储后端类型）、Agent 与回合（#3142 加 E7、E8）、账号与安装、界面、主题。批次说明见 [octop-bot-plugin-route.md](octop-bot-plugin-route.md) §3 | P1 |
+| 搬家 | 在飞分支合进 main 后，把 Bot 代码搬成插件；Bot 客户端变成插件自带的前端应用 | 在飞分支收口、P1 |
+| 切换 | 上游发版带齐插件能力后，删除 vendored 的 `src/octop`，桌面版和 Docker 改为“官方 Octop + 预装 Bot 插件” | 上游发版 |
