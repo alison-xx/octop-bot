@@ -8,7 +8,11 @@ import {
 import { beforeEach, expect, it, vi } from "vitest";
 import { request } from "../../api/request";
 import type { LynxceWallet } from "../../api/modules/lynxceWallet";
-import { CreditsRequiredCard, LowCreditsBanner } from "./CreditsWidgets";
+import {
+  CreditsPanel,
+  CreditsRequiredCard,
+  LowCreditsBanner,
+} from "./CreditsWidgets";
 import { formatCredits, resetCredits } from "./useLynxceCredits";
 
 vi.mock("../../api/request", () => ({ request: vi.fn() }));
@@ -76,6 +80,7 @@ it("turns an out-of-credit reply into recharge, then continue once credits arriv
     window.dispatchEvent(new Event("focus"));
   });
   expect(await screen.findByText("botCredits.outReady")).toBeInTheDocument();
+  expect(screen.getByText("botCredits.readyTitle")).toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "botCredits.recharge" }),
   ).not.toBeInTheDocument();
@@ -126,4 +131,53 @@ it("tells a used-up daily limit apart from an empty wallet: no top-up, just cont
   );
   fireEvent.click(screen.getByRole("button", { name: "botCredits.continue" }));
   expect(onContinue).toHaveBeenCalledOnce();
+});
+
+it("shows the balance beside the month's usage, by Bot or by model", async () => {
+  balance = 1280;
+  const usage = (rows: [string, number][]) => ({
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 1500,
+    model_calls: 7,
+    turns: 3,
+    buckets: rows.map(([label, total_tokens]) => ({
+      key: label,
+      label,
+      total_tokens,
+    })),
+  });
+  vi.mocked(request).mockImplementation(async (path: string) => {
+    if (path === "/octop-bot/server-info") return { edition: "cloud" };
+    if (path.startsWith("/octop-bot/wallet?")) return wallet(balance);
+    if (path.includes("granularity=by_agent"))
+      return usage([
+        ["Chief", 500],
+        ["Writer", 1000],
+        ["Idle", 0],
+      ]);
+    if (path.includes("granularity=by_model"))
+      return usage([["deepseek-v3", 1500]]);
+    throw new Error("unexpected " + path);
+  });
+  render(<CreditsPanel />);
+  expect(await screen.findByText("1,280")).toBeInTheDocument();
+  const rows = await screen.findByRole("list", {
+    name: "botCredits.usageTitle",
+  });
+  // Biggest first; Bots that used nothing are left out.
+  expect(
+    [...rows.querySelectorAll("li > span:first-child")].map(
+      (el) => el.textContent,
+    ),
+  ).toEqual(["Writer", "Chief"]);
+  fireEvent.click(screen.getByRole("button", { name: "botCredits.byModel" }));
+  expect(
+    screen.getByRole("button", { name: "botCredits.byModel" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  expect(rows).toHaveTextContent("deepseek-v3");
+  expect(rows).not.toHaveTextContent("Writer");
+  expect(
+    screen.getByRole("link", { name: "botCredits.accountCentre" }),
+  ).toHaveAttribute("href", "https://admin.lynxce.cn");
 });
