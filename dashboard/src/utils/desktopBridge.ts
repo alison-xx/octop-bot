@@ -84,6 +84,8 @@ export interface DesktopSessionBridge {
 
 export interface OctopDesktopBridge {
   showBotOrb?: () => void;
+  /** Opens the shell's server picker (this computer, Lynxce Cloud, or a self-hosted server). */
+  openServerPicker?: () => void;
   onBotShortcut?: (
     callback: (action: "search" | "newChat" | "cloud") => void,
   ) => () => void;

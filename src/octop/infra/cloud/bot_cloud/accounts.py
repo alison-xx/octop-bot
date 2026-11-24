@@ -36,7 +36,9 @@ logger = logging.getLogger(__name__)
 
 SSO_KIND = "lynxce"
 KEY_NAME = "Octop Bot 云端"
-DEFAULT_MODEL = "deepseek-flash"
+# Lynxce serves Octop Bot only the Tencent Cloud TokenHub models, all named ``tencent/…``.
+LYNXCE_MODEL_PREFIX = "tencent/"
+DEFAULT_MODEL = "tencent/auto"
 # Chat, plus the Bots' image and video generation (lynxce_media.py).
 KEY_SCOPES = ("model:chat", "media:image", "media:video")
 # Under OCTOP_HOME, not in the database, so the tag survives a database swap.
@@ -355,3 +357,10 @@ async def delete_account(services: SharedServices, users: UserManager, user: Use
 
 def cloud_model_id() -> str:
     return (os.environ.get("OCTOP_BOT_CLOUD_MODEL") or "").strip() or DEFAULT_MODEL
+
+
+def lynxce_chat_model(saved: object) -> str:
+    """The Lynxce model to chat on: a saved choice, unless it predates the Tencent-only line."""
+    if isinstance(saved, str) and saved.startswith(LYNXCE_MODEL_PREFIX):
+        return saved
+    return cloud_model_id()

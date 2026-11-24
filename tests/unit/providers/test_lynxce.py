@@ -51,7 +51,9 @@ def accounts(tmp_path, monkeypatch):
     services = build_shared_services(db=pool, paths=PathLayout(tmp_path), config=OctopConfig())
     grants = {1: "first-login", 2: "other-account"}
     monkeypatch.setattr(oauth, "connection_id", lambda _, uid: grants.get(uid))
-    monkeypatch.setattr(lynxce, "_models", AsyncMock(return_value=[{"id": "chat", "name": "Chat"}]))
+    monkeypatch.setattr(
+        lynxce, "_models", AsyncMock(return_value=[{"id": "tencent/chat", "name": "Chat"}])
+    )
     yield services, grants
     pool.close()
 
@@ -60,10 +62,10 @@ async def test_private_clients_follow_token_refresh_and_refuse_a_different_accou
     accounts, monkeypatch
 ):
     services, grants = accounts
-    await lynxce.select_account_model(services, 1, "chat")
+    await lynxce.select_account_model(services, 1, "tencent/chat")
     selected = lynxce.account_selection(services, 1)
     assert lynxce.account_selection(services, 2) is None
-    await lynxce.select_account_model(services, 2, "chat")
+    await lynxce.select_account_model(services, 2, "tencent/chat")
     other = lynxce.account_selection(services, 2)
     tokens = {1: "first-access", 2: "other-access"}
 
@@ -97,10 +99,10 @@ async def test_inflight_model_discovery_cannot_restore_a_cleared_or_replaced_sel
     async def catalog(*_):
         started.set()
         await released.wait()
-        return [{"id": "chat", "name": "Chat"}]
+        return [{"id": "tencent/chat", "name": "Chat"}]
 
     monkeypatch.setattr(lynxce, "_models", catalog)
-    select = asyncio.create_task(lynxce.select_account_model(services, 1, "chat"))
+    select = asyncio.create_task(lynxce.select_account_model(services, 1, "tencent/chat"))
     await started.wait()
     if action == "logout":
         del grants[1]
@@ -116,8 +118,8 @@ async def test_inflight_model_discovery_cannot_restore_a_cleared_or_replaced_sel
 
 async def test_full_dashboard_and_cli_ignore_an_existing_bot_billing_choice(accounts, monkeypatch):
     services, _ = accounts
-    await lynxce.select_account_model(services, 1, "chat")
-    assert lynxce.selected_account_model(services, 1) == "chat"
+    await lynxce.select_account_model(services, 1, "tencent/chat")
+    assert lynxce.selected_account_model(services, 1) == "tencent/chat"
     monkeypatch.setenv("OCTOP_DESKTOP_PRODUCT", "octop")
     assert lynxce.account_selection(services, 1) is None
     monkeypatch.setenv("OCTOP_DESKTOP_PRODUCT", "bot")
@@ -242,6 +244,25 @@ async def test_desktop_sign_in_keeps_a_model_the_user_already_chose(accounts, mo
         "create_model_key",
         AsyncMock(return_value={"id": "k", "secret": "sk-x"}),
     )
-    assert await lynxce.select_account_model(services, 1, "chat") == "chat"
+    assert await lynxce.select_account_model(services, 1, "tencent/chat") == "tencent/chat"
     assert await lynxce.adopt_cloud_account(services, 1, "acct-a") is False
-    assert lynxce.account_selection(services, 1).model_id == "chat"
+    assert lynxce.account_selection(services, 1).model_id == "tencent/chat"
+
+
+def test_octop_bot_chats_only_on_the_tencent_line(monkeypatch):
+    from octop.infra.cloud.bot_cloud import accounts as cloud_accounts
+
+    monkeypatch.delenv("OCTOP_BOT_CLOUD_MODEL", raising=False)
+    assert cloud_accounts.cloud_model_id() == "tencent/auto"
+    # A choice saved before Lynxce moved Octop Bot to its Tencent line falls back to the default.
+    assert cloud_accounts.lynxce_chat_model("deepseek-flash") == "tencent/auto"
+    assert cloud_accounts.lynxce_chat_model(None) == "tencent/auto"
+    assert cloud_accounts.lynxce_chat_model("tencent/kimi-k3") == "tencent/kimi-k3"
+
+
+def test_lynxce_requests_say_they_come_from_octop_bot():
+    for model in (
+        lynxce.AccountModel(1, "grant", "tencent/auto"),
+        lynxce.CloudAccountModel(1, "cloud", "tencent/auto"),
+    ):
+        assert model.provider(None).headers == {"X-Lynxce-App": "octopbot"}

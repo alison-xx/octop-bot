@@ -667,7 +667,25 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 
 新增错误码：`BOT_MODEL_KEY_INVALID`、`BOT_MODEL_VENDOR_UNSUPPORTED`、`BOT_MODEL_KEY_LIMIT`（都是 400）。界面（设置 → 模型 →「我的 API Key」和添加弹窗）由桌面客户端改版那边按这套接口做。
 
-## 12.10 多端互通：桌面登录灵策就用云端（2026-11-24 定）
+## 12.10 云电脑改用腾讯云 CVM（2026-11-24）
+
+云电脑多了一个提供方：腾讯云 CVM。CVM 和 AGS 共用同一套驱动接口，上面的按分钟扣费、空闲暂停、画面转发和各端界面都没变。`OCTOP_COMPUTER_PROVIDER` 选 `cvm` 或 `ags`；不设置时，配置了 CVM 就用 CVM，否则用 AGS。
+
+| | AGS（OSWorld 4 核 8G） | CVM（SA9.LARGE8，4 核 8G） |
+|---|---|---|
+| 计算成本 | 约 1.89 元/小时 | 0.51 元/小时（官方按量价，广州） |
+| 暂停 | 约 15 秒，按存储计费 | 关机不收费（`STOP_CHARGING`），约 20 秒，只收云硬盘费 |
+| 唤醒 | 约 5 秒 | 约 50 秒到桌面可用；首次开机约 70 秒 |
+| 公网 | AGS 网关代理 | 每台一个公网 IP，按流量 0.8 元/GB，关机后释放、开机换新 IP |
+
+- **镜像**：`deploy/cvm/image/setup.sh` 在 Ubuntu 22.04 上装 XFCE、TigerVNC（Xvnc :0，VNC 只听 127.0.0.1:5900）、OSWorld 桌面服务（127.0.0.1:5000，与 AGS 的 OSWorld 沙箱同一套）、Chrome、中文字体和 LibreOffice，一律以 `user` 运行，工作区 `/home/user/workspace`（可 sudo，机器是 Bot 自己的）。`deploy/cvm/image/build_image.py` 开一台临时机器跑脚本、关机做镜像，结束一定销毁临时机器。
+- **进入方式**：每台机器只开 443，安全组只放行云 Octop 服务器（以及调试用的机器）。nginx 校验访问令牌（`X-Access-Token`），`/p/5000/` 转桌面服务，`/p/8080/` 转画面的 VNC WebSocket 桥。令牌是实例标签里随机引用的 HMAC，证书由一个从 CAM 密钥派生出来的私有 CA 为每台机器单独签发，都在首次开机的 user data 里写入。服务器只信任这个 CA，因此除了配置之外不需要保存任何状态。
+- **库存**：`OCTOP_CVM_SUBNETS` 按顺序列出可用区和子网，一个区没货就换下一个。
+- **单价**（成本 × 2）：标准 1.70 积分/分钟，高配 3.40 积分/分钟，磁盘 4.80 积分/GB·天。公网流量暂未单独计费（看画面时每小时约几十到一两百 MB）。
+
+部署所需环境变量（`OCTOP_CVM_*`）：`SECRET_ID` / `SECRET_KEY`（CAM 子账号，CVM、VPC、TAT 全读写加 `finance:trade` 付款权限）、`REGION`、`IMAGE_ID`、`VPC_ID`、`SUBNETS`、`SECURITY_GROUP`、`TYPE` / `TYPE_PRO`、`DISK_GB`、`BANDWIDTH`。
+
+## 12.11 多端互通：桌面登录灵策就用云端（2026-11-24 定）
 
 改了 12.4 表里「数据在哪」那一格：桌面登录灵策后不再把 Bot、群聊和会话留在本机 Octop，而是和网页、手机一样用灵策云（bot.lynxce.cn），四端看到同一个团队。「本机使用」不变。
 

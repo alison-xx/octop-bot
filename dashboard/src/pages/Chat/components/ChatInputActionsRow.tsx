@@ -1,6 +1,14 @@
 import { isBotClient } from "../../../utils/desktopBridge";
 import { BOT_SETTINGS } from "../../../utils/botClientRoute";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -33,6 +41,7 @@ import {
   Route,
   Info,
   Search,
+  Star,
 } from "lucide-react";
 import { Tooltip, Popover } from "antd";
 import cx from "classnames";
@@ -44,6 +53,7 @@ import {
   type AcpSessionMode,
 } from "../../../api/modules/acp";
 import { acpSessionModeText } from "../../../api/modules/acp";
+import { preferencesApi } from "../../../api/modules/preferences";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
@@ -300,6 +310,10 @@ export default function ChatInputActionsRow({
   );
   const [plusPanelAlignBottom, setPlusPanelAlignBottom] = useState(false);
   const [modelQuery, setModelQuery] = useState("");
+  const [preferredModelRef, setPreferredModelRef] = useState<string | null>(
+    null,
+  );
+  const [preferredBusy, setPreferredBusy] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [shortcutOpen, setShortcutOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -386,6 +400,20 @@ export default function ChatInputActionsRow({
   const showModelPicker =
     !managed &&
     Boolean(availableModels && availableModels.length > 0 && onModelChange);
+
+  useEffect(() => {
+    if (!showModelPicker) return;
+    let cancelled = false;
+    preferencesApi
+      .get()
+      .then((prefs) => {
+        if (!cancelled) setPreferredModelRef(prefs.preferred_model ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [showModelPicker]);
   const allowWriteTools = conversationMode === "craft";
   const showConnectorPicker = Boolean(
     allowWriteTools && availableConnectors && onConnectorsChange,
@@ -532,7 +560,32 @@ export default function ChatInputActionsRow({
     );
   });
   const autoLabel = t("chat.modelAuto", "Auto");
-  const autoHint = t("chat.modelAutoHint", "Use agent default");
+  const preferredModel = (availableModels ?? []).find(
+    (model) => modelOptionValue(model) === preferredModelRef,
+  );
+  const autoHint = preferredModel
+    ? t("chat.modelAutoPreferredHint", {
+        model: modelOptionLabel(preferredModel),
+      })
+    : t("chat.modelAutoHint", "Use agent default");
+
+  const togglePreferredModel = async (value: string, label: string) => {
+    const next = preferredModelRef === value ? null : value;
+    setPreferredBusy(true);
+    try {
+      const prefs = await preferencesApi.patch({ preferred_model: next });
+      setPreferredModelRef(prefs.preferred_model ?? null);
+      message.success(
+        next
+          ? t("models.preferredModelSet", { model: label })
+          : t("models.preferredModelCleared"),
+      );
+    } catch {
+      message.error(t("models.preferredModelFailed"));
+    } finally {
+      setPreferredBusy(false);
+    }
+  };
   const showAutoModel = !modelQueryNormalized
     ? true
     : autoLabel.toLowerCase().includes(modelQueryNormalized) ||
@@ -710,6 +763,29 @@ export default function ChatInputActionsRow({
                         {modelOptionLabel(model)}
                       </span>
                     </Tooltip>
+                  </button>
+                  <button
+                    type="button"
+                    className={cx(
+                      styles.modelMenuPrefer,
+                      preferredModelRef === value && styles.modelMenuPreferOn,
+                    )}
+                    aria-label={
+                      preferredModelRef === value
+                        ? t("models.clearPreferred")
+                        : t("models.setAsPreferred")
+                    }
+                    disabled={preferredBusy}
+                    onClick={() =>
+                      void togglePreferredModel(value, modelOptionLabel(model))
+                    }
+                  >
+                    <Star
+                      size={14}
+                      fill={
+                        preferredModelRef === value ? "currentColor" : "none"
+                      }
+                    />
                   </button>
                   {capability && onReasoningChange && (
                     <button
@@ -1462,52 +1538,48 @@ export default function ChatInputActionsRow({
     );
   };
 
+  const voiceTitle = !_sttAvailable
+    ? t("voice.sttNotAvailable", "此设备不支持语音输入（需要 HTTPS）")
+    : voiceHoldToTalk
+    ? recording
+      ? t("voice.releaseToStop", "松开结束")
+      : t("voice.holdToTalk", "按住说话")
+    : recording
+    ? t("voice.stopRecording", "停止录音")
+    : transcribing
+    ? t("voice.transcribing", "识别中…")
+    : t("voice.startRecording", "语音输入");
+  // Dictation only fills the composer, so it stays available while a reply is
+  // still streaming.
+  const voiceControl = {
+    type: "button" as const,
+    "aria-label": voiceTitle,
+    disabled: disabled || transcribing || !_sttAvailable,
+    onClick: voiceHoldToTalk ? undefined : onToggleVoice,
+    onPointerDown: voiceHoldToTalk
+      ? (event: ReactPointerEvent) => {
+          event.preventDefault();
+          handleVoicePressStart();
+        }
+      : undefined,
+    onPointerUp: voiceHoldToTalk ? handleVoicePressEnd : undefined,
+    onPointerLeave: voiceHoldToTalk ? handleVoicePressEnd : undefined,
+    onPointerCancel: voiceHoldToTalk ? handleVoicePressEnd : undefined,
+    onContextMenu: voiceHoldToTalk
+      ? (event: ReactMouseEvent) => event.preventDefault()
+      : undefined,
+    style: voiceHoldToTalk
+      ? ({ touchAction: "none", userSelect: "none" } as const)
+      : undefined,
+  };
   const voiceButton = (
-    <Tooltip
-      title={
-        !_sttAvailable
-          ? t("voice.sttNotAvailable", "此设备不支持语音输入（需要 HTTPS）")
-          : voiceHoldToTalk
-          ? recording
-            ? t("voice.releaseToStop", "松开结束")
-            : t("voice.holdToTalk", "按住说话")
-          : recording
-          ? t("voice.stopRecording", "停止录音")
-          : transcribing
-          ? t("voice.transcribing", "识别中…")
-          : t("voice.startRecording", "语音输入")
-      }
-      mouseEnterDelay={0.4}
-    >
+    <Tooltip title={voiceTitle} mouseEnterDelay={0.4}>
       <button
         className={cx(
           styles.secondaryBtn,
           (recording || transcribing) && styles.secondaryBtnActive,
         )}
-        type="button"
-        // Dictation only fills the composer, so it stays available while a
-        // reply is still streaming.
-        disabled={disabled || transcribing || !_sttAvailable}
-        onClick={voiceHoldToTalk ? undefined : onToggleVoice}
-        onPointerDown={
-          voiceHoldToTalk
-            ? (event) => {
-                event.preventDefault();
-                handleVoicePressStart();
-              }
-            : undefined
-        }
-        onPointerUp={voiceHoldToTalk ? handleVoicePressEnd : undefined}
-        onPointerLeave={voiceHoldToTalk ? handleVoicePressEnd : undefined}
-        onPointerCancel={voiceHoldToTalk ? handleVoicePressEnd : undefined}
-        onContextMenu={
-          voiceHoldToTalk ? (event) => event.preventDefault() : undefined
-        }
-        style={
-          voiceHoldToTalk
-            ? { touchAction: "none", userSelect: "none" }
-            : undefined
-        }
+        {...voiceControl}
       >
         <Mic size={16} />
       </button>
@@ -1516,6 +1588,7 @@ export default function ChatInputActionsRow({
 
   if (botOnly) {
     const stop = isStreaming && !canSend;
+    const voiceInSendSlot = !canSend && !isStreaming;
     const sendLabel = t(
       stop ? "chat.stop" : isStreaming ? "chat.queue.action" : "chat.send",
     );
@@ -1564,18 +1637,24 @@ export default function ChatInputActionsRow({
               </button>
             </Popover>
           )}
-          {voiceButton}
-          {!stop && !canSend && !isStreaming ? (
-            <button
-              type="button"
-              className={cx(styles.sendBtn, botStyles.send)}
-              title={t("voice.startRecording", "语音输入")}
-              aria-label={t("voice.startRecording", "语音输入")}
-              disabled={disabled || transcribing || !_sttAvailable}
-              onClick={onToggleVoice}
-            >
-              <AudioLines size={17} />
-            </button>
+          {/* Nothing to send: the send slot is the one voice control. With
+              text, it sends and the mic stays for dictating more. */}
+          {!voiceInSendSlot && voiceButton}
+          {voiceInSendSlot ? (
+            <Tooltip title={voiceTitle} mouseEnterDelay={0.4}>
+              <button
+                className={cx(styles.sendBtn, botStyles.send)}
+                {...voiceControl}
+              >
+                {transcribing ? (
+                  <Loader2 size={17} className={styles.spinIcon} />
+                ) : recording ? (
+                  <Square size={15} />
+                ) : (
+                  <AudioLines size={17} />
+                )}
+              </button>
+            </Tooltip>
           ) : (
             <button
               type="button"

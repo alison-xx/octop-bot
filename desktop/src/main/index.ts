@@ -104,6 +104,7 @@ import {
   windowsMenuModel,
   type WindowsMenuCommandId,
 } from "./windows/app-menu";
+import { DEEP_LINK_SCHEME, deepLinkPath, deepLinkPathFromArgv } from "./deep-link";
 import { createEarlyWindow } from "./windows/early-window";
 import { createMainWindow, installDashboardGuards } from "./windows/main-window";
 import type { EarlyWindow } from "./windows/early-window";
@@ -147,6 +148,8 @@ const packageInfo: unknown = app.isPackaged
 const botOnly = isBotProduct(app.isPackaged ? [] : process.argv, app.getName(), packageInfo);
 const productName = botOnly ? BOT_PRODUCT_NAME : "Octop";
 const entryPath = botOnly ? BOT_HOME_PATH : "/";
+// A Bot client path from an octop-bot:// link that arrived before a window could open it.
+let pendingDeepPath: string | null = botOnly ? deepLinkPathFromArgv(process.argv) : null;
 if (botOnly) {
   app.setName(productName);
   if (!app.commandLine.hasSwitch("user-data-dir")) {
@@ -726,6 +729,10 @@ function refreshUpdateMenus(): void {
 
 function registerIpcHandlers(): void {
   ipcMain.on(IPC_CHANNELS.showBotOrb, () => botOrb?.show(true));
+  // Settings → About: the same server picker as the menu's "Connect to a Server…".
+  ipcMain.on(IPC_CHANNELS.openServerPicker, (event) => {
+    serverPicker?.open(BrowserWindow.fromWebContents(event.sender));
+  });
   ipcMain.on(IPC_CHANNELS.botNotify, (event, payload: unknown) => {
     const note = sanitizeNotification(payload);
     if (!note) return;
@@ -1014,7 +1021,7 @@ function openDashboardWindow(appOrigin: string): BrowserWindow {
     preload: PRELOAD_PATH,
     theme: chromeTheme,
     backgroundColor: windowBackground(chromeTheme.mode),
-    entryUrl: dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin, entryPath),
+    entryUrl: dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin, takeEntryPath()),
     appOrigin,
     botOnly,
     icon: botWindowIcon(),
@@ -1036,7 +1043,7 @@ function continueInEarlyWindow(early: EarlyWindow, appOrigin: string): void {
   installDashboardGuards(win, { appOrigin, onNavigate: openExternal, botOnly });
   watchDashboardLifetime(win);
   const chromeTheme = resolveWindowChromeTheme(settingsStore.load().themeBackground);
-  void win.loadURL(dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin, entryPath));
+  void win.loadURL(dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin, takeEntryPath()));
 }
 
 /**
@@ -1052,6 +1059,27 @@ function raiseHiddenWindows(windows: readonly BrowserWindow[]): void {
     win.focus();
     win.setAlwaysOnTop(false);
   }
+}
+
+function takeEntryPath(): string {
+  const path = pendingDeepPath ?? entryPath;
+  pendingDeepPath = null;
+  return path;
+}
+
+/** Open an octop-bot:// link in the Bot window, or keep it for the first window. */
+function openDeepLink(url: string): void {
+  const path = botOnly ? deepLinkPath(url) : null;
+  if (!path) return;
+  const origin = dashboardOrigin ?? remoteOrigin;
+  const win = BrowserWindow.getAllWindows().find(c => c !== botOrb?.window && !c.isDestroyed());
+  if (!origin || !win) {
+    pendingDeepPath = path;
+    return;
+  }
+  revealAppWindow();
+  const theme = resolveWindowChromeTheme(settingsStore.load().themeBackground);
+  void win.loadURL(dashboardOrigin ? dashboardEntryUrl(theme.scheme ?? theme.mode, origin, path) : origin + path);
 }
 
 /** Dock click, tray click, and a second launch. Show what is already open, or open it. */
@@ -1333,6 +1361,11 @@ function openRemoteWindow(origin: string): BrowserWindow {
       void win.webContents.executeJavaScript(cloudSignInScript(signIn)).catch(() => undefined);
     });
   }
+  if (pendingDeepPath) {
+    const path = pendingDeepPath;
+    pendingDeepPath = null;
+    void win.loadURL(origin + path);
+  }
   win.on("close", (event) => {
     if (!shouldKeepWindowOnClose({ platform: process.platform, closeBehavior, quitting, trayReady: tray !== null })) return;
     event.preventDefault();
@@ -1465,6 +1498,8 @@ async function boot(): Promise<void> {
   if (process.platform === "win32") {
     app.setAppUserModelId(botOnly ? "com.tencent.octop.bot" : WINDOWS_APP_USER_MODEL_ID);
   }
+  // Packaged builds only: a dev run must not take the scheme from the installed app.
+  if (botOnly && app.isPackaged) app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);
 
   appVersion = await resolveProductVersion();
   if (botOnly && process.platform === "darwin") {
@@ -1672,8 +1707,16 @@ app.whenReady().then(boot).catch((err) => {
   app.quit();
 });
 
-app.on("second-instance", () => {
-  revealAppWindow();
+app.on("second-instance", (_event, argv) => {
+  const link = argv.find((arg) => arg.startsWith(`${DEEP_LINK_SCHEME}://`));
+  if (link) openDeepLink(link);
+  else revealAppWindow();
+});
+
+// macOS delivers octop-bot:// links here, also on a cold start before ready.
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  openDeepLink(url);
 });
 
 // macOS emits this for a Dock click. With no listener the process stays in the

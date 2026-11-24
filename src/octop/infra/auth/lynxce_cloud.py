@@ -24,6 +24,14 @@ from octop.infra.errors import ErrorCode, OctopError
 logger = logging.getLogger(__name__)
 
 _ORIGIN = "https://api.lynxce.cn"
+# Sent on every Lynxce call Octop Bot makes: Lynxce serves Octop Bot's chats only from the
+# Tencent Cloud TokenHub models, and records accounts created here as Octop Bot sign-ups.
+LYNXCE_APP_HEADERS: Mapping[str, str] = {"X-Lynxce-App": "octopbot"}
+# A Lynxce account created through Octop Bot's sign-in (cloud, web or desktop; a new phone or
+# email signs up) records Octop Bot as where it came from: Lynxce shows it in the admin's 来源
+# column and the WeCom sign-up notice. It only counts when the account is created, and only for
+# a site registered in Lynxce (中台应用 `octop-bot`).
+SIGNUP_SITE = "octop-bot"
 _ID = r"(?!\.{1,2}(?:/|$))[A-Za-z0-9_.-]{1,256}"
 _WEB_ID = r"[A-Za-z0-9._:-]{4,96}"
 CHECKOUT_PATH = "/api/billing/recharge/checkout-link"
@@ -188,7 +196,13 @@ async def _send(
 ) -> Any:
     # 'web' is Lynxce's supported multi-session channel. Exchanging a desktop auth code
     # would revoke the user's existing Lynxce desktop session and its API keys.
-    sent = {**(headers or {}), "Accept": "application/json", "X-Lynxce-Client": "web"}
+    sent = {
+        **(headers or {}),
+        **LYNXCE_APP_HEADERS,
+        "Accept": "application/json",
+        "X-Lynxce-Client": "web",
+        "X-Lynxce-Signup-Site": SIGNUP_SITE,
+    }
     if bearer:
         sent["Authorization"] = f"Bearer {bearer}"
     try:

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
@@ -29,8 +31,26 @@ _NOT_ENABLED = (
 )
 
 
+_SCREENSHOT_ACTIONS = frozenset({"screenshot", "snapshot"})
+
+
+def _screenshot_path(requested: object, screenshots_dir: Path) -> str:
+    """Where a screenshot goes: always this agent's ``outbound/screenshots``.
+
+    octop-browser otherwise writes to its process-wide default (``~/.octop-browser``),
+    which sits beside browser logins and is never served back, so the reply's image
+    card would 404. A model-chosen ``.png`` name is kept; its directory is not.
+    """
+    name = Path(str(requested or "")).name
+    if not name.lower().endswith(".png"):
+        name = f"octop-{int(time.time() * 1000)}.png"
+    return str(screenshots_dir / name)
+
+
 def _bind_browser_profile(
-    request: ToolCallRequest, agent_id: str | None
+    request: ToolCallRequest,
+    agent_id: str | None,
+    screenshots_dir: Path | None = None,
 ) -> ToolCallRequest | ToolMessage:
     tool_call = request.tool_call
     if str(tool_call.get("name") or "") != _BROWSER_TOOL:
@@ -64,21 +84,26 @@ def _bind_browser_profile(
             status="error",
         )
     args["profile"] = profile
+    action = str(args.get("action") or "").strip().lower()
+    if screenshots_dir is not None and action in _SCREENSHOT_ACTIONS:
+        args["path"] = _screenshot_path(args.get("path"), screenshots_dir)
     return request.override(tool_call={**tool_call, "args": args})
 
 
 class BrowserProfileMiddleware(AgentMiddleware[Any, Any]):
     """Prevent model-selected profiles from crossing Octop user boundaries."""
 
-    def __init__(self, agent_id: str | None = None) -> None:
+    def __init__(self, agent_id: str | None = None, screenshots_dir: Path | None = None) -> None:
         self.agent_id = agent_id
+        # The agent's own ``outbound/screenshots`` when it may write to this host's disk.
+        self.screenshots_dir = screenshots_dir
 
     def wrap_tool_call(
         self,
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], ToolMessage | Command[Any]],
     ) -> ToolMessage | Command[Any]:
-        bound = _bind_browser_profile(request, self.agent_id)
+        bound = _bind_browser_profile(request, self.agent_id, self.screenshots_dir)
         if isinstance(bound, ToolMessage):
             return bound
         return handler(bound)
@@ -88,7 +113,7 @@ class BrowserProfileMiddleware(AgentMiddleware[Any, Any]):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
     ) -> ToolMessage | Command[Any]:
-        bound = _bind_browser_profile(request, self.agent_id)
+        bound = _bind_browser_profile(request, self.agent_id, self.screenshots_dir)
         if isinstance(bound, ToolMessage):
             return bound
         return await handler(bound)

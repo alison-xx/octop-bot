@@ -20,6 +20,7 @@ from octop.api.routers.bot_computers import router as computers_router
 from octop.api.routers.bot_computers import session_router as screen_session_router
 from octop.api.routers.bot_inbox import router as inbox_router
 from octop.api.routers.bot_lynxce import router as lynxce_router
+from octop.api.routers.bot_market import router as market_router
 from octop.api.routers.bot_move_in import router as move_in_router
 from octop.api.routers.bot_octop_import import router as octop_import_router
 from octop.api.routers.bot_own_keys import router as own_keys_router
@@ -60,6 +61,7 @@ router.include_router(cloud_work_router)
 router.include_router(computer_router)
 router.include_router(inbox_router)
 router.include_router(lynxce_router)
+router.include_router(market_router)
 router.include_router(move_in_router)
 router.include_router(octop_import_router)
 router.include_router(profile_router)

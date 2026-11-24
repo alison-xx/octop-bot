@@ -110,6 +110,7 @@ export const IPC_CHANNELS = {
   openBotSettings: "octop:bot:open-settings",
   botShortcut: "octop:bot:shortcut",
   showBotOrb: "octop:bot:show-orb",
+  openServerPicker: "octop:bot:open-server-picker",
   botNotify: "octop:bot:notify",
   botNotificationOpen: "octop:bot:notification-open",
   botUnreadBadge: "octop:bot:unread-badge",

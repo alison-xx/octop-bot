@@ -19,6 +19,7 @@ from octop.infra.auth.tokens import TokenExpired as TokenExpired
 from octop.infra.auth.tokens import decode_token as decode_token
 from octop.infra.auth.tokens import sign_token as sign_token
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.extensions import extension_public_paths
 from octop.infra.users.permissions import PERMISSIONS, user_has_permission
 
 if TYPE_CHECKING:
@@ -49,6 +50,8 @@ _JWT_EXEMPT_PREFIXES = (
     "/api/shares/",
     # An open cloud computer screen: the unguessable screen session is the credential.
     "/api/octop-bot/screen-sessions/",
+    # The Bot market catalog is static and public (website links, plain <img> portraits).
+    "/api/octop-bot/market/",
 )
 _JWT_EXEMPT_EXACT = (
     "/api/health",
@@ -61,6 +64,7 @@ _JWT_EXEMPT_EXACT = (
     "/api/auth/lynxce/status",
     # Octop Bot clients check an address before showing a sign-in form.
     "/api/octop-bot/server-info",
+    "/api/octop-bot/market",
     # Desktop shells renew an expired session here; the device token is the
     # credential and the router enforces shell-flag + loopback + digest match.
     "/api/auth/device/token",
@@ -87,7 +91,10 @@ _JWT_EXEMPT_EXACT = (
 
 
 def is_jwt_exempt_path(path: str) -> bool:
-    return path in _JWT_EXEMPT_EXACT or any(path.startswith(p) for p in _JWT_EXEMPT_PREFIXES)
+    if path in _JWT_EXEMPT_EXACT or any(path.startswith(p) for p in _JWT_EXEMPT_PREFIXES):
+        return True
+    ext = extension_public_paths()
+    return path in ext.exact or any(path.startswith(p) for p in ext.prefixes)
 
 
 def is_jwt_exempt_request(request: Request) -> bool:
@@ -216,7 +223,7 @@ def authenticate_request(request: Request, server: OctopServer) -> User:
         access_token=request.query_params.get("access_token"),
     )
     if not raw:
-        raise OctopError(ErrorCode.AUTH_FAILED, "missing credentials")
+        raise OctopError(ErrorCode.MISSING_CREDENTIALS, "missing credentials")
     return resolve_user_from_token(server, raw)
 
 
@@ -231,7 +238,7 @@ async def current_user(
         return cast("User", cached)
     raw = extract_raw_token(authorization=authorization, access_token=access_token)
     if not raw:
-        raise OctopError(ErrorCode.AUTH_FAILED, "missing credentials")
+        raise OctopError(ErrorCode.MISSING_CREDENTIALS, "missing credentials")
     return resolve_user_from_token(server, raw)
 
 

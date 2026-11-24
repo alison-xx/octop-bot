@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
@@ -23,6 +24,15 @@ from octop.infra.gateway.process.message_keys import (
 _USER_ROLES = frozenset({"human", "user"})
 _ASSISTANT_ROLES = frozenset({"ai", "assistant"})
 _TURN_DURATION_KEY = "turn_duration_ms"
+_UTF16_SURROGATE = re.compile(r"[\ud800-\udfff]")
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _repair_surrogates(text: str) -> str:
+    """Rejoin split surrogate pairs and replace unpaired halves with U+FFFD."""
+    if _UTF16_SURROGATE.search(text) is None:
+        return text
+    return text.encode("utf-16-le", errors="surrogatepass").decode("utf-16-le", errors="replace")
 
 
 def _stamp_duration(items: list[ThreadMessageInput], duration_ms: int) -> list[ThreadMessageInput]:
@@ -62,14 +72,15 @@ def _stamp_duration(items: list[ThreadMessageInput], duration_ms: int) -> list[T
     return items
 
 
-# Images a tool attaches for the model in a follow-up human message (deepagents ``read_file``
-# media, cloud computer screenshots). They are not the user speaking: they neither start a turn
-# nor appear in the chat.
+# deepagents ``read_file`` on an image or video answers with a ToolMessage plus a
+# synthetic HumanMessage carrying the media for the model. That message is not
+# the user speaking: it must not start a turn or show up as a user bubble.
+# Octop Bot cloud computer screenshots (``cloud_computer``) arrive the same way.
 _TOOL_MEDIA_SOURCES = frozenset({"read_file_media", "cloud_computer"})
 _TOOL_MEDIA_ROLE = "tool_media"
 
 
-def _tool_media(message: Any) -> bool:
+def _is_tool_media(message: Any) -> bool:
     if isinstance(message, dict):
         inner = message.get("data")
         data: dict[str, Any] = inner if isinstance(inner, dict) else message
@@ -80,7 +91,7 @@ def _tool_media(message: Any) -> bool:
 
 
 def _role(message: Any) -> str:
-    if _tool_media(message):
+    if _is_tool_media(message):
         return _TOOL_MEDIA_ROLE
     if isinstance(message, dict):
         return str(message.get("role") or message.get("type") or "").lower()
@@ -125,13 +136,16 @@ def message_input(message: Any) -> ThreadMessageInput | None:
         converted = _convert_message(message)
         wire = message_to_dict(converted)
         role = _role(converted)
-        if role in ("", "system"):
+        if role in ("", "system", _TOOL_MEDIA_ROLE):
             return None
         ts_ms = checkpoint_ts_ms(converted)
+        # Repair after assembly so paired halves from different deltas survive
+        # as one character and the projected JSON can be stored as UTF-8.
+        message_json = _repair_surrogates(json.dumps(wire, ensure_ascii=False, default=str))
         return ThreadMessageInput(
             message_id=str(getattr(converted, "id", "") or "") or None,
             role=role,
-            message_json=json.dumps(wire, ensure_ascii=False, default=str),
+            message_json=message_json,
             created_at=(ts_ms // 1000) if ts_ms is not None else now_ts(),
         )
     except Exception:
@@ -155,8 +169,6 @@ def message_inputs(
     out: list[ThreadMessageInput] = []
     seen: set[str] = set()
     for message in messages:
-        if _tool_media(message):
-            continue
         item = message_input(message)
         if item is None:
             continue
@@ -226,7 +238,17 @@ def uncovered_stream_text(stream: str, said: str) -> str:
     covered by its steps together, never by one of them. Whitespace is ignored:
     stored steps keep separators the stream does not have, and the other way
     round. A turn stopped mid-reply leaves the text after the last stored step.
+    Stored steps may also keep a ``<think>`` block the stream never carried, so
+    the steps are tried with and without it and the shorter remainder wins.
+    An emoji split across two tokens is rejoined before comparing.
     """
+    stream = _repair_surrogates(stream)
+    raw = _uncovered(stream, said)
+    visible = _uncovered(stream, _THINK_BLOCK.sub(" ", said))
+    return raw if len(raw) <= len(visible) else visible
+
+
+def _uncovered(stream: str, said: str) -> str:
     key = _squash(said)
     if _squash(stream) in key:
         return ""

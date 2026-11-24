@@ -115,7 +115,10 @@ final class ChatSession {
         if app?.notifyOnReply == true { Notifier.requestPermission() }
         let history = messages
         messages.append(ChatMessage(role: .user, text: trimmed, images: images))
-        let model = app?.isLynxce == true ? app?.selectedModel : nil
+        // A choice saved before Lynxce moved Octop Bot to its Tencent line falls back to the default.
+        let model = app?.isLynxce == true
+            ? app?.selectedModel.flatMap { $0.hasPrefix(LynxceBackend.modelPrefix) ? $0 : nil }
+            : nil
         run(backend.send(trimmed, images: images, to: bot, conversation: conversationId, history: history, model: model))
     }
 

@@ -29,6 +29,8 @@ module.exports = {
     octopBotClient: true,
   },
   directories: { output: "release/octop-bot", buildResources: "resources" },
+  // octop-bot://market/<slug> from the website's Bot market (Info.plist / NSIS registry).
+  protocols: [{ name: "Octop Bot", schemes: ["octop-bot"] }],
   // require("electron") is dist/electron.exe on Windows but a path inside
   // Electron.app on macOS; electron-builder wants the dist directory itself.
   // Electron 45 has no postinstall; requiring it downloads the binary on first use.

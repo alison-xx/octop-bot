@@ -3,9 +3,10 @@ import { Alert, Button, Select, Spin } from "antd";
 import {
   ArrowLeft,
   Blocks,
-  BookOpen,
+  Check,
   Cpu,
   FolderLock,
+  Info,
   LogOut,
   SlidersHorizontal,
   UserRound,
@@ -18,7 +19,6 @@ import LynxceAccount from "./LynxceAccount";
 import BotNotifySettings from "./BotNotifySettings";
 import OctopImport from "./OctopImport";
 import RetainedFolders from "./RetainedFolders";
-import BotUpdatePanel from "./BotUpdatePanel";
 import { providerApi } from "../../api/modules/provider";
 import type { ResolvedModel } from "../../api/types";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -43,7 +43,8 @@ import {
   signOutBotClient,
   useLanguage,
 } from "./AccountMenu";
-import { CreditsPanel } from "./CreditsWidgets";
+import { CreditsPanel, LYNXCE_ACCOUNT_SITE } from "./CreditsWidgets";
+import BotAboutPanel from "./BotAboutPanel";
 import { useLynxceCredits } from "./useLynxceCredits";
 import { useBotServerInfo } from "./useBotServerInfo";
 import { accountInitials } from "../Chat/utils/accountDisplayName";
@@ -54,7 +55,7 @@ import OwnKeysSection from "./OwnKeysSection";
 import type { OwnKeyList } from "../../api/modules/ownModelKeys";
 import sourcesUi from "./modelSources.module.less";
 
-type SettingsTab = "models" | "general" | "account";
+type SettingsTab = "account" | "models" | "general" | "about";
 
 /** This computer's Ollama, through the existing service card (install, start, models). */
 function LocalModels({ onSaved }: { onSaved: () => void }) {
@@ -135,15 +136,25 @@ export default function BotClientSettings() {
   const [full, setFull] = useState(false);
   const [language, setLanguage] = useLanguage();
   const [tab, setTab] = useState<SettingsTab>(
-    location.state?.tab === "general" || location.state?.tab === "account"
+    location.state?.tab === "general" ||
+      location.state?.tab === "account" ||
+      location.state?.tab === "about"
       ? location.state.tab
       : "models",
   );
-  const tabs = [
-    ["models", "botClient.nav.models", Cpu],
-    ["general", "botClient.nav.general", SlidersHorizontal],
-    ["account", "botClient.nav.account", UserRound],
-  ] as const;
+  // Capabilities is its own page; it sits between Models and General in the list.
+  const showCapabilities = back !== BOT_GUIDE && !prefillInput;
+  const navItem = (value: SettingsTab, label: string, Icon: typeof Cpu) => (
+    <button
+      key={value}
+      type="button"
+      aria-current={tab === value ? "page" : undefined}
+      onClick={() => setTab(value)}
+    >
+      <Icon size={16} />
+      {t(label)}
+    </button>
+  );
   const refresh = () => setRevision((value) => value + 1);
   useEffect(() => {
     let active = true;
@@ -197,47 +208,27 @@ export default function BotClientSettings() {
       <div className={settings.layout}>
         <nav className={settings.nav} aria-label={t("botClient.menu.settings")}>
           <h1>{t("botClient.menu.settings")}</h1>
-          {tabs.map(([value, label, Icon]) => (
+          {navItem("account", "botClient.nav.account", UserRound)}
+          {navItem("models", "botClient.nav.models", Cpu)}
+          {showCapabilities && (
             <button
-              key={value}
               type="button"
-              aria-current={tab === value ? "page" : undefined}
-              onClick={() => setTab(value)}
+              onClick={() =>
+                navigate(BOT_CAPABILITIES, { state: { from: back } })
+              }
             >
-              <Icon size={16} />
-              {t(label)}
+              <Blocks size={16} />
+              {t("botCapabilities.title")}
             </button>
-          ))}
-          {back !== BOT_GUIDE && !prefillInput && (
-            <>
-              <hr />
-              <button
-                type="button"
-                onClick={() =>
-                  navigate(BOT_CAPABILITIES, { state: { from: back } })
-                }
-              >
-                <Blocks size={16} />
-                {t("botCapabilities.title")}
-              </button>
-              {!web && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate(BOT_GUIDE, { state: { returnTo: back } })
-                  }
-                >
-                  <BookOpen size={16} />
-                  {t("botGuide.title")}
-                </button>
-              )}
-            </>
           )}
+          {navItem("general", "botClient.nav.general", SlidersHorizontal)}
+          {navItem("about", "botAbout.title", Info)}
         </nav>
         <div className={settings.content}>
           {tab === "general" ? (
             <div className={settings.page}>
               <h2>{t("botClient.nav.general")}</h2>
+              <h3>{t("botClient.nav.lookAndLanguage")}</h3>
               <div className={settings.group}>
                 <div className={settings.row}>
                   <span>{t("botClient.nav.appearance")}</span>
@@ -255,6 +246,10 @@ export default function BotClientSettings() {
                     }))}
                   />
                 </div>
+              </div>
+              <BotNotifySettings />
+              <h3>{t("botClient.nav.desktopAndPrivacy")}</h3>
+              <div className={settings.group}>
                 {getDesktopBridge()?.showBotOrb && (
                   <div className={settings.row}>
                     <span>
@@ -266,14 +261,11 @@ export default function BotClientSettings() {
                     </Button>
                   </div>
                 )}
-              </div>
-              <BotNotifySettings />
-              <OctopImport />
-              <BotUpdatePanel />
-              <h3>{t("botClient.nav.privacy")}</h3>
-              <div className={settings.group}>
                 <div className={settings.row}>
-                  <span>{t("octopBot.retainedFolders")}</span>
+                  <span>
+                    {t("octopBot.retainedFolders")}
+                    <small>{t("botClient.nav.retainedFoldersHint")}</small>
+                  </span>
                   <Button
                     icon={<FolderLock size={15} />}
                     onClick={() => setFoldersOpen(true)}
@@ -282,9 +274,12 @@ export default function BotClientSettings() {
                   </Button>
                 </div>
               </div>
+              <OctopImport />
             </div>
+          ) : tab === "about" ? (
+            <BotAboutPanel returnTo={back} />
           ) : tab === "account" ? (
-            <div className={settings.page}>
+            <div className={`${settings.page} ${settings.wide}`}>
               <h2>{t("botClient.nav.account")}</h2>
               <div className={settings.group}>
                 <div className={settings.row}>
@@ -297,40 +292,71 @@ export default function BotClientSettings() {
                       <small>
                         {lynxceSignedIn || cloudEdition
                           ? t("botClient.account.lynxce")
-                          : `${t("botClient.nav.signedInAs")} ${
-                              user?.username ?? ""
-                            }`}
+                          : t("botClient.account.localHint")}
                       </small>
                     </span>
                   </span>
-                  <Button
-                    icon={<LogOut size={15} />}
-                    onClick={() =>
-                      void signOutBotClient(user?.username, navigate)
-                    }
-                  >
-                    {t("auth.logout")}
-                  </Button>
+                  <span className={settings.rowActions}>
+                    {(lynxceSignedIn || cloudEdition) && (
+                      <a
+                        href={LYNXCE_ACCOUNT_SITE}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {t("botClient.account.centre")}
+                      </a>
+                    )}
+                    <Button
+                      icon={<LogOut size={15} />}
+                      onClick={() =>
+                        void signOutBotClient(user?.username, navigate)
+                      }
+                    >
+                      {t("auth.logout")}
+                    </Button>
+                  </span>
                 </div>
               </div>
               <CreditsPanel />
               {!web && credits.status === "none" && (
-                <div className={settings.group}>
-                  <div className={settings.row}>
-                    <span>
-                      {t("botClient.account.signIn")}
-                      <small>{t("botClient.account.signInHint")}</small>
-                    </span>
+                <section
+                  className={settings.promo}
+                  aria-labelledby="bot-lynxce-promo"
+                >
+                  <div>
+                    <h3 id="bot-lynxce-promo">
+                      {t("botClient.account.promoTitle")}
+                    </h3>
+                    <ul>
+                      {(
+                        [
+                          "promoComputer",
+                          "promoModels",
+                          "promoDevices",
+                        ] as const
+                      ).map((key) => (
+                        <li key={key}>
+                          <Check size={16} aria-hidden="true" />
+                          {t(`botClient.account.${key}`)}
+                        </li>
+                      ))}
+                    </ul>
+                    <small>{t("botClient.account.promoMove")}</small>
+                  </div>
+                  <div>
                     <Button
                       type="primary"
+                      size="large"
+                      block
                       onClick={() =>
                         void signOutBotClient(user?.username, navigate)
                       }
                     >
                       {t("botClient.account.signIn")}
                     </Button>
+                    <small>{t("botClient.account.promoRegister")}</small>
                   </div>
-                </div>
+                </section>
               )}
             </div>
           ) : web && !cloudEdition && (cloud || local) ? (
