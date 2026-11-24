@@ -498,6 +498,8 @@
     "LOGIN_LOCKED": "Too many failed sign-in attempts. Try again in {minutes} minutes.",
     "USERNAME_TAKEN": "Username is already taken.",
     "EMAIL_TAKEN": "Email is already taken.",
+    "BOT_PLAN_UNAVAILABLE": "Plan purchases are not available yet.",
+    "BOT_RECHARGE_RATE_LIMITED": "Too many recharge requests. Try again in a minute.",
     "EMAIL_INVALID": "Invalid email address.",
     "PASSWORD_SAME_AS_OLD": "New password must be different from the current password.",
     "PASSWORD_NOT_SET": "This account signs in through a directory and has no local password to change.",

@@ -1,9 +1,9 @@
 """The current user's Lynxce credits and account-bound hosted recharge link."""
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from octop.api.common.bot_desktop import AccountServices, Owner
 from octop.infra.auth import lynxce_cloud
@@ -12,10 +12,26 @@ from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.errors import ErrorCode, OctopError
 
 router = APIRouter(prefix="/wallet")
+NEED_CAP = 10_000_000
 
 
 class CheckoutRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     source: wallet.WalletSource
+    intent: Literal["credits", "plan"] = Field(
+        default="credits",
+        description="Checkout for credits or a plan; plans are not yet available.",
+    )
+    need: int | None = Field(
+        default=None,
+        strict=True,
+        ge=1,
+        description="Credit shortfall reserved for pricing (values above 10,000,000 are capped).",
+    )
+    reason: Literal["text", "image", "video", "computer", "disk", "plan_limit"] | None = Field(
+        default=None, description="Reason for recharge, reserved for pricing."
+    )
     expected_account_id: str | None = Field(
         default=None,
         max_length=256,
@@ -36,6 +52,12 @@ class CheckoutRequest(BaseModel):
             "Other values are ignored."
         ),
     )
+
+    @field_validator("need")
+    @classmethod
+    def _cap_need(cls, value: int | None) -> int | None:
+        # Only for the page's copy and pre-selection: a huge shortfall is capped, not refused.
+        return None if value is None else min(value, NEED_CAP)
 
 
 @router.get("", summary="Read the credit balance of my connected Lynxce account")
@@ -58,6 +80,7 @@ async def recharge(
         body.expected_account_id,
         body.expected_connection_id,
         body.origin,
+        body.intent,
     )
 
 
