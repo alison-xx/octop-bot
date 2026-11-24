@@ -14,7 +14,7 @@ struct APIError: LocalizedError, Equatable {
         if kind != .credits, let message, !message.isEmpty { return message }
         switch kind {
         case .unauthorized: return L("error.unauthorized")
-        case .credits: return L("error.credits")
+        case .credits: return L(CreditPurchases.inApp ? "error.credits" : "error.creditsNoPurchase")
         case .dailyLimit: return L("error.dailyLimit")
         case .rejected: return L("error.rejected %lld", status)
         case .network: return L("error.network")

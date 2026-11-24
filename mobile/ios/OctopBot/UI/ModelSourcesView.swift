@@ -176,7 +176,7 @@ struct ModelSourcesView: View {
             LabeledContent {
                 BalanceLabel(allowsRetry: false)
             } label: {
-                Text("credits.title")
+                Text(CreditPurchases.title)
             }
         }
     }
@@ -251,22 +251,11 @@ struct ModelSourcesView: View {
             Spacer(minLength: 8)
             if busy == key.id {
                 ProgressView()
-            } else if let inUse {
+            } else if let inUse, key.models.count < 2 {
                 InUseMark(text: inUse)
             } else if !key.models.isEmpty {
-                Menu {
-                    ForEach(key.models) { choice in
-                        Button(choice.label) { use(key, choice.id) }
-                    }
-                } label: {
-                    Text("models.keys.use")
-                        .font(.subheadline.weight(.medium))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Palette.raised, in: Capsule())
-                        .foregroundStyle(Palette.text)
-                }
-                .accessibilityIdentifier("useKey")
+                ModelMenu(models: key.models, current: inUse) { use(key, $0) }
+                    .accessibilityIdentifier("useKey")
             }
         }
         .padding(.vertical, 2)
@@ -301,21 +290,10 @@ struct ModelSourcesView: View {
                     }
                     .layoutPriority(1)
                     Spacer(minLength: 8)
-                    if let inUse {
+                    if let inUse, server.models.count < 2 {
                         InUseMark(text: inUse)
                     } else {
-                        Menu {
-                            ForEach(server.models) { choice in
-                                Button(choice.label) { phone.useLocal(server.id, model: choice.id) }
-                            }
-                        } label: {
-                            Text("models.keys.use")
-                                .font(.subheadline.weight(.medium))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(Palette.raised, in: Capsule())
-                                .foregroundStyle(Palette.text)
-                        }
+                        ModelMenu(models: server.models, current: inUse) { phone.useLocal(server.id, model: $0) }
                     }
                 }
                 .padding(.vertical, 2)
@@ -410,6 +388,40 @@ struct SourceHeader<Trailing: View>: View {
             trailing.font(.subheadline.weight(.medium)).textCase(nil)
         }
         .textCase(nil)
+    }
+}
+
+/// "Use" opening a menu of a source's models; with `current`, the model in use opens the same menu to switch.
+private struct ModelMenu: View {
+    var models: [KeyModel]
+    var current: String?
+    var pick: (String) -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(models) { choice in
+                Button {
+                    if choice.id != current { pick(choice.id) }
+                } label: {
+                    if choice.id == current {
+                        Label(choice.label, systemImage: "checkmark")
+                    } else {
+                        Text(verbatim: choice.label)
+                    }
+                }
+            }
+        } label: {
+            if let current {
+                InUseMark(text: current).fixedSize()
+            } else {
+                Text("models.keys.use")
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Palette.raised, in: Capsule())
+                    .foregroundStyle(Palette.text)
+            }
+        }
     }
 }
 

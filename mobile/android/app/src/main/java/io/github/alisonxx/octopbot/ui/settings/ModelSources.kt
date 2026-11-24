@@ -281,23 +281,31 @@ private fun SourceRow(
     }
 }
 
-/** "选择模型" opening a menu of [models]. */
+/** "选择模型" opening a menu of [models]; with [current], the model in use opens the same menu to switch. */
 @Composable
-private fun UseMenu(models: List<Pair<String, String>>, onPick: (String) -> Unit) {
+private fun UseMenu(models: List<Pair<String, String>>, current: String? = null, onPick: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val palette = LocalPalette.current
     Box {
-        Text(
-            stringResource(R.string.models_keys_use),
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.clip(CircleShape).background(palette.raised).clickable { open = true }.padding(horizontal = 12.dp, vertical = 6.dp),
-        )
+        if (current != null) {
+            Box(Modifier.clip(CircleShape).clickable { open = true }.padding(horizontal = 4.dp, vertical = 6.dp)) { InUse(current) }
+        } else {
+            Text(
+                stringResource(R.string.models_keys_use),
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.clip(CircleShape).background(palette.raised).clickable { open = true }.padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             models.forEach { (id, label) ->
-                DropdownMenuItem(text = { Text(label) }, onClick = {
-                    open = false
-                    onPick(id)
-                })
+                DropdownMenuItem(
+                    text = { Text(label) },
+                    trailingIcon = if (id == current) ({ Icon(Icons.Rounded.Check, contentDescription = null) }) else null,
+                    onClick = {
+                        open = false
+                        if (id != current) onPick(id)
+                    },
+                )
             }
         }
     }
@@ -459,8 +467,8 @@ fun ModelSourcesScreen(model: AppViewModel, onBack: () -> Unit, onCredits: () ->
                         ) {
                             when {
                                 busy == key.id -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                                inUse != null -> InUse(inUse)
-                                key.models.isNotEmpty() -> UseMenu(key.models.map { it.id to it.label }) { choice ->
+                                inUse != null && key.models.size < 2 -> InUse(inUse)
+                                key.models.isNotEmpty() -> UseMenu(key.models.map { it.id to it.label }, inUse) { choice ->
                                     act(key.id) {
                                         val next = store!!.use(key.id, choice)
                                         if (!onPhone) { serverList = next; model.setServerKeys(next) }
@@ -485,7 +493,7 @@ fun ModelSourcesScreen(model: AppViewModel, onBack: () -> Unit, onCredits: () ->
                         if (index > 0) HorizontalDivider(color = palette.hairline.copy(alpha = 0.6f), modifier = Modifier.padding(start = 60.dp))
                         val inUse = selection?.takeIf { it.source == PhoneSelection.Source.Local && it.id == server.id }?.model
                         SourceRow("ollama", server.name, server.host + " · " + stringResource(R.string.models_count, server.models.size)) {
-                            if (inUse != null) InUse(inUse) else UseMenu(server.models.map { it.id to it.label }) { phone.useLocal(server.id, it) }
+                            if (inUse != null && server.models.size < 2) InUse(inUse) else UseMenu(server.models.map { it.id to it.label }, inUse) { phone.useLocal(server.id, it) }
                             IconButton(onClick = { removingLocal = server }) {
                                 Icon(Icons.Rounded.DeleteOutline, contentDescription = stringResource(R.string.models_keys_remove), tint = palette.secondary)
                             }

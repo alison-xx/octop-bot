@@ -373,7 +373,7 @@ struct SettingsView: View {
                         } label: {
                             LabeledContent {
                                 BalanceLabel(allowsRetry: false)
-                            } label: { row("credits.title", "creditcard", .orange) }
+                            } label: { row(CreditPurchases.title, "creditcard", .orange) }
                         }
                         .accessibilityIdentifier("credits")
                     } else if model.server != nil {

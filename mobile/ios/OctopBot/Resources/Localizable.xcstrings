@@ -7604,6 +7604,70 @@
           }
         }
       }
+    },
+    "credits.titleNoPurchase": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credits"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "积分"
+          }
+        }
+      }
+    },
+    "credits.lowNoPurchase": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're running low on credits."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "积分快用完了。"
+          }
+        }
+      }
+    },
+    "credits.out.bodyNoPurchase": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This didn't finish. Once you have credits again, press Continue to pick up where it stopped."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这次没能跑完。积分到账后，点「继续」就接着做。"
+          }
+        }
+      }
+    },
+    "error.creditsNoPurchase": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're out of Lynxce credits."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "灵策积分不足。"
+          }
+        }
+      }
     }
   }
 }
