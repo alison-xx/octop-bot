@@ -281,6 +281,26 @@ final class AppModel {
         await refreshBalance()
     }
 
+    func refreshPreparingBots() async {
+        guard let server else { return }
+        do {
+            let loaded = try await server.bots()
+            bots = loaded.filter(\.isChief) + loaded.filter { !$0.isChief }
+            for bot in bots { sessions[bot.id]?.bot = bot }
+            loadError = nil
+        } catch {
+            if !Task.isCancelled { loadError = error.localizedDescription }
+        }
+    }
+
+    func retryBot(_ bot: BotProfile) async {
+        guard let server else { return }
+        do {
+            try await server.startBot(bot)
+            await refreshPreparingBots()
+        } catch { loadError = error.localizedDescription }
+    }
+
     /// One chat per Bot, so several Bots can reply at once.
     func session(for bot: BotProfile) -> ChatSession {
         if let session = sessions[bot.id] { return session }

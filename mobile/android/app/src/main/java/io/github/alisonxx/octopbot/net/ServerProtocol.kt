@@ -152,6 +152,9 @@ object ServerProtocol {
             subtitle = row.str("description")?.takeIf { it.isNotBlank() },
             look = normalizedLook(avatar?.str("shape"), avatar?.str("color"), chief),
             isChief = chief,
+            state = row.str("state"),
+            preparing = row.bool("preparing") ?: false,
+            lastError = row.str("last_error"),
         )
     }
 

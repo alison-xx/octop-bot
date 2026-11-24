@@ -22,6 +22,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -228,6 +229,7 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
                 history = true
             },
             onVoice = onVoice,
+            onRetryBot = { model.retryBot(bot) },
             onNewChat = chat::newChat,
             onSuggestion = { suggestion ->
                 // "Translate into English…" needs the user's text: put it in the field instead of sending.
@@ -366,6 +368,7 @@ fun ChatContent(
     onHistory: () -> Unit,
     onVoice: () -> Unit,
     onNewChat: () -> Unit,
+    onRetryBot: () -> Unit = {},
     onSuggestion: (String) -> Unit,
     onPickPhotos: () -> Unit,
     onTakePhoto: () -> Unit,
@@ -414,7 +417,22 @@ fun ChatContent(
             if (hitl != null && hitlActions != null && !state.streaming) {
                 HitlCard(bot.name, hitl, hitlActions, Modifier.padding(bottom = 8.dp))
             }
+            if (!bot.canSend) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (bot.state == "failed") {
+                        // "failed" also covers a missing or broken model, so the title stays generic.
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.bot_start_failed), fontWeight = FontWeight.SemiBold)
+                            bot.lastError?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        }
+                    } else {
+                        Text(stringResource(R.string.bot_preparing_chat), modifier = Modifier.weight(1f))
+                    }
+                    if (bot.state == "failed") TextButton(onClick = onRetryBot) { Text(stringResource(R.string.chat_retry)) }
+                }
+            }
             Composer(
+                enabled = bot.canSend,
                 text = draft,
                 onTextChange = onDraftChange,
                 images = images,
@@ -458,7 +476,7 @@ private fun ChatTopBar(
             IconButton(onClick = onHistory, modifier = Modifier.size(44.dp)) {
                 Icon(Icons.Rounded.History, contentDescription = stringResource(R.string.chat_history))
             }
-            IconButton(onClick = onVoice, modifier = Modifier.size(44.dp)) {
+            IconButton(onClick = onVoice, enabled = bot.canSend, modifier = Modifier.size(44.dp)) {
                 Icon(Icons.Rounded.GraphicEq, contentDescription = stringResource(R.string.chat_voice))
             }
             IconButton(onClick = onNewChat, enabled = !state.streaming, modifier = Modifier.size(44.dp)) {

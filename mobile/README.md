@@ -83,6 +83,9 @@ Grok-style: dark-first, chat-first, one big character.
   Server mode adds a Groups section with member-character clusters. Long-press a row: edit look (and
   persona/delete for phone-local Bots), voice mode. A floating waveform button opens voice mode with
   the last Bot. Every Bot keeps its own live chat, so several can reply at once.
+  A server Bot being imported shows “Getting ready…” in place of its preview; a Bot whose agent
+  failed (`state` "failed", which also covers a missing or broken model) shows "Couldn't start" and Retry. The directory refreshes every 1.5 seconds while any Bot is
+  preparing and the app is in the foreground. Older servers and phone-local Bots remain ready.
 - **Chat screen** (pushed from the directory). Top bar: back · mini character + name ("Replying…"
   while it works; tap to edit the look) · history (that Bot's conversations as a sheet: New chat,
   swipe to delete) · voice · new chat.
@@ -92,6 +95,9 @@ Grok-style: dark-first, chat-first, one big character.
   full-width Markdown with a 26 pt character beside the first line; a collapsible "Thought for a
   moment" row for reasoning; small chips for tool steps ("Using web_search…" / "Used web_search").
   Long-press a message: copy, read aloud, retry (assistant, last one).
+  While a server Bot is preparing or failed, the composer and voice entry are disabled. The chat
+  shows "This Bot is getting ready…", or "Couldn't start" with the server's `last_error` under it and
+  Retry; it becomes available after a refresh.
 - **Composer.** Floating pill at the bottom: `+` (photo library / camera) · multiline field ("Ask
   anything") · mic when empty / send (filled arrow) when there is text / stop (square) while
   streaming. Picked photos show as removable thumbnails above the field.

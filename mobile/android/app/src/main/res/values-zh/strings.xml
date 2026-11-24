@@ -526,4 +526,7 @@
     <string name="chat_credits_computer">开机至少需要 %1$s 积分。</string>
     <string name="chat_credits_paused">积分不足，云电脑已暂停，文件都还在。</string>
     <string name="error_provider_balance">你的 API Key 余额不足，请到服务商充值</string>
+    <string name="bot_preparing">准备中…</string>
+    <string name="bot_preparing_chat">Bot 正在准备，稍等片刻</string>
+    <string name="bot_start_failed">启动失败</string>
 </resources>
