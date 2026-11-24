@@ -10,7 +10,6 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
-from octop.i18n.domains.agents import agent_error_message
 from octop.infra.agents.bot_appearance import Character
 from octop.infra.agents.bot_market.catalog import (
     Catalog,
@@ -20,6 +19,7 @@ from octop.infra.agents.bot_market.catalog import (
     pick_locale,
 )
 from octop.infra.agents.bot_market.install import import_template, imported_slugs
+from octop.infra.agents.error_display import visible_agent_error
 from octop.infra.connectors.catalog import get_catalog_entry
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
@@ -299,5 +299,8 @@ async def import_bot(body: ImportBody, request: Request, user: Owner, server: Se
         **result.__dict__,
         state=state,
         preparing=state == "starting",
-        last_error=agent_error_message(row.last_error, _locale(request, None)) or None,
+        last_error=visible_agent_error(
+            row.agent_id, row.last_error, is_admin=user.is_admin, locale=_locale(request, None)
+        )
+        or None,
     )

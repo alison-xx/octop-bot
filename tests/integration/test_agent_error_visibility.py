@@ -59,3 +59,40 @@ async def test_agent_error_responses(env_with_provider, monkeypatch) -> None:
     classified = await client.get(f"/api/agents/{agent_id}/status", headers=tenant_auth)
     assert classified.status_code == 200
     assert classified.json()["last_error"] == agent_error_message(AGENT_START_TIMEOUT, "zh")
+
+
+async def test_bot_cards_and_market_import_hide_raw_errors(env_admin_alice, monkeypatch) -> None:
+    import dataclasses
+
+    from octop.infra.agents import error_display
+    from octop.infra.agents.bot_workspace import list_bot_cards
+    from tests.support.auth import resolve_user_id
+
+    client, server, admin_auth, alice_auth = env_admin_alice
+    monkeypatch.setattr(error_display, "bot_cloud_enabled", lambda: True)
+    raw = "test-secret upstream failure"
+    headers = {**alice_auth, "Accept-Language": "zh-CN"}
+
+    # Market import: the Bot just created reports its error through the generic text.
+    real_get = server.services.agent_repo.get
+
+    def failed_get(agent_id: str):  # type: ignore[no-untyped-def]
+        row = real_get(agent_id)
+        return dataclasses.replace(row, last_error=raw) if row is not None else None
+
+    monkeypatch.setattr(server.services.agent_repo, "get", failed_get)
+    imported = await client.post(
+        "/api/octop-bot/market-imports", json={"slug": "store-daily-brief"}, headers=headers
+    )
+    assert imported.status_code == 201, imported.text
+    assert imported.json()["last_error"] == "Bot 启动失败，请稍后重试。"
+    monkeypatch.setattr(server.services.agent_repo, "get", real_get)
+
+    # Bot cards (the owner's own list).
+    agent_id = imported.json()["agent_id"]
+    server.services.agent_repo.set_state(agent_id, "failed", error=raw)
+    alice_id = await resolve_user_id(client, admin_auth, "alice")
+    cards = list_bot_cards(server.services, alice_id, "")
+    card = next(c for c in cards if c["agent_id"] == agent_id)
+    assert card["last_error"] == "Bot 启动失败，请稍后重试。"
+    assert raw not in str(cards)
