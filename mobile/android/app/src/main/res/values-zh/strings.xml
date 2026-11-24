@@ -283,4 +283,27 @@
     <string name="settings_delete_account_done">已提交注销申请，并已退出登录。</string>
     <string name="onboarding_agreement"><![CDATA[继续即表示同意<a href="https://admin.lynxce.cn/legal/app/user-agreement">《灵策用户协议》</a>和<a href="https://octop-bot.lynxce.cn/privacy.html">《隐私政策》</a>]]></string>
     <string name="file_open_unsupported">请在 Octop Bot 网页版或桌面端打开这个文件。</string>
+    <!-- 设备连接器（mobile/PROTOCOL.md §C） -->
+    <string name="settings_device">设备连接器</string>
+    <string name="settings_device_health">健康</string>
+    <string name="settings_device_calendar">日历</string>
+    <string name="settings_device_footer">聊天时 Bot 可以读取你每天的健康数据和日历。添加或修改日程前一定会先问你。</string>
+    <string name="settings_device_denied">Octop Bot 没有这项权限。请在系统设置里允许，然后再打开开关。</string>
+    <string name="settings_device_health_unavailable">这台手机不支持 Health Connect，健康连接器无法开启。</string>
+    <string name="settings_device_health_update">健康连接器需要 Health Connect。请先在应用商店安装或更新它，然后再试。</string>
+    <string name="settings_device_health_install">获取 Health Connect</string>
+    <string name="device_tool_health_summary">读取健康数据</string>
+    <string name="device_tool_calendar_events">查看日历</string>
+    <string name="device_tool_calendar_create">添加日程</string>
+    <string name="device_tool_calendar_update">修改日程</string>
+    <string name="device_preview_title">标题</string>
+    <string name="device_preview_time">时间</string>
+    <string name="device_preview_location">地点</string>
+    <string name="device_preview_notes">备注</string>
+    <string name="device_preview_alert">提醒</string>
+    <string name="device_preview_alert_value">提前 %1$s 分钟</string>
+    <string name="device_add">添加</string>
+    <string name="device_save">保存</string>
+    <string name="health_rationale_title">Octop Bot 如何使用你的健康数据</string>
+    <string name="health_rationale_text">在“设置 → 设备连接器 → 健康”打开后，只有当 Bot 在聊天中需要时，Octop Bot 才会从 Health Connect 读取每天的汇总和平均值（步数、活动能量、锻炼分钟数、睡眠、心率、静息心率和体重）。这些数据会随这次聊天发送给回答你的模型，Octop Bot 不会另外保存。Octop Bot 从不写入健康数据。你随时可以关掉开关，或在 Health Connect 里撤销授权。</string>
 </resources>

@@ -5027,6 +5027,9 @@ class AgentManager:
 
                 workspace_tools.extend(chief_tools(self, services, row.agent_id, row.user_id))
             agent_middleware.append(BotWorkspaceTools(workspace_tools))
+            from octop.infra.agents.bot_device import DeviceTools
+
+            agent_middleware.append(DeviceTools())
         if cron_tools:
             merged_tools.extend(cron_tools)
         merged_tools.extend(knowledge_tools)

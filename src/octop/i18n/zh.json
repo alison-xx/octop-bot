@@ -732,7 +732,13 @@
     "generate_image": "生成图片",
     "generate_video": "生成视频",
     "bilibili_search_anime": "搜索番剧",
-    "search_arxiv": "查询 arXiv 论文"
+    "search_arxiv": "查询 arXiv 论文",
+    "device_health_summary": "读取健康数据",
+    "device_calendar_events": "查看日历",
+    "device_calendar_create_event": "添加日程",
+    "device_calendar_update_event": "修改日程",
+    "device_reminders": "查看提醒事项",
+    "device_reminder_create": "添加提醒事项"
   },
   "plugins": {
     "arxiv_search": {

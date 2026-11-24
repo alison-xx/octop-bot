@@ -23,6 +23,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: cn.lynxce.octopbot
         PRODUCT_NAME: OctopBot
         INFOPLIST_FILE: OctopBot/Info.plist
+        CODE_SIGN_ENTITLEMENTS: OctopBot/OctopBot.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1,2"

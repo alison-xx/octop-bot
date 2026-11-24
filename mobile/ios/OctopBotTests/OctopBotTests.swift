@@ -590,3 +590,97 @@ final class CloudTests: XCTestCase {
         XCTAssertThrowsError(try LynxceBackend.intent(from: ["productId": "x"]))
     }
 }
+
+@MainActor
+final class DeviceConnectorTests: XCTestCase {
+    func testToolCallDeltasJoinByIndex() {
+        var calls = ToolCallAccumulator()
+        calls.add(#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"device_calendar_create_event","arguments":"{\"title\":"}}]}}]}"#)
+        calls.add(#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"开会\",\"start\":\"2026-11-25T14:00\"}"}}]}}]}"#)
+        calls.add(#"{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"c2","function":{"name":"device_reminders","arguments":"{}"}}]}}]}"#)
+        calls.add(#"{"choices":[{"delta":{"content":"hi"}}]}"#)
+        XCTAssertEqual(calls.calls.map(\.id), ["c1", "c2"])
+        XCTAssertEqual(calls.calls[0].name, "device_calendar_create_event")
+        XCTAssertEqual(DeviceArgs.object(calls.calls[0].arguments)["title"] as? String, "开会")
+        let message = ToolCallAccumulator.assistantMessage(text: "", calls: calls.calls)
+        XCTAssertTrue(message["content"] is NSNull)
+        XCTAssertEqual((message["tool_calls"] as? [[String: Any]])?.count, 2)
+    }
+
+    func testDatesWithoutOffsetAreLocalAndBareDatesAreDays() throws {
+        let shanghai = try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai"))
+        let local = try XCTUnwrap(DeviceDates.parse("2026-11-25T14:00", zone: shanghai))
+        XCTAssertFalse(local.dateOnly)
+        XCTAssertEqual(DeviceDates.stamp(local.date, zone: shanghai), "2026-11-25T14:00:00+08:00")
+        let zoned = try XCTUnwrap(DeviceDates.parse("2026-11-25T06:00:00Z", zone: shanghai))
+        XCTAssertEqual(zoned.date, local.date)
+        let day = try XCTUnwrap(DeviceDates.parse("2026-11-25", zone: shanghai))
+        XCTAssertTrue(day.dateOnly)
+        XCTAssertNil(DeviceDates.parse("tomorrow"))
+    }
+
+    func testDevicePausesSplitReadsFromWrites() throws {
+        let reads = try XCTUnwrap(HitlPause.parse([
+            "action_requests": [["name": "device_health_summary", "args": #"{"metrics":["steps"]}"#, "description": "Runs on the user's phone."]],
+        ]))
+        XCTAssertTrue(reads.runsUnattended)
+        XCTAssertNil(reads.actions[0].description)
+        let write = try XCTUnwrap(HitlPause.parse([
+            "action_requests": [
+                ["name": "device_calendar_events", "args": ["start": "2026-11-25", "end": "2026-11-26"]],
+                ["name": "device_calendar_create_event", "args": ["title": "评审会", "start": "2026-11-25T14:00", "end": "2026-11-25T15:00", "location": "3F"]],
+            ],
+        ]))
+        XCTAssertFalse(write.runsUnattended)
+        XCTAssertTrue(write.hasDeviceActions)
+        let values = write.actions[1].details.map(\.value)
+        XCTAssertTrue(values.contains("评审会"))
+        XCTAssertTrue(values.contains("3F"))
+        XCTAssertEqual(DeviceArgs.object(write.actions[1].args)["title"] as? String, "评审会")
+    }
+
+    func testDecisionsBecomeToolMessagesInOrder() {
+        let messages: [[String: Any]] = [
+            ["role": "user", "content": "x"],
+            ToolCallAccumulator.assistantMessage(text: "", calls: [
+                .init(id: "a", name: "device_reminders", arguments: "{}"),
+                .init(id: "b", name: "device_reminder_create", arguments: #"{"title":"交报告"}"#),
+            ]),
+        ]
+        let out = LynxceBackend.answering(messages, decisions: [
+            ["type": "respond", "message": #"{"reminders":[]}"#],
+            ["type": "reject", "message": "The user declined."],
+        ])
+        XCTAssertEqual(out.count, 4)
+        XCTAssertEqual(out[2]["tool_call_id"] as? String, "a")
+        XCTAssertEqual(out[2]["content"] as? String, #"{"reminders":[]}"#)
+        XCTAssertEqual(out[3]["content"] as? String, #"{"error":"The user declined."}"#)
+    }
+
+    func testChatBodyOffersToolsWithTheTime() throws {
+        let bot = BotProfile(id: "b", name: "Chief", look: .chief, isChief: true)
+        let tools = DeviceConnectors.loadSpecs().filter { $0.capability == .calendar }.map(\.openAITool)
+        XCTAssertEqual(tools.count, 3)
+        let zone = try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai"))
+        let body = LynxceBackend.chatBody(
+            text: "明天下午三点开会", images: [], bot: bot, history: [], sessionId: "s", model: nil,
+            tools: tools, now: Date(timeIntervalSince1970: 1_795_000_000), zone: zone
+        )
+        XCTAssertEqual(body["tool_choice"] as? String, "auto")
+        XCTAssertEqual((body["tools"] as? [[String: Any]])?.count, 3)
+        let system = (body["messages"] as? [[String: Any]])?.first { ($0["content"] as? String)?.hasPrefix("Now:") == true }
+        XCTAssertEqual(system?["content"] as? String, "Now: 2026-11-18T19:06:40+08:00 (Asia/Shanghai).")
+        let plain = LynxceBackend.chatBody(text: "hi", images: [], bot: bot, history: [], sessionId: "s", model: nil)
+        XCTAssertNil(plain["tools"])
+    }
+
+    func testSleepIntervalsCountOverlapsOnce() {
+        let t0 = Date(timeIntervalSince1970: 0)
+        let hours = HealthMetric.union([
+            DateInterval(start: t0, duration: 3 * 3600),
+            DateInterval(start: t0.addingTimeInterval(2 * 3600), duration: 2 * 3600),
+            DateInterval(start: t0.addingTimeInterval(6 * 3600), duration: 3600),
+        ]) / 3600
+        XCTAssertEqual(hours, 5)
+    }
+}
