@@ -931,6 +931,7 @@ final class DeviceConnectorTests: XCTestCase {
         XCTAssertNil(plain["tools"])
     }
 
+    #if HEALTH_CONNECTOR
     func testSleepIntervalsCountOverlapsOnce() {
         let t0 = Date(timeIntervalSince1970: 0)
         let hours = HealthMetric.union([
@@ -939,6 +940,17 @@ final class DeviceConnectorTests: XCTestCase {
             DateInterval(start: t0.addingTimeInterval(6 * 3600), duration: 3600),
         ]) / 3600
         XCTAssertEqual(hours, 5)
+    }
+    #endif
+
+    /// 1.0.1 ships without HealthKit (no entitlement on the App Store profile): no Health switch, no
+    /// health tool offered to the Bot, and no Health purpose string in Info.plist.
+    func testHealthIsLeftOutOfThisBuild() {
+        XCTAssertFalse(DeviceConnectors.healthAvailable)
+        XCTAssertEqual(DeviceConnectors.shared.isAvailable[.health], false)
+        XCTAssertFalse(DeviceConnectors.shared.isOn(.health))
+        XCTAssertFalse(DeviceConnectors.shared.offeredTools.contains("device_health_summary"))
+        XCTAssertNil(Bundle.main.object(forInfoDictionaryKey: "NSHealthShareUsageDescription"))
     }
 }
 

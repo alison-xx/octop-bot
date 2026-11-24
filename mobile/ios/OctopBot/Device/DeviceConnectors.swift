@@ -1,6 +1,8 @@
 import EventKit
 import Foundation
+#if HEALTH_CONNECTOR
 import HealthKit
+#endif
 import Observation
 
 /// What the phone can share with its Bots. Wire contract: mobile/PROTOCOL.md → "C. Device connectors".
@@ -35,7 +37,19 @@ final class DeviceConnectors {
     private(set) var denied: Set<DeviceCapability> = []
 
     @ObservationIgnored private let events = EKEventStore()
+    #if HEALTH_CONNECTOR
     @ObservationIgnored private let health = HKHealthStore()
+    #endif
+
+    /// Health is built only with the `HEALTH_CONNECTOR` flag (off in 1.0.1): the App Store profile has no
+    /// HealthKit entitlement yet, so the app does not link HealthKit or show the Health switch.
+    static var healthAvailable: Bool {
+        #if HEALTH_CONNECTOR
+        HKHealthStore.isHealthDataAvailable()
+        #else
+        false
+        #endif
+    }
 
     private init() {
         specs = Self.loadSpecs()
@@ -66,7 +80,7 @@ final class DeviceConnectors {
     func writes(_ name: String) -> Bool { spec(name)?.writes ?? true }
 
     var isAvailable: [DeviceCapability: Bool] {
-        [.health: HKHealthStore.isHealthDataAvailable(), .calendar: true, .reminders: true]
+        [.health: Self.healthAvailable, .calendar: true, .reminders: true]
     }
 
     func isOn(_ capability: DeviceCapability) -> Bool {
@@ -76,7 +90,7 @@ final class DeviceConnectors {
     private func permitted(_ capability: DeviceCapability) -> Bool {
         switch capability {
         // Apple hides whether Health reads were allowed; a refused type simply returns no data.
-        case .health: HKHealthStore.isHealthDataAvailable()
+        case .health: Self.healthAvailable
         case .calendar: EKEventStore.authorizationStatus(for: .event) == .fullAccess
         case .reminders: EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
         }
@@ -96,11 +110,15 @@ final class DeviceConnectors {
         let granted: Bool
         switch capability {
         case .health:
+            #if HEALTH_CONNECTOR
             if HKHealthStore.isHealthDataAvailable() {
                 granted = (try? await health.requestAuthorization(toShare: [], read: HealthMetric.readTypes)) != nil
             } else {
                 granted = false
             }
+            #else
+            granted = false
+            #endif
         case .calendar:
             granted = (try? await events.requestFullAccessToEvents()) ?? false
         case .reminders:
@@ -138,7 +156,9 @@ final class DeviceConnectors {
         do {
             let result: [String: Any]
             switch name {
+            #if HEALTH_CONNECTOR
             case "device_health_summary": result = try await healthSummary(args)
+            #endif
             case "device_calendar_events": result = try calendarEvents(args)
             case "device_calendar_create_event": result = try createEvent(args)
             case "device_calendar_update_event": result = try updateEvent(args)
@@ -159,6 +179,7 @@ final class DeviceConnectors {
 
     // MARK: Health
 
+    #if HEALTH_CONNECTOR
     private func healthSummary(_ args: [String: Any]) async throws -> [String: Any] {
         let names = (args["metrics"] as? [String]) ?? []
         let metrics = names.compactMap(HealthMetric.init(rawValue:))
@@ -189,6 +210,7 @@ final class DeviceConnectors {
             "days": list,
         ]
     }
+    #endif
 
     // MARK: Calendar
 
@@ -348,6 +370,7 @@ nonisolated struct ReminderRow: Sendable {
     }
 }
 
+#if HEALTH_CONNECTOR
 /// Health metrics in `device_health_summary`, one value per day.
 enum HealthMetric: String, CaseIterable {
     case steps, active_energy, exercise_minutes, sleep_hours, heart_rate, resting_heart_rate, weight
@@ -456,3 +479,4 @@ enum HealthMetric: String, CaseIterable {
         return total + (current?.duration ?? 0)
     }
 }
+#endif
