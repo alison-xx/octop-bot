@@ -209,6 +209,33 @@ def _fresh_team_memory() -> None:
     from octop.infra.agents import bot_tools
 
     bot_tools._recent_teams.clear()
+    bot_tools._team_locks.clear()
+
+
+async def test_team_memory_drops_old_entries_and_idle_locks(env_with_provider):
+    from octop.infra.agents import bot_tools
+
+    client, server, auth = env_with_provider
+    chief = await _bot_owner(client, server, auth)
+    tools, config = _chief(server, chief)
+    config = {"configurable": {**config["configurable"], "thread_id": "turn-1"}}
+    await tools["octop_bot_create_team"].ainvoke(TEAM, config=config)
+    old_key = next(iter(bot_tools._recent_teams))
+    at, result = bot_tools._recent_teams[old_key]
+    bot_tools._recent_teams[old_key] = (at - bot_tools.TEAM_REUSE_SECONDS - 1, result)
+    idle = (0, "gone", "gone")
+    bot_tools._team_locks[idle] = asyncio.Lock()
+    await tools["octop_bot_create_team"].ainvoke(
+        {
+            **TEAM,
+            "team_name": "第二队",
+            "bots": [{**b, "name": b["name"] + "2"} for b in TEAM["bots"]],
+            "admin": TEAM["admin"] + "2",
+        },
+        config=config,
+    )
+    assert old_key not in bot_tools._recent_teams
+    assert old_key not in bot_tools._team_locks and idle not in bot_tools._team_locks
 
 
 async def test_create_team_rejects_oversized_and_foreign_calls(env_with_provider):
@@ -257,27 +284,30 @@ async def test_a_retried_team_call_in_one_thread_builds_one_team(env_with_provid
 
 async def test_account_totals_stop_new_bots_and_groups(env_with_provider, monkeypatch):
     from octop.infra.agents import bot_limits
+    from octop.infra.agents.manager import AgentManager
 
     client, server, auth = env_with_provider
     chief = await _bot_owner(client, server, auth)
     tools, config = _chief(server, chief)
+    # Groups: bot_groups.create_group asks bot_limits whether the owner is a cloud tenant.
     monkeypatch.setattr(bot_limits, "cloud_tenant", lambda *_: True)
-    monkeypatch.setattr(bot_limits, "MAX_BOTS", 2)  # Chief plus one
+    monkeypatch.setattr(bot_limits, "MAX_GROUPS", 0)
     partial = await tools["octop_bot_create_team"].ainvoke(TEAM, config=config)
-    assert len(partial["bot_ids"]) == 1 and partial["error"] == "BOT_COUNT_LIMIT"
+    assert len(partial["bot_ids"]) == len(TEAM["bots"])
+    assert partial["error"] == "BOT_GROUP_COUNT_LIMIT"
+    assert (await client.get(WORKSPACE, headers=auth)).json()["groups"] == []
+
+    # Bots: the count is checked in AgentManager.create's cloud-tenant branch, before anything
+    # is stored, so the account is made a tenant there too.
+    monkeypatch.setattr(AgentManager, "_cloud_tenant", lambda _self, uid: uid is not None)
+    monkeypatch.setattr(bot_limits, "MAX_BOTS", 1 + len(TEAM["bots"]))  # Chief and the team
     with pytest.raises(OctopError) as exc:
         await tools["octop_bot_create"].ainvoke(
             {"name": "再来", "instructions": "x"}, config=config
         )
     assert exc.value.code.value == "BOT_COUNT_LIMIT"
-
-    monkeypatch.setattr(bot_limits, "MAX_GROUPS", 0)
-    with pytest.raises(OctopError) as exc:
-        await tools["octop_bot_create_group"].ainvoke(
-            {"name": "群", "admin_id": chief, "member_ids": partial["bot_ids"]}, config=config
-        )
-    assert exc.value.code.value == "BOT_GROUP_COUNT_LIMIT"
-    assert (await client.get(WORKSPACE, headers=auth)).json()["groups"] == []
+    bots = (await client.get(WORKSPACE, headers=auth)).json()["bots"]
+    assert len(bots) == 1 + len(TEAM["bots"])
 
 
 async def test_bots_on_this_computer_have_no_account_limit(env_with_provider, monkeypatch):

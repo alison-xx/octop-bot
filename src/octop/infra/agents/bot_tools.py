@@ -295,6 +295,13 @@ def chief_tools(
                 k for k, (at, _) in _recent_teams.items() if now - at > TEAM_REUSE_SECONDS
             ]:
                 _recent_teams.pop(stale, None)
+            # Locks for calls that are done and no longer remembered go too, so neither map grows.
+            for idle in [
+                k
+                for k, lock in _team_locks.items()
+                if k != key and not lock.locked() and k not in _recent_teams
+            ]:
+                _team_locks.pop(idle, None)
             if thread and key in _recent_teams:
                 return {**_recent_teams[key][1], "reused": True}
             result = await _create_team(name, bots, names, admin, first_task, reply_mode)
