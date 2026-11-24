@@ -61,6 +61,9 @@ class Driver:
         self.stopped: dict[str, float] = {}
 
         self.listed: list[driver_module.Instance] = []
+        self.commands: list[str] = []
+        self.mtimes: dict[str, float] = {}
+        self.clock = 0.0
 
     def start(self, *, spec: str, labels: Mapping[str, str]) -> str:
         if self.fail_start:
@@ -109,10 +112,23 @@ class Driver:
 
     def run(self, instance_id: str, command: str, timeout: int) -> tuple[int, str]:
         assert self.states[instance_id] == "running"
+        self.commands.append(command)
+        if "find generated outbound" in command:  # the deliverables listing
+            lines = [
+                f"{len(data)} {self.mtimes.get(path, 1.0)} {path[len(WORKSPACE) + 1 :]}"
+                for path, data in self.files.items()
+                if path.startswith((f"{WORKSPACE}/generated/", f"{WORKSPACE}/outbound/"))
+            ]
+            return 0, "\n".join(lines)
+        if command.startswith("make "):  # a command that leaves a deliverable behind
+            target = f"{WORKSPACE}/generated/{command.split()[1]}"
+            self.write(instance_id, target, b"made on the computer")
         return 0, f"ran {command}"
 
     def write(self, instance_id: str, path: str, data: bytes) -> None:
         self.files[path] = data
+        self.clock += 1
+        self.mtimes[path] = self.clock
 
     def read(self, instance_id: str, path: str) -> bytes | None:
         return self.files.get(path)
@@ -795,3 +811,99 @@ def test_one_conversation_at_a_time_drives_the_screen(setup: Any) -> None:
     assert manager.claim_screen("bot1", "private")  # still the holder; its clock restarts
     clock.now += computers.SCREEN_HOLD_SECONDS
     assert manager.claim_screen("bot1", "room~bot1")
+
+
+def test_deliverables_are_written_and_read_without_the_computer(setup: Any, store: Any) -> None:
+    """A document the Bot writes in a chat, an image it generates, a file it sends."""
+    manager, driver, billing, clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1", store=store)
+    computer.write("/generated/report.md", "# Report")
+    computer.upload_files([("/generated/cat.png", b"png"), ("/outbound/send.pdf", b"pdf")])
+    assert computer.download_files(["/generated/cat.png"])[0].content == b"png"
+    assert "Report" in str(computer.read("/generated/report.md").file_data)
+    assert driver.calls == [] and billing.reserved == []
+    assert store.download_files(["/outbound/send.pdf"])[0].content == b"pdf"
+
+
+def test_deliverables_follow_the_computer_both_ways(setup: Any, store: Any) -> None:
+    manager, driver, billing, clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1", store=store)
+    computer.write("/generated/report.md", "# Report")
+    # Waking it (any way) copies the store's deliverables onto it.
+    computer.execute("ls")
+    assert driver.files[f"{WORKSPACE}/generated/report.md"] == b"# Report"
+    # A deliverable written while it runs reaches it before the next command ...
+    computer.upload_files([("/generated/chart.png", b"chart")])
+    computer.execute("python plot.py")
+    assert driver.files[f"{WORKSPACE}/generated/chart.png"] == b"chart"
+    # ... and what a command leaves on the computer comes back to the store.
+    computer.execute("make table.csv")
+    got = store.download_files(["/generated/table.csv"])[0]
+    assert got.content == b"made on the computer"
+
+
+def test_a_computer_from_before_mirroring_hands_its_deliverables_to_the_store(
+    setup: Any, store: Any
+) -> None:
+    manager, driver, billing, clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1", store=store)
+    computer.execute("ls")
+    manager.pause("bot1", 7)
+    driver.files[f"{WORKSPACE}/generated/old.md"] = b"written before"
+    # Opening its screen resumes it: its deliverables become readable without it.
+    manager.screen("bot1", 7)
+    assert store.download_files(["/generated/old.md"])[0].content == b"written before"
+
+
+def test_reads_that_would_wake_a_paused_computer_are_refused(setup: Any, store: Any) -> None:
+    from types import SimpleNamespace
+
+    from octop.infra.cloud.computers.backend import computer_off
+
+    manager, driver, billing, clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1", store=store)
+    workspace = SimpleNamespace(backend=computer)
+    assert computer_off(workspace, "notes/plan.md")
+    assert not computer_off(workspace, "generated/report.md")
+    assert not computer_off(workspace, ".")  # the store's listing
+    assert computer_off(workspace, ".", search=True)
+    assert not computer_off(SimpleNamespace(backend=store), "notes/plan.md")
+    computer.execute("ls")
+    assert not computer_off(workspace, "notes/plan.md")
+
+
+def test_on_cvm_beside_old_ags_computers_nothing_but_work_starts_one(
+    monkeypatch: pytest.MonkeyPatch, store: Any
+) -> None:
+    """Production runs new computers on CVM and keeps older ones on AGS (MixedDriver)."""
+    from types import SimpleNamespace
+
+    from octop.infra.cloud.computers.backend import computer_off
+    from octop.infra.cloud.computers.mixed import MixedDriver
+
+    monkeypatch.setattr(computers.ComputerManager, "_start_reaper", lambda self: None)
+    cvm, ags = Driver(), Driver()
+    billing, clock = Billing(), Clock()
+    manager = computers.ComputerManager(
+        Services(),  # type: ignore[arg-type]
+        MixedDriver(cvm, ags),  # type: ignore[arg-type]
+        billing=billing,  # type: ignore[arg-type]
+        clock=clock,
+    )
+    computer = CloudComputer(manager, user_id=7, agent_id="new", store=store)
+    computer.write("/generated/report.md", "# Report")
+    computer.upload_files([("/generated/cat.png", b"png")])
+    assert computer_off(SimpleNamespace(backend=computer), "notes/plan.md")
+    assert cvm.calls == [] and ags.calls == [] and billing.reserved == []
+    # Work starts a CVM, with the deliverables on it.
+    computer.execute("ls")
+    assert cvm.calls == [("start", "new")] and ags.calls == []
+    assert cvm.files[f"{WORKSPACE}/generated/report.md"] == b"# Report"
+    # A Bot whose computer was made on AGS before the switch resumes there, files and all.
+    ags.states["ags-old"] = "paused"
+    ags.files[f"{WORKSPACE}/generated/old.md"] = b"from AGS"
+    manager._save(computers.ComputerRecord(agent_id="old", user_id=8, instance_id="ags-old"))
+    older = CloudComputer(manager, user_id=8, agent_id="old", store=store)
+    older.execute("ls")
+    assert ("resume", "ags-old") in ags.calls and len(cvm.calls) == 1
+    assert store.download_files(["/generated/old.md"])[0].content == b"from AGS"

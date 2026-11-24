@@ -29,7 +29,9 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from octop.infra.cloud.computers.backend import computer_off
 from octop.infra.cloud.computers.driver import WORKSPACE as COMPUTER_WORKSPACE
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.attachment_hints import is_preview_media_type
 from octop.infra.gateway.media.constants import OUTBOUND_DIR
 from octop.infra.utils.browser_media import legacy_harness_screenshots_dir
@@ -396,6 +398,13 @@ async def _read_host_file_bytes(abs_path: str) -> bytes | None:
         return None
 
 
+async def _preview_bytes(workspace: BackendWorkspace, path: str) -> bytes | None:
+    """Like ``_download_via_workspace``, but a preview never starts a Bot's cloud computer."""
+    if computer_off(workspace, path):
+        raise OctopError.localized(ErrorCode.BOT_COMPUTER_OFF)
+    return await _download_via_workspace(workspace, path)
+
+
 async def resolve_preview_payload(
     *,
     source: str,
@@ -417,7 +426,7 @@ async def resolve_preview_payload(
 
     rel = extract_workspace_rel(source)
     if rel:
-        data = await _download_via_workspace(workspace, rel)
+        data = await _preview_bytes(workspace, rel)
         if data is not None:
             mime = _guess_mime(rel, mime_hint)
             if is_previewable_mime(mime):
@@ -428,17 +437,17 @@ async def resolve_preview_payload(
         path = tenant_workspace_path(path, [workspace.workspace_dir])
         if _has_parent_segment(path):
             return None
-        data = await _download_via_workspace(workspace, path)
+        data = await _preview_bytes(workspace, path)
         used = path
     elif _is_host_absolute(path):
         if not _abs_path_allowed(path, workspace=workspace.workspace_dir, host_files=host_files):
             return None
-        data = await _download_via_workspace(workspace, path)
+        data = await _preview_bytes(workspace, path)
         if data is None:
             data = await _read_host_file_bytes(path)
         used = path
     else:
-        data = await _download_via_workspace(workspace, path)
+        data = await _preview_bytes(workspace, path)
         used = path
 
     if data is None:
