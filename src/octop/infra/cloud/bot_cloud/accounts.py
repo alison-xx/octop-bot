@@ -13,6 +13,8 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from filelock import AsyncFileLock
+
 from octop.infra.auth import lynxce_cloud
 from octop.infra.crypto.fernet import decrypt_json, encrypt_json
 from octop.infra.errors import ErrorCode, OctopError
@@ -25,6 +27,8 @@ if TYPE_CHECKING:
 SSO_KIND = "lynxce"
 KEY_NAME = "Octop Bot 云端"
 DEFAULT_MODEL = "deepseek-flash"
+# UserManager.disabled_reason of a tenant who asked Lynxce to delete their account.
+DELETION_PENDING = "lynxce_deletion_pending"
 
 
 @dataclass(frozen=True)
@@ -86,10 +90,30 @@ def _key_request() -> dict[str, Any]:
     return body
 
 
-async def ensure_model_key(services: SharedServices, user_id: int) -> ModelKey:
-    existing = await asyncio.to_thread(load_model_key, services, user_id)
-    if existing is not None:
-        return existing
+def _key_lock(services: SharedServices, user_id: int) -> AsyncFileLock:
+    # Not lynxce_cloud._lock: minting the key takes that one (tenant_call), and it does not nest.
+    return AsyncFileLock(services.paths.root / f".lynxce-cloud-key-{user_id}.lock")
+
+
+async def ensure_model_key(
+    services: SharedServices, user_id: int, *, verify: bool = False
+) -> ModelKey:
+    """The tenant's model key, minted on first use.
+
+    One key per tenant even when two sign-ins race (phone and web): the check and the mint
+    run under a per-tenant lock. ``verify`` asks the gateway first and replaces a key the
+    user revoked in their Lynxce account centre, which would otherwise fail every chat.
+    """
+    async with _key_lock(services, user_id):
+        existing = await asyncio.to_thread(load_model_key, services, user_id)
+        if existing is not None:
+            if not verify or not await lynxce_cloud.model_key_rejected(existing.secret):
+                return existing
+            await asyncio.to_thread(forget_model_key, services, user_id)
+        return await _mint_model_key(services, user_id)
+
+
+async def _mint_model_key(services: SharedServices, user_id: int) -> ModelKey:
     data = await lynxce_cloud.create_model_key(services, user_id, _key_request())
     key_id = data.get("id") if isinstance(data, dict) else None
     secret = data.get("secret") if isinstance(data, dict) else None
@@ -109,20 +133,44 @@ async def provision(
     """Find or create the tenant for this Lynxce account and keep its session and model key.
 
     A new tenant starts in ``locale`` (the sign-in's language); an existing one keeps theirs.
+
+    Account deletion: :func:`delete_account` disables the tenant with reason
+    :data:`DELETION_PENDING`. Lynxce only lets the account sign in again while it still
+    exists, i.e. the user cancelled the deletion during the cooling-off period, so a
+    successful sign-in re-enables that tenant. A tenant the operator disabled (no reason, or
+    disabled again by the operator after the deletion request) stays disabled; the session
+    just opened is then closed upstream, as on any failure before it is kept.
     """
-    provider_id = await asyncio.to_thread(_provider_id, services)
-    existing = await asyncio.to_thread(
-        services.user_repo.get_by_sso, provider_id, session.account_id
-    )
-    claims: dict[str, Any] = {"name": session.display_name or ""}
-    user = await users.resolve_or_create_sso_user(
-        provider_id=provider_id, subject=session.account_id, claims=claims
-    )
-    if existing is None and locale:
-        await asyncio.to_thread(services.user_repo.set_locale, user.id, locale)
-        user.locale = locale
+    try:
+        provider_id = await asyncio.to_thread(_provider_id, services)
+        existing = await asyncio.to_thread(
+            services.user_repo.get_by_sso, provider_id, session.account_id
+        )
+        if (
+            existing is not None
+            and existing.disabled
+            and await asyncio.to_thread(users.disabled_reason, existing.id) == DELETION_PENDING
+        ):
+            await users.enable(existing.username)
+        claims: dict[str, Any] = {"name": session.display_name or ""}
+        user = await users.resolve_or_create_sso_user(
+            provider_id=provider_id, subject=session.account_id, claims=claims
+        )
+        if existing is None and locale:
+            await asyncio.to_thread(services.user_repo.set_locale, user.id, locale)
+            user.locale = locale
+    except Exception:
+        await lynxce_cloud.discard_session(session)
+        raise
     await lynxce_cloud.keep_session(services, user.id, session)
-    await ensure_model_key(services, user.id)
+    try:
+        # Signing in again is how a tenant recovers from a key revoked in the Lynxce console.
+        await ensure_model_key(services, user.id, verify=True)
+    except Exception:
+        # The sign-in fails, so its session must not stay open, here or upstream.
+        await asyncio.to_thread(lynxce_cloud.forget_session, services, user.id)
+        await lynxce_cloud.discard_session(session)
+        raise
     return user
 
 
@@ -130,13 +178,14 @@ async def delete_account(services: SharedServices, users: UserManager, user: Use
     """App Store 5.1.1(v): delete the Lynxce account, then close this tenant's account here.
 
     Lynxce signs the account out everywhere and erases it after its cooling-off period; the
-    local account is disabled and its Lynxce session and model key are dropped at once.
-    Returns the cooling-off days.
+    local account is disabled (reason :data:`DELETION_PENDING`) and its Lynxce session and
+    model key are dropped at once. Signing in again during the cooling-off period re-enables
+    it (see :func:`provision`). Returns the cooling-off days.
     """
     data = await lynxce_cloud.tenant_call(
         services, user.id, "POST", "/api/user/account/deletion-request", {"confirm": "注销账号"}
     )
-    await users.disable(user.username)
+    await users.disable(user.username, reason=DELETION_PENDING)
     await asyncio.to_thread(forget_model_key, services, user.id)
     await asyncio.to_thread(lynxce_cloud.forget_session, services, user.id)
     days = data.get("coolingDays") if isinstance(data, dict) else None

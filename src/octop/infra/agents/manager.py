@@ -104,6 +104,8 @@ from octop.infra.utils.turn_failure import turn_model_scope
 from octop.infra.utils.ulid import new_short_id
 
 if TYPE_CHECKING:
+    from octop_harness.config import ProviderConfig
+
     from octop.config import OctopConfig
     from octop.infra.agents.experts.catalog import ExpertCatalog
     from octop.infra.agents.plugins.manager import PluginManager
@@ -3623,6 +3625,22 @@ class AgentManager:
 
         return user_id is not None and bot_cloud_enabled() and not self._user_is_admin(user_id)
 
+    def host_files_allowed(self, agent_id: str) -> bool:
+        """Whether this agent's file I/O may reach the server's own disk (temp files, browser
+        screenshots, host paths, host-run cron scripts). Not for a cloud tenant's agent; the
+        operator's (admins') agents and every agent outside cloud mode keep it."""
+        row = self.get_row(agent_id)
+        return not (row is not None and self._cloud_tenant(row.user_id))
+
+    def cloud_tenant_model(self, user_id: int) -> tuple[ProviderConfig, str] | None:
+        """A cloud tenant's own Lynxce model (provider and ref) for one-shot calls, or ``None``
+        for admins and outside cloud mode, who use the host models."""
+        if not self._cloud_tenant(user_id):
+            return None
+        services = self._account_services()
+        selected = account_selection(services, user_id)
+        return (selected.provider(services), selected.ref) if selected is not None else None
+
     def _user_is_admin(self, user_id: int | None) -> bool:
         if user_id is None:
             return False
@@ -5163,7 +5181,10 @@ class AgentManager:
             skills_disabled=frozenset(skills_disabled_set(cfg) | plugin_skills_disabled),
             skills_dir=skill_dirs or None,
             default_timezone=self._config.default_timezone,
-            media_generation=self._media_generation.harness_config(),
+            # The image and video providers are the operator's; a cloud tenant would bill them.
+            media_generation=(
+                None if self._cloud_tenant(row.user_id) else self._media_generation.harness_config()
+            ),
             **harness_fields,
             **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),

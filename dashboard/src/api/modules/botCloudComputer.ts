@@ -10,6 +10,8 @@ export interface BotServerInfo {
   capabilities: {
     wallet: boolean;
     cloud_computer: boolean;
+    /** Off for cloud accounts: the image and video providers are the operator's. */
+    media_generation: boolean;
     file_store: "local" | "object";
   };
 }
@@ -26,10 +28,16 @@ export interface CloudComputerStatus {
 export interface ScreenTicket {
   ws_path: string;
   expires_in: number;
+  /** Screen session for typing and the clipboard while the screen is open. */
+  session: string;
 }
 
 const endpoint = (id: string) =>
   `/octop-bot/computers/${encodeURIComponent(id)}`;
+
+// The screen session is the credential: the phone apps' screen page has no sign-in.
+const sessionEndpoint = (session: string) =>
+  `/octop-bot/screen-sessions/${encodeURIComponent(session)}`;
 
 export const botCloudComputerApi = {
   serverInfo: () => request<BotServerInfo>("/octop-bot/server-info"),
@@ -43,4 +51,12 @@ export const botCloudComputerApi = {
     }),
   openScreen: (id: string) =>
     request<ScreenTicket>(endpoint(id) + "/screen", { method: "POST" }),
+  /** Types text (any language) at the taken-over desktop's cursor. */
+  typeText: (session: string, text: string) =>
+    request<void>(sessionEndpoint(session) + "/type", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+  readClipboard: (session: string) =>
+    request<{ text: string }>(sessionEndpoint(session) + "/clipboard"),
 };

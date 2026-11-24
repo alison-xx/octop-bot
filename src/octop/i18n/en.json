@@ -437,6 +437,7 @@
     "BOT_CLOUD_REQUEST_REJECTED": "Lynxce Cloud could not complete this action.",
     "BOT_CLOUD_CREDITS_REQUIRED": "You're out of Lynxce credits. Top up at https://admin.lynxce.cn/recharge to continue.",
     "BOT_LYNXCE_DAILY_LIMIT": "Today's Lynxce usage hit its daily limit. It resets at 00:00 UTC. To raise the limit, open your Lynxce account centre at https://admin.lynxce.cn and edit the Octop Bot key.",
+    "BOT_COMPUTER_NOT_TAKEN_OVER": "Take over the cloud computer before typing into it or reading its clipboard.",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "Authorize Lynxce checkout to recharge this account. Your existing chat connection stays active.",
     "BOT_LAYOUT_CHANGED": "The sidebar changed. Refresh it and try again.",
     "AUTH_FAILED": "Authentication failed.",
@@ -831,7 +832,8 @@
       "interpreter_missing": "No {runtime} interpreter is available, so the script did not run.",
       "timeout": "The script ran longer than {seconds} seconds.",
       "failed": "Script failed (exit {code}): {detail}",
-      "unreadable": "Could not read workspace script {path}."
+      "unreadable": "Could not read workspace script {path}.",
+      "needs_cloud_computer": "This Bot has no cloud computer yet, so the script cannot run."
     }
   },
   "agents": {

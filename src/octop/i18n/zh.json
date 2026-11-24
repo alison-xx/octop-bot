@@ -437,6 +437,7 @@
     "BOT_CLOUD_REQUEST_REJECTED": "灵策云未能执行此操作。",
     "BOT_CLOUD_CREDITS_REQUIRED": "灵策积分不足，到 https://admin.lynxce.cn/recharge 充值后就能继续。",
     "BOT_LYNXCE_DAILY_LIMIT": "今天的灵策用量已到每日上限，北京时间早上 8 点自动恢复。急用的话，可以到灵策账户中心 https://admin.lynxce.cn 调高「Octop Bot」这把 Key 的每日上限。",
+    "BOT_COMPUTER_NOT_TAKEN_OVER": "请先接管云电脑，再输入文字或读取它的剪贴板。",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "请补充授权灵策充值。当前聊天连接可继续使用。",
     "BOT_LAYOUT_CHANGED": "侧栏布局已更新，请刷新后再试。",
     "AUTH_FAILED": "认证失败。",
@@ -831,7 +832,8 @@
       "interpreter_missing": "未找到 {runtime} 解释器，无法执行脚本。",
       "timeout": "脚本执行超过 {seconds} 秒。",
       "failed": "脚本失败（退出码 {code}）：{detail}",
-      "unreadable": "无法读取工作区脚本 {path}。"
+      "unreadable": "无法读取工作区脚本 {path}。",
+      "needs_cloud_computer": "这个 Bot 还没有云电脑，无法运行脚本。"
     }
   },
   "agents": {

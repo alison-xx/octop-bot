@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -168,6 +169,9 @@ class CronDeliveryService:
                 path=command.script_path,
                 workspace=workspace,
                 backend_spec=self._backend_spec(command.agent_id),
+                host=await asyncio.to_thread(
+                    self._agent_manager.host_files_allowed, command.agent_id
+                ),
             )
         except ScriptRunError as exc:
             raise RuntimeError(self._script_error_text(exc, locale, command)) from exc
@@ -212,6 +216,8 @@ class CronDeliveryService:
             return tr("cron.script.interpreter_missing", locale, runtime=runtime)
         if exc.code == "timeout":
             return tr("cron.script.timeout", locale, seconds=exc.detail or "120")
+        if exc.code == "needs_cloud_computer":
+            return tr("cron.script.needs_cloud_computer", locale)
         return tr("cron.script.unreadable", locale, path=exc.detail or command.script_path or "")
 
     async def _deliver_agent(

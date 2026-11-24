@@ -6,6 +6,8 @@ struct APIError: LocalizedError, Equatable {
     var kind: Kind
     var status: Int
     var message: String?
+    /// The server's machine-readable error code (`{error: {code}}`), when it sent one.
+    var code: String? = nil
 
     var errorDescription: String? {
         // The server's credits text links to Lynxce's web checkout, which App Store builds don't show.
@@ -34,13 +36,13 @@ struct APIError: LocalizedError, Equatable {
 
     static func from(status: Int, message: String?, code: String? = nil) -> APIError {
         // Checked first: Lynxce can send the daily cap as a 402 too.
-        if isDailyLimit(code) { return APIError(kind: .dailyLimit, status: 429, message: message) }
-        if code == creditsRequired { return APIError(kind: .credits, status: 402, message: message) }
+        if isDailyLimit(code) { return APIError(kind: .dailyLimit, status: 429, message: message, code: code) }
+        if code == creditsRequired { return APIError(kind: .credits, status: 402, message: message, code: code) }
         return switch status {
-        case 401: APIError(kind: .unauthorized, status: status, message: message)
-        case 402: APIError(kind: .credits, status: status, message: message)
-        case 400..<500: APIError(kind: .rejected, status: status, message: message)
-        default: APIError(kind: .server, status: status, message: message)
+        case 401: APIError(kind: .unauthorized, status: status, message: message, code: code)
+        case 402: APIError(kind: .credits, status: status, message: message, code: code)
+        case 400..<500: APIError(kind: .rejected, status: status, message: message, code: code)
+        default: APIError(kind: .server, status: status, message: message, code: code)
         }
     }
 

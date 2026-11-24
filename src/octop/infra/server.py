@@ -831,6 +831,10 @@ class OctopServer:
 
             dispose_all_browse_sessions()
         finally:
+            from octop.infra.cloud.computers.manager import shutdown_manager  # noqa: PLC0415
+
+            # The computer reaper must stop before the database closes under it.
+            await asyncio.to_thread(shutdown_manager)
             if self.services is not None:
                 self.services.db.close()
             self.services = None

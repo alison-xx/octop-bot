@@ -66,6 +66,15 @@ def test_mutable_path_rejects_parent_and_file_url() -> None:
 
 def test_read_guard_rejects_parent_and_system_root(tmp_path: Path) -> None:
     with pytest.raises(OctopError):
-        _guard_workspace_read("outbound/../../etc/passwd", tmp_path)
+        _guard_workspace_read("outbound/../../etc/passwd", tmp_path, host_files=True)
     with pytest.raises(OctopError):
-        _guard_workspace_read("/etc/passwd", tmp_path)
+        _guard_workspace_read("/etc/passwd", tmp_path, host_files=True)
+
+
+def test_read_guard_per_owner(tmp_path: Path) -> None:
+    """Host paths are closed to a cloud tenant's agent, open to everyone else's."""
+    inside = str(tmp_path / "report.pdf")
+    _guard_workspace_read(inside, tmp_path, host_files=True)
+    with pytest.raises(OctopError):
+        _guard_workspace_read(inside, tmp_path, host_files=False)
+    _guard_workspace_read("outbound/report.pdf", tmp_path, host_files=False)

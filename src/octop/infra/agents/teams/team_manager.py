@@ -1782,7 +1782,11 @@ class TeamManager:
         selected = select_turn_tool_results(chunk, live_tool_call_ids, emitted_media_ids)
         if selected is None:
             return
-        async for event in media_events_from_tool_result(selected, workspace=workspace):
+        async for event in media_events_from_tool_result(
+            selected,
+            workspace=workspace,
+            host_files=await asyncio.to_thread(self._agent_manager.host_files_allowed, speaker_id),
+        ):
             parts = event.content
             if not parts:
                 continue

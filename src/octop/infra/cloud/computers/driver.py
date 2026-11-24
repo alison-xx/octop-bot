@@ -18,6 +18,7 @@ workspace lives in that user's home. Everything is configured from the environme
 
 from __future__ import annotations
 
+import base64
 import os
 import shlex
 import threading
@@ -40,7 +41,41 @@ _PENDING = "__octop_pending__"
 # x11vnc listens on 5900, which AGS does not route; the bridge relays it to this port.
 _SCREEN_PORT = 8080
 _BRIDGE = "/home/user/.octop/vnc_bridge.py"
+# Presses the paste shortcut in the focused window through XTest (the image has no xdotool);
+# terminals paste with Ctrl+Shift+V.
+_PRESS_PASTE = """
+import time
+from Xlib import X, XK, display
+from Xlib.ext import xtest
+d = display.Display()
+root = d.screen().root
+name = ""
+try:
+    active = root.get_full_property(d.intern_atom("_NET_ACTIVE_WINDOW"), X.AnyPropertyType)
+    window = d.create_resource_object("window", active.value[0])
+    name = " ".join(window.get_wm_class() or ()).lower()
+except Exception:
+    pass
+terminal = any(t in name for t in ("terminal", "xterm", "konsole", "terminator", "kitty", "tilix"))
+keys = ["Control_L"] + (["Shift_L"] if terminal else []) + ["v"]
+codes = [d.keysym_to_keycode(XK.string_to_keysym(k)) for k in keys]
+for code in codes:
+    xtest.fake_input(d, X.KeyPress, code)
+    d.sync()
+    time.sleep(0.02)
+for code in reversed(codes):
+    xtest.fake_input(d, X.KeyRelease, code)
+    d.sync()
+"""
 State = Literal["running", "paused", "starting", "gone"]
+
+
+@dataclass(frozen=True)
+class Instance:
+    instance_id: str
+    state: State
+    labels: Mapping[str, str]
+    created_at: float
 
 
 class ComputerDriver(Protocol):
@@ -51,10 +86,14 @@ class ComputerDriver(Protocol):
     def pause(self, instance_id: str) -> None: ...
     def stop(self, instance_id: str) -> None: ...
     def state(self, instance_id: str) -> State: ...
+    def stopped_at(self, instance_id: str) -> float | None: ...
+    def instances(self) -> list[Instance]: ...
     def run(self, instance_id: str, command: str, timeout: int) -> tuple[int, str]: ...
     def write(self, instance_id: str, path: str, data: bytes) -> None: ...
     def read(self, instance_id: str, path: str) -> bytes | None: ...
     def screen(self, instance_id: str) -> tuple[str, dict[str, str]]: ...
+    def paste_text(self, instance_id: str, text: str) -> None: ...
+    def read_clipboard(self, instance_id: str) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -90,6 +129,23 @@ class AgsConfig:
 _RUNNING = {"RUNNING"}
 _STARTING = {"STARTING", "RESUMING", "PENDING"}
 _PAUSED = {"PAUSED", "PAUSING"}
+
+
+def _timestamp(value: str | None) -> float:
+    """AGS ISO-8601 time → Unix time; unknown counts as brand new (never reaped by age).
+
+    A time without a zone is UTC, never this server's local time (which would make a starting
+    instance look hours old to the orphan scan).
+    """
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return time.time()
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.timestamp()
 
 
 def state_of(status: str | None) -> State:
@@ -166,6 +222,37 @@ class AgsDriver:
         request.InstanceIds = [instance_id]
         found = self._api().DescribeSandboxInstances(request).InstanceSet or []
         return state_of(found[0].Status) if found else "gone"
+
+    def stopped_at(self, instance_id: str) -> float | None:
+        """When AGS stopped this instance (its last update), or None if it cannot tell."""
+        request = self._models().DescribeSandboxInstancesRequest()
+        request.InstanceIds = [instance_id]
+        found = self._api().DescribeSandboxInstances(request).InstanceSet or []
+        if not found or state_of(found[0].Status) != "gone" or not found[0].UpdateTime:
+            return None
+        return _timestamp(found[0].UpdateTime)
+
+    def instances(self) -> list[Instance]:
+        """Every instance in this AGS account and region (for cleaning up lost starts)."""
+        found: list[Instance] = []
+        offset = 0
+        while True:
+            request = self._models().DescribeSandboxInstanceListRequest()
+            request.Offset, request.Limit = offset, 100
+            page = self._api().DescribeSandboxInstanceList(request).InstanceSet or []
+            for item in page:
+                labels = {m.Name: m.Value for m in (item.Metadata or []) if m.Name}
+                found.append(
+                    Instance(
+                        instance_id=str(item.InstanceId),
+                        state=state_of(item.Status),
+                        labels=labels,
+                        created_at=_timestamp(item.CreateTime),
+                    )
+                )
+            if len(page) < 100:
+                return found
+            offset += 100
 
     # -- data plane: the desktop's HTTP server ---------------------------------
 
@@ -294,3 +381,27 @@ class AgsDriver:
             )
         url = self.url(instance_id, _SCREEN_PORT, "/websockify", scheme="wss")
         return url, {"X-Access-Token": self.token(instance_id)}
+
+    def paste_text(self, instance_id: str, text: str) -> None:
+        """Type ``text`` (any language) at the desktop's cursor by pasting it.
+
+        VNC key events cannot carry Chinese or other IME text, so the text goes onto the
+        desktop's clipboard (``xclip``, which stays behind as the selection owner) and the
+        paste shortcut is pressed; the text stays on the clipboard afterwards.
+        """
+        encoded = base64.b64encode(text.encode()).decode()
+        # xclip stays behind owning the selection; its output must not hold /execute open.
+        output = self._execute(
+            instance_id,
+            f"printf %s {encoded} | base64 -d | xclip -selection clipboard -i > /dev/null 2>&1; "
+            f'[ "$(timeout 3 xclip -selection clipboard -o 2>/dev/null | base64 -w0)" = {encoded} ] '
+            f"&& python3 -c {shlex.quote(_PRESS_PASTE)} && echo pasted",
+        )
+        if output.strip() != "pasted":
+            raise RuntimeError(f"pasting into the cloud computer failed: {output.strip()[:200]}")
+
+    def read_clipboard(self, instance_id: str) -> str:
+        """The desktop's clipboard as text; empty when it holds no text."""
+        return self._execute(
+            instance_id, "timeout 3 xclip -selection clipboard -o 2>/dev/null || true"
+        )

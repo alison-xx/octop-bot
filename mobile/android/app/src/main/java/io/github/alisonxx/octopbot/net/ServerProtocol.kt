@@ -59,14 +59,17 @@ object ServerProtocol {
         return ComputerStatus(state, obj.double("running_since")?.let { (it * 1000).toLong() }, obj.bool("takeover") == true)
     }
 
-    /** The server's screen page for a Bot's computer, opened in the browser with a one-time ticket. */
-    fun screenPage(baseUrl: String, botId: String, wsPath: String, control: Boolean): String? {
+    /**
+     * The server's screen page for a Bot's computer, opened in the browser with a one-time ticket and the
+     * screen session that lets the page type Chinese and sync the clipboard while the user has taken over.
+     */
+    fun screenPage(baseUrl: String, botId: String, wsPath: String, session: String?, control: Boolean): String? {
         val ticket = (baseUrl.trimEnd('/') + wsPath).toHttpUrlOrNull()?.queryParameter("ticket") ?: return null
-        return (baseUrl.trimEnd('/') + "/octop-bot/screen/").toHttpUrlOrNull()?.newBuilder()
+        val page = (baseUrl.trimEnd('/') + "/octop-bot/screen/").toHttpUrlOrNull()?.newBuilder()
             ?.addPathSegment(botId)
-            ?.addQueryParameter("ticket", ticket)
-            ?.addQueryParameter("control", if (control) "1" else "0")
-            ?.build()?.toString()
+            ?.addQueryParameter("ticket", ticket) ?: return null
+        if (!session.isNullOrEmpty()) page.addQueryParameter("session", session)
+        return page.addQueryParameter("control", if (control) "1" else "0").build().toString()
     }
 
     /** `/api/agents/{id}/workspace/download?path=…`, the link Octop puts in a reply for a file. */

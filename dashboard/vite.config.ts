@@ -319,6 +319,8 @@ export default defineConfig(({ mode }) => {
       // TokenUsage lazy-loads recharts; without pre-bundling the first request
       // often 504s while Vite optimizes on demand.
       include: ["recharts"],
+      // The dev server pre-bundles noVNC too; let its top-level await through.
+      esbuildOptions: { supported: { "top-level-await": true } },
     },
   };
 });

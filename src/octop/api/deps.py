@@ -47,6 +47,8 @@ _JWT_EXEMPT_PREFIXES = (
     "/api/downloads/link/",
     # Read-only conversation links: the unguessable token is the credential.
     "/api/shares/",
+    # An open cloud computer screen: the unguessable screen session is the credential.
+    "/api/octop-bot/screen-sessions/",
 )
 _JWT_EXEMPT_EXACT = (
     "/api/health",

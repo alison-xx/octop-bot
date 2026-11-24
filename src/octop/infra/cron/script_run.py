@@ -21,7 +21,8 @@ _SUFFIX = {"python": ".py", "bash": ".sh", "powershell": ".ps1"}
 
 
 class ScriptRunError(Exception):
-    """A script could not be started. ``code`` is ``interpreter_missing``, ``timeout``, or ``unreadable``."""
+    """A script could not be started. ``code`` is ``interpreter_missing``, ``timeout``,
+    ``unreadable``, or ``needs_cloud_computer``."""
 
     def __init__(self, code: str, detail: str = "") -> None:
         super().__init__(detail or code)
@@ -111,8 +112,13 @@ async def run_cron_script(
     path: str | None,
     workspace: Any,
     backend_spec: Any = None,
+    host: bool = False,
 ) -> ScriptRunResult:
-    """Execute one script. Non-zero exits are returned, not raised."""
+    """Execute one script. Non-zero exits are returned, not raised.
+
+    ``host=False`` (a cloud tenant's agent) never runs it on the server itself: without a
+    sandbox backend it raises ``needs_cloud_computer``.
+    """
     backend = getattr(workspace, "backend", None)
     execute = getattr(backend, "execute", None)
     # Filesystem and object storage have no execute. Docker, OpenSandbox, and
@@ -129,11 +135,8 @@ async def run_cron_script(
             body=body,
             path=path,
         )
-    from octop.infra.desktop import bot_cloud_enabled  # noqa: PLC0415
-
-    if bot_cloud_enabled():
-        # Cloud mode never runs a tenant's script on the shared host.
-        return ScriptRunResult(exit_code=126, stdout="", stderr="scripts need a cloud computer")
+    if not host:
+        raise ScriptRunError("needs_cloud_computer")
     cwd = _host_cwd(workspace, backend_spec)
     return await _run_on_host(
         workspace,

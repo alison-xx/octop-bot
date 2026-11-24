@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Response
@@ -13,6 +15,30 @@ from octop.infra.setup.self_update import get_local_version
 
 router = APIRouter()
 
+# get_local_version() can run a subprocess for several seconds (green / fpk
+# installs). This route is public, so read it once per process, off the loop.
+# "0.0.0" means the read failed; it is not kept, so the next request tries again.
+_UNKNOWN_VERSION = "0.0.0"
+_local_version: str | None = None
+_local_version_lock = threading.Lock()
+
+
+def _read_local_version_once() -> str:
+    global _local_version
+    with _local_version_lock:
+        if _local_version is not None:
+            return _local_version
+        found = get_local_version()
+        if found != _UNKNOWN_VERSION:
+            _local_version = found
+        return found
+
+
+async def _cached_local_version() -> str:
+    if _local_version is not None:
+        return _local_version
+    return await asyncio.to_thread(_read_local_version_once)
+
 
 class ServerCapabilities(BaseModel):
     wallet: bool = Field(
@@ -20,6 +46,11 @@ class ServerCapabilities(BaseModel):
     )
     cloud_computer: bool = Field(
         default=False, description="Each Bot can run on its own cloud computer."
+    )
+    media_generation: bool = Field(
+        default=True,
+        description="Bots can generate images and videos. Off for cloud accounts: the "
+        "providers are the server operator's.",
     )
     file_store: Literal["local", "object"] = Field(
         default="local",
@@ -65,13 +96,14 @@ async def server_info(response: Response, server: Any = Depends(get_server)) -> 
         "web": ["lynxce", "password"],
     }.get(edition, ["password"])  # type: ignore[assignment]
     return ServerInfo(
-        version=get_local_version(),
+        version=await _cached_local_version(),
         edition=edition,
         # A cloud server is set up by its operator; tenants never see the wizard.
         setup_required=users == 0 and edition != "cloud",
         sign_in=sign_in,
         capabilities=ServerCapabilities(
             wallet=edition in ("desktop", "cloud"),
+            media_generation=edition != "cloud",
             file_store="object" if edition == "cloud" else "local",
         ),
     )

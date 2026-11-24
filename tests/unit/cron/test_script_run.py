@@ -29,6 +29,7 @@ class _Workspace:
 @pytest.mark.asyncio
 async def test_inline_python_prints_stdout(tmp_path: Path) -> None:
     result = await run_cron_script(
+        host=True,
         lang="python",
         source="inline",
         body="print('cron-ok')",
@@ -46,6 +47,7 @@ async def test_file_script_runs_in_the_workspace(tmp_path: Path) -> None:
     script.parent.mkdir()
     script.write_text("print('from-file')\n", encoding="utf-8")
     result = await run_cron_script(
+        host=True,
         lang="python",
         source="file",
         body="",
@@ -61,6 +63,7 @@ async def test_file_script_runs_in_the_workspace(tmp_path: Path) -> None:
 async def test_missing_workspace_file_fails(tmp_path: Path) -> None:
     with pytest.raises(ScriptRunError) as exc:
         await run_cron_script(
+            host=True,
             lang="python",
             source="file",
             body="",
@@ -74,6 +77,7 @@ async def test_missing_workspace_file_fails(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_failed_script_returns_stderr(tmp_path: Path) -> None:
     result = await run_cron_script(
+        host=True,
         lang="python",
         source="inline",
         body="import sys; sys.stderr.write('boom'); sys.exit(3)",
@@ -101,6 +105,7 @@ async def test_escaped_path_is_not_executed_in_place(tmp_path: Path) -> None:
     try:
         with pytest.raises(ScriptRunError) as exc:
             await run_cron_script(
+                host=True,
                 lang="python",
                 source="file",
                 body="",
@@ -126,6 +131,7 @@ async def test_remote_storage_reads_then_runs_in_a_temp_dir(tmp_path: Path) -> N
 
     workspace.aread_text = _read  # type: ignore[method-assign]
     result = await run_cron_script(
+        host=True,
         lang="python",
         source="file",
         body="",
@@ -142,6 +148,7 @@ async def test_host_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr("octop.infra.cron.script_run.SCRIPT_TIMEOUT_SECONDS", 0.2)
     with pytest.raises(ScriptRunError) as exc:
         await run_cron_script(
+            host=True,
             lang="python",
             source="inline",
             body="import time; time.sleep(5)",
@@ -159,6 +166,7 @@ async def test_missing_powershell_interpreter(
     monkeypatch.setattr("octop.infra.cron.script_run.shutil.which", lambda _name: None)
     with pytest.raises(ScriptRunError) as exc:
         await run_cron_script(
+            host=True,
             lang="powershell",
             source="inline",
             body="Write-Output 'nope'",
@@ -174,6 +182,7 @@ async def test_bash_echo_when_present(tmp_path: Path) -> None:
     if shutil.which("bash") is None and shutil.which("sh") is None:
         pytest.skip("no bash or sh on this host")
     result = await run_cron_script(
+        host=True,
         lang="bash",
         source="inline",
         body="echo cron-bash",
@@ -216,6 +225,7 @@ class _Sandbox:
 async def test_sandbox_inline_python_is_written_then_deleted() -> None:
     sandbox = _Sandbox()
     result = await run_cron_script(
+        host=True,
         lang="python",
         source="inline",
         body="print('sandbox-ok')",
@@ -238,6 +248,7 @@ async def test_sandbox_inline_python_is_written_then_deleted() -> None:
 async def test_sandbox_maps_timeout_and_missing_interpreter() -> None:
     with pytest.raises(ScriptRunError) as timeout:
         await run_cron_script(
+            host=True,
             lang="bash",
             source="inline",
             body="echo hi",
@@ -248,6 +259,7 @@ async def test_sandbox_maps_timeout_and_missing_interpreter() -> None:
     assert timeout.value.code == "timeout"
     with pytest.raises(ScriptRunError) as missing:
         await run_cron_script(
+            host=True,
             lang="python",
             source="inline",
             body="print(1)",
@@ -268,6 +280,7 @@ async def test_sandbox_missing_file_does_not_execute() -> None:
     sandbox.aexists = _missing  # type: ignore[method-assign]
     with pytest.raises(ScriptRunError) as exc:
         await run_cron_script(
+            host=True,
             lang="python",
             source="file",
             body="",
@@ -277,3 +290,21 @@ async def test_sandbox_missing_file_does_not_execute() -> None:
         )
     assert exc.value.code == "unreadable"
     assert sandbox.commands == []
+
+
+@pytest.mark.asyncio
+async def test_no_host_run_without_a_sandbox(tmp_path: Path) -> None:
+    """A cloud tenant's script never runs on the server itself."""
+    marker = tmp_path / "ran"
+    with pytest.raises(ScriptRunError) as caught:
+        await run_cron_script(
+            lang="python",
+            source="inline",
+            body=f"open({str(marker)!r}, 'w').close()",
+            path=None,
+            workspace=_Workspace(tmp_path),
+            backend_spec={"type": "filesystem"},
+            host=False,
+        )
+    assert caught.value.code == "needs_cloud_computer"
+    assert not marker.exists()

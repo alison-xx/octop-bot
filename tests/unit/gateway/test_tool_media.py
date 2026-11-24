@@ -91,6 +91,7 @@ async def test_import_external_file_via_workspace() -> None:
             external.as_uri(),
             filename="shot.png",
             mime="image/png",
+            host_files=True,
         )
         assert rel is not None
         assert rel.startswith(f"{OUTBOUND_DIR}/")
@@ -109,6 +110,7 @@ async def test_import_external_file_virtual_mode() -> None:
             external.as_uri(),
             filename="harness-browser.png",
             mime="image/png",
+            host_files=True,
         )
         assert rel is not None
         assert rel.startswith(f"{OUTBOUND_DIR}/")
@@ -895,6 +897,7 @@ async def test_project_stream_sends_only_this_turn_relative_image() -> None:
         manager = SimpleNamespace(
             stream=_stream,
             get_agent=lambda _agent_id: SimpleNamespace(workspace=workspace),
+            host_files_allowed=lambda _agent_id: True,
         )
         events = [event async for event in project_stream(manager, "agent-1", {})]
         images = [
@@ -940,6 +943,7 @@ async def test_project_stream_drops_media_when_tool_call_has_no_id() -> None:
         manager = SimpleNamespace(
             stream=_stream,
             get_agent=lambda _agent_id: SimpleNamespace(workspace=workspace),
+            host_files_allowed=lambda _agent_id: True,
         )
         events = [event async for event in project_stream(manager, "agent-1", {})]
         images = [
