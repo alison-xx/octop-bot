@@ -86,6 +86,9 @@ class FakeManager:
     def note(self, agent_id: str, kind: str) -> None:
         self.noted = kind
 
+    def claim_screen(self, agent_id: str, holder: str) -> bool:
+        return not getattr(self, "elsewhere", False)
+
     def use(self, agent_id: str, user_id: int, work: Any) -> Any:
         return work(self.driver, "ins-1")
 
@@ -162,3 +165,83 @@ def test_asking_for_a_takeover_pauses_and_hands_the_computer_back(
     assert "登录招商银行网银" in question["question"]
     assert [o["label"] for o in question["options"]] == ["我完成了", "我做不了"]
     assert manager.handed_back and "continue" in result
+
+
+def _jpeg(shade: int, *, dot: bool = False) -> bytes:
+    import io
+
+    from PIL import Image
+
+    picture = Image.new("RGB", cu.VIEW, (shade, shade, shade))
+    if dot:  # a clock-sized change: must not count as "the screen changed"
+        picture.paste((255, 0, 0), (1200, 4, 1230, 14))
+    out = io.BytesIO()
+    picture.save(out, "JPEG", quality=70)
+    return out.getvalue()
+
+
+def test_the_same_call_over_and_over_is_refused() -> None:
+    watch = cu.ScreenWatch()
+    for _ in range(cu.MAX_REPEATS - 1):
+        assert watch.before('["click", 1, 1]') is None
+    assert "identical cloud_computer call" in (watch.before('["click", 1, 1]') or "")
+    # Anything different starts over.
+    assert watch.before('["click", 2, 1]') is None
+
+
+def test_actions_that_leave_the_screen_alone_are_flagged_then_sent_to_the_user() -> None:
+    watch = cu.ScreenWatch()
+    assert watch.after("screenshot", _jpeg(40)) is None
+    notes = [watch.after("click", _jpeg(40, dot=i % 2 == 0)) for i in range(cu.STUCK_HANDOFF)]
+    assert notes[: cu.STUCK_NOTICE - 1] == [None] * (cu.STUCK_NOTICE - 1)
+    assert "has not changed after your last 3 actions" in (notes[cu.STUCK_NOTICE - 1] or "")
+    assert "request_takeover" in (notes[-1] or "") and "Stop now" in (notes[-1] or "")
+    # A screenshot or wait is not expected to change anything; a real change resets the count.
+    assert watch.after("wait", _jpeg(40)) is None
+    assert watch.after("click", _jpeg(200)) is None
+    assert watch.after("click", _jpeg(200)) is None
+
+
+def test_a_computer_busy_in_another_conversation_is_left_alone() -> None:
+    manager = FakeManager()
+    manager.elsewhere = True  # type: ignore[attr-defined]
+    result = _call(cu.computer_use_tool(manager, "bot1", 7), action="click", x=1, y=1)  # type: ignore[arg-type]
+    assert "another conversation" in result.content
+    assert manager.driver.scripts == []
+
+
+def test_a_bot_stuck_on_one_screen_reads_a_note_with_the_screenshot() -> None:
+    manager = FakeManager()
+    manager.driver.run_python = lambda instance, code: (  # type: ignore[method-assign]
+        "SNAPSHOT:" + base64.b64encode(_jpeg(90)).decode()
+    )
+    tool = cu.computer_use_tool(manager, "bot1", 7)  # type: ignore[arg-type]
+    texts = [
+        _call(tool, action="click", x=10 + i, y=10).update["messages"][0].content
+        for i in range(cu.STUCK_NOTICE + 1)
+    ]
+    assert "has not changed" not in texts[cu.STUCK_NOTICE - 1]
+    assert "has not changed after your last 3 actions" in texts[cu.STUCK_NOTICE]
+
+
+def test_the_briefing_tells_the_bot_where_its_files_are_and_when_to_hand_over() -> None:
+    from langchain_core.messages import SystemMessage
+
+    class _Request:
+        def __init__(self, system_message: SystemMessage | None) -> None:
+            self.system_message = system_message
+
+        def override(self, *, system_message: SystemMessage) -> _Request:
+            return _Request(system_message)
+
+    def texts(middleware: cu.ComputerBriefing, base: SystemMessage | None) -> str:
+        seen = middleware.wrap_model_call(_Request(base), lambda r: r)  # type: ignore[arg-type,return-value]
+        return "".join(b["text"] for b in seen.system_message.content_blocks)  # type: ignore[attr-defined]
+
+    private = texts(cu.ComputerBriefing(), SystemMessage(content="You are Analyst."))
+    assert private.startswith("You are Analyst.\n\n## Your cloud computer")
+    assert "file tools run on this computer" in private
+    assert "request_takeover" in private and "CAPTCHA" in private
+    room = texts(cu.ComputerBriefing(room=True), None)
+    assert room.startswith("## Your cloud computer")
+    assert "group's shared files" in room

@@ -244,13 +244,15 @@ def backend_spec_supports_execution(spec: Any) -> bool:
 
     deepagents ``FilesystemMiddleware`` rejects filesystem ``permissions`` when
     the backend implements ``SandboxBackendProtocol`` (e.g. ``local_shell``).
+    A spec that already resolved to a backend object (a cloud tenant's cloud
+    computer) supports execution when that object can execute.
     """
     if spec is None:
         return True
     if isinstance(spec, str):
         return spec in {"local_shell", "docker", "opensandbox"}
     if not isinstance(spec, dict):
-        return False
+        return callable(getattr(spec, "execute", None))
     kind = spec.get("type")
     if kind in {"local_shell", "docker", "opensandbox"}:
         return True

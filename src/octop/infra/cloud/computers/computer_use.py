@@ -19,10 +19,18 @@ import json
 import logging
 import time
 import xml.etree.ElementTree as ET
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
-from langchain_core.messages import HumanMessage, ToolMessage, add_notification_metadata
+from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
+from langchain_core.messages import (
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+    add_notification_metadata,
+)
 from langchain_core.tools import InjectedToolCallId, StructuredTool
+from langgraph.config import get_config
 from langgraph.types import Command, interrupt
 from octop_harness.builtin.tools.ask_user import ASK_USER_TOOL_NAME
 
@@ -253,6 +261,103 @@ def snapshot(driver: ComputerDriver, instance: str, script: str = "") -> bytes:
     return view_image(driver.screenshot(instance))
 
 
+# Actions meant to change the screen; a screenshot, wait or zoom is not expected to.
+_CHANGING = frozenset({"click", "double_click", "right_click", "drag", "scroll", "type", "key"})
+# The same call this many times in a row is refused: the model is going round in circles.
+MAX_REPEATS = 5
+# After this many changing actions that left the screen as it was, tell the model it is stuck;
+# after STUCK_HANDOFF of them, tell it to stop and ask the user.
+STUCK_NOTICE = 3
+STUCK_HANDOFF = 5
+# Mean per-pixel difference (0-255) of a 32x18 grey thumbnail below which two screens are the
+# same picture; the clock in the top bar alone stays well under it.
+SAME_SCREEN = 2.0
+
+REPEATED = (
+    "Refused: this is the {count}th identical cloud_computer call in a row. It is not working; "
+    "do something different (read `elements`, use the keyboard or a shell command), or call "
+    "`request_takeover` if a person is needed."
+)
+STUCK = (
+    "Note: the screen has not changed after your last {count} actions. Stop repeating them: "
+    "read `elements`, try another way (keyboard, a shell command), or call `request_takeover` "
+    "if a person is needed."
+)
+STUCK_STOP = (
+    "Note: the screen has not changed after your last {count} actions. Stop now: call "
+    "`request_takeover` with what is blocking you, or tell the user you are stuck and why."
+)
+
+
+def screen_signature(image: bytes) -> bytes:
+    """A 32x18 grey thumbnail: cheap to compare, blind to tiny changes like the clock."""
+    from PIL import Image  # noqa: PLC0415
+
+    with Image.open(io.BytesIO(image)) as picture:
+        return picture.convert("L").resize((32, 18), Image.Resampling.BOX).tobytes()
+
+
+def same_screen(a: bytes, b: bytes) -> bool:
+    return len(a) == len(b) and sum(abs(x - y) for x, y in zip(a, b, strict=True)) / len(a) < (
+        SAME_SCREEN
+    )
+
+
+class ScreenWatch:
+    """Notices a Bot going round in circles on its screen, without calling a model.
+
+    Same call over and over: refused at the MAX_REPEATS-th. Actions that should change the
+    screen but leave it as it was: a note on the result after STUCK_NOTICE of them, and a
+    firmer one (ask the user) from STUCK_HANDOFF.
+    """
+
+    def __init__(self) -> None:
+        self._last_call: str | None = None
+        self._repeats = 0
+        self._screen: bytes | None = None
+        self._unchanged = 0
+
+    def before(self, call: str) -> str | None:
+        """Refusal text when ``call`` repeats the previous one too often, else None."""
+        self._repeats = self._repeats + 1 if call == self._last_call else 1
+        self._last_call = call
+        if self._repeats >= MAX_REPEATS:
+            return REPEATED.format(count=self._repeats)
+        return None
+
+    def after(self, action: str, image: bytes) -> str | None:
+        """A note for the model when its actions stopped changing the screen."""
+        try:
+            signature = screen_signature(image)
+        except Exception:  # noqa: BLE001 - an odd picture is no reason to fail the action
+            return None
+        previous, self._screen = self._screen, signature
+        if action not in _CHANGING:
+            return None
+        if previous is None or not same_screen(previous, signature):
+            self._unchanged = 0
+            return None
+        self._unchanged += 1
+        if self._unchanged >= STUCK_HANDOFF:
+            return STUCK_STOP.format(count=self._unchanged)
+        if self._unchanged >= STUCK_NOTICE:
+            return STUCK.format(count=self._unchanged)
+        return None
+
+
+def _thread_id() -> str:
+    try:
+        return str((get_config().get("configurable") or {}).get("thread_id") or "")
+    except RuntimeError:  # called outside a graph run (tests, scripts)
+        return ""
+
+
+BUSY_ELSEWHERE = (
+    "This cloud computer is being used by another conversation of this Bot right now. Do not "
+    "use its screen here; wait a couple of minutes and try again, or tell the user."
+)
+
+
 def _pair(value: str | None) -> tuple[float, float] | None:
     if not value:
         return None
@@ -339,6 +444,8 @@ yourself: when a site asks for them, leave the screen on that step and call \
 
 
 def computer_use_tool(manager: ComputerManager, agent_id: str, user_id: int) -> StructuredTool:
+    watches: dict[str, ScreenWatch] = {}
+
     def act(
         action: Action,
         tool_call_id: Annotated[str, InjectedToolCallId],
@@ -355,6 +462,22 @@ def computer_use_tool(manager: ComputerManager, agent_id: str, user_id: int) -> 
     ) -> Command[Any] | str:
         if manager.taken_over(agent_id, user_id):
             return TAKEN_OVER
+        # One conversation at a time drives the screen (a private chat and a group can both
+        # reach this Bot's computer).
+        thread = _thread_id()
+        if not manager.claim_screen(agent_id, thread):
+            return BUSY_ELSEWHERE
+        if thread not in watches and len(watches) >= 64:
+            watches.clear()
+        watch = watches.setdefault(thread, ScreenWatch())
+        refused = watch.before(
+            json.dumps(
+                [action, x, y, x2, y2, text, keys, direction, amount, button, seconds],
+                ensure_ascii=False,
+            )
+        )
+        if refused:
+            return refused
 
         def work(driver: ComputerDriver, instance: str) -> Command[Any] | str:
             manager.note(agent_id, action)
@@ -392,6 +515,9 @@ def computer_use_tool(manager: ComputerManager, agent_id: str, user_id: int) -> 
                 script += f"time.sleep({settle})\n"
                 done = f"Did {action}."
             image = snapshot(driver, instance, script)
+            stuck = watch.after(action, image)
+            if stuck:
+                done = f"{done} {stuck}"
             return _with_image(
                 tool_call_id,
                 done + " The screen (1280x720) is attached in the next message.",
@@ -467,3 +593,56 @@ def request_takeover_tool(
     return StructuredTool.from_function(
         func=request_takeover, name="request_takeover", description=HANDOFF_DESCRIPTION
     )
+
+
+BRIEFING = """## Your cloud computer
+You have your own cloud computer: an Ubuntu desktop with Chrome, a terminal and LibreOffice. \
+It starts the first time you use it (a few seconds) and pauses when idle. The user pays for \
+its running time, so use it only when the task needs a machine.
+- {files}
+- Pick the cheapest way that works: answer directly or use connected apps and web tools; then \
+shell commands and files; then the screen (`cloud_computer`: `elements` first, then click and \
+type); last, the user.
+- Never type passwords, verification codes, payment details or ID numbers, and do not try to \
+get past a CAPTCHA. For a sign-in, two-factor code, QR scan, CAPTCHA, payment or identity check, \
+leave the screen on that step and call `request_takeover` saying what the user must do. When \
+they hand the computer back, take a screenshot and check that step is done before going on.
+- Before anything with consequences outside the computer (sending a message or email, \
+publishing, buying, deleting or changing the user's data elsewhere, accepting terms), ask the \
+user to confirm unless they already asked for exactly that.
+- This is not the user's own computer: it cannot see their local files or apps. If the task \
+needs those, say so."""
+_PRIVATE_FILES = "Your shell commands and file tools run on this computer."
+_ROOM_FILES = (
+    "In this group your file tools work on the group's shared files, not on the computer; "
+    "reach the computer only through `cloud_computer`."
+)
+
+
+class ComputerBriefing(AgentMiddleware[Any, Any]):
+    """Tells a cloud tenant's Bot what its computer is and when to hand over to the user.
+
+    The text is fixed per agent, so it never breaks the prompt cache between turns.
+    """
+
+    def __init__(self, *, room: bool = False) -> None:
+        self._text = BRIEFING.format(files=_ROOM_FILES if room else _PRIVATE_FILES)
+
+    def _brief(self, request: ModelRequest[Any]) -> ModelRequest[Any]:
+        blocks: list[Any] = (
+            list(request.system_message.content_blocks) if request.system_message else []
+        )
+        blocks.append({"type": "text", "text": f"\n\n{self._text}" if blocks else self._text})
+        return request.override(system_message=SystemMessage(content_blocks=blocks))
+
+    def wrap_model_call(
+        self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], ModelResponse[Any]]
+    ) -> ModelResponse[Any]:
+        return handler(self._brief(request))
+
+    async def awrap_model_call(
+        self,
+        request: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
+    ) -> ModelResponse[Any]:
+        return await handler(self._brief(request))

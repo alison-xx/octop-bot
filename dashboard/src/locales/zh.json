@@ -3358,10 +3358,12 @@
     "oneShotDone": "已完成",
     "oneShotFailed": "已失败",
     "oneShotMissed": "已错过",
+    "oneShotWaiting": "等你处理",
     "oneShotPaused": "已停用",
     "lastStatusOk": "成功",
     "lastStatusError": "失败",
     "lastStatusMissed": "已错过",
+    "lastStatusWaiting": "等你处理",
     "oneShotEnableBlocked": "执行时间已过，请改到将来的时间后再启用",
     "form": {
       "sectionBasic": "基础信息",

@@ -3359,10 +3359,12 @@
     "oneShotDone": "Completed",
     "oneShotFailed": "Failed",
     "oneShotMissed": "Missed",
+    "oneShotWaiting": "Needs you",
     "oneShotPaused": "Paused",
     "lastStatusOk": "Succeeded",
     "lastStatusError": "Failed",
     "lastStatusMissed": "Missed",
+    "lastStatusWaiting": "Needs you",
     "oneShotEnableBlocked": "That time has already passed. Pick a future time before enabling it again.",
     "form": {
       "sectionBasic": "Basic Info",

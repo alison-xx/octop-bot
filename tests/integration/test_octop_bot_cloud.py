@@ -170,13 +170,23 @@ async def test_each_lynxce_account_gets_its_own_tenant(
 
 
 async def test_tenants_cannot_reach_the_host(tmp_octop_home: Path, upstream: Upstream) -> None:
-    async with octop_client(tmp_octop_home) as (client, _srv):
-        token = (await _sign_in(client, "13800000003"))["access_token"]
+    async with octop_client(tmp_octop_home) as (client, srv):
+        signed_in = await _sign_in(client, "13800000003")
+        token = signed_in["access_token"]
         auth = {"Authorization": f"Bearer {token}"}
         fs = await client.get("/api/filesystem/roots", headers=auth)
         assert fs.status_code == 403
         mcp = await client.put("/api/connectors/custom-mcp", headers=auth, json={"servers": {}})
         assert mcp.status_code == 403
+        # Nor the server's own browser or screen: their Bots use their own cloud computers.
+        from octop.infra.agents.manager import TENANT_HOST_TOOLS
+
+        registry = srv.app_runtime.agent_registry
+        assert registry._tenant_tools_disabled(signed_in["user"]["id"], {"x"}) == {
+            "x",
+            *TENANT_HOST_TOOLS,
+        }
+        assert registry._tenant_tools_disabled(None, {"x"}) == {"x"}
 
 
 async def test_a_tenants_agent_is_pinned_to_its_object_store_prefix(
@@ -252,6 +262,11 @@ async def test_with_ags_configured_each_bot_gets_its_own_computer(
         )
         assert isinstance(backend, CloudComputer)
         assert backend.id == f"computer-{row.agent_id}"
+
+        # A tenant's Bot gets the computer tools (shown on every turn: phone, IM, schedule).
+        registry = srv.app_runtime.agent_registry
+        tools = registry._cloud_computer_tools(row)
+        assert [t.name for t in tools] == ["cloud_computer", "request_takeover"]
 
         path = f"/api/octop-bot/computers/{row.agent_id}"
         mine = await client.get(path, headers={"Authorization": f"Bearer {alice['access_token']}"})

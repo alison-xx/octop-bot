@@ -165,7 +165,7 @@ export const createColumns = (
         const dot =
           phase === "failed"
             ? "var(--fn-color-error, #ef4444)"
-            : phase === "missed"
+            : phase === "missed" || phase === "waiting"
             ? "#d97706"
             : phase === "pending" || (!phase && enabled)
             ? "var(--fn-color-success)"

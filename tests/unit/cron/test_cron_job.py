@@ -154,6 +154,28 @@ async def test_run_records_error_on_failure(setup) -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_run_waiting_for_the_user_is_not_a_failure(setup) -> None:
+    from octop.infra.cron.delivery import CronWaitingForUser
+
+    cron_repo, audit, cid, session_key = setup
+    delivery = MagicMock()
+    delivery.deliver = AsyncMock(side_effect=CronWaitingForUser("需要你处理：请登录"))
+    job = _job(
+        cron_repo=cron_repo,
+        audit=audit,
+        cid=cid,
+        session_key=session_key,
+        delivery_service=delivery,
+    )
+    assert await job.run(raise_on_error=True) is True
+    row = cron_repo.get(cid)
+    assert row.last_status == "waiting"
+    assert row.last_error == "需要你处理：请登录"
+    assert audit.query(action="cron.run_waiting")
+    assert not audit.query(action="cron.run_failed")
+
+
+@pytest.mark.asyncio
 async def test_from_row_reads_persisted_session_key(setup) -> None:
     cron_repo, audit, cid, session_key = setup
     row = cron_repo.get(cid)

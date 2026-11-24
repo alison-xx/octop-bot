@@ -882,6 +882,10 @@
       "date_year": "{year}年{month}月{day}日 {time}",
       "mail": "收到新邮件时",
       "custom": "自定义"
+    },
+    "waiting": {
+      "needs_you": "定时任务「{name}」需要你处理，打开这个 Bot 的对话继续（24 小时内有效）。",
+      "still": "定时任务「{name}」上一次运行还在等你处理，这次没有执行。"
     }
   },
   "agents": {
