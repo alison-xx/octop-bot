@@ -68,4 +68,37 @@ describe("DirectoryItem", () => {
     fireEvent.click(screen.getByRole("button", { name: "Writer" }));
     expect(onPick).toHaveBeenCalledWith(item);
   });
+
+  it("marks a Bot that waits for me", () => {
+    const row = (waiting: boolean) => (
+      <DirectoryItem
+        item={item}
+        chief={false}
+        pinned={false}
+        selected={false}
+        compact={false}
+        standalone
+        disabled={false}
+        unread={0}
+        waiting={waiting}
+        subtitle={waiting ? "botInbox.needsYou" : "Teammate"}
+        motion="idle"
+        sectionNames={sectionNames}
+        bulkDisabled={false}
+        menuEvents={events}
+        overflowProps={overflowProps}
+        onAction={() => {}}
+        onPick={() => {}}
+        onDragging={onDragging}
+      />
+    );
+    const { rerender } = render(row(false));
+    expect(
+      screen.queryByRole("status", { name: "botInbox.needsYou" }),
+    ).toBeNull();
+    rerender(row(true));
+    expect(
+      screen.getByRole("status", { name: "botInbox.needsYou" }),
+    ).toBeTruthy();
+  });
 });

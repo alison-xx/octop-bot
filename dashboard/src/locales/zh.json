@@ -9053,5 +9053,11 @@
       "files": "{{count}} 个文件",
       "pixels": "{{w}}×{{h}}"
     }
+  },
+  "botInbox": {
+    "needsYou": "等你处理"
+  },
+  "botApproval": {
+    "title": "需要你确认"
   }
 }

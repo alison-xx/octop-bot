@@ -35,7 +35,12 @@ from octop.infra.bot_tasks.store import TaskStore
 from octop.infra.bot_tasks.tools import TASK_TOOL_NAMES
 
 # Talking to the user and keeping the plan never count against the budget.
-FREE_TOOLS = TASK_TOOL_NAMES | {"ask_user_question", "write_todos", "request_takeover"}
+FREE_TOOLS = TASK_TOOL_NAMES | {
+    "ask_user_question",
+    "write_todos",
+    "request_takeover",
+    "request_approval",
+}
 # Tools that do real work; reading and looking around never need a plan.
 WORK_TOOLS = frozenset({"write_file", "edit_file", "execute", "cloud_computer"})
 WARN_AT = 0.8
@@ -56,7 +61,10 @@ it). It is checked first: it must open, have real content and a name that says w
 (not output.xlsx); fix and resend if it is refused.
 5. Call `task_finish` last, then reply in a sentence or two; the user sees the checklist as a \
 card. If a criterion failed or was skipped, say plainly what is missing; never call it done. \
-A deep task is checked by an independent reviewer first; task_finish tells you how."""
+A deep task is checked by an independent reviewer first; task_finish tells you how.
+Before anything with consequences outside your work (sending, publishing, submitting, deleting \
+the user's data elsewhere, changing permissions, accepting terms), call `request_approval` and \
+act only if allowed. Payments are always the user's: `request_takeover`."""
 
 BUDGET_NEAR = (
     "Note: this task has used {used} of its {what} budget ({limit}). Wrap up: finish what "

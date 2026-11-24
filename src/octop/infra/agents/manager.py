@@ -3644,13 +3644,20 @@ class AgentManager:
         computers = current_manager()
         if computers is None:
             return []
+        from octop.infra.bot_tasks.approvals import ApprovalRules  # noqa: PLC0415
         from octop.infra.cloud.computers.computer_use import (  # noqa: PLC0415
             computer_use_tool,
             request_takeover_tool,
         )
 
         return [
-            computer_use_tool(computers, row.agent_id, row.user_id),
+            computer_use_tool(
+                computers,
+                row.agent_id,
+                row.user_id,
+                approvals=ApprovalRules(self._repos.settings_repo),
+                user_repo=self._repos.user_repo,
+            ),
             request_takeover_tool(computers, self._repos.user_repo, row.agent_id, row.user_id),
         ]
 
@@ -5054,13 +5061,22 @@ class AgentManager:
             computer_tools = self._cloud_computer_tools(row)
             # Tasks (plan, evidence, finish gate) wherever the Bot works: every turn for a
             # cloud tenant, Octop Bot client turns otherwise.
+            from octop.infra.bot_tasks.approvals import ApprovalRules, request_approval_tool
             from octop.infra.bot_tasks.store import TaskStore
             from octop.infra.bot_tasks.tools import task_tools
             from octop.infra.bot_tasks.watchdog import BotTaskMiddleware
 
             tenant = self._cloud_tenant(row.user_id)
             tasks = TaskStore(self._repos.settings_repo)
-            task_kit = task_tools(tasks)
+            task_kit = [
+                *task_tools(tasks),
+                request_approval_tool(
+                    ApprovalRules(self._repos.settings_repo),
+                    self._repos.user_repo,
+                    row.agent_id,
+                    row.user_id,
+                ),
+            ]
             anywhere = [*computer_tools, *task_kit] if tenant else computer_tools
             if not tenant:
                 workspace_tools.extend(task_kit)

@@ -343,6 +343,18 @@ class HitlPendingStore:
         ttl = record.ttl_seconds if record.ttl_seconds is not None else self.ttl_seconds
         return now - record.created_at > ttl
 
+    def pending_for_user(self, user_id: int) -> list[HitlPendingRecord]:
+        """Every pause still waiting for this user, newest first (the Bot client's inbox)."""
+        self._gc()
+        now = time.time()
+        rows = [
+            r
+            for r in self._records.values()
+            if r.user_id == user_id and r.status == "pending" and not self._stale(r, now)
+        ]
+        rows.sort(key=lambda r: r.created_at, reverse=True)
+        return rows
+
     def pending_with_origin(self, origin: str) -> HitlPendingRecord | None:
         """The pause a background run (``cron:<id>``) left waiting for the user, if any."""
         self._gc()

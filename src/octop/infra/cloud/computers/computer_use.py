@@ -17,6 +17,7 @@ import base64
 import io
 import json
 import logging
+import re
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Awaitable, Callable
@@ -35,6 +36,7 @@ from langgraph.types import Command, interrupt
 from octop_harness.builtin.tools.ask_user import ASK_USER_TOOL_NAME
 
 from octop.i18n import tr
+from octop.infra.bot_tasks.approvals import ApprovalRules, ask
 from octop.infra.cloud.computers.backend import TAKEN_OVER
 from octop.infra.utils.locale import resolve_user_locale
 
@@ -352,6 +354,50 @@ def _thread_id() -> str:
         return ""
 
 
+# Buttons whose click has consequences outside the computer: asked first.
+CONSEQUENTIAL = re.compile(
+    r"^\s*(发送|回复|提交|确认提交|发布|分享到|删除|永久删除|清空|"
+    r"send\b|reply\b|submit\b|publish\b|post\b|share\b|delete\b|remove\b)",
+    re.IGNORECASE,
+)
+# Buttons that spend money: never clicked by the Bot.
+PAYS = re.compile(
+    r"^\s*(支付|付款|立即支付|确认支付|购买|立即购买|下单|提交订单|结算|"
+    r"pay\b|buy\b|purchase\b|place order\b|checkout\b|check out\b)",
+    re.IGNORECASE,
+)
+PAY_REFUSED = (
+    "Not clicked: {name!r} spends money. Leave the screen on this step and call "
+    "request_takeover so the user confirms the payment themselves."
+)
+
+
+def control_at(xml: str, x: float, y: float) -> str | None:
+    """Name of the smallest visible control under (x, y) in model coordinates, if any."""
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError:
+        return None
+    sx, sy = x * SCALE, y * SCALE
+    best: tuple[float, str] | None = None
+    for node in root.iter():
+        if node.get(f"{{{_NS_STATE}}}showing") != "true":
+            continue
+        role = node.tag.rsplit("}", 1)[-1]
+        name = (node.get("name") or node.text or "").strip()
+        if role not in _INTERACTIVE or not name:
+            continue
+        origin = _pair(node.get(f"{{{_NS_COMPONENT}}}screencoord"))
+        size = _pair(node.get(f"{{{_NS_COMPONENT}}}size"))
+        if origin is None or size is None or size[0] <= 0 or size[1] <= 0:
+            continue
+        if origin[0] <= sx <= origin[0] + size[0] and origin[1] <= sy <= origin[1] + size[1]:
+            area = size[0] * size[1]
+            if best is None or area < best[0]:
+                best = (area, name)
+    return best[1] if best else None
+
+
 BUSY_ELSEWHERE = (
     "This cloud computer is being used by another conversation of this Bot right now. Do not "
     "use its screen here; wait a couple of minutes and try again, or tell the user."
@@ -443,8 +489,41 @@ yourself: when a site asks for them, leave the screen on that step and call \
 `request_takeover`."""
 
 
-def computer_use_tool(manager: ComputerManager, agent_id: str, user_id: int) -> StructuredTool:
+def computer_use_tool(
+    manager: ComputerManager,
+    agent_id: str,
+    user_id: int,
+    *,
+    approvals: ApprovalRules | None = None,
+    user_repo: Any = None,
+) -> StructuredTool:
     watches: dict[str, ScreenWatch] = {}
+
+    def guard_click(x: float, y: float) -> str | None:
+        """Refusal text when the click would pay, or the user said no to a consequential one."""
+        try:
+            xml = manager.use(agent_id, user_id, lambda d, i: d.accessibility(i))
+        except Exception:  # noqa: BLE001 - no tree, no check: the click goes ahead as before
+            logger.debug("accessibility read before click failed for %s", agent_id, exc_info=True)
+            return None
+        name = control_at(xml, x, y)
+        if not name:
+            return None
+        if PAYS.match(name):
+            return PAY_REFUSED.format(name=name)
+        if approvals is None or not CONSEQUENTIAL.match(name):
+            return None
+        allowed, note = ask(
+            rules=approvals,
+            user_repo=user_repo,
+            agent_id=agent_id,
+            user_id=user_id,
+            category="click",
+            target=name[:80],
+            detail="",
+            offer_always=False,
+        )
+        return None if allowed else note
 
     def act(
         action: Action,
@@ -467,6 +546,10 @@ def computer_use_tool(manager: ComputerManager, agent_id: str, user_id: int) -> 
         thread = _thread_id()
         if not manager.claim_screen(agent_id, thread):
             return BUSY_ELSEWHERE
+        if action in ("click", "double_click") and x is not None and y is not None:
+            refused = guard_click(float(x), float(y))
+            if refused:
+                return refused
         if thread not in watches and len(watches) >= 64:
             watches.clear()
         watch = watches.setdefault(thread, ScreenWatch())
@@ -588,7 +671,12 @@ def request_takeover_tool(
                 f"The user could not do it ({answer}). Do not retry the same step; find "
                 "another way or tell the user what is blocked."
             )
-        return f"The user handed the computer back ({answer}). Take a screenshot and continue."
+        return (
+            f"The user handed the computer back ({answer}). Take a screenshot and check that "
+            "the step is really done (for example, you are signed in) before going on. If it is "
+            "not, say what you see and call request_takeover again; after two more tries, stop "
+            "and tell the user what is blocking."
+        )
 
     return StructuredTool.from_function(
         func=request_takeover, name="request_takeover", description=HANDOFF_DESCRIPTION
@@ -608,8 +696,9 @@ get past a CAPTCHA. For a sign-in, two-factor code, QR scan, CAPTCHA, payment or
 leave the screen on that step and call `request_takeover` saying what the user must do. When \
 they hand the computer back, take a screenshot and check that step is done before going on.
 - Before anything with consequences outside the computer (sending a message or email, \
-publishing, buying, deleting or changing the user's data elsewhere, accepting terms), ask the \
-user to confirm unless they already asked for exactly that.
+publishing, submitting, deleting or changing the user's data elsewhere, accepting terms), call \
+`request_approval`. Buttons that send, submit, publish or delete are checked again when you \
+click them; buttons that pay are never yours to click.
 - This is not the user's own computer: it cannot see their local files or apps. If the task \
 needs those, say so."""
 _PRIVATE_FILES = "Your shell commands and file tools run on this computer."

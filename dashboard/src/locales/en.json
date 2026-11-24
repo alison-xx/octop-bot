@@ -9053,5 +9053,11 @@
       "files": "{{count}} files",
       "pixels": "{{w}}×{{h}}"
     }
+  },
+  "botInbox": {
+    "needsYou": "Needs you"
+  },
+  "botApproval": {
+    "title": "Needs your OK"
   }
 }

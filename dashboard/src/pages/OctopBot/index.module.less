@@ -105,6 +105,24 @@
   min-height: 48px;
   font-weight: 600;
 }
+// A Bot waiting for me: the one thing in the directory that asks to be looked at.
+.waiting {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d97706;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .waiting {
+    animation: waitingBreath 2.4s ease-in-out infinite;
+  }
+  @keyframes waitingBreath {
+    50% {
+      opacity: 0.45;
+    }
+  }
+}
 .unread {
   font-size: 10px;
   border-radius: 9px;

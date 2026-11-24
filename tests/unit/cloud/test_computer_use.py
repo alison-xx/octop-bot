@@ -164,7 +164,7 @@ def test_asking_for_a_takeover_pauses_and_hands_the_computer_back(
     question = request["args"]["questions"][0]
     assert "登录招商银行网银" in question["question"]
     assert [o["label"] for o in question["options"]] == ["我完成了", "我做不了"]
-    assert manager.handed_back and "continue" in result
+    assert manager.handed_back and "check that the step is really done" in result
 
 
 def _jpeg(shade: int, *, dot: bool = False) -> bytes:
@@ -245,3 +245,62 @@ def test_the_briefing_tells_the_bot_where_its_files_are_and_when_to_hand_over() 
     room = texts(cu.ComputerBriefing(room=True), None)
     assert room.startswith("## Your cloud computer")
     assert "group's shared files" in room
+
+
+_TREE = (
+    '<desktop xmlns:st="https://accessibility.ubuntu.example.org/ns/state" '
+    'xmlns:cp="https://accessibility.ubuntu.example.org/ns/component">'
+    '<panel name="form" st:showing="true" cp:screencoord="(0, 0)" cp:size="(1920, 1080)">'
+    '<push-button name="发送" st:showing="true" cp:screencoord="(900, 600)" cp:size="(120, 40)"/>'
+    '<push-button name="立即支付" st:showing="true" cp:screencoord="(1200, 600)" cp:size="(120, 40)"/>'
+    '<push-button name="上一页" st:showing="true" cp:screencoord="(300, 600)" cp:size="(120, 40)"/>'
+    "</panel></desktop>"
+)
+
+
+class _TreeDriver(FakeDriver):
+    def accessibility(self, instance: str) -> str:
+        return _TREE
+
+
+def test_the_control_under_a_click_is_found_by_its_box() -> None:
+    # (900..1020, 600..640) on screen is (600..680, 400..426.7) in the model's view.
+    assert cu.control_at(_TREE, 640, 410) == "发送"
+    assert cu.control_at(_TREE, 50, 50) is None
+
+
+def test_a_click_on_send_asks_first_and_a_pay_button_is_never_clicked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.bot_tasks import approvals as ap
+
+    answers = ["拒绝", "允许一次"]
+    monkeypatch.setattr(
+        ap, "interrupt", lambda payload: {"decisions": [{"message": answers.pop(0)}]}
+    )
+
+    class Settings:
+        def get(self, key: str) -> None:
+            return None
+
+    class Users:
+        def get(self, user_id: int) -> Any:
+            return type("Row", (), {"locale": "zh"})()
+
+    manager = FakeManager()
+    manager.driver = _TreeDriver()
+    tool = cu.computer_use_tool(
+        manager,
+        "bot1",
+        7,
+        approvals=ap.ApprovalRules(Settings()),
+        user_repo=Users(),  # type: ignore[arg-type]
+    )
+    pay = _call(tool, action="click", x=840, y=410).content
+    assert "spends money" in pay and "request_takeover" in pay
+    assert _call(tool, action="click", x=640, y=410).content.startswith("The user said no")
+    assert manager.driver.scripts == []  # nothing clicked so far
+    clicked = _call(tool, action="click", x=640, y=410)
+    assert "Did click" in clicked.update["messages"][0].content
+    # An ordinary button needs no confirmation.
+    assert "Did click" in _call(tool, action="click", x=240, y=410).update["messages"][0].content

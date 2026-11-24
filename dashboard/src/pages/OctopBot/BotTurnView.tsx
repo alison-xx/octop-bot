@@ -30,6 +30,7 @@ import BotCreationEvents from "./BotCreationEvents";
 import { separateCreations } from "./creationEvents";
 import BotAskCard, { parseAskAnswers } from "./BotAskCard";
 import CloudComputerHandoff from "./CloudComputerHandoff";
+import BotApprovalCard from "./BotApprovalCard";
 import BotTaskCard, { BotTaskReport } from "./BotTaskCard";
 import { isTaskTool, parseTaskOutput, type BotTaskIndex } from "./botTasks";
 import styles from "./botConversation.module.less";
@@ -141,6 +142,27 @@ export default function BotTurnView({
       const computer = actions
         .map((a) => parseActionArgs(a.args).cloud_computer)
         .find((v): v is string => typeof v === "string");
+      // `request_approval` (or a guarded click): an approval card while it waits.
+      const approval = actions
+        .map((a) => parseActionArgs(a.args).approval)
+        .find((v) => v && typeof v === "object");
+      const asked = extractAskQuestions(actions)[0];
+      if (pending && approval && asked) {
+        const answer = (label: string) =>
+          onHitlDecision?.(
+            actions.map(() => ({ type: "respond", message: label })),
+            undefined,
+            hitl.pending_id,
+          );
+        return (
+          <BotApprovalCard
+            title={actions[0]?.description ?? ""}
+            question={asked.question}
+            options={(asked.options ?? []).map((o) => o.label)}
+            onAnswer={onHitlDecision ? answer : undefined}
+          />
+        );
+      }
       return (
         <>
           {pending && computer && <CloudComputerHandoff botId={computer} />}
