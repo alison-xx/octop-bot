@@ -595,6 +595,25 @@ async def open_refresh_session(refresh_token: str) -> CloudSession:
     )
 
 
+async def account_of_access_token(access_token: str) -> str:
+    """The Lynxce account id an access token belongs to (the desktop's ``token-login``).
+
+    Only reads the profile: the caller keeps its own session; nothing is renewed or stored.
+    """
+    if not (1 <= len(access_token) <= 32768) or not access_token.isascii():
+        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
+    try:
+        profile = await _send("GET", "/api/user/profile", bearer=access_token)
+    except _UpstreamFailure as exc:
+        if exc.status in {400, 401, 403}:
+            raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403) from None
+        raise _rejected(exc.status) from None
+    account = profile.get("id") if isinstance(profile, dict) else None
+    if not isinstance(account, str) or not account.strip():
+        raise OctopError.localized(ErrorCode.NETWORK_ERROR)
+    return account
+
+
 async def hand_over_session[T](
     services: SharedServices, user_id: int, accept: Callable[[str], Awaitable[T]]
 ) -> T:

@@ -9,6 +9,7 @@ from octop.i18n import tr
 from octop.infra.agents.bot_appearance import appearance_prefix, bot_appearance
 from octop.infra.agents.experts.avatar import display_agent_icon_url
 from octop.infra.agents.settings.profile import parse_config_json
+from octop.infra.db.repos.agents import SHADOW
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_user_locale
 from octop.infra.utils.ulid import new_short_id
@@ -53,9 +54,10 @@ def assert_removable_bot(repos: RepoBundle, row: AgentRow) -> None:
 
 
 def require_own_bot(services: SharedServices, user_id: int, agent_id: str) -> AgentRow:
-    """My own Bot (not a team), or 404 so other people's Bots stay invisible."""
+    """My own Bot (not a team, nor a desktop Bot's hidden shadow), or 404 so other people's
+    Bots stay invisible."""
     row = services.agent_repo.get(agent_id)
-    if row is None or row.user_id != user_id or row.kind == "team":
+    if row is None or row.user_id != user_id or row.kind in {"team", SHADOW}:
         raise OctopError.localized(ErrorCode.AGENT_NOT_FOUND)
     return row
 

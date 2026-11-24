@@ -5,14 +5,17 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import posixpath
 import secrets
 import time
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query, WebSocket
+from fastapi import APIRouter, Depends, Query, Request, Response, WebSocket
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
+from octop.infra.cloud.computers.backend import TAKEN_OVER
+from octop.infra.cloud.computers.driver import WORKSPACE
 from octop.infra.cloud.computers.manager import computer_manager
 from octop.infra.cloud.computers.rfb import RfbClientFilter
 from octop.infra.desktop import bot_cloud_enabled
@@ -165,6 +168,193 @@ class ScreenTicket(BaseModel):
         description="Screen session for typing and the clipboard "
         "(/api/octop-bot/screen-sessions/{session}/…); valid while the screen is open."
     )
+
+
+# -- Driving the computer from elsewhere (the desktop app's Bots, through their shadow Bot) ----
+# Each of these counts as using the computer: it starts or resumes it if needed.
+
+MAX_COMMAND_SECONDS = 30 * 60
+MAX_FILE_BYTES = 100 * 1024 * 1024
+# Where files may be read and written: the user's home on the computer, and its temp folder.
+_FILE_ROOTS = ("/home/user", "/tmp")
+
+
+class RunCommand(BaseModel):
+    command: str = Field(min_length=1, max_length=100_000, description="A shell command.")
+    timeout: int = Field(
+        default=120, ge=1, le=MAX_COMMAND_SECONDS, description="Seconds before it is stopped."
+    )
+
+
+class CommandResult(BaseModel):
+    exit_code: int
+    output: str = Field(description="Standard output and error, interleaved.")
+    taken_over: bool = Field(
+        default=False,
+        description="The user has the computer (taken over): nothing ran; `output` says so.",
+    )
+
+
+class RunPython(BaseModel):
+    code: str = Field(
+        min_length=1,
+        max_length=200_000,
+        description="Python run on the computer's desktop (pyautogui and friends available); "
+        "what it prints is returned.",
+    )
+
+
+class PythonResult(BaseModel):
+    output: str
+    taken_over: bool = Field(
+        default=False,
+        description="The user has the computer (taken over): nothing ran; `output` says so.",
+    )
+
+
+class Accessibility(BaseModel):
+    xml: str = Field(description="The desktop's accessibility tree (AT-SPI) as XML.")
+
+
+class FileWritten(BaseModel):
+    path: str = Field(description="Where it was written on the computer.")
+    size: int
+
+
+def _computer_path(path: str) -> str:
+    """A path on the computer: absolute under the user's home or /tmp, or relative to the
+    Bot's workspace folder."""
+    raw = path.strip().replace("\\", "/")
+    full = posixpath.normpath(raw if raw.startswith("/") else f"{WORKSPACE}/{raw}")
+    if not any(full == root or full.startswith(root + "/") for root in _FILE_ROOTS):
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
+    return full
+
+
+@router.post(
+    "/{agent_id}/run",
+    summary="Run a command on a Bot's cloud computer",
+    description="Starts the computer if needed. While the user has taken it over nothing runs "
+    "(`taken_over`). For a shadow Bot this is the desktop Bot's shell on its cloud computer.",
+    response_model=CommandResult,
+)
+async def run_command(
+    agent_id: str,
+    body: RunCommand,
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> CommandResult:
+    manager = _owned(server, user, agent_id)
+    if await asyncio.to_thread(manager.taken_over, agent_id, user.id):
+        return CommandResult(exit_code=1, output=TAKEN_OVER, taken_over=True)
+    code, output = await asyncio.to_thread(
+        manager.run, agent_id, user.id, body.command, body.timeout
+    )
+    return CommandResult(exit_code=code, output=output)
+
+
+@router.post(
+    "/{agent_id}/python",
+    summary="Run Python on a Bot's cloud computer desktop",
+    description="Starts the computer if needed. The computer-use actions (click, type, wait, "
+    "read elements) are made of these. While the user has taken it over nothing runs.",
+    response_model=PythonResult,
+)
+async def run_python(
+    agent_id: str,
+    body: RunPython,
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> PythonResult:
+    manager = _owned(server, user, agent_id)
+    if await asyncio.to_thread(manager.taken_over, agent_id, user.id):
+        return PythonResult(output=TAKEN_OVER, taken_over=True)
+    output = await asyncio.to_thread(
+        manager.use,
+        agent_id,
+        user.id,
+        lambda driver, instance: driver.run_python(instance, body.code),
+    )
+    return PythonResult(output=str(output))
+
+
+@router.get(
+    "/{agent_id}/screenshot",
+    summary="Take a screenshot of a Bot's cloud computer",
+    description="PNG of the whole screen. Starts the computer if needed.",
+    response_class=Response,
+    responses={200: {"content": {"image/png": {}}}},
+)
+async def screenshot(
+    agent_id: str, user: User = Depends(current_user), server: Any = Depends(get_server)
+) -> Response:
+    manager = _owned(server, user, agent_id)
+    data = await asyncio.to_thread(
+        manager.use, agent_id, user.id, lambda driver, instance: driver.screenshot(instance)
+    )
+    return Response(content=data, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+@router.get(
+    "/{agent_id}/accessibility",
+    summary="Read the accessibility tree of a Bot's cloud computer",
+    description="The desktop's elements (names, roles, positions) as XML, e.g. to check a "
+    "page before paying or another risky click. Starts the computer if needed.",
+    response_model=Accessibility,
+)
+async def accessibility(
+    agent_id: str, user: User = Depends(current_user), server: Any = Depends(get_server)
+) -> Accessibility:
+    manager = _owned(server, user, agent_id)
+    xml = await asyncio.to_thread(
+        manager.use, agent_id, user.id, lambda driver, instance: driver.accessibility(instance)
+    )
+    return Accessibility(xml=str(xml))
+
+
+@router.get(
+    "/{agent_id}/files",
+    summary="Read a file on a Bot's cloud computer",
+    description="`path` is absolute under /home/user or /tmp, or relative to the Bot's "
+    "workspace folder on the computer. Starts the computer if needed; 404 if there is no "
+    "such file.",
+    response_class=Response,
+    responses={200: {"content": {"application/octet-stream": {}}}},
+)
+async def read_file(
+    agent_id: str,
+    path: str = Query(min_length=1, max_length=4096),
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Response:
+    manager = _owned(server, user, agent_id)
+    data = await asyncio.to_thread(manager.read, agent_id, user.id, _computer_path(path))
+    if data is None:
+        raise OctopError.localized(ErrorCode.NOT_FOUND)
+    return Response(content=data, media_type="application/octet-stream")
+
+
+@router.put(
+    "/{agent_id}/files",
+    summary="Write a file on a Bot's cloud computer",
+    description="The request body is the file's bytes (at most 100 MB); folders are made as "
+    "needed. `path` as for reading. Starts the computer if needed.",
+    response_model=FileWritten,
+)
+async def write_file(
+    agent_id: str,
+    request: Request,
+    path: str = Query(min_length=1, max_length=4096),
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> FileWritten:
+    manager = _owned(server, user, agent_id)
+    target = _computer_path(path)
+    data = await request.body()
+    if len(data) > MAX_FILE_BYTES:
+        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=413)
+    await asyncio.to_thread(manager.write, agent_id, user.id, target, data)
+    return FileWritten(path=target, size=len(data))
 
 
 @router.post(

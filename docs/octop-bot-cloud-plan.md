@@ -716,6 +716,35 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 
 **方案 B（单独排期）**：工作区完全以对象存储为准。Bot 的所有文件工具只读写存储，只有 `execute` 和 `cloud_computer` 开电脑；执行前后按变化的文件双向同步整个工作区，不只是交付物目录。要解决大目录（比如 node_modules）、二进制文件、两边同时改同一个文件的冲突，以及同步耗时。A 上线、看过实际用量以后再定。
 
+## 12.12 桌面 Bot 的云电脑：影子 Bot 的云端实现（2026-11-25）
+
+设计见 `docs/octop-bot-accounts.md` §7。下面是云端实际的接口和行为，桌面客户端按这个对接。
+
+**登录**：`POST /api/auth/lynxce/token-login`，body `{"access_token": "<本机灵策 access token>"}`。
+- 云端只拿它去灵策查是哪个账号（`GET /api/user/profile`），不续期、不保存，也不拿走本机的登录。
+- 成功时返回和其他登录一样的 `{access_token, token_type, expires_in, user, cloud: true}`。
+- 这个灵策账号在云端没有租户，或者租户在云端没有自己保存的灵策会话：返回 409 `BOT_CLOUD_SESSION_REQUIRED`。这时用 `/api/auth/lynxce/code-login` 或 `/login` 在 bot.lynxce.cn 登录一次，再调 token-login。
+- 灵策不认这个 token：返回 403 `AUTH_FAILED`。租户已停用：同样返回 403。
+
+**影子 Bot**：`PUT /api/octop-bot/remote-bots/{origin}`，body `{"name": "...", "avatar": "..."}`（avatar 可不填），返回 `{agent_id, origin, created}`。
+- `origin` 的格式是 `<安装 id>:<本机 agent_id>`，安装 id 为 10–40 位字母数字，agent_id 为 1–64 位 `[A-Za-z0-9_-]`；格式不对返回 422。
+- 每个账号最多 200 个影子 Bot，超过返回 429 `BOT_REMOTE_BOT_LIMIT`；更新已有的不受影响。
+- 同一个 origin 只建一个影子 Bot；再次调用会更新名字和头像，同时算作「在用」。
+- `DELETE /api/octop-bot/remote-bots/{origin}` 返回 204，不存在也是 204。影子 Bot 删掉后，它的云电脑在一分钟内被关机并结算。
+- 影子 Bot 是 `kind = "shadow"` 的 agents 记录：不启动 Agent，所有列表（`/api/agents`、`/api/octop-bot/workspace`、群组、手机接口）和计数都看不到它，`/api/octop-bot/bots/{id}/…` 返回 404，也不能加进群。
+- 30 天里桌面既没有 PUT 过它、它的电脑也没用过（电脑开着或正在用的除外），就删掉它；它的电脑随后被回收。
+
+**电脑**：现有的 `/api/octop-bot/computers/{agent_id}`（状态、一瞥、暂停、接管、画面）照常用影子 Bot 的 id。新增的接口都会开电脑：
+- `POST …/run`：`{command, timeout(1–1800, 默认 120)}` → `{exit_code, output, taken_over}`。
+- `POST …/python`：`{code}` → `{output, taken_over}`。
+- `GET …/screenshot` → `image/png`。
+- `GET …/accessibility` → `{xml}`。
+- `GET …/files?path=` → 文件内容（`application/octet-stream`），不存在返回 404。
+- `PUT …/files?path=`，body 是文件的原始字节（最多 100 MB）→ `{path, size}`。
+- `path` 是 `/home/user` 或 `/tmp` 下的绝对路径，或者相对于 Bot 在电脑上的工作区 `/home/user/workspace`；超出这些目录返回 403。
+- 用户接管期间，`run` 和 `python` 不执行，返回 `taken_over: true`，`output` 里是给 Bot 看的说明。
+- 云电脑名额满了返回 503 `BOT_COMPUTER_BUSY`；积分不足时照扣费规则报错。
+
 ## 14. 待你拍板
 
 - **Q1** 云电脑形态：每个 Bot 一台 AGS 沙箱（推荐，前提是暂停不收计算费），还是学 Grok 每人一台、Bot 分屏？

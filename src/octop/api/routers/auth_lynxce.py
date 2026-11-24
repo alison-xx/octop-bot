@@ -261,6 +261,51 @@ async def lynxce_session_login(
     )
 
 
+class LynxceTokenLoginBody(BaseModel):
+    access_token: str = Field(
+        min_length=1,
+        max_length=32768,
+        description="The desktop's own Lynxce access token. Only used to read which account it "
+        "is; never kept, and the desktop keeps its own session.",
+    )
+
+
+@router.post(
+    "/lynxce/token-login",
+    summary="Sign the desktop app in to its cloud account with its Lynxce access token",
+    description=(
+        "Octop Bot cloud only. The desktop app, signed in with Lynxce, gets a token for this "
+        "account here so its Bots can use cloud computers (shadow Bots, "
+        "`/api/octop-bot/remote-bots`). Unlike `session-login`, the Lynxce session is not "
+        "handed over. The account must have signed in here before (web, phones, or the "
+        "desktop's one-time check), so this server has its own Lynxce session for billing; "
+        "otherwise `BOT_CLOUD_SESSION_REQUIRED` (409): sign in once with "
+        "`/lynxce/code-login` or `/lynxce/login`, then call this again."
+    ),
+)
+async def lynxce_token_login(
+    body: LynxceTokenLoginBody, request: Request, server: Any = Depends(get_server)
+) -> dict[str, Any]:
+    if not bot_cloud_enabled():
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
+    require_database(server)
+    account = await _opened(
+        request, lambda: lynxce_cloud.account_of_access_token(body.access_token)
+    )
+    services = server.services
+    row = await asyncio.to_thread(cloud_accounts.tenant_for_account, services, account)
+    if row is not None and row.disabled:
+        raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403)
+    connected = (
+        row is not None
+        and (await asyncio.to_thread(lynxce_cloud.cloud_status, services, row.id)).connected
+    )
+    user = server.user_manager.get_by_id(row.id) if connected and row is not None else None
+    if user is None:
+        raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED)
+    return {**_issue(server, user, "auth.lynxce_token_login"), "cloud": True}
+
+
 async def _opened[T](request: Request, opener: Callable[[], Awaitable[T]]) -> T:
     """Run a Lynxce sign-in, counting wrong passwords and codes toward the client's lockout."""
     ip = _client_ip(request)

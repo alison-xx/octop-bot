@@ -784,6 +784,8 @@
     "BOT_COMPUTER_BUSY": "云电脑暂时都被占满了，没能启动。请过几分钟再试。",
     "ENDPOINT_NOT_ALLOWED": "这个地址不能用：请填写公网的 HTTPS 地址或域名。",
     "BOT_COMPUTER_OFF": "这个文件在云电脑上，云电脑现在没开。点电脑图标打开电脑后再看。",
+    "BOT_CLOUD_SESSION_REQUIRED": "要开通云电脑，请再验证一次灵策账号（每个账号只需一次）。",
+    "BOT_REMOTE_BOT_LIMIT": "这个账号接入云电脑的桌面 Bot 太多了（最多 {{limit}} 个），请先在桌面删掉不用的 Bot。",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "请补充授权灵策充值。当前聊天连接可继续使用。",
     "BOT_LAYOUT_CHANGED": "侧栏布局已更新，请刷新后再试。",
     "AUTH_FAILED": "认证失败。",

@@ -62,6 +62,9 @@ REAP_INTERVAL_SECONDS = 30
 # record was saved) are stopped once they are this old; younger ones may still be starting.
 ORPHAN_AGE_SECONDS = 15 * 60
 ORPHAN_SCAN_SECONDS = 10 * 60
+# How often shadow Bots (desktop Bots' stand-ins, see bot_cloud/shadows.py) are checked for
+# having gone unused long enough to be deleted.
+SHADOW_SCAN_SECONDS = 60 * 60
 SERVER_ID_KEY = "octop_bot:computers:server_id"
 # When AGS is out of capacity, a running computer whose Bot has not acted for this long is
 # paused to make room (it would pause at IDLE_PAUSE_SECONDS anyway; resuming takes seconds).
@@ -314,6 +317,7 @@ class ComputerManager:
         self._last_orphan_scan = 0.0
         # Per Bot: called whenever its computer starts or resumes (see ``on_wake``).
         self._wakers: dict[str, Waker] = {}
+        self._last_shadow_scan = 0.0
 
     # Records
 
@@ -576,6 +580,32 @@ class ComputerManager:
                 self._stop_orphans(records, now)
             except Exception:  # noqa: BLE001 - retried on the next scan
                 logger.exception("cloud computer orphan scan failed")
+        if now - self._last_shadow_scan >= SHADOW_SCAN_SECONDS:
+            self._last_shadow_scan = now
+            try:
+                self._reap_shadows(now)
+            except Exception:  # noqa: BLE001 - retried on the next scan
+                logger.exception("shadow Bot scan failed")
+
+    def _reap_shadows(self, now: float) -> None:
+        """Delete shadow Bots unused for a long time (the desktop was uninstalled or stopped
+        using the cloud). Their computers are stopped and settled by the next pass, like any
+        deleted Bot's; a computer in use keeps its shadow."""
+        from octop.infra.cloud.bot_cloud.shadows import IDLE_DAYS, idle_shadows  # noqa: PLC0415
+
+        def last_use(row: Any) -> float:
+            if row.user_id is None:
+                return 0.0
+            record = self.record(row.agent_id, row.user_id)
+            return max(record.active_at, record.viewed_at)
+
+        for row in idle_shadows(self._services, last_use, now):
+            if row.user_id is None:
+                continue
+            if self.record(row.agent_id, row.user_id).running or self.busy(row.agent_id):
+                continue
+            logger.info("deleting shadow Bot %s, unused for %s days", row.agent_id, IDLE_DAYS)
+            self._services.agent_repo.delete(row.agent_id)
 
     def _stop_orphans(self, records: list[ComputerRecord], now: float) -> None:
         """Stop this server's instances that no record knows (lost starts, crashes)."""

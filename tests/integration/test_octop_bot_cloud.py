@@ -100,6 +100,12 @@ class Upstream:
             assert req.headers["Authorization"].startswith("Bearer access-")
             self.patched.append((path.rsplit("/", 1)[1], json.loads(req.content)))
             return httpx.Response(200, json={"code": 0, "data": {}})
+        if path == "/api/user/profile":  # who an access token belongs to (token-login)
+            bearer = req.headers.get("Authorization", "").removeprefix("Bearer ")
+            if not bearer.startswith("access-"):
+                return httpx.Response(401, json={"error": {"message": "invalid token"}})
+            uid = bearer.removeprefix("access-")
+            return httpx.Response(200, json={"code": 0, "data": {"id": "lx-" + uid}})
         if path == "/api/auth/logout":
             return httpx.Response(200, json={"code": 0, "data": {}})
         if path == "/api/billing/app/recharge-packages":
@@ -1111,3 +1117,177 @@ async def test_tenant_group_member_builds_in_its_room(
                 room=room,
             )
         assert unbounded.value.code == _Code.FORBIDDEN
+class _Computer:
+    """A cloud-computer provider that answers instantly (no Tencent Cloud)."""
+
+    def __init__(self) -> None:
+        self.states: dict[str, str] = {}
+        self.files: dict[str, bytes] = {}
+        self.ran: list[str] = []
+
+    def start(self, *, spec: str, labels: Any) -> str:
+        instance = f"ins-{len(self.states) + 1}"
+        self.states[instance] = "running"
+        return instance
+
+    def state(self, instance_id: str) -> str:
+        return self.states.get(instance_id, "gone")
+
+    def resume(self, instance_id: str) -> None:
+        self.states[instance_id] = "running"
+
+    def pause(self, instance_id: str) -> None:
+        self.states[instance_id] = "paused"
+
+    def stop(self, instance_id: str) -> None:
+        self.states[instance_id] = "gone"
+
+    def wait_ready(self, instance_id: str, timeout: float = 90.0) -> None:
+        return None
+
+    def stopped_at(self, instance_id: str) -> float | None:
+        return None
+
+    def instances(self) -> list[Any]:
+        return []
+
+    def run(self, instance_id: str, command: str, timeout: int) -> tuple[int, str]:
+        self.ran.append(command)
+        return 0, f"ran {command}"
+
+    def run_python(self, instance_id: str, code: str) -> str:
+        return f"python {code}"
+
+    def screenshot(self, instance_id: str) -> bytes:
+        return b"\x89PNG screen"
+
+    def accessibility(self, instance_id: str) -> str:
+        return "<desktop/>"
+
+    def write(self, instance_id: str, path: str, data: bytes) -> None:
+        self.files[path] = data
+
+    def read(self, instance_id: str, path: str) -> bytes | None:
+        return self.files.get(path)
+
+
+async def test_desktop_bots_get_cloud_computers_through_hidden_shadow_bots(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.cloud.computers import manager as computers
+
+    provider = _Computer()
+    monkeypatch.setattr(computers, "_manager", None)
+    monkeypatch.setattr(computers, "computer_driver", lambda: provider)
+    monkeypatch.setenv("OCTOP_BOT_COMPUTE_BILLING", "off")
+    token_login = "/api/auth/lynxce/token-login"
+    origin = "01JD3Q8Z2N6W4M5X7Y9A0B1C2D:K7Q2PZ"
+
+    async with octop_client(tmp_octop_home) as (client, srv):
+        # An account that never signed in here: the desktop asks the user to verify once.
+        first = await client.post(token_login, json={"access_token": "access-13800000050"})
+        assert first.status_code == 409
+        assert first.json()["error"]["code"] == "BOT_CLOUD_SESSION_REQUIRED"
+        bad = await client.post(token_login, json={"access_token": "forged"})
+        assert bad.status_code == 403
+        signed = await _sign_in(client, "13800000050")
+        sessions_before = upstream.counts["/api/auth/refresh"]
+        got = await client.post(token_login, json={"access_token": "access-13800000050"})
+        assert got.status_code == 200, got.text
+        assert got.json()["user"]["id"] == signed["user"]["id"] and got.json()["cloud"]
+        # Only read: the desktop's session is neither renewed nor taken.
+        assert upstream.counts["/api/auth/refresh"] == sessions_before
+        auth = {"Authorization": f"Bearer {got.json()['access_token']}"}
+
+        made = await client.put(
+            f"/api/octop-bot/remote-bots/{origin}", headers=auth, json={"name": "Writer"}
+        )
+        assert made.status_code == 200, made.text
+        shadow = made.json()["agent_id"]
+        assert made.json()["created"] is True
+        again = await client.put(
+            f"/api/octop-bot/remote-bots/{origin}", headers=auth, json={"name": "Writer 2"}
+        )
+        assert again.json() == {"agent_id": shadow, "origin": origin, "created": False}
+        assert (
+            await client.put(
+                "/api/octop-bot/remote-bots/no-colon", headers=auth, json={"name": "x"}
+            )
+        ).status_code == 422
+
+        # Never listed: web, phones, groups; and no Bot pages for it.
+        for listing in ("/api/agents", "/api/octop-bot/workspace", "/api/octop-bot/groups"):
+            seen = await client.get(listing, headers=auth)
+            assert seen.status_code == 200, (listing, seen.text)
+            assert shadow not in seen.text, listing
+        assert (
+            await client.get(f"/api/octop-bot/bots/{shadow}/upcoming", headers=auth)
+        ).status_code == 404
+        group = await client.post(
+            "/api/octop-bot/groups", headers=auth, json={"name": "Team", "member_ids": [shadow]}
+        )
+        assert group.status_code >= 400
+
+        # Its computer, driven from the desktop.
+        base = f"/api/octop-bot/computers/{shadow}"
+        assert (await client.get(base, headers=auth)).json()["state"] == "none"
+        ran = await client.post(base + "/run", headers=auth, json={"command": "echo hi"})
+        assert ran.json() == {"exit_code": 0, "output": "ran echo hi", "taken_over": False}
+        py = await client.post(base + "/python", headers=auth, json={"code": "print(1)"})
+        assert py.json()["output"] == "python print(1)"
+        shot = await client.get(base + "/screenshot", headers=auth)
+        assert shot.headers["content-type"] == "image/png" and shot.content.startswith(b"\x89PNG")
+        assert (await client.get(base + "/accessibility", headers=auth)).json() == {
+            "xml": "<desktop/>"
+        }
+        put = await client.put(
+            base + "/files", params={"path": "notes/a.txt"}, headers=auth, content=b"hello"
+        )
+        assert put.json() == {"path": "/home/user/workspace/notes/a.txt", "size": 5}
+        read = await client.get(base + "/files", params={"path": "notes/a.txt"}, headers=auth)
+        assert read.content == b"hello"
+        missing = await client.get(base + "/files", params={"path": "/tmp/none"}, headers=auth)
+        assert missing.status_code == 404
+        outside = await client.get(base + "/files", params={"path": "/etc/passwd"}, headers=auth)
+        assert outside.status_code == 403
+        await client.post(base + "/takeover", headers=auth, json={"active": True})
+        held = await client.post(base + "/run", headers=auth, json={"command": "ls"})
+        assert held.json()["taken_over"] is True and "ls" not in provider.ran
+
+        # One account can only register so many desktop Bots.
+        from octop.infra.cloud.bot_cloud import shadows
+
+        monkeypatch.setattr(shadows, "MAX_SHADOWS", 1)
+        full = await client.put(
+            "/api/octop-bot/remote-bots/01JD3Q8Z2N6W4M5X7Y9A0B1C2D:OTHER",
+            headers=auth,
+            json={"name": "B"},
+        )
+        assert full.status_code == 429
+        assert full.json()["error"]["code"] == "BOT_REMOTE_BOT_LIMIT"
+        # Updating one it already has still works.
+        assert (
+            await client.put(
+                f"/api/octop-bot/remote-bots/{origin}", headers=auth, json={"name": "W"}
+            )
+        ).status_code == 200
+        monkeypatch.setattr(shadows, "MAX_SHADOWS", 200)
+
+        # Someone else's: invisible; their own desktop Bot of the same origin is theirs alone.
+        bob = await _sign_in(client, "13800000051")
+        bob_auth = {"Authorization": f"Bearer {bob['access_token']}"}
+        assert (
+            await client.post(base + "/run", headers=bob_auth, json={"command": "id"})
+        ).status_code == 404
+        theirs = await client.put(
+            f"/api/octop-bot/remote-bots/{origin}", headers=bob_auth, json={"name": "Writer"}
+        )
+        assert theirs.json()["agent_id"] != shadow
+
+        gone = await client.delete(f"/api/octop-bot/remote-bots/{origin}", headers=auth)
+        assert gone.status_code == 204
+        assert srv.services.agent_repo.get(shadow) is None
+        assert (await client.get(base, headers=auth)).status_code == 404
+        assert (
+            await client.delete(f"/api/octop-bot/remote-bots/{origin}", headers=auth)
+        ).status_code == 204

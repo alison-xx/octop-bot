@@ -36,9 +36,16 @@ class Settings:
 class Agents:
     def __init__(self) -> None:
         self.deleted: set[str] = set()
+        self.shadows: list[Any] = []
 
     def get(self, agent_id: str) -> object | None:
         return None if agent_id in self.deleted else object()
+
+    def list_shadows(self, user_id: int | None = None) -> list[Any]:
+        return [s for s in self.shadows if s.agent_id not in self.deleted]
+
+    def delete(self, agent_id: str) -> None:
+        self.deleted.add(agent_id)
 
 
 class Services:
@@ -907,3 +914,35 @@ def test_on_cvm_beside_old_ags_computers_nothing_but_work_starts_one(
     older.execute("ls")
     assert ("resume", "ags-old") in ags.calls and len(cvm.calls) == 1
     assert store.download_files(["/generated/old.md"])[0].content == b"from AGS"
+def test_shadow_bots_nobody_used_for_30_days_are_deleted_with_their_computers(setup: Any) -> None:
+    from types import SimpleNamespace
+
+    manager, driver, billing, clock = setup
+    agents = manager._services.agent_repo
+    day = 86400.0
+    clock.now = 100 * day
+    agents.shadows = [
+        # Updated by its desktop long ago, and its computer not used since.
+        SimpleNamespace(agent_id="gone", user_id=7, updated_at=60 * day, kind="shadow"),
+        # Its desktop still updates it.
+        SimpleNamespace(agent_id="synced", user_id=7, updated_at=95 * day, kind="shadow"),
+        # Old, but its computer was used last week.
+        SimpleNamespace(agent_id="used", user_id=7, updated_at=10 * day, kind="shadow"),
+    ]
+    clock.now = 93 * day
+    CloudComputer(manager, user_id=7, agent_id="used").execute("ls")
+    manager.pause("used", 7)
+    CloudComputer(manager, user_id=7, agent_id="gone")  # no computer yet
+    clock.now = 100 * day
+    manager.tick()
+    assert agents.deleted == {"gone"}
+    # Not again within the hour.
+    agents.shadows.append(
+        SimpleNamespace(agent_id="later", user_id=7, updated_at=1 * day, kind="shadow")
+    )
+    clock.now += 60
+    manager.tick()
+    assert "later" not in agents.deleted
+    clock.now += computers.SHADOW_SCAN_SECONDS
+    manager.tick()
+    assert "later" in agents.deleted
