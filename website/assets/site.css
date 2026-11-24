@@ -1858,25 +1858,69 @@ a.card:hover,
   font-weight: 600;
   color: var(--ink-3);
 }
-.model-table td.model-name {
+.model-table .model-cell {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
 }
 .model-icon {
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  justify-content: center;
   width: 20px;
   height: 20px;
+  overflow: hidden;
   border-radius: 5px;
+}
+.model-icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 .model-icon.letter {
-  display: inline-grid;
-  place-items: center;
   background: var(--bg-soft);
   font-size: 11px;
   font-weight: 700;
   color: var(--ink-2);
+}
+:root[data-theme="dark"] .model-icon.dark-mark {
+  background: #fff;
+}
+:root[data-theme="dark"] .model-icon.dark-mark img {
+  width: 72%;
+  height: 72%;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .model-icon.dark-mark {
+    background: #fff;
+  }
+  :root:not([data-theme="light"]) .model-icon.dark-mark img {
+    width: 72%;
+    height: 72%;
+  }
+}
+.model-lines {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.model-lines button {
+  padding: 2px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.model-lines button[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
 }
 .model-table td.num {
   font-variant-numeric: tabular-nums;

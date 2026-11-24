@@ -6,7 +6,7 @@ whenever Lynxce changes prices) to keep the fallback close:
 
     uv run python scripts/website/pull_pricing_catalog.py
 
-Only the fields the page shows are kept. The endpoint is public; no key is sent.
+Only the fields the page shows (and the route fields it groups by) are kept. The endpoint is public; no key is sent.
 """
 
 from __future__ import annotations
@@ -23,6 +23,9 @@ OUT = Path(__file__).resolve().parents[2] / "website" / "data" / "pricing-catalo
 def trim(data: dict[str, Any]) -> dict[str, Any]:
     def text(m: dict[str, Any]) -> dict[str, Any]:
         return {
+            "modelId": m.get("modelId"),
+            "routeId": m.get("routeId"),
+            "routeCostRank": m.get("routeCostRank"),
             "modelName": m.get("modelName"),
             "providerLabel": m.get("providerLabel"),
             "supportsImage": bool(m.get("supportsImage")),
@@ -34,11 +37,17 @@ def trim(data: dict[str, Any]) -> dict[str, Any]:
     def media(m: dict[str, Any]) -> dict[str, Any]:
         pricing = m.get("pricing") or {}
         return {
+            "modelId": m.get("modelId"),
             "displayName": m.get("displayName"),
             "provider": m.get("provider"),
             "pricing": {
                 k: pricing.get(k)
-                for k in ("creditsPerImage", "videoPricingTiers", "defaultResolution", "unitCredits")
+                for k in (
+                    "creditsPerImage",
+                    "videoPricingTiers",
+                    "defaultResolution",
+                    "unitCredits",
+                )
                 if k in pricing
             },
         }

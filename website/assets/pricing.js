@@ -19,36 +19,115 @@
     support: ["支持", "Support"],
   };
 
-  /* Brand marks, the same files the apps use. DeepSeek shows the generic mark, as in the Bot apps;
-     brands without a file get their first letter. */
-  const BRAND_ICONS = [
-    [/qwen|通义|千问|dashscope|阿里/i, "dashscope.png"],
-    [/glm|智谱|zhipu/i, "zhipu.png"],
-    [/kimi|月之暗面|moonshot/i, "moonshot.webp"],
-    [/minimax|海螺/i, "minimax.png"],
-    [/豆包|doubao|seed|字节|火山|volc/i, "volces.svg"],
-    [/openai|gpt/i, "openai.png"],
-    [/deepseek/i, "custom-provider.svg"],
+  /* Brand marks: the same table and files as Lynxce's apps (keyword → assets/models/<brand>.svg).
+     Longer keywords win; short ones must start a word; the display name is checked before the id. */
+  const BRANDS = [
+    ["deepseek", ["deepseek"]],
+    ["qwen", ["qwen", "通义", "tongyi", "wan", "万相", "z-image", "zimage"]],
+    ["glm", ["glm", "智谱", "zhipu", "cogview", "cogvideo"]],
+    ["kimi", ["kimi", "moonshot"]],
+    ["minimax", ["minimax"]],
+    ["hailuo", ["hailuo", "海螺"]],
+    ["doubao", ["doubao", "豆包", "seedream", "seedance", "seededit"]],
+    ["jimeng", ["jimeng", "即梦"]],
+    ["anthropic", ["claude"]],
+    ["openai", ["gpt-image", "gpt", "openai", "o1", "o3", "o4", "dall-e"]],
+    ["sora", ["sora"]],
+    ["gemini", ["gemini", "nano banana", "nano-banana", "veo", "imagen"]],
+    ["kling", ["kling", "可灵"]],
+    ["vidu", ["vidu"]],
+    ["agnes", ["agnes"]],
+    ["grok", ["grok"]],
+    ["xiaomi", ["mimo", "xiaomi"]],
+    ["hunyuan", ["hy3", "hunyuan", "混元"]],
+    ["happyhorse", ["happyhorse"]],
+    ["midjourney", ["midjourney", "mj"]],
+    ["suno", ["suno"]],
+    ["flux", ["flux", "bfl"]],
+    ["ideogram", ["ideogram"]],
+    ["recraft", ["recraft"]],
+    ["runway", ["runway", "gen-3", "gen-4"]],
+    ["pika", ["pika"]],
+    ["luma", ["luma", "ray", "dream machine"]],
+    ["stability", ["stable diffusion", "sd3", "sdxl", "stability"]],
+    ["pixverse", ["pixverse", "爱诗"]],
   ];
-  const brandIcon = (...names) => {
-    const text = names.filter(Boolean).join(" ");
-    const hit = BRAND_ICONS.find(([re]) => re.test(text));
-    if (hit) {
-      const img = document.createElement("img");
-      img.className = "model-icon";
-      img.src = "assets/models/" + hit[1];
-      img.alt = "";
-      img.width = 20;
-      img.height = 20;
-      img.loading = "lazy";
-      return img;
+  const BRAND_RULES = BRANDS.flatMap(([brand, keys]) => keys.map((key) => ({ key, brand }))).sort((a, b) => b.key.length - a.key.length);
+  const WORD_START_KEYS = new Set(["o1", "o3", "o4", "wan", "veo", "hy3", "mj", "ray", "sd3", "bfl"]);
+  /* Black marks get a white tile in dark mode. */
+  const DARK_MARKS = new Set(["openai", "grok", "flux", "midjourney", "pika", "runway", "recraft", "ideogram", "suno", "kimi", "agnes"]);
+  const keyMatches = (key, text) => {
+    if (!WORD_START_KEYS.has(key)) return text.includes(key);
+    for (let from = 0; ; ) {
+      const at = text.indexOf(key, from);
+      if (at < 0) return false;
+      if (at === 0 || !/[\p{L}\p{N}]/u.test(text[at - 1])) return true;
+      from = at + key.length;
     }
-    const letter = document.createElement("span");
-    letter.className = "model-icon letter";
-    letter.textContent = (names.find(Boolean) || "?").trim().charAt(0).toUpperCase();
-    letter.setAttribute("aria-hidden", "true");
-    return letter;
   };
+  /* Brand of a model from its display name, then its id, then the provider label. */
+  const modelBrand = (...texts) => {
+    for (const raw of texts) {
+      const text = String(raw || "").toLowerCase();
+      if (!text) continue;
+      const rule = BRAND_RULES.find((r) => keyMatches(r.key, text));
+      if (rule) return rule.brand;
+    }
+    return texts.join(" ").toLowerCase().includes("google") ? "google" : null;
+  };
+  const brandIcon = (...texts) => {
+    const brand = modelBrand(...texts);
+    const mark = document.createElement("span");
+    mark.setAttribute("aria-hidden", "true");
+    if (!brand) {
+      mark.className = "model-icon letter";
+      const name = String(texts.find(Boolean) || "");
+      mark.textContent = ([...name].find((c) => /[\p{L}\p{N}]/u.test(c)) || "AI").toUpperCase();
+      return mark;
+    }
+    mark.className = "model-icon" + (DARK_MARKS.has(brand) ? " dark-mark" : "");
+    const img = document.createElement("img");
+    img.src = `assets/models/${brand}.svg`;
+    img.alt = "";
+    img.width = 20;
+    img.height = 20;
+    img.loading = "lazy";
+    mark.append(img);
+    return mark;
+  };
+
+  /* The catalog lists a model once per route (supplier or compatible entry). The table shows it once,
+     grouped by brand; its routes become 线路 1/2/3, most capable first, then cheapest upstream. */
+  const nameKey = (name) => String(name || "").toLowerCase().replace(/[\s\-_]+/g, " ").trim();
+  const isCompat = (m) => /兼容入口/.test(m.modelName || "");
+  const costRank = (m) => (typeof m.routeCostRank === "number" && m.routeCostRank >= 0 ? m.routeCostRank : Infinity);
+  const capability = (m) => (m.supportsImage ? 1 : 0) + (m.supportsThinking ? 1 : 0);
+  const compareRoutes = (a, b) =>
+    Number(isCompat(a)) - Number(isCompat(b)) || capability(b) - capability(a) || (costRank(a) === costRank(b) ? 0 : costRank(a) < costRank(b) ? -1 : 1);
+  function groupTextModels(models) {
+    const families = new Map();
+    const choices = new Map();
+    for (const m of models) {
+      if (m.accessible === false) continue;
+      const family = modelBrand(m.modelName, m.modelId, m.providerLabel) || "other";
+      const key = family + "\u0000" + nameKey(m.modelName);
+      let choice = choices.get(key);
+      if (!choice) {
+        choice = { key, name: m.modelName || m.modelId || "", routes: [] };
+        choices.set(key, choice);
+        if (!families.has(family)) families.set(family, []);
+        families.get(family).push(choice);
+      }
+      choice.routes.push(m);
+    }
+    const out = [];
+    for (const [family, list] of families) if (family !== "other") out.push(...list);
+    out.push(...(families.get("other") || []));
+    for (const choice of out) choice.routes.sort(compareRoutes);
+    return out;
+  }
+  /* Which route each merged row shows, by row key (kept across language and tab switches). */
+  const routePick = new Map();
 
   const en = () => root.dataset.lang === "en";
   const t = (zh, enText) => (en() ? enText : zh);
@@ -258,7 +337,11 @@
       tr.append(
         ...values.map((v, i) => {
           const td = node("td", i ? "num" : "model-name");
-          if (i === 0) td.append(brandIcon(...brand), document.createTextNode(v));
+          if (i === 0) {
+            const cell = node("div", "model-cell");
+            cell.append(brandIcon(...brand), node("span", "", v));
+            td.append(cell);
+          }
           else td.textContent = v;
           return td;
         }),
@@ -269,20 +352,41 @@
     if (modelTab === "text") {
       head.replaceChildren(...[t("模型", "Model"), t("输入 / 百万 token", "Input / 1M tokens"), t("输出 / 百万 token", "Output / 1M tokens")].map((h) => node("th", "", h)));
       body.replaceChildren(
-        ...(catalog?.textModels || []).map((x) =>
-          cells([x.providerLabel, x.modelName], `${x.modelName || ""}${x.providerLabel ? " · " + x.providerLabel : ""}`, perMillion(x.creditsPerKInputTokens), perMillion(x.creditsPerKOutputTokens)),
-        ),
+        ...groupTextModels(catalog?.textModels || []).map((choice) => {
+          const index = Math.min(routePick.get(choice.key) || 0, choice.routes.length - 1);
+          const route = choice.routes[index];
+          const tr = cells([choice.name, route.modelId, route.providerLabel], choice.name, perMillion(route.creditsPerKInputTokens), perMillion(route.creditsPerKOutputTokens));
+          if (choice.routes.length > 1) {
+            const lines = node("span", "model-lines");
+            lines.setAttribute("role", "group");
+            lines.setAttribute("aria-label", t("线路", "Routes"));
+            choice.routes.forEach((r, i) => {
+              const b = node("button", "", t(`线路 ${i + 1}`, `Route ${i + 1}`));
+              b.type = "button";
+              b.dataset.choice = choice.key;
+              b.dataset.route = String(i);
+              b.setAttribute("aria-pressed", String(i === index));
+              b.title = t(
+                `输入 ${perMillion(r.creditsPerKInputTokens)} · 输出 ${perMillion(r.creditsPerKOutputTokens)}${r.supportsImage ? " · 识图" : ""}${r.supportsThinking ? " · 思考" : ""}`,
+                `Input ${perMillion(r.creditsPerKInputTokens)} · output ${perMillion(r.creditsPerKOutputTokens)}${r.supportsImage ? " · vision" : ""}${r.supportsThinking ? " · thinking" : ""}`,
+              );
+              lines.append(b);
+            });
+            tr.querySelector(".model-cell").append(lines);
+          }
+          return tr;
+        }),
       );
     } else if (modelTab === "image") {
       head.replaceChildren(...[t("模型", "Model"), t("积分 / 张", "Credits / image")].map((h) => node("th", "", h)));
-      body.replaceChildren(...(catalog?.imageModels || []).map((x) => cells([x.provider, x.displayName], x.displayName || "", x.pricing?.creditsPerImage != null ? String(x.pricing.creditsPerImage) : "—")));
+      body.replaceChildren(...(catalog?.imageModels || []).map((x) => cells([x.displayName, x.modelId, x.provider], x.displayName || "", x.pricing?.creditsPerImage != null ? String(x.pricing.creditsPerImage) : "—")));
     } else {
       head.replaceChildren(...[t("模型", "Model"), t("积分 / 秒（按分辨率）", "Credits / second (by resolution)")].map((h) => node("th", "", h)));
       body.replaceChildren(
         ...(catalog?.videoModels || []).map((x) => {
           const tiers = x.pricing?.videoPricingTiers;
           const text = tiers ? Object.entries(tiers).map(([res, v]) => `${res} ${v}`).join(" · ") : x.pricing?.unitCredits != null ? String(x.pricing.unitCredits) : "—";
-          return cells([x.provider, x.displayName], x.displayName || "", text);
+          return cells([x.displayName, x.modelId, x.provider], x.displayName || "", text);
         }),
       );
     }
@@ -318,6 +422,12 @@
       customAmount = "";
       $("#custom-amount").value = "";
       renderPacks();
+    }
+    const line = e.target.closest(".model-lines button");
+    if (line) {
+      routePick.set(line.dataset.choice, Number(line.dataset.route));
+      renderRates();
+      return;
     }
     const m = e.target.closest("#model-tabs button");
     if (m) {
