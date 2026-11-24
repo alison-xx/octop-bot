@@ -682,7 +682,7 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 - **库存**：`OCTOP_CVM_SUBNETS` 按顺序列出可用区和子网，一个区没货就换下一个。
 - **单价**（成本 × 2）：标准 1.70 积分/分钟，高配 3.40 积分/分钟，磁盘 4.80 积分/GB·天。公网流量暂未单独计费（看画面时每小时约几十到一两百 MB）。
 
-部署所需环境变量（`OCTOP_CVM_*`）：`SECRET_ID` / `SECRET_KEY`（云电脑专用子账号，权限范围见团队目录《交接-部署与发版》）、`REGION`、`IMAGE_ID`、`VPC_ID`、`SUBNETS`、`SECURITY_GROUP`、`TYPE` / `TYPE_PRO`、`DISK_GB`、`BANDWIDTH`。
+部署所需环境变量（`OCTOP_CVM_*`）：`SECRET_ID` / `SECRET_KEY`（云电脑专用子账号，权限范围见团队目录《交接-部署与发版》）、`REGION`、`IMAGE_ID`、`VPC_ID`、`SUBNETS`、`SECURITY_GROUP`、`TYPE` / `TYPE_PRO`、`DISK_GB`、`BANDWIDTH`。可选的 `INSTANCE_SECRET` 是电脑访问令牌和证书的派生种子，不设置时用 `SECRET_KEY`。换 CAM 密钥前，先把旧的 `SECRET_KEY` 填进 `INSTANCE_SECRET`，再换新密钥，已有的电脑就能照常连上。
 
 ## 12.11 多端互通：桌面登录灵策就用云端（2026-11-24 定）
 
