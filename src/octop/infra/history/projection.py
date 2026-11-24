@@ -5,13 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
 from langchain_core.messages import AIMessage, convert_to_messages, message_to_dict
 
 from octop.infra.db.repos._base import now_ts
-from octop.infra.db.repos.thread_messages import ThreadMessageInput
+from octop.infra.db.repos.thread_messages import ThreadMessageInput, ThreadMessageRow
 from octop.infra.gateway.process.message_keys import (
     CHECKPOINT_TS_KEY,
     STREAM_ERROR_CODE_KEY,
@@ -188,7 +189,7 @@ def live_message_inputs(
     return message_inputs(prepared, dedupe_missing_ids=dedupe_missing_ids)
 
 
-def _wire_text(item: ThreadMessageInput) -> str:
+def _wire_text(item: ThreadMessageInput | ThreadMessageRow) -> str:
     try:
         wire = json.loads(item.message_json)
     except json.JSONDecodeError:
@@ -208,6 +209,74 @@ def _wire_text(item: ThreadMessageInput) -> str:
                 parts.append(str(block.get("text") or ""))
         return "".join(parts)
     return ""
+
+
+def _squash(text: str) -> str:
+    return "".join(text.split())
+
+
+def _assistant_text(items: Sequence[ThreadMessageInput | ThreadMessageRow]) -> str:
+    return "".join(_wire_text(item) for item in items if item.role in _ASSISTANT_ROLES)
+
+
+def uncovered_stream_text(stream: str, said: str) -> str:
+    """The part of a turn's streamed text that no stored assistant step holds.
+
+    Tokens of every model step arrive as one stream, so a multi-step reply is
+    covered by its steps together, never by one of them. Whitespace is ignored:
+    stored steps keep separators the stream does not have, and the other way
+    round. A turn stopped mid-reply leaves the text after the last stored step.
+    """
+    key = _squash(said)
+    if _squash(stream) in key:
+        return ""
+    if not key:
+        return stream
+    matched = 0
+    for index, char in enumerate(stream):
+        if char.isspace():
+            continue
+        if matched == len(key):
+            return stream[index:]
+        if char != key[matched]:
+            return stream
+        matched += 1
+    return ""
+
+
+def _stream_copy_candidate(row: ThreadMessageRow) -> bool:
+    if row.message_id or row.role not in _ASSISTANT_ROLES:
+        return False
+    try:
+        data = json.loads(row.message_json).get("data")
+    except (json.JSONDecodeError, AttributeError):
+        return False
+    if not isinstance(data, dict) or data.get("tool_calls"):
+        return False
+    extra = data.get("additional_kwargs")
+    if isinstance(extra, dict) and extra.get(STREAM_ERROR_FLAG):
+        return False
+    return bool(_squash(_wire_text(row)))
+
+
+def drop_stream_copies(
+    rows: list[ThreadMessageRow],
+    turn_before: Callable[[int], list[ThreadMessageRow]],
+) -> list[ThreadMessageRow]:
+    """Hide id-less rows that repeat a turn's whole streamed reply.
+
+    Older builds stored every multi-step turn's token stream once more after
+    its steps. ``turn_before(seq)`` returns the stored rows of that turn
+    before ``seq``, starting with its user message.
+    """
+    kept: list[ThreadMessageRow] = []
+    for row in rows:
+        if _stream_copy_candidate(row):
+            said = _assistant_text(turn_before(row.seq))
+            if said and not uncovered_stream_text(_wire_text(row), said):
+                continue
+        kept.append(row)
+    return kept
 
 
 def compaction_boundary(state: Any) -> str | None:
@@ -282,13 +351,13 @@ class TurnHistoryTracker:
             if code:
                 self._error_code = str(code)
 
-    def _stream_message(self) -> ThreadMessageInput | None:
-        if not self._stream_text and not self._reasoning_text:
+    def _stream_message(self, text: str) -> ThreadMessageInput | None:
+        if not text and not self._reasoning_text:
             return None
         extra: dict[str, Any] = {}
         if self._reasoning_text:
             extra["reasoning_content"] = self._reasoning_text
-        return live_message_input(AIMessage(content=self._stream_text, additional_kwargs=extra))
+        return live_message_input(AIMessage(content=text, additional_kwargs=extra))
 
     def _error_input(self) -> ThreadMessageInput | None:
         if not self._error_message:
@@ -297,14 +366,6 @@ class TurnHistoryTracker:
         if self._error_code:
             extra[STREAM_ERROR_CODE_KEY] = self._error_code
         return live_message_input(AIMessage(content=self._error_message, additional_kwargs=extra))
-
-    def _inputs_cover_stream(self, items: list[ThreadMessageInput]) -> bool:
-        if not self._stream_text:
-            return False
-        return any(
-            item.role in _ASSISTANT_ROLES and self._stream_text in _wire_text(item)
-            for item in items
-        )
 
     @property
     def inputs(self) -> list[ThreadMessageInput]:
@@ -316,8 +377,9 @@ class TurnHistoryTracker:
             source,
             dedupe_missing_ids=True,
         )
-        if not self._inputs_cover_stream(items):
-            streamed = self._stream_message()
+        rest = uncovered_stream_text(self._stream_text, _assistant_text(items))
+        if rest or not self._stream_text:
+            streamed = self._stream_message(rest)
             if streamed is not None:
                 items.append(streamed)
         error = self._error_input()

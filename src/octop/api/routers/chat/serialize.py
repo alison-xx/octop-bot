@@ -35,7 +35,7 @@ from octop.infra.history.attachment_text import (
 from octop.infra.history.attachment_text import (
     is_history_noise_image_block as _is_history_noise_image_block,
 )
-from octop.infra.history.projection import compaction_boundary
+from octop.infra.history.projection import compaction_boundary, drop_stream_copies
 from octop.infra.utils.llm_text import strip_thinking as _strip_thinking
 from octop.infra.utils.locale import normalize_locale
 
@@ -393,11 +393,13 @@ def _load_projected_thread_messages(
     include_tool_media: bool = True,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Read one page without touching the agent checkpoint database."""
-    rows, has_more = server.services.thread_message_repo.page(
+    repo = server.services.thread_message_repo
+    rows, has_more = repo.page(
         thread_id,
         limit=limit,
         offset=offset,
     )
+    rows = drop_stream_copies(rows, lambda seq: repo.turn_rows_before(thread_id, seq))
     out: list[dict[str, Any]] = []
     for row in rows:
         try:

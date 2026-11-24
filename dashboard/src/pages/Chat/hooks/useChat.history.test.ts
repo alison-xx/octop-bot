@@ -284,6 +284,68 @@ describe("history failures", () => {
   });
 });
 
+describe("a finished turn longer than one history page", () => {
+  it("shows the reply once after refreshing", async () => {
+    const live = [
+      { id: "old-u", role: "user" as const, content: "之前", timestamp: 1_000 },
+      {
+        id: "old-a",
+        role: "assistant" as const,
+        content: "之前的回复",
+        timestamp: 1_100,
+      },
+      {
+        id: "u",
+        role: "user" as const,
+        content: "做个任务",
+        timestamp: 5_000,
+        localPending: true,
+      },
+      {
+        id: "live-a",
+        role: "assistant" as const,
+        content: "我先看看",
+        status: "done" as const,
+        timestamp: 5_100,
+      },
+      {
+        id: "live-final",
+        role: "assistant" as const,
+        content: "搞定了",
+        status: "done" as const,
+        timestamp: 5_300,
+      },
+    ];
+    chatStore.setHistoryPage(thread, live, { hasMore: false, nextOffset: 0 });
+    // The turn's own rows fill the latest page; its question is one page back.
+    vi.spyOn(octopThreadsApi, "history").mockResolvedValue({
+      thread_id: thread,
+      messages: [
+        {
+          id: "srv-a",
+          role: "assistant",
+          content: "我先看看",
+          timestamp: 5_100,
+        },
+        {
+          id: "srv-final",
+          role: "assistant",
+          content: "搞定了",
+          timestamp: 5_300,
+        },
+      ],
+      has_more: true,
+    });
+    const { result } = renderHook(() => useChat(thread, "agent"));
+    await act(async () => {
+      await result.current.refreshHistory();
+    });
+    expect(
+      chatStore.getSnapshot(thread).messages.map((message) => message.id),
+    ).toEqual(["u", "srv-a", "srv-final"]);
+  });
+});
+
 describe("cache ordering and stale history responses", () => {
   const latest: OctopThreadHistory = {
     thread_id: thread,
