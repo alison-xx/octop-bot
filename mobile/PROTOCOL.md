@@ -162,3 +162,48 @@ thumbnail a file, fetch it with `GET` on that link (Octop Bot cloud: get a signe
 
 **Not available to phones** (desktop-shell + loopback only): `/api/octop-bot/lynxce/*`, `/wallet`,
 `/cloud/*`, `/api/auth/device/*`, Bot computer control.
+
+## C. Device connectors (Health, Calendar, Reminders)
+
+The phone runs a few tools for its Bots against the system's own data: Apple Health / Health
+Connect, the calendar, and Reminders (iOS only; Android has no system to-do store). Both backends
+use one tool list, [`src/octop/infra/agents/device_tools.json`](../src/octop/infra/agents/device_tools.json),
+copied into the apps by `mobile/scripts/sync-assets.sh` (`device_tools.json` in iOS `Resources/`
+and Android `assets/`). Each entry is `{name, capability: health|calendar|reminders, writes, description, parameters}`
+where `parameters` is a JSON Schema.
+
+**Settings.** Settings → *Device connectors* lists Health, Calendar and Reminders, all off by
+default. Turning one on asks for the system permission (Health: read only; Calendar and Reminders:
+full access); if it is denied the switch stays off and the footer offers "Open system settings".
+A tool is offered to the Bot only while its capability is on and permitted.
+
+**Running a call.** Arguments follow the schema. Times are ISO 8601; without an offset they are in
+the phone's time zone; a bare date is a whole day. The result is a JSON object (see each tool's
+description) or `{"error": "<reason>"}` — never throw; the Bot reads the error and carries on.
+- `writes:false` tools run as soon as they are asked for, with a tool chip as usual.
+- `writes:true` tools wait for the user: the approval card shows a preview (title, time, place,
+  list, notes) with Add / Cancel. Cancel = `reject`.
+- Health results are daily values only (`device_health_summary`), never raw samples.
+
+**Server mode.** On every `user_turn` send `"device_tools": [names]` — the tools of the connectors
+that are on (omit or `[]` when none). The server shows those tools to the model on this thread
+until a turn arrives without them. A call pauses the turn like a question: `hitl_required` whose
+`action_requests[].name` starts with `device_` and `review_configs[].allowed_decisions` is
+`["respond", "reject"]` (`approve` is refused with 400). Run the tools and resume with one decision
+per action, in order: `{"type":"respond","message":"<result JSON>"}` or
+`{"type":"reject","message":"The user declined."}`. A pause can mix device actions and ordinary
+approvals; approving the card answers device actions with `respond` and the others with `approve`.
+A pause with only `writes:false` device actions is resumed right away without showing a card.
+After reopening a conversation, an open `history.hitl_pending` with device actions is handled the
+same way (reads run again, writes show the card).
+
+**Lynxce mode.** The phone runs the tool loop itself with OpenAI function calling. When any tool
+is on, the chat body adds `"tools": [{"type":"function","function":{name, description, parameters}}]`
+and `"tool_choice":"auto"`, and a system line `"Now: <local ISO time> (<IANA zone>)."`. Stream
+`delta.tool_calls[] {index, id, function:{name, arguments}}` (arguments arrive in pieces; join by
+`index`). When the stream ends with tool calls, append the assistant message
+`{"role":"assistant","content":<text so far or null>,"tool_calls":[…]}` and one
+`{"role":"tool","tool_call_id":id,"content":<result JSON>}` per call (a declined write:
+`{"error":"The user declined."}`), then request again; at most 6 rounds per turn. Writes pause the
+loop for the same card before they run. If the gateway answers 400 to a body with `tools`, retry
+once without them. Only the user's text and the final answer are saved to the web-chat session.

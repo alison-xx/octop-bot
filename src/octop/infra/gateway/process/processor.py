@@ -1825,10 +1825,13 @@ class GlobalProcessor:
         mcp_servers: list[str] | None,
         locale: str,
     ) -> dict[str, Any]:
+        from octop.infra.agents.bot_device import remember_device_tools
         from octop.infra.agents.conversation_mode import execute_user_message
 
         if meta and meta.get("octop_bot_browser") is True:
             request.setdefault("configurable", {})["octop_bot_browser"] = True
+        device = meta.get("device_tools") if meta else None
+        remember_device_tools(thread_id, device if isinstance(device, list) else None)
 
         if self._is_managed_agent(agent_id):
             return self._stamp_managed_session_mode(

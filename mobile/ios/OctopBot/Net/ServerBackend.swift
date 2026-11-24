@@ -449,6 +449,8 @@ final class ServerBackend: ChatBackend {
                         "messages": [["role": "user", "content": content, "id": UUID().uuidString]],
                     ]
                     if let model { turn["model"] = model }
+                    // Health, Calendar and Reminders run on this phone (PROTOCOL.md §C).
+                    turn["device_tools"] = DeviceConnectors.shared.offeredTools
 
                     var components = URLComponents(url: url("/api/agents/\(bot.id)/chat/ws"), resolvingAgainstBaseURL: false)!
                     components.scheme = components.scheme == "https" ? "wss" : "ws"

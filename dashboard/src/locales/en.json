@@ -2751,7 +2751,13 @@
     "generate_image": "Generate image",
     "generate_video": "Generate video",
     "bilibili_search_anime": "Search Bilibili anime",
-    "search_arxiv": "Search arXiv papers"
+    "search_arxiv": "Search arXiv papers",
+    "device_health_summary": "Read health data",
+    "device_calendar_events": "Read calendar",
+    "device_calendar_create_event": "Add calendar event",
+    "device_calendar_update_event": "Update calendar event",
+    "device_reminders": "Read reminders",
+    "device_reminder_create": "Add reminder"
   },
   "toolSettings": {
     "title": "Tool settings",

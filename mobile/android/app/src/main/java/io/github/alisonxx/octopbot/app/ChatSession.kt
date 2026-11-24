@@ -1,10 +1,13 @@
 package io.github.alisonxx.octopbot.app
 
+import io.github.alisonxx.octopbot.device.DeviceDecisions
+import io.github.alisonxx.octopbot.device.DeviceToolbox
 import io.github.alisonxx.octopbot.model.BotMotion
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
 import io.github.alisonxx.octopbot.model.FileCards
+import io.github.alisonxx.octopbot.model.HitlAction
 import io.github.alisonxx.octopbot.model.HitlAnswer
 import io.github.alisonxx.octopbot.model.HitlAnswers
 import io.github.alisonxx.octopbot.model.HitlDecision
@@ -24,8 +27,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
 import java.util.UUID
 
 data class ChatState(
@@ -61,6 +66,8 @@ interface ChatHost {
     fun failed(error: Throwable)
     /** Fixed HITL replies and captions in the app language. */
     val hitlTexts: HitlTexts
+    /** The phone's device connectors (Health, Calendar) that a turn may use. */
+    val device: DeviceToolbox get() = DeviceToolbox.None
 }
 
 /**
@@ -116,9 +123,13 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
         _state.update { it.copy(conversationId = conversation.id, messages = emptyList(), loading = true, hitl = null) }
         val transcript = runCatching { host.backend.transcript(conversation, bot) }.onFailure(::report).getOrNull()
         val messages = transcript?.messages.orEmpty()
+        val pending = transcript?.pending
+        // Device reads left open (the app was closed mid-turn) run again right away; writes show the card.
+        val rerun = pending?.takeIf { runsAlone(it) }
         _state.update {
-            it.copy(messages = messages, loading = false, motion = restingMotion(messages), hitl = transcript?.pending)
+            it.copy(messages = messages, loading = false, motion = restingMotion(messages), hitl = pending.takeIf { rerun == null })
         }
+        if (rerun != null && !_state.value.streaming) stream(bot, emptyList(), resume = true) { flowOf(StreamEvent.Hitl(rerun)) }
     }
 
     fun newChat() {
@@ -176,7 +187,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
         lastAttachments = images
         val history = state.messages.filter { it.role != MessageRole.Note }
         val user = ChatMessage(role = MessageRole.User, text = text, images = images.map { it.uri })
-        stream(bot, listOf(user)) { host.backend.send(user.text, images, bot, state.conversationId, history, host.model()) }
+        stream(bot, listOf(user)) { host.backend.send(user.text, images, bot, state.conversationId, history, host.model(), host.device) }
     }
 
     // Questions and approvals (server mode)
@@ -204,13 +215,21 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
         val request = _state.value.hitl ?: return
         val texts = host.hitlTexts
         val labels = approvalLabels(request)
-        resolve(
-            request,
-            HitlAnswers.review(request, approve, if (approve) texts.youDecide else texts.closed),
-            shown = null,
-            note = if (approve) texts.approved(labels) else texts.declined(labels),
-        )
+        val questionReply = if (approve) texts.youDecide else texts.closed
+        val note = if (approve) texts.approved(labels) else texts.declined(labels)
+        if (request.actions.none(DeviceDecisions::isDevice)) {
+            resolve(request, HitlAnswers.review(request, approve, questionReply), shown = null, note = note)
+            return
+        }
+        // Device writes run only now, after the tap, while the continuation starts streaming.
+        resolve(request, shown = null, note = note) { DeviceDecisions.review(request, approve, questionReply, ::runDevice) }
     }
+
+    /** Only device reads: answered without a card. */
+    private fun runsAlone(request: HitlRequest) = DeviceDecisions.runsAlone(request) { host.device.tool(it)?.writes == true }
+
+    private suspend fun runDevice(action: HitlAction): String =
+        host.device.run(action.name, action.args ?: JsonObject(emptyMap())).toString()
 
     private fun approvalLabels(request: HitlRequest) =
         request.actions.filter { it.questions == null }.joinToString(", ") { it.label }
@@ -219,7 +238,10 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
      * Answer the open card: the paused turn continues on the server and streams into a new reply. [shown] is
      * echoed as the user's bubble, [note] as a centered caption ("Approved: …" / "Declined: …").
      */
-    private fun resolve(request: HitlRequest, decisions: List<HitlDecision>, shown: String?, note: String?) {
+    private fun resolve(request: HitlRequest, decisions: List<HitlDecision>, shown: String?, note: String?) =
+        resolve(request, shown, note) { decisions }
+
+    private fun resolve(request: HitlRequest, shown: String?, note: String?, decisions: suspend () -> List<HitlDecision>) {
         val bot = bot ?: return
         val state = _state.value
         val conversation = state.conversationId ?: return
@@ -232,7 +254,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
         stream(bot, echoes, resume = true, onFailure = {
             // Still pending on the server: offer the card again.
             _state.update { if (it.hitl == null) it.copy(hitl = request) else it }
-        }) { host.backend.resumeHitl(bot, conversation, request.pendingId, decisions) }
+        }) { host.backend.resumeHitl(bot, conversation, request.pendingId, decisions()) }
     }
 
     private fun stream(
@@ -251,7 +273,20 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
         job = scope.launch {
             var status: MessageStatus = MessageStatus.Done
             try {
-                events().collect { event -> if (token == run) apply(reply.id, event) }
+                var events = events()
+                while (true) {
+                    // A pause for device reads only is answered here and continues in the same reply.
+                    var reads: HitlRequest? = null
+                    events.collect { event ->
+                        if (token != run) return@collect
+                        if (event is StreamEvent.Hitl && runsAlone(event.request)) reads = event.request else apply(reply.id, event)
+                    }
+                    val request = reads ?: break
+                    val conversation = _state.value.conversationId ?: break
+                    val decisions = DeviceDecisions.review(request, approve = true, questionReply = "", run = ::runDevice)
+                    resumed = true
+                    events = host.backend.resumeHitl(bot, conversation, request.pendingId, decisions)
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {

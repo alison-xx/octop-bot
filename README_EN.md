@@ -39,7 +39,7 @@ https://github.com/user-attachments/assets/7da8ded6-3612-43c6-9c3a-3b8ac402f155
 
 - **Hand work along in a group.** Assign with `@`, work from the same group attachments, and write decisions into group notes. Each member keeps their own private chat and working folder.
 - **Goals you can check off.** Turn a vague request into owners, stages and acceptance criteria. Chief checks each stage, and you can reopen the group later to see what every answer was based on.
-- **Keeps working when your PC is off.** Sign in to the cloud workspace with a Lynxce account. Cloud schedules run while your computer is off, and you can pick up the chat on another computer.
+- **Keeps working when your computer is off.** Sign in to the cloud workspace with a Lynxce account. Cloud schedules run while your computer is off, and you can pick up the chat on another computer.
 - **Your files stay on your computer.** Local Bots work directly with the files, scripts and apps on this machine. Attachments, tool records and reasoning stay local by default.
 - **Bring any model.** Sign in to Lynxce, add an API key from another provider, or use a local model. Switch models from the message box at any time.
 - **Every capability, for any Bot.** MCP connectors, skills, knowledge bases, long-term memory, IM channels such as Feishu, WeCom and Telegram, and external agents such as Claude Code, OpenCode and Qwen Code.
@@ -50,7 +50,7 @@ https://github.com/user-attachments/assets/7da8ded6-3612-43c6-9c3a-3b8ac402f155
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/assets/octop-bot/screen-team-en.webp" alt="Team group chat: Chief splits a weekend city guide between a researcher, an editor and a designer." /></td>
+    <td width="50%"><img src="docs/assets/octop-bot/screen-team-en.webp" alt="Team group chat: Chief splits a weekend city guide between Rae, Lin and Peach." /></td>
     <td width="50%"><img src="docs/assets/octop-bot/screen-groups-en.webp" alt="Team directory: right-click a section to organize members, start a group chat or reorder." /></td>
   </tr>
   <tr>
@@ -76,7 +76,7 @@ https://github.com/user-attachments/assets/7da8ded6-3612-43c6-9c3a-3b8ac402f155
 | On a Windows PC | [Installer (EXE) or portable ZIP](https://octop-bot.lynxce.cn/download.html) | Windows 10 / 11 x64. Run the EXE and follow the wizard, or extract the whole ZIP and open `Octop Bot.exe`, keeping the resource files beside it. |
 | On a Mac | [Disk image (DMG)](https://octop-bot.lynxce.cn/download.html) | Apple silicon (M1 or later). Open the DMG, drag **Octop Bot** to **Applications** and launch it from there. |
 | On a NAS or server, in the browser | [Docker or fnOS (FPK)](docs/octop-bot-nas.md) | On first open, sign in with a Lynxce account or set a password and configure your own models. No setup passcode. |
-| On your phone | [iOS and Android apps](mobile/README.md) | Chat with a Lynxce account, or connect to your own Octop Bot deployment. Build them yourself for now. |
+| On your phone | [Android APK](https://octop-bot.lynxce.cn/download.html) · [iPhone (build from source)](mobile/README.md) | Chat with a Lynxce account, or connect to your own Octop Bot deployment. The iPhone app isn't on the App Store yet. |
 | Hack on it or package it | [Run from source](#run-from-source) | See the end of this page. |
 
 The desktop packages include Python and the local Octop service, so there is nothing else to install; keep at least 2 GB free. Packages are served from Lynxce OSS. The download page lists a SHA-256 checksum for every file and each release ships a `SHA256SUMS.txt`, so you can verify what you downloaded. There are no Linux or Intel Mac packages yet; on those machines, run the web build with Docker.
@@ -102,7 +102,7 @@ With Lynxce connected, **Account and models** shows your credit balance, and **T
 | Pick up a private chat | Select a member in the directory to resume your latest chat. Click their name at the top to change their avatar, role or model. Use `/side` to ask a follow-up while the main task runs. |
 | Deliver something together | Choose **+** to create a group chat, or ask Chief to. Post the brief and mention members with `@`. For larger jobs, write acceptance criteria, stages and owners into a Goal. |
 | Organize a project | Right-click an empty part of the directory to create a section or move items in bulk; right-click a member to move it into a section; right-click a section heading to rename, recolor, reorder or start a group chat with its Bots. Dissolving a section keeps its members and chats. |
-| Find something said earlier | Press `Ctrl+K` (`⌘K` on Mac) to search members and sections, then switch to past private chats and search by title or text. In a private chat, **Quote conversation** inserts an earlier message word for word. |
+| Find something said earlier | Press `Ctrl+K` (`⌘K` on Mac) to search members and sections, then switch to **Past chats** and search by title or text. In a private chat, **Reference a chat** inserts an earlier message word for word. |
 
 ### Try it on your own work
 
@@ -130,10 +130,10 @@ Open **Cloud workspace** at the bottom of the directory and sign in with a Lynxc
 | The job | Who should do it |
 | --- | --- |
 | Needs files, scripts or apps on this computer | **A local Bot.** For repeat runs, add a weekday or weekly task under **Scheduled tasks** in the Bot's profile, and keep the computer awake with Octop Bot running in the background. |
-| Runs on a schedule and its inputs are reachable from the cloud (a morning brief, say) | **A cloud schedule.** Enter the instructions, time and time zone; it runs even when your PC is off. Use **Continue in result chat** to follow up. |
+| Runs on a schedule and its inputs are reachable from the cloud (a morning brief, say) | **A cloud schedule.** Enter the instructions, time and time zone; it runs even when your computer is off. Use **Continue in result chat** to follow up. |
 | Needs to continue on another device | **Bring the chat to the cloud.** Click the name at the top of a private chat, choose **Continue this local chat in the cloud**, review and confirm. Up to the latest 20 visible messages go along; attachments, tool records and reasoning stay local. |
 
-When moving an existing local schedule to the cloud, pause the original under **Scheduled tasks** first, then create the cloud task from its configuration so it doesn't run twice.
+When moving an existing local schedule to the cloud, pause the original under **Scheduled tasks** first, then choose **Create cloud schedule from this** so it doesn't run twice.
 
 The Windows app keeps its local workspace in `%USERPROFILE%\.octop-bot` by default. For group files, shared notes, avatars and computer control, see the [full user guide (Chinese)](docs/octop-bot.md).
 

@@ -76,7 +76,7 @@ https://github.com/user-attachments/assets/bc79dce7-db0e-4f15-81d4-e76899e68eb9
 | 在 Windows 电脑上用 | [安装版 EXE 或免安装 ZIP](https://octop-bot.lynxce.cn/download.html) | Windows 10 / 11 x64。EXE 按向导安装；ZIP 完整解压后打开 `Octop Bot.exe`，保留同目录的资源文件。 |
 | 在 Mac 上用 | [磁盘映像 DMG](https://octop-bot.lynxce.cn/download.html) | Apple 芯片（M1 及更新）。打开 DMG，把 **Octop Bot** 拖进「应用程序」，再从那里启动。 |
 | 部署在 NAS 或服务器上，用浏览器打开 | [Docker 或飞牛 fnOS（FPK）](docs/octop-bot-nas.md) | 首次打开直接用灵策智算账号登录，或设置登录密码后自己配置模型，不需要向导口令。 |
-| 在手机上用 | [iOS 和 Android 客户端](mobile/README.md) | 用灵策账号直接对话，或连接自己部署的 Octop Bot。目前需要自行构建。 |
+| 在手机上用 | [Android 安装包](https://octop-bot.lynxce.cn/download.html) · [iPhone（从源码构建）](mobile/README.md) | 用灵策账号直接对话，或连接自己部署的 Octop Bot。iPhone 版还没有上架 App Store。 |
 | 改代码或自己打包 | [从源码运行](#从源码运行) | 见本文末尾。 |
 
 桌面安装包自带 Python 和本地 Octop 服务，不需要另装依赖，留出 2 GB 以上空闲空间即可。安装包由灵策 OSS 分发，下载页为每个文件列出了 SHA-256，每个版本也附有 `SHA256SUMS.txt`，下载后比对一下就能确认文件完整。暂未提供 Linux 和 Intel Mac 安装包，这两类设备可以用 Docker 部署网页版。
