@@ -659,6 +659,9 @@
       "mimo": "Xiaomi MiMo",
       "other": "Other models"
     },
+    "modelRoutes": "{{n}} routes",
+    "modelRoute": "Route",
+    "modelRouteN": "Route {{n}}",
     "searchModels": "Search models"
   },
   "app": {
