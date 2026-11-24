@@ -557,10 +557,13 @@ class ComputerManager:
                 return
             try:
                 size = int(disk_gb(record.instance_id))
+                # A stopped computer's record is not polled otherwise; never bill a disk the
+                # provider has already deleted (terminated in the console, expired).
+                gone = size > 0 and self._driver.state(record.instance_id) == "gone"
             except Exception:  # noqa: BLE001 - provider hiccup, tried on the next pass
-                logger.warning("reading the disk size of computer %s failed", agent_id)
+                logger.warning("checking the disk of computer %s failed", agent_id)
                 return
-            if size <= 0:
+            if size <= 0 or gone:
                 return
             try:
                 self._billing.charge_disk(record, day, size)

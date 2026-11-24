@@ -826,3 +826,16 @@ def test_billing_charges_the_disk_as_the_tenant(monkeypatch: pytest.MonkeyPatch)
         )
     ]
     computers.FreeBilling().charge_disk(record, "2026-11-24", 40)  # self-hosted: nothing to pay
+
+
+def test_a_disk_the_provider_already_deleted_is_not_billed(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    driver.disk_size = 40
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    manager.pause("bot1", 7)
+    driver.states["ins-1"] = "gone"  # terminated outside Octop while stopped
+    manager.tick()
+    assert billing.disks == []
+    driver.broken.add("ins-1")  # provider error: skipped, tried on the next pass
+    manager.tick()
+    assert billing.disks == []
