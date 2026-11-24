@@ -95,7 +95,42 @@ def test_without_a_running_task_or_off_bot_turns_nothing_is_counted(
     store.save("thr1", task)
     always = watchdog.BotTaskMiddleware(store, always=True)
     for _ in range(3):
-        assert always.wrap_tool_call(_call(), _ok).content == "fine"
+        assert always.wrap_tool_call(_call("read_file"), _ok).content == "fine"
+
+
+def test_real_work_without_a_plan_is_sent_back_once_per_user_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.messages import HumanMessage, add_notification_metadata
+
+    middleware, store, task = _setup(monkeypatch)
+    task.status = "done"
+    store.save("thr1", task)
+
+    class _Request:
+        def __init__(self, messages: list[Any]) -> None:
+            self.messages = messages
+            self.system_message = None
+
+        def override(self, *, system_message: SystemMessage) -> _Request:
+            return self
+
+    def turn(*messages: Any) -> None:
+        middleware.wrap_model_call(_Request(list(messages)), lambda r: r)  # type: ignore[arg-type]
+
+    first = HumanMessage(content="写个脚本", id="u1")
+    turn(first)
+    # Reading is free; the first write is sent back, the model may insist.
+    assert middleware.wrap_tool_call(_call("read_file"), _ok).content == "fine"
+    asked = middleware.wrap_tool_call(_call("write_file"), _ok)
+    assert asked.status == "error" and "call task_plan first" in str(asked.content)
+    assert middleware.wrap_tool_call(_call("write_file"), _ok).content == "fine"
+    # A screenshot notification is not a new user turn; a new user message is.
+    screenshot = add_notification_metadata(HumanMessage(content="screen"), source="cloud_computer")
+    turn(first, screenshot)
+    assert middleware.wrap_tool_call(_call("execute"), _ok).content == "fine"
+    turn(first, screenshot, HumanMessage(content="再改一下", id="u2"))
+    assert "call task_plan first" in str(middleware.wrap_tool_call(_call("execute"), _ok).content)
 
 
 def test_the_briefing_is_added_on_bot_turns_only(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,3 +211,26 @@ def test_a_task_dropped_by_compaction_is_put_back_in_the_prompt(
     # While a task result is still in the conversation, the prompt is unchanged.
     still_there = [ToolMessage(content=f'{{"task": {{"id": "{task.id}"}}}}', tool_call_id="x")]
     assert "Current task" not in prompt(still_there)
+
+
+def test_no_plan_request_when_task_plan_is_in_the_same_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """task_plan and the first write_file sent together run side by side: let the write run."""
+    from langchain_core.messages import AIMessage
+
+    middleware, store, task = _setup(monkeypatch)
+    task.status = "done"
+    store.save("thr1", task)
+    batch = AIMessage(
+        content="",
+        tool_calls=[
+            {"name": "task_plan", "args": {}, "id": "p1"},
+            {"name": "write_file", "args": {}, "id": "w1"},
+        ],
+    )
+    request = SimpleNamespace(
+        tool_call={"name": "write_file", "id": "w1", "args": {}},
+        state={"messages": [batch]},
+    )
+    assert middleware.wrap_tool_call(request, _ok).content == "fine"

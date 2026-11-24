@@ -242,15 +242,39 @@
   line-height: 20px;
 }
 .review {
-  margin: 4px 0 0;
+  position: relative;
+  max-height: 120px;
+  margin-top: 4px;
+  overflow: hidden;
   font-size: 13px;
   line-height: 20px;
-  white-space: pre-line;
   overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 6;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  // Fade the fold so it reads as "there is more".
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  // The reviewer's own headings stay at body size inside the report.
+  :global(h1),
+  :global(h2),
+  :global(h3),
+  :global(h4) {
+    margin: 4px 0;
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 600;
+  }
+  :global(table) {
+    font-size: 12px;
+  }
+  :global(th),
+  :global(td) {
+    min-width: 4.5em;
+    padding: 4px 6px;
+    vertical-align: top;
+  }
+}
+.reviewOpen {
+  max-height: none;
+  overflow-x: auto;
+  mask-image: none;
 }
 .reportFooter {
   margin-top: 10px;

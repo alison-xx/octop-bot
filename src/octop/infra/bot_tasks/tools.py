@@ -76,7 +76,7 @@ def _clean(items: list[str], limit: int) -> list[str]:
 
 
 def task_tools(store: TaskStore) -> list[StructuredTool]:
-    def task_plan(
+    def _plan(
         goal: str,
         criteria: list[str],
         assumptions: list[str] | None = None,
@@ -124,7 +124,7 @@ def task_tools(store: TaskStore) -> list[StructuredTool]:
             return f"Refused: {exc.errors()[0].get('msg', 'invalid task')}"
         return snapshot(store.save(thread, task), note)
 
-    def task_check(
+    def _check(
         criterion: int,
         status: Literal["passed", "failed", "skipped"],
         evidence: str,
@@ -144,7 +144,7 @@ def task_tools(store: TaskStore) -> list[StructuredTool]:
         task.updated_at = task.checked_at = time.time()
         return snapshot(store.save(thread, task))
 
-    def task_finish(summary: str, open_issues: list[str] | None = None) -> str:
+    def _finish(summary: str, open_issues: list[str] | None = None) -> str:
         thread = _thread_id()
         task = store.running(thread)
         if task is None:
@@ -170,6 +170,28 @@ def task_tools(store: TaskStore) -> list[StructuredTool]:
             "call it done."
         )
         return snapshot(store.save(thread, task), note)
+
+    # Each call reads, changes and saves the conversation's task under its lock.
+    def task_plan(
+        goal: str,
+        criteria: list[str],
+        assumptions: list[str] | None = None,
+        tier: Tier = "standard",
+    ) -> str:
+        with store.locked(_thread_id()):
+            return _plan(goal, criteria, assumptions, tier)
+
+    def task_check(
+        criterion: int,
+        status: Literal["passed", "failed", "skipped"],
+        evidence: str,
+    ) -> str:
+        with store.locked(_thread_id()):
+            return _check(criterion, status, evidence)
+
+    def task_finish(summary: str, open_issues: list[str] | None = None) -> str:
+        with store.locked(_thread_id()):
+            return _finish(summary, open_issues)
 
     return [
         StructuredTool.from_function(

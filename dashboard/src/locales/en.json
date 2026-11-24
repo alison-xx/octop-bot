@@ -9037,6 +9037,8 @@
       "failed": "Failed",
       "skipped": "Skipped"
     },
-    "review": "Independent review"
+    "review": "Independent review",
+    "showReview": "Show the review",
+    "hideReview": "Hide"
   }
 }

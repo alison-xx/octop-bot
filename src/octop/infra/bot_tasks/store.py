@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
@@ -24,10 +26,23 @@ class TaskStore:
     def __init__(self, settings: SettingsRepo) -> None:
         self._settings = settings
         self._guard = threading.Lock()
+        self._threads: dict[str, threading.RLock] = {}
 
     @staticmethod
     def _key(thread_id: str) -> str:
         return f"octop_bot:tasks:{thread_id}"
+
+    @contextmanager
+    def locked(self, thread_id: str) -> Iterator[None]:
+        """Hold this conversation's tasks for a read-modify-write.
+
+        A model often sends several task calls at once (three task_check in one message);
+        without this the last save wins and the other verdicts are lost.
+        """
+        with self._guard:
+            lock = self._threads.setdefault(thread_id, threading.RLock())
+        with lock:
+            yield
 
     def tasks(self, thread_id: str) -> list[Task]:
         raw = self._settings.get(self._key(thread_id))

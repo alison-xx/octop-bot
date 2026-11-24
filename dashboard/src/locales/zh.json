@@ -9037,6 +9037,8 @@
       "failed": "未通过",
       "skipped": "跳过"
     },
-    "review": "独立复核"
+    "review": "独立复核",
+    "showReview": "展开复核结论",
+    "hideReview": "收起"
   }
 }

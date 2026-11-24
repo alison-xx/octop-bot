@@ -2,6 +2,8 @@
 
 - Briefs the model on the task contract (when to plan, evidence, the finish gate), and puts the
   running task back in the prompt when compacting the conversation dropped it.
+- Asks for a plan before the first real work of a turn: the first call that writes a file,
+  runs a command or drives the screen without a running task is sent back once.
 - Records the independent review of a deep task (a ``task`` sub-agent call whose description
   starts with "Review:"), which ``task_finish`` waits for.
 - Counts the steps of the running task: a note at 80% of its step or time budget, and once
@@ -17,7 +19,7 @@ from dataclasses import replace
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
-from langchain_core.messages import BaseMessage, SystemMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.config import get_config
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
@@ -28,6 +30,8 @@ from octop.infra.bot_tasks.tools import TASK_TOOL_NAMES
 
 # Talking to the user and keeping the plan never count against the budget.
 FREE_TOOLS = TASK_TOOL_NAMES | {"ask_user_question", "write_todos", "request_takeover"}
+# Tools that do real work; reading and looking around never need a plan.
+WORK_TOOLS = frozenset({"write_file", "edit_file", "execute", "cloud_computer"})
 WARN_AT = 0.8
 SAME_ERROR_LIMIT = 3
 
@@ -53,6 +57,12 @@ BUDGET_SPENT = (
     "Refused: this task has used its whole {what} budget ({limit}). Call task_finish with what "
     "is done and what is not, or ask the user (ask_user_question) whether to continue."
 )
+PLAN_FIRST = (
+    "Not run yet: this is real work (writing files, running commands or using the screen), so "
+    "call task_plan first with the goal and the checks that prove it is done, then do this "
+    "again. If it truly is a one-off that needs no checking, just call it again."
+)
+
 RESTORED = """## Current task (restored: earlier messages were summarized)
 Goal: {goal} ({tier})
 Acceptance criteria:
@@ -119,6 +129,28 @@ def restored_task(task: Task) -> str:
     )
 
 
+def _user_turn(messages: list[BaseMessage]) -> str:
+    """Identifies the user's latest message (not a harness notification like a screenshot)."""
+    for index in range(len(messages) - 1, -1, -1):
+        message = messages[index]
+        if isinstance(message, HumanMessage) and not message.additional_kwargs.get("lc_source"):
+            return message.id or f"{index}:{str(message.content)[:80]}"
+    return ""
+
+
+def _sibling_calls(request: ToolCallRequest) -> set[str]:
+    """Names of the tools the model called in the same message as this one (they may run at
+    the same time, e.g. task_plan alongside the first write_file)."""
+    state = getattr(request, "state", None)
+    messages = (
+        state.get("messages") if isinstance(state, dict) else getattr(state, "messages", None)
+    )
+    if not messages:
+        return set()
+    calls = getattr(messages[-1], "tool_calls", None) or []
+    return {str(call.get("name") or "") for call in calls if isinstance(call, dict)}
+
+
 def _mentions(messages: list[BaseMessage], task_id: str) -> bool:
     return any(task_id in str(message.content) for message in messages)
 
@@ -180,6 +212,10 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         self._store = store
         self._always = always
         self._watch = TaskWatch()
+        # Per conversation: the user's latest message, and whether this turn was already asked
+        # to plan (asked once; a model that insists goes ahead).
+        self._turns: dict[str, str] = {}
+        self._asked: set[str] = set()
 
     def _active(self) -> bool:
         return self._always or _configurable().get("octop_bot_browser") is True
@@ -189,6 +225,10 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
             return request
         text = BRIEFING
         thread = str(_configurable().get("thread_id") or "")
+        turn = _user_turn(list(request.messages))
+        if thread and self._turns.get(thread) != turn:
+            self._turns[thread] = turn
+            self._asked.discard(thread)
         task = self._store.running(thread) if thread else None
         # Only when compaction dropped every task result: the prompt stays the same (and
         # cached) on ordinary turns.
@@ -221,6 +261,19 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         thread = str(_configurable().get("thread_id") or "")
         task = self._store.running(thread) if thread else None
         if task is None:
+            if (
+                name in WORK_TOOLS
+                and thread
+                and thread not in self._asked
+                and "task_plan" not in _sibling_calls(request)
+            ):
+                self._asked.add(thread)
+                return None, ToolMessage(
+                    content=PLAN_FIRST,
+                    name=name,
+                    tool_call_id=str(request.tool_call.get("id") or ""),
+                    status="error",
+                )
             return None, None
         spent = self._watch.spent(task, time.time())
         if spent:
@@ -264,13 +317,14 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         if _error_text(result) is not None:
             return
         thread = str(_configurable().get("thread_id") or "")
-        fresh = self._store.running(thread)
-        if fresh is None or fresh.id != task.id:
-            return
-        fresh.reviews += 1
-        fresh.reviewed_at = fresh.updated_at = time.time()
-        fresh.review = _result_text(result).strip()[:1000]
-        self._store.save(thread, fresh)
+        with self._store.locked(thread):
+            fresh = self._store.running(thread)
+            if fresh is None or fresh.id != task.id:
+                return
+            fresh.reviews += 1
+            fresh.reviewed_at = fresh.updated_at = time.time()
+            fresh.review = _result_text(result).strip()[:1000]
+            self._store.save(thread, fresh)
 
     def wrap_tool_call(
         self,

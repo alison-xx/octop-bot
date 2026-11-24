@@ -156,3 +156,31 @@ def test_a_standard_task_needs_no_review(kit: Any) -> None:
     tools["task_plan"].invoke({"goal": "表", "criteria": ["A"]})
     tools["task_check"].invoke({"criterion": 1, "status": "passed", "evidence": "ok"})
     assert json.loads(tools["task_finish"].invoke({"summary": "ok"}))["task"]["status"] == "done"
+
+
+def test_checks_sent_together_keep_every_verdict(kit: Any) -> None:
+    """A model sent three task_check at once; each must land (no last-save-wins)."""
+    import threading
+    import time as real_time
+
+    tools, store = kit
+    tools["task_plan"].invoke({"goal": "表", "criteria": ["A", "B", "C"]})
+    original = store.save
+
+    def slow_save(thread: str, task: Any) -> Any:
+        real_time.sleep(0.05)  # widen the read-modify-write window
+        return original(thread, task)
+
+    store.save = slow_save  # type: ignore[method-assign]
+    workers = [
+        threading.Thread(
+            target=tools["task_check"].invoke,
+            args=({"criterion": n, "status": "passed", "evidence": f"ok {n}"},),
+        )
+        for n in (1, 2, 3)
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+    assert [c.status for c in store.running("thr1").criteria] == ["passed"] * 3

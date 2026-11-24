@@ -83,13 +83,17 @@ describe("BotTaskReport", () => {
           tier: "deep",
           status: "done",
           reviews: 1,
-          review: "1. met: 表格 42 行",
+          review: "**met**: 表格 42 行",
           finished_at: base.started_at + 60,
         }}
       />,
     );
     expect(screen.getByText("botTask.review")).toBeTruthy();
-    expect(screen.getByText("1. met: 表格 42 行")).toBeTruthy();
+    // Rendered as Markdown, not shown as raw asterisks.
+    expect(screen.getByText("met").tagName).toBe("STRONG");
+    expect(
+      screen.getByRole("button", { name: /botTask.showReview/ }),
+    ).toBeTruthy();
   });
 
   it("never reads as done when a criterion was skipped, and lists what is missing", () => {

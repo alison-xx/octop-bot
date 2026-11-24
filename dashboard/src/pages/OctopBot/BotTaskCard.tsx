@@ -11,6 +11,7 @@ import {
   Pause,
   X,
 } from "lucide-react";
+import Markdown from "../../components/Markdown";
 import type { TodoListItem } from "../../utils/parseWriteTodos";
 import {
   taskSeconds,
@@ -210,6 +211,7 @@ export default function BotTaskCard({
 export function BotTaskReport({ task }: { task: BotTask }) {
   const { t } = useTranslation();
   const duration = useDuration(task, false);
+  const [showReview, setShowReview] = useState(false);
   const done = task.status === "done";
   return (
     <section
@@ -244,7 +246,25 @@ export function BotTaskReport({ task }: { task: BotTask }) {
       {Boolean(task.reviews && task.review) && (
         <>
           <h4 className={styles.sectionTitle}>{t("botTask.review")}</h4>
-          <p className={styles.review}>{task.review}</p>
+          {/* Reviewers answer in Markdown (often a table): rendered, folded until asked. */}
+          <div
+            className={cx(styles.review, { [styles.reviewOpen]: showReview })}
+          >
+            <Markdown content={task.review ?? ""} />
+          </div>
+          <button
+            type="button"
+            className={styles.toggle}
+            aria-expanded={showReview}
+            onClick={() => setShowReview((value) => !value)}
+          >
+            {t(showReview ? "botTask.hideReview" : "botTask.showReview")}
+            {showReview ? (
+              <ChevronDown size={13} aria-hidden />
+            ) : (
+              <ChevronRight size={13} aria-hidden />
+            )}
+          </button>
         </>
       )}
       {task.assumptions.length > 0 && (
