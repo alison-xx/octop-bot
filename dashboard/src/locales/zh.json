@@ -148,6 +148,8 @@
     "retryMember": "请这位成员重试"
   },
   "botDirectory": {
+    "preparing": "准备中",
+    "preparingHint": "正在准备，马上就好",
     "newPrivateChat": "开始新私聊",
     "newGroupWithMembers": "沿用成员另开群聊",
     "groupHistoryHelp": "每个群保留一条连续的历史。另开群聊会沿用成员、管理员和回复方式，消息、文件、群笔记和 Goal 都从空白开始。",
@@ -436,6 +438,21 @@
       "autoDownloadHint": "在后台下载新版本，准备好后提示你重启",
       "beta": "接收测试版",
       "betaHint": "提前体验新功能，可能不太稳定"
+    },
+    "settingsGroups": {
+      "account": "账号",
+      "ai": "AI",
+      "other": "其他"
+    },
+    "settingsDescriptions": {
+      "account": "管理账号、积分和用量。",
+      "models": "选择和管理用于对话的模型。",
+      "general": "调整界面外观和语言。",
+      "notifications": "选择接收通知和提示音的方式。",
+      "privacy": "管理桌面功能、隐私和本机导入。",
+      "about": "查看版本、更新和服务信息。",
+      "appearanceHint": "选择界面的显示主题。",
+      "languageHint": "选择界面使用的语言。"
     }
   },
   "octopBot": {
@@ -9058,6 +9075,7 @@
       "open": "打开云电脑画面",
       "starting": "正在启动电脑…",
       "startFailed": "电脑没能启动，请稍后再试。",
+      "retry": "重试",
       "fit": "切换画面比例",
       "expand": "放大",
       "collapse": "收起",
@@ -9356,6 +9374,7 @@
     "routinesPick": "同时开启这些例行任务",
     "integrationsAfter": "导入后可以在“能力 → 连接器”里连接{{names}}。",
     "listJoin": "、",
+    "importedPreparing": "已添加 {{name}}，正在准备",
     "imported": "已导入 {{name}}",
     "entry": "Bot 市场",
     "menuEntry": "从 Bot 市场添加",

@@ -679,10 +679,10 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 
 - **镜像**：`deploy/cvm/image/setup.sh` 在 Ubuntu 22.04 上装 XFCE、TigerVNC（Xvnc :0，VNC 只听 127.0.0.1:5900）、OSWorld 桌面服务（127.0.0.1:5000，与 AGS 的 OSWorld 沙箱同一套）、Chrome、中文字体和 LibreOffice，一律以 `user` 运行，工作区 `/home/user/workspace`（可 sudo，机器是 Bot 自己的）。`deploy/cvm/image/build_image.py` 开一台临时机器跑脚本、关机做镜像，结束一定销毁临时机器。
 - **进入方式**：每台机器只开 443，安全组只放行云 Octop 服务器（以及调试用的机器）。nginx 校验访问令牌，再按路径分别转给桌面服务和画面的 VNC WebSocket 桥（请求头和路径见团队目录《交接-部署与发版》）。令牌是实例标签里随机引用的 HMAC，证书由一个从 CAM 密钥派生出来的私有 CA 为每台机器单独签发，都在首次开机的 user data 里写入。服务器只信任这个 CA，因此除了配置之外不需要保存任何状态。
-- **库存**：`OCTOP_CVM_SUBNETS` 按顺序列出可用区和子网，一个区没货就换下一个。
+- **库存**：`OCTOP_CVM_SUBNETS` 按顺序列出可用区和子网，一个区没货或者实例配额用完了，就换下一个。
 - **单价**（成本 × 2）：标准 1.70 积分/分钟，高配 3.40 积分/分钟，磁盘 4.80 积分/GB·天。公网流量暂未单独计费（看画面时每小时约几十到一两百 MB）。
 
-部署所需环境变量（`OCTOP_CVM_*`）：`SECRET_ID` / `SECRET_KEY`（云电脑专用子账号，权限范围见团队目录《交接-部署与发版》）、`REGION`、`IMAGE_ID`、`VPC_ID`、`SUBNETS`、`SECURITY_GROUP`、`TYPE` / `TYPE_PRO`、`DISK_GB`、`BANDWIDTH`。
+部署所需环境变量（`OCTOP_CVM_*`）：`SECRET_ID` / `SECRET_KEY`（云电脑专用子账号，权限范围见团队目录《交接-部署与发版》）、`REGION`、`IMAGE_ID`、`VPC_ID`、`SUBNETS`、`SECURITY_GROUP`、`TYPE` / `TYPE_PRO`、`DISK_GB`、`BANDWIDTH`。可选的 `INSTANCE_SECRET` 是电脑访问令牌和证书的派生种子，不设置时用 `SECRET_KEY`。换 CAM 密钥前，先把旧的 `SECRET_KEY` 填进 `INSTANCE_SECRET`，再换新密钥，已有的电脑就能照常连上。
 
 ## 12.11 多端互通：桌面登录灵策就用云端（2026-11-24 定）
 

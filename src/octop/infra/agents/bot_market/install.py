@@ -134,7 +134,15 @@ async def import_template(
     async def seed(_row: Any, workspace: Any) -> None:
         files = [skill_file(template, i, locale) for i in range(len(template.skills))]
         files.append(("MEMORY.md", memory_file(template, locale)))
-        await workspace.aupload_many(files)
+        semaphore = asyncio.Semaphore(8)
+
+        async def upload(item: tuple[str, bytes]) -> None:
+            async with semaphore:
+                await workspace.aupload_many([item])
+
+        async with asyncio.TaskGroup() as group:
+            for item in files:
+                group.create_task(upload(item))
         starters = template.starters
         await apply_workspace_quick_prompts(
             workspace,

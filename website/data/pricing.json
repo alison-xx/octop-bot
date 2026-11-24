@@ -8,8 +8,8 @@
       "name": { "zh": "体验", "en": "Trial" },
       "monthly": 0,
       "yearly": null,
-      "credits": 300,
-      "creditsNote": { "zh": "注册送 300 积分，14 天有效", "en": "300 credits on sign-up, valid 14 days" },
+      "credits": 100,
+      "creditsNote": { "zh": "注册送 100 积分，14 天有效，仅限 Octop 使用", "en": "100 credits on sign-up, valid 14 days, for Octop Bot only" },
       "bonus": null,
       "image": { "zh": "标准画质", "en": "Standard quality" },
       "video": { "zh": "768p", "en": "768p" },
@@ -106,7 +106,6 @@
   "packs": [20, 50, 100, 200, 500],
   "customPack": { "min": 10, "max": 5000 },
   "creditsPerYuan": 100,
-  "packValidDays": 365,
   "rates": {
     "computerStandardPerMinute": 1.7,
     "computerProPerMinute": 3.4,

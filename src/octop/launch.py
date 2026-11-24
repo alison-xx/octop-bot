@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from contextlib import suppress
 from typing import Any
@@ -60,6 +61,12 @@ async def _cancel_background_task(task: asyncio.Task[None] | None) -> None:
         await task
 
 
+def _access_log() -> bool:
+    """uvicorn's per-request access log, on unless ``OCTOP_ACCESS_LOG`` is ``0`` / ``off``."""
+    value = (os.environ.get("OCTOP_ACCESS_LOG") or "").strip().lower()
+    return value not in {"0", "off", "false", "no"}
+
+
 async def _serve(server: Any) -> None:
     await server.serve()
 
@@ -107,6 +114,7 @@ async def run_foreground(
         ssl_keyfile=ssl_keyfile,
     )
     level = (log_level or cfg.log_level).lower()
+    access_log = _access_log()
     worker_count = 1 if plan.dual_listeners or reload else workers
     if plan.dual_listeners and (reload or workers > 1):
         logger.warning(
@@ -125,6 +133,7 @@ async def run_foreground(
             host=plan.bind_host,
             port=plan.https_port,
             log_level=level,
+            access_log=access_log,
             workers=worker_count,
             reload=False,
             ssl_certfile=plan.ssl_certfile,
@@ -139,6 +148,7 @@ async def run_foreground(
             host=plan.bind_host,
             port=plan.http_port,
             log_level=level,
+            access_log=access_log,
             workers=1,
             reload=False,
         )
@@ -157,6 +167,7 @@ async def run_foreground(
             host=plan.bind_host,
             port=plan.http_port or bind_port,
             log_level=level,
+            access_log=access_log,
             workers=worker_count,
             reload=reload,
             ssl_certfile=plan.ssl_certfile,

@@ -263,6 +263,7 @@
             `Monthly credits last one month; yearly plans are paid once and credits arrive monthly. Image and video counts use the current default models (${m.imageName}, ${m.videoName}) and are estimates.`,
           )
         : t("月度积分 1 个月有效，年付一次付清、积分按月到账。", "Monthly credits last one month; yearly plans are paid once and credits arrive monthly.");
+      note.textContent += " " + t("会员积分仅限 Octop 使用", "Membership credits are for Octop Bot only");
     }
     document.querySelectorAll("#cycle button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.cycle === cycle)));
   }
@@ -287,7 +288,7 @@
     const yuan = customAmount ? (customOk ? custom : null) : pack;
     $("#pack-price").textContent = yuan === null ? "—" : money(yuan);
     $("#pack-credits").textContent = yuan === null ? "—" : t(`${num(yuan * pricing.creditsPerYuan)} 积分`, `${num(yuan * pricing.creditsPerYuan)} credits`);
-    $("#pack-days").textContent = t(`${pricing.packValidDays} 天`, `${pricing.packValidDays} days`);
+    $("#pack-days").textContent = t("到账即用，可与会员叠加", "Ready right away; stacks with a membership");
     $("#custom-hint").textContent =
       customAmount && !customOk
         ? t(`请输入 ${min}–${num(max)} 之间的整数`, `Enter a whole number from ${min} to ${num(max)}`)
@@ -556,7 +557,7 @@
   };
   // Plans render as soon as the finalized prices arrive; image and video counts fill in when the
   // model prices do (live, or the bundled copy if Lynxce is slow or unreachable).
-  getJson("data/pricing.json").then((plans) => {
+  getJson("data/pricing.json?v=2").then((plans) => {
     pricing = plans;
     renderAll();
   });

@@ -16,6 +16,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.api.routers import auth_lynxce, bot_move_in
+from octop.infra import desktop
 from octop.infra.agents.bot_workspace import chief_key
 from octop.infra.auth import lynxce_cloud
 from octop.infra.bot_groups.service import create_group, list_messages
@@ -48,8 +49,9 @@ async def both(env_admin_alice, monkeypatch):
     monkeypatch.setenv("OCTOP_DESKTOP_SHELL", "1")
     monkeypatch.setenv("OCTOP_DESKTOP_PRODUCT", "bot")
     # Cloud routes on, but Bots keep local files: tests have no cloud object store.
-    for module in (auth_lynxce, bot_move_in):
-        monkeypatch.setattr(module, "bot_cloud_enabled", lambda: True)
+    monkeypatch.setattr(auth_lynxce, "bot_cloud_enabled", lambda: True)
+    monkeypatch.setattr(auth_lynxce, "bot_cloud_session_login_enabled", lambda: True)
+    monkeypatch.setattr(bot_move_in, "bot_cloud_move_in_enabled", lambda: True)
     monkeypatch.setenv("OCTOP_BOT_CLOUD_ORIGIN", "http://cloud.test")
     monkeypatch.setattr(
         lynxce_cloud, "_client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(_lynxce))
@@ -169,9 +171,24 @@ async def test_desktop_moves_its_team_to_the_cloud_over_http(both):
 
 async def test_cloud_only_routes_refuse_outside_cloud_mode(both, monkeypatch):
     client, _, admin = both
-    for module in (auth_lynxce, bot_move_in):
-        monkeypatch.setattr(module, "bot_cloud_enabled", lambda: False)
+    monkeypatch.setattr(auth_lynxce, "bot_cloud_session_login_enabled", lambda: False)
+    monkeypatch.setattr(bot_move_in, "bot_cloud_move_in_enabled", lambda: False)
     r = await client.post("/api/octop-bot/move-in/notes", headers=admin, json={"text": "x"})
     assert r.status_code == 403
     r = await client.post("/api/auth/lynxce/session-login", json={"refresh_token": "r1"})
     assert r.status_code == 403
+
+
+def test_move_in_and_session_login_stay_off_in_cloud_mode_unless_switched_on(monkeypatch):
+    monkeypatch.setenv("OCTOP_BOT_CLOUD", "1")
+    monkeypatch.delenv("OCTOP_BOT_MOVE_IN", raising=False)
+    monkeypatch.delenv("OCTOP_BOT_SESSION_LOGIN", raising=False)
+    assert not desktop.bot_cloud_move_in_enabled()
+    assert not desktop.bot_cloud_session_login_enabled()
+    monkeypatch.setenv("OCTOP_BOT_MOVE_IN", "1")
+    monkeypatch.setenv("OCTOP_BOT_SESSION_LOGIN", "1")
+    assert desktop.bot_cloud_move_in_enabled()
+    assert desktop.bot_cloud_session_login_enabled()
+    monkeypatch.delenv("OCTOP_BOT_CLOUD")
+    assert not desktop.bot_cloud_move_in_enabled()
+    assert not desktop.bot_cloud_session_login_enabled()

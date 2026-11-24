@@ -136,6 +136,10 @@ def show_room_requests(messages: list[dict[str, Any]]) -> None:
             ]
 
 
+def _is_pass(reply: str) -> bool:
+    return reply.strip().rstrip("。.!！").strip().upper() == "[PASS]"
+
+
 class RoomTurn:
     def __init__(
         self,
@@ -166,7 +170,15 @@ class RoomTurn:
         wrap: bool = False,
         stage_index: int | None = None,
         assignment: str | None = None,
+        may_pass: bool = False,
     ) -> str:
+        """Run one member's turn and store its reply.
+
+        Only a member that may stay silent (``may_pass``: a non-administrator in
+        an all-members round it was not mentioned in) is offered ``[PASS]``.
+        Everyone else must answer: a ``[PASS]`` from them is asked again once,
+        and a second one leaves a visible notice instead of an empty turn.
+        """
         group = self.group
         slot = "wrap:" + agent_id if wrap else "reply:" + agent_id
         if stage_index is not None:
@@ -213,6 +225,9 @@ class RoomTurn:
                     members=", ".join(f"{n} ({i})" for i, n in active_names.items()),
                 )
             ]
+            prompt.append(
+                tr("bot_rooms.may_pass" if may_pass else "bot_rooms.must_answer", self.user.locale)
+            )
             if agent_id == group.admin_id:
                 prompt.append(
                     tr(
@@ -260,22 +275,59 @@ class RoomTurn:
                 thread_id,
                 tr("bot_rooms.thread_title", self.user.locale, room=group.name),
             )
-            inbound = InboundMessage(
-                channel_id="octop-bot",
-                channel_type=channel_type,
-                tenant_id=agent_id,
-                channel_subject=ChannelSubject(subject_id=str(self.user.id)),
-                channel_session_id=session_key,
-                content=[TextContent(text="\n\n".join(prompt))],
-                metadata={
-                    "thread_id": thread_id,
-                    "session_key": session_key,
-                    "user_is_admin": self.user.is_admin,
-                },
-            )
-            pieces = []
-            role = "assistant"
-            flushed_at = 0.0
+
+            def inbound(text: str) -> InboundMessage:
+                return InboundMessage(
+                    channel_id="octop-bot",
+                    channel_type=channel_type,
+                    tenant_id=agent_id,
+                    channel_subject=ChannelSubject(subject_id=str(self.user.id)),
+                    channel_session_id=session_key,
+                    content=[TextContent(text=text)],
+                    metadata={
+                        "thread_id": thread_id,
+                        "session_key": session_key,
+                        "user_is_admin": self.user.is_admin,
+                    },
+                )
+
+            async def stream(text: str) -> tuple[str, str]:
+                pieces: list[str] = []
+                role = "assistant"
+                flushed_at = 0.0
+                async for chunk in self.runtime.gateway.processor.iter_turn_chunks(inbound(text)):
+                    kind = chunk.get("type")
+                    if kind in {"token", "delta"}:
+                        pieces.append(str(chunk.get("content") or chunk.get("text") or ""))
+                        if time.monotonic() - flushed_at >= 0.5:
+                            draft = "".join(pieces).split("```octop-goal", 1)[0]
+                            await asyncio.to_thread(
+                                self.repo.draft,
+                                group.group_id,
+                                self.request_id,
+                                self.token,
+                                slot,
+                                agent_id,
+                                draft,
+                            )
+                            flushed_at = time.monotonic()
+                    elif kind == "hitl_required":
+                        pieces.append("\n" + tr("bot_rooms.approval", self.user.locale))
+                    elif kind == "error":
+                        role = "error"
+                        pieces.append(
+                            str(
+                                chunk.get("message")
+                                or tr("errors.INTERNAL_ERROR", self.user.locale)
+                            )
+                        )
+                reply = "".join(pieces).strip()
+                if role == "assistant" and _is_pass(reply):
+                    return "pass", reply
+                if not reply:
+                    return "error", tr("bot_rooms.no_reply", self.user.locale)
+                return role, reply
+
             began = await asyncio.to_thread(
                 self.repo.begin_reply, group.group_id, self.request_id, self.token, slot, agent_id
             )
@@ -294,34 +346,12 @@ class RoomTurn:
                     thread_id,
                 )
                 return ""
-            async for chunk in self.runtime.gateway.processor.iter_turn_chunks(inbound):
-                kind = chunk.get("type")
-                if kind in {"token", "delta"}:
-                    pieces.append(str(chunk.get("content") or chunk.get("text") or ""))
-                    if time.monotonic() - flushed_at >= 0.5:
-                        draft = "".join(pieces).split("```octop-goal", 1)[0]
-                        await asyncio.to_thread(
-                            self.repo.draft,
-                            group.group_id,
-                            self.request_id,
-                            self.token,
-                            slot,
-                            agent_id,
-                            draft,
-                        )
-                        flushed_at = time.monotonic()
-                elif kind == "hitl_required":
-                    pieces.append("\n" + tr("bot_rooms.approval", self.user.locale))
-                elif kind == "error":
-                    role = "error"
-                    pieces.append(
-                        str(chunk.get("message") or tr("errors.INTERNAL_ERROR", self.user.locale))
-                    )
-            reply = "".join(pieces).strip()
-            if reply == "[PASS]":
-                role = "pass"
-            elif not reply:
-                role, reply = "error", tr("bot_rooms.no_reply", self.user.locale)
+            role, reply = await stream("\n\n".join(prompt))
+            if role == "pass" and not may_pass:
+                # This member has to answer this turn; ask once more in the same thread.
+                role, reply = await stream(tr("bot_rooms.pass_retry", self.user.locale))
+                if role == "pass":
+                    role, reply = "error", tr("bot_rooms.pass_fallback", self.user.locale)
             if agent_id == group.admin_id and role == "assistant":
                 safe_text, proposed = _goal_edit(reply, room, group, history)
                 if proposed is not None and await asyncio.to_thread(
@@ -357,7 +387,11 @@ class RoomTurn:
         while targets:
             visited.update(targets)
             if sequential:
-                replies = [await self.speak(key, names) for key in targets]
+                # Everyone answers in turn; members other than the administrator may pass.
+                replies = [
+                    await self.speak(key, names, may_pass=key != group.admin_id and len(names) > 1)
+                    for key in targets
+                ]
                 sequential = False
             else:
                 replies = await asyncio.gather(*(self.speak(key, names) for key in targets))

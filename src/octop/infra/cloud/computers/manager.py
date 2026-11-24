@@ -190,6 +190,20 @@ def capacity_full(exc: BaseException) -> bool:
     return False
 
 
+def error_codes(exc: BaseException) -> list[str]:
+    """The provider error codes along ``exc``'s cause chain, for the log."""
+    codes: list[str] = []
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        code = str(getattr(current, "code", "") or "")
+        if code:
+            codes.append(code)
+        current = current.__cause__
+    return codes
+
+
 def _settle_refused(exc: Exception) -> bool:
     """A settle Lynxce will never accept: the reservation is unknown, or the request invalid."""
     if not isinstance(exc, OctopError):
@@ -379,7 +393,12 @@ class ComputerManager:
                 self._settle_one(record, reservation, 0)
                 self._save(record)
                 if capacity_full(exc):
-                    logger.warning("no AGS capacity for the computer of %s: %s", agent_id, exc)
+                    logger.warning(
+                        "no capacity for the computer of %s (codes %s): %s",
+                        agent_id,
+                        ",".join(error_codes(exc)) or "-",
+                        exc,
+                    )
                     raise OctopError.localized(ErrorCode.BOT_COMPUTER_BUSY) from exc
                 raise
             # AGS says RUNNING before the desktop listens; wait so the first command works.

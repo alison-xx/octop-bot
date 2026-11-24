@@ -83,6 +83,9 @@ class Bot(BaseModel):
     can_join_group: bool
     enabled: bool
     default_model: str | None
+    state: str = Field(description="Current agent lifecycle state.")
+    preparing: bool = Field(description="True while the agent is starting or preparing.")
+    last_error: str | None = Field(description="Localized user-visible error, or null.")
 
 
 class Privacy(BaseModel):

@@ -148,6 +148,8 @@
     "retryMember": "Ask this member again"
   },
   "botDirectory": {
+    "preparing": "Preparing",
+    "preparingHint": "Preparing your Bot, just a moment",
     "newPrivateChat": "Start a new private chat",
     "newGroupWithMembers": "New group with these members",
     "groupHistoryHelp": "Each group keeps one continuous history. A new group can use the same members, administrator and reply mode. Its messages, files, notes and Goal start empty.",
@@ -436,6 +438,21 @@
       "autoDownloadHint": "Get new versions in the background and ask to restart when ready",
       "beta": "Receive beta versions",
       "betaHint": "Try new features early; may be less stable"
+    },
+    "settingsGroups": {
+      "account": "Account",
+      "ai": "AI",
+      "other": "Other"
+    },
+    "settingsDescriptions": {
+      "account": "Manage your account, credits and usage.",
+      "models": "Choose and manage models for conversations.",
+      "general": "Adjust the appearance and language.",
+      "notifications": "Choose how to receive notifications and sounds.",
+      "privacy": "Manage desktop features, privacy and local import.",
+      "about": "View version, updates and server information.",
+      "appearanceHint": "Choose the interface theme.",
+      "languageHint": "Choose the interface language."
     }
   },
   "octopBot": {
@@ -9058,6 +9075,7 @@
       "open": "Open the cloud computer screen",
       "starting": "Starting the computer…",
       "startFailed": "The computer could not start. Try again in a moment.",
+      "retry": "Retry",
       "fit": "Switch aspect ratio",
       "expand": "Expand",
       "collapse": "Collapse",
@@ -9356,6 +9374,7 @@
     "routinesPick": "Turn on these routines",
     "integrationsAfter": "After importing, connect {{names}} under Capabilities → Connectors.",
     "listJoin": ", ",
+    "importedPreparing": "Added {{name}}, getting it ready",
     "imported": "Imported {{name}}",
     "entry": "Bot Market",
     "menuEntry": "Add from the Bot Market",
