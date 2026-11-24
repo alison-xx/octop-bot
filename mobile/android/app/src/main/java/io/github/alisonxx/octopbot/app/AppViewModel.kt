@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.alisonxx.octopbot.R
+import io.github.alisonxx.octopbot.device.DeviceConnectors
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.GroupSummary
 import io.github.alisonxx.octopbot.model.HitlTexts
@@ -385,6 +386,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         }
     }
     fun setNotifications(value: Boolean) = viewModelScope.launch { store.setNotifications(value) }
+    fun setDeviceHealth(value: Boolean) = viewModelScope.launch { store.setDeviceHealth(value) }
+    fun setDeviceCalendar(value: Boolean) = viewModelScope.launch { store.setDeviceCalendar(value) }
 
     // Updates
 
@@ -450,6 +453,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     /** The Bot whose voice mode is open, if any. */
     var voiceBotId: String? = null
+
+    override val device: DeviceConnectors get() = app.device
 
     override val hitlTexts: HitlTexts
         get() = resources.let { res ->

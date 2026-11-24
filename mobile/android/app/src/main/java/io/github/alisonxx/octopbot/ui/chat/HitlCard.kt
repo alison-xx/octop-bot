@@ -52,6 +52,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.alisonxx.octopbot.R
+import io.github.alisonxx.octopbot.app.AppLocale
+import io.github.alisonxx.octopbot.device.DeviceDecisions
+import io.github.alisonxx.octopbot.device.DevicePreview
 import io.github.alisonxx.octopbot.model.HitlAction
 import io.github.alisonxx.octopbot.model.HitlAnswer
 import io.github.alisonxx.octopbot.model.HitlQuestion
@@ -60,6 +63,7 @@ import io.github.alisonxx.octopbot.ui.theme.LocalPalette
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.ZoneId
 
 /** What the user has picked on an open question card; kept by the chat screen so the composer can answer too. */
 @Stable
@@ -245,11 +249,19 @@ fun HitlCard(botName: String, card: HitlCardState, actions: HitlCardActions, mod
                     }
                 }
             } else {
+                // Only phone calendar writes: Add (or Save for a change) / Cancel.
+                val tools = request.actions.filter { it.questions == null }
+                val device = tools.isNotEmpty() && tools.all(DeviceDecisions::isDevice)
+                val approve = when {
+                    !device -> R.string.hitl_approve
+                    tools.all { it.name == "device_calendar_create_event" } -> R.string.device_add
+                    else -> R.string.device_save
+                }
                 Spacer(Modifier.weight(1f))
                 if (request.actions.all { it.questions != null || it.allows("reject") }) {
-                    Pill(stringResource(R.string.hitl_reject), filled = false, onClick = actions.onReject)
+                    Pill(stringResource(if (device) R.string.common_cancel else R.string.hitl_reject), filled = false, onClick = actions.onReject)
                 }
-                Pill(stringResource(R.string.hitl_approve), filled = true, onClick = actions.onApprove)
+                Pill(stringResource(approve), filled = true, onClick = actions.onApprove)
             }
         }
     }
@@ -332,6 +344,7 @@ private fun ApprovalBlock(action: HitlAction) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(action.label, style = MaterialTheme.typography.titleSmall)
         action.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = palette.secondary) }
+        if (DeviceDecisions.isDevice(action)) DeviceRows(action)
         for ((key, value) in action.details) {
             Column(
                 Modifier
@@ -347,6 +360,38 @@ private fun ApprovalBlock(action: HitlAction) {
                     maxLines = 6,
                 )
             }
+        }
+    }
+}
+
+/** A device write's preview: title, time range, place, notes, alert. */
+@Composable
+private fun DeviceRows(action: HitlAction) {
+    val palette = LocalPalette.current
+    val rows = remember(action.args) { DevicePreview.rows(action.args, ZoneId.systemDefault(), AppLocale.current()) }
+    for ((field, value) in rows) {
+        Row(Modifier.fillMaxWidth()) {
+            Text(
+                stringResource(
+                    when (field) {
+                        DevicePreview.Field.Title -> R.string.device_preview_title
+                        DevicePreview.Field.Time -> R.string.device_preview_time
+                        DevicePreview.Field.Location -> R.string.device_preview_location
+                        DevicePreview.Field.Notes -> R.string.device_preview_notes
+                        DevicePreview.Field.Alert -> R.string.device_preview_alert
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.secondary,
+                modifier = Modifier.width(64.dp),
+            )
+            Text(
+                if (field == DevicePreview.Field.Alert) stringResource(R.string.device_preview_alert_value, value) else value,
+                style = if (field == DevicePreview.Field.Title) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
+                maxLines = if (field == DevicePreview.Field.Notes) 4 else 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }

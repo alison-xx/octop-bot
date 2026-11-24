@@ -56,6 +56,13 @@ class ChatTurnBody(BaseModel):
     bot_browser: bool = Field(
         default=False, description="Use the current Bot's isolated browser profile."
     )
+    device_tools: list[str] | None = Field(
+        default=None,
+        description=(
+            "Phone-run tools (`device_*`) this client executes for the Bot on this thread; "
+            "see mobile/PROTOCOL.md. Omit on other clients."
+        ),
+    )
     conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
         default=None,
         description="Turn permission mode: ask (read-only), plan (write plans/*.md), craft (default).",
@@ -126,6 +133,9 @@ class ChatTurnBody(BaseModel):
             if payload.get("conversation_mode") in ("ask", "plan", "craft")
             else None,
             bot_browser=payload.get("bot_browser") is True,
+            device_tools=[str(x) for x in payload["device_tools"]]
+            if isinstance(payload.get("device_tools"), list)
+            else None,
             session_mode=str(payload["session_mode"]).strip()
             if isinstance(payload.get("session_mode"), str) and str(payload["session_mode"]).strip()
             else None,
@@ -164,6 +174,7 @@ class UserTurnWsFrame(BaseModel):
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
     bot_browser: bool = Field(default=False, strict=True)
+    device_tools: list[str] | None = None
     conversation_mode: Literal["ask", "plan", "craft"] | None = None
     session_mode: str | None = None
     hitl_policy: HitlSessionPolicyBody | None = None

@@ -1,5 +1,6 @@
 package io.github.alisonxx.octopbot.app
 
+import io.github.alisonxx.octopbot.device.DeviceToolbox
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
@@ -56,6 +57,7 @@ class ChatQueueTest {
             conversation: String?,
             history: List<ChatMessage>,
             model: String?,
+            device: DeviceToolbox,
         ): Flow<StreamEvent> = flow {
             sent += text
             val reply = CompletableDeferred<String>().also { replies += it }

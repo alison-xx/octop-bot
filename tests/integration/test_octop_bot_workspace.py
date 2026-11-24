@@ -368,3 +368,20 @@ async def test_group_attachment_stays_in_its_room_and_reaches_the_member(
     replay = await client.post(room + "/messages", json=request, headers=admin)
     assert replay.json() == messages and len(seen) == 1
     assert (await client.get(room + "/messages", headers=admin)).json() == messages
+
+
+async def test_bot_config_mounts_phone_tools_behind_the_phone(env_with_agent):
+    from octop.api.routers.chat.models import UserTurnWsFrame
+    from octop.infra.agents.bot_device import DeviceTools, device_tool_names
+
+    _client, server, _auth, bot = env_with_agent
+    manager = server.app_runtime.agent_registry
+    cfg = manager._build_harness_config(manager.get_row(bot))
+    gate = next(m for m in cfg.middleware if isinstance(m, DeviceTools))
+    assert {t.name for t in gate.tools} == device_tool_names()
+    # Not in interrupt_on: harness drops that before onboarding, and "approve all" would skip it.
+    assert not device_tool_names() & set(cfg.interrupt_on or {})
+    turn = UserTurnWsFrame(
+        text="明天下午三点开会", thread_id="t1", device_tools=["device_calendar_create_event"]
+    ).to_turn_body()
+    assert turn.device_tools == ["device_calendar_create_event"]

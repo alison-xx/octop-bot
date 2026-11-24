@@ -34,10 +34,16 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Octop Bot checks your calendar and, after you confirm, adds or changes events your Bots plan for you.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Octop Bot reads the health data you choose so your Bots can tailor meal, exercise and sleep advice. It never writes to Health.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Octop Bot connects to your own Octop server on this network.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Octop Bot listens when you talk to your Bots.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Octop Bot checks your reminders and, after you confirm, adds the to-dos your Bots find for you.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Octop Bot turns what you say into text when your account has no speech service.</string>
 	<key>UIApplicationSceneManifest</key>

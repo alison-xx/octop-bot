@@ -310,4 +310,27 @@
     <string name="computer_pause">Pause now</string>
     <string name="computer_unavailable">Unavailable</string>
     <string name="computer_footer">Starts when the Bot first needs to run something and pauses after 10 idle minutes. Running time is charged by the minute in Lynxce credits; files stay while it\'s paused.</string>
+    <!-- Device connectors (mobile/PROTOCOL.md §C) -->
+    <string name="settings_device">Device connectors</string>
+    <string name="settings_device_health">Health</string>
+    <string name="settings_device_calendar">Calendar</string>
+    <string name="settings_device_footer">Bots can read your daily health values and your calendar while chatting. Adding or changing an event always asks you first.</string>
+    <string name="settings_device_denied">Octop Bot doesn\'t have permission for this. Allow it in system settings, then turn the switch on again.</string>
+    <string name="settings_device_health_unavailable">Health Connect isn\'t available on this phone, so Health stays off.</string>
+    <string name="settings_device_health_update">Health needs Health Connect. Install or update it from the Play Store, then try again.</string>
+    <string name="settings_device_health_install">Get Health Connect</string>
+    <string name="device_tool_health_summary">Read health data</string>
+    <string name="device_tool_calendar_events">Read calendar</string>
+    <string name="device_tool_calendar_create">Add calendar event</string>
+    <string name="device_tool_calendar_update">Update calendar event</string>
+    <string name="device_preview_title">Title</string>
+    <string name="device_preview_time">Time</string>
+    <string name="device_preview_location">Location</string>
+    <string name="device_preview_notes">Notes</string>
+    <string name="device_preview_alert">Alert</string>
+    <string name="device_preview_alert_value">%1$s min before</string>
+    <string name="device_add">Add</string>
+    <string name="device_save">Save</string>
+    <string name="health_rationale_title">How Octop Bot uses your health data</string>
+    <string name="health_rationale_text">When you turn on Settings → Device connectors → Health, Octop Bot reads daily totals and averages (steps, active energy, exercise minutes, sleep, heart rate, resting heart rate and weight) from Health Connect, only when a Bot asks for them in a chat. The values are sent with that chat to the model that answers you, and are not stored anywhere else by Octop Bot. Octop Bot never writes health data. Turn the switch off, or revoke access in Health Connect, at any time.</string>
 </resources>

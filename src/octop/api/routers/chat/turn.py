@@ -395,6 +395,8 @@ def build_dashboard_inbound(
         metadata["reasoning_effort"] = turn.reasoning_effort
     if turn.bot_browser:
         metadata["octop_bot_browser"] = True
+    if turn.device_tools:
+        metadata["device_tools"] = list(turn.device_tools)
     if turn.conversation_mode:
         metadata["conversation_mode"] = turn.conversation_mode
     if turn.session_mode:

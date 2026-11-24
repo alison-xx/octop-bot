@@ -5,6 +5,38 @@
     "CFBundleDisplayName": {
       "shouldTranslate": false
     },
+    "NSCalendarsFullAccessUsageDescription": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Octop Bot checks your calendar and, after you confirm, adds or changes events your Bots plan for you."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Octop Bot 查看你的日历，并在你确认后添加或修改 Bot 为你安排的日程。"
+          }
+        }
+      }
+    },
+    "NSHealthShareUsageDescription": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Octop Bot reads the health data you choose so your Bots can tailor meal, exercise and sleep advice. It never writes to Health."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Octop Bot 读取你允许的健康数据，让 Bot 结合你的身体状况给出饮食、运动和睡眠建议，不会写入健康数据。"
+          }
+        }
+      }
+    },
     "NSMicrophoneUsageDescription": {
       "localizations": {
         "en": {
@@ -17,6 +49,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "和 Bot 语音对话时需要使用麦克风。"
+          }
+        }
+      }
+    },
+    "NSRemindersFullAccessUsageDescription": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Octop Bot checks your reminders and, after you confirm, adds the to-dos your Bots find for you."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Octop Bot 查看你的提醒事项，并在你确认后添加 Bot 为你整理的待办。"
           }
         }
       }
