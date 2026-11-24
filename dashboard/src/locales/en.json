@@ -122,6 +122,18 @@
     "noMembers": "No matching members",
     "memberLimit": "A group can have up to 64 members"
   },
+  "botCloudMove": {
+    "title": "Move your team to Lynxce Cloud",
+    "body": "With Lynxce, your Bots, groups and chats live in the cloud, so your phone, the web and this computer all see the same team.",
+    "what": "Moves your Bots, your chats with them (the Bots remember what was said), group messages, group memory and team notes. Nothing is deleted here: switch back to \"This computer\" to see it. Attachments and files in work folders stay on this computer.",
+    "start": "Move to Lynxce Cloud",
+    "later": "Not now",
+    "running": "Moving item {{done}} of {{total}}…",
+    "preparing": "Getting ready…",
+    "switching": "Done. Opening Lynxce Cloud…",
+    "failed": "The move stopped. What was moved stays and is not sent twice. Try again later.",
+    "retry": "Try again"
+  },
   "botGroupChat": {
     "wrapUp": "Team summary",
     "stageWork": "Stage {{stage}} · Work",
@@ -204,8 +216,9 @@
     "sentEmail": "Code sent by email. Check spam if it does not arrive.",
     "newAccountHint": "No Lynxce account yet? Signing in creates one; no password needed.",
     "password": "Password",
-    "usePassword": "Use a password instead",
-    "useCode": "Use a code instead"
+    "methods": "Sign-in method",
+    "tabCode": "Code",
+    "tabPassword": "Password"
   },
   "botOnboarding": {
     "chiefName": "Chief",

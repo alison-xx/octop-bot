@@ -122,6 +122,18 @@
     "noMembers": "没有找到匹配的成员",
     "memberLimit": "每个群最多可添加 64 位成员"
   },
+  "botCloudMove": {
+    "title": "把团队搬到灵策云",
+    "body": "登录灵策智算后，Bot、群聊和会话都保存在云端，手机、网页和这台电脑看到的是同一份。",
+    "what": "会搬过去：Bot、和 Bot 的会话（Bot 记得聊过的内容）、群聊消息、群记忆和团队笔记。这台电脑上的原数据不删，切回「本机使用」还在。附件和工作目录里的文件不搬。",
+    "start": "搬到灵策云",
+    "later": "暂不",
+    "running": "正在搬第 {{done}} / {{total}} 项…",
+    "preparing": "正在准备…",
+    "switching": "搬好了，正在切到灵策云…",
+    "failed": "没搬完，已搬的不会重复。请稍后重试。",
+    "retry": "重试"
+  },
   "botGroupChat": {
     "wrapUp": "团队汇总",
     "stageWork": "第 {{stage}} 阶段 · 执行",
@@ -204,8 +216,9 @@
     "sentEmail": "验证码已发送到邮箱，没收到请看看垃圾邮件。",
     "newAccountHint": "没有灵策账号也可以直接登录，会自动注册，不用设密码。",
     "password": "密码",
-    "usePassword": "用密码登录",
-    "useCode": "用验证码登录"
+    "methods": "登录方式",
+    "tabCode": "验证码",
+    "tabPassword": "密码"
   },
   "botOnboarding": {
     "chiefName": "Chief",

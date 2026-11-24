@@ -76,7 +76,7 @@ describe("Bot web sign-in", () => {
       .mockResolvedValue(session as never);
     open();
     await userEvent.click(
-      await screen.findByRole("button", { name: "lynxceSignIn.usePassword" }),
+      await screen.findByRole("button", { name: "lynxceSignIn.tabPassword" }),
     );
     await userEvent.type(
       screen.getByLabelText("lynxceSignIn.account"),
@@ -141,7 +141,7 @@ describe("Bot web sign-in", () => {
       "old-pass",
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "lynxceSignIn.usePassword" }),
+      screen.getByRole("button", { name: "lynxceSignIn.tabPassword" }),
     );
     await userEvent.type(
       screen.getByLabelText("lynxceSignIn.account"),

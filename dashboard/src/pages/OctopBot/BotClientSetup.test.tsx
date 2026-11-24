@@ -191,7 +191,7 @@ describe("standalone onboarding", () => {
     });
     openSetup();
     await userEvent.click(
-      await screen.findByRole("button", { name: "lynxceSignIn.usePassword" }),
+      await screen.findByRole("button", { name: "lynxceSignIn.tabPassword" }),
     );
     await userEvent.type(
       screen.getByLabelText("lynxceSignIn.account"),
@@ -230,7 +230,7 @@ describe("standalone onboarding", () => {
     } as never);
     openSetup();
     await userEvent.click(
-      await screen.findByRole("button", { name: "lynxceSignIn.usePassword" }),
+      await screen.findByRole("button", { name: "lynxceSignIn.tabPassword" }),
     );
     await userEvent.type(
       screen.getByLabelText("lynxceSignIn.account"),
@@ -261,7 +261,7 @@ describe("standalone onboarding", () => {
     });
     openSetup();
     expect(
-      await screen.findByRole("button", { name: "lynxceSignIn.usePassword" }),
+      await screen.findByRole("button", { name: "lynxceSignIn.tabPassword" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("botOnboarding.useLocal")).toBeNull();
     expect(screen.queryByLabelText("wizard.admin.password")).toBeNull();

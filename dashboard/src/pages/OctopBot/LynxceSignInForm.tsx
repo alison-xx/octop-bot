@@ -93,8 +93,9 @@ export default function LynxceSignInForm({
     void onPassword(target.trim(), password);
   };
 
-  const switchMode = () => {
-    setMode(mode === "code" ? "password" : "code");
+  const choose = (next: Mode) => {
+    if (next === mode) return;
+    setMode(next);
     onClearError();
   };
 
@@ -106,6 +107,26 @@ export default function LynxceSignInForm({
         submit();
       }}
     >
+      <div
+        className={styles.tabs}
+        role="group"
+        aria-label={t("lynxceSignIn.methods")}
+      >
+        {(["code", "password"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={mode === value}
+            onClick={() => choose(value)}
+          >
+            {t(
+              value === "code"
+                ? "lynxceSignIn.tabCode"
+                : "lynxceSignIn.tabPassword",
+            )}
+          </button>
+        ))}
+      </div>
       <label htmlFor={`${idPrefix}-target`}>
         {t(mode === "code" ? "lynxceSignIn.target" : "lynxceSignIn.account")}
       </label>
@@ -189,16 +210,6 @@ export default function LynxceSignInForm({
         }
       >
         {submitLabel}
-      </Button>
-      <Button
-        type="link"
-        size="small"
-        className={styles.switch}
-        onClick={switchMode}
-      >
-        {t(
-          mode === "code" ? "lynxceSignIn.usePassword" : "lynxceSignIn.useCode",
-        )}
       </Button>
       {children}
     </form>
