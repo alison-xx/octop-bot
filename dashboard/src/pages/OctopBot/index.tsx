@@ -5,9 +5,11 @@ import {
   Drawer,
   Dropdown,
   Empty,
+  Popover,
   Spin,
   type MenuProps,
 } from "antd";
+import { message } from "@/utils/antdMessage";
 import {
   Search,
   ArrowDown,
@@ -37,13 +39,7 @@ import {
   type WorkspaceBot,
 } from "../../api/modules/octopBot";
 import { octopThreadsApi } from "../../api/modules/octopThreads";
-import {
-  BOT_CLOUD,
-  BOT_GUIDE,
-  BOT_HOME,
-  BOT_MARKET,
-  botGuideSeenKey,
-} from "../../utils/botClientRoute";
+import { BOT_CLOUD, BOT_HOME, BOT_MARKET } from "../../utils/botClientRoute";
 import { pickPreferredSession, toSession } from "../Chat/hooks/useSessions";
 import { useAgent } from "../../context/AgentContext";
 import { useBotActivity } from "../../hooks/useBotActivity";
@@ -67,6 +63,16 @@ import ManagedDrawer from "../Experts/components/ManagedDrawer";
 import BotChat from "./BotChat";
 import { GroupForm, canInviteBot, type GroupSeed } from "./GroupForms";
 import GroupRoom from "./GroupRoom";
+import { roomDraft } from "./GroupRoomDraft";
+import { useOnboarding } from "./onboarding/useOnboarding";
+import type { OnboardingKind } from "../../api/modules/botOnboarding";
+import {
+  OnboardingAsk,
+  OnboardingCoach,
+  OnboardingStrip,
+  OnboardingTeamReady,
+  OnboardingWelcome,
+} from "./onboarding/OnboardingParts";
 import AccountMenu from "./AccountMenu";
 import RetainedFolders from "./RetainedFolders";
 import DeleteBotDialog from "./DeleteBotDialog";
@@ -272,6 +278,63 @@ export default function OctopBotPage() {
     onOpen: openFromNotice,
   });
   const refreshActivity = botActivity.refresh;
+  const onboarding = useOnboarding(
+    standalone && workspace !== null,
+    user?.id ?? null,
+  );
+  const changeOnboarding = onboarding.change;
+  const guide = onboarding.state?.show ? onboarding.state : null;
+  const guideTeam =
+    guide?.status === "active" &&
+    (guide.step === "team_ready" || guide.step === "first_message")
+      ? guide.team
+      : null;
+  const [onboardingBusy, setOnboardingBusy] = useState(false);
+  // New onboarding contacts keep their badge until the owner opens them.
+  const [openedContacts, setOpenedContacts] = useState<string[]>([]);
+  const openedKey = groupId ? "group:" + groupId : agentId && "bot:" + agentId;
+  useEffect(() => {
+    if (openedKey)
+      setOpenedContacts((prev) =>
+        prev.includes(openedKey) ? prev : [...prev, openedKey],
+      );
+  }, [openedKey]);
+  const prefilledGroup = useRef<string>();
+  useEffect(() => {
+    if (!guideTeam || !user || groupId !== guideTeam.group_id) return;
+    if (guide?.step === "team_ready")
+      void changeOnboarding({ action: "step", step: "first_message" });
+    if (prefilledGroup.current === groupId) return;
+    prefilledGroup.current = groupId;
+    // Chief's suggested first task waits in the group's composer.
+    const draft = roomDraft(user.id, groupId);
+    if (guideTeam.first_task && !draft.read().text.trim())
+      draft.patch({ text: guideTeam.first_task });
+  }, [guideTeam, guide?.step, groupId, user, changeOnboarding]);
+  /** The line sent to Chief for the owner's pick, visible in the chat. */
+  const teamRequest = useCallback(
+    (kind: OnboardingKind, label: string, note?: string | null) => {
+      const detail = note?.trim().replace(/[。．.！!]+$/u, "");
+      return [
+        t(`botOnboarding.guide.request.${kind}`, { label }),
+        detail ? t("botOnboarding.guide.request.note", { note: detail }) : "",
+        t("botOnboarding.guide.request.team"),
+      ].join("");
+    },
+    [t],
+  );
+  const askChief = useCallback(
+    (text: string) =>
+      navigate(location.pathname, { replace: true, state: { autoSend: text } }),
+    [navigate, location.pathname],
+  );
+  const skipOnboarding = useCallback(() => {
+    void changeOnboarding({ action: "skip" });
+    void message.info({
+      content: t("botOnboarding.guide.skipped"),
+      duration: 6,
+    });
+  }, [changeOnboarding, t]);
   useEffect(
     () =>
       onStreamEvent((event) => {
@@ -505,17 +568,6 @@ export default function OctopBotPage() {
       </div>
     );
   if (!agentId && !groupId && workspace.chief_id) {
-    if (
-      isBotOnlyDesktop() &&
-      user &&
-      !location.state?.prefillInput &&
-      !shortcut &&
-      workspace.bots.length === 1 &&
-      !workspace.groups.length &&
-      !localStorage.getItem(botGuideSeenKey(user.id))
-    ) {
-      return <Navigate replace to={BOT_GUIDE} />;
-    }
     return (
       <Navigate
         replace
@@ -527,6 +579,40 @@ export default function OctopBotPage() {
   const { bots, groups, sections, pinned } = workspace;
   const selectedBot = bots.find((bot) => bot.agent_id === agentId);
   const selectedGroup = groups.find((group) => group.group_id === groupId);
+  const teamGroup =
+    guideTeam && groups.find((g) => g.group_id === guideTeam.group_id);
+  const membersOf = (group: BotGroup) =>
+    group.member_ids.flatMap((id) => bots.filter((b) => b.agent_id === id));
+  const chiefGuide =
+    !selectedBot?.is_main ||
+    guide?.status !== "active" ? undefined : guide.step === "ask" ? (
+      <OnboardingAsk
+        building={motion !== "idle"}
+        onRetry={
+          guide.choice
+            ? () =>
+                askChief(
+                  teamRequest(
+                    guide.choice!.kind,
+                    guide.choice!.label,
+                    guide.choice!.note,
+                  ),
+                )
+            : undefined
+        }
+        onSkip={skipOnboarding}
+      />
+    ) : teamGroup ? (
+      <OnboardingTeamReady
+        name={teamGroup.name}
+        members={membersOf(teamGroup).map((b) => b.name)}
+        portraits={<GroupCharacter members={membersOf(teamGroup)} size={30} />}
+        onOpen={() =>
+          jump(BOT_HOME + "/groups/" + encodeURIComponent(teamGroup.group_id))
+        }
+        onSkip={skipOnboarding}
+      />
+    ) : undefined;
   const byKey = new Map(all.map((it) => [it.key, it]));
   const assigned = new Map(
     sections.flatMap((s) => s.items.map((id) => [id, s.name] as const)),
@@ -691,13 +777,22 @@ export default function OctopBotPage() {
   };
   itemPick.current = (item) =>
     standalone ? pickContact(item) : jump(urlFor(item));
+  const freshContacts = new Set(
+    guideTeam
+      ? [
+          "group:" + guideTeam.group_id,
+          ...guideTeam.bot_ids.map((id) => "bot:" + id),
+        ].filter((key) => !openedContacts.includes(key))
+      : [],
+  );
   const renderItem = (item: Item) => {
     const chief = item.key === chiefKey;
-    return (
+    const row = (
       <DirectoryItem
         key={item.key}
         item={item}
         chief={chief}
+        fresh={freshContacts.has(item.key)}
         pinned={pinned.includes(item.key)}
         selected={picked === item.key}
         compact={compactDirectory}
@@ -716,6 +811,23 @@ export default function OctopBotPage() {
         onPick={onItemPick}
         onDragging={setDragging}
       />
+    );
+    // Point at the group Chief just built, next to the sidebar.
+    return guide?.step === "team_ready" &&
+      guideTeam &&
+      item.group?.group_id === guideTeam.group_id &&
+      !mobile &&
+      !compactDirectory ? (
+      <Popover
+        key={item.key}
+        open
+        placement="right"
+        content={<OnboardingCoach onOpen={() => jump(urlFor(item))} />}
+      >
+        <div>{row}</div>
+      </Popover>
+    ) : (
+      row
     );
   };
   const renderSection = (
@@ -1085,7 +1197,16 @@ export default function OctopBotPage() {
             compactDirectory ? directory.railFooter : sectionStyles.footer
           }
         >
-          <AccountMenu compact={compactDirectory} />
+          <AccountMenu
+            compact={compactDirectory}
+            onOnboarding={() =>
+              void changeOnboarding({ action: "restart" }).then(() =>
+                jump(
+                  BOT_HOME + "/bots/" + encodeURIComponent(chiefKey.slice(4)),
+                ),
+              )
+            }
+          />
           {isBotOnlyDesktop() && (
             <Button
               type="text"
@@ -1241,6 +1362,7 @@ export default function OctopBotPage() {
             )}
             onChanged={() => void refresh()}
             onDelete={() => setDeleteTarget(selectedBot)}
+            composerTop={chiefGuide}
           />
         ) : selectedGroup ? (
           <>
@@ -1267,6 +1389,24 @@ export default function OctopBotPage() {
                 jump(BOT_HOME + "/bots/" + encodeURIComponent(id))
               }
               onPreview={rememberPreview}
+              {...(guideTeam?.group_id === selectedGroup.group_id && {
+                guide: (
+                  <OnboardingStrip
+                    wide
+                    step={3}
+                    title={t("botOnboarding.guide.groupTitle")}
+                    hint={t("botOnboarding.guide.groupHint")}
+                    onSkip={skipOnboarding}
+                  />
+                ),
+                onSent: () => {
+                  void changeOnboarding({ action: "complete" });
+                  void message.success({
+                    content: t("botOnboarding.guide.done"),
+                    duration: 6,
+                  });
+                },
+              })}
             />
           </>
         ) : (
@@ -1283,6 +1423,20 @@ export default function OctopBotPage() {
           </div>
         )}
       </main>
+      {guide &&
+        selectedBot?.is_main &&
+        (guide.status === "pending" || guide.step === "welcome") && (
+          <OnboardingWelcome
+            busy={onboardingBusy}
+            onStart={({ label, ...pick }) => {
+              setOnboardingBusy(true);
+              void changeOnboarding({ action: "start", ...pick })
+                .then(() => askChief(teamRequest(pick.kind, label, pick.note)))
+                .finally(() => setOnboardingBusy(false));
+            }}
+            onSkip={skipOnboarding}
+          />
+        )}
       {(dialog === "group" || (dialog === "editGroup" && selectedGroup)) && (
         <GroupForm
           bots={bots}

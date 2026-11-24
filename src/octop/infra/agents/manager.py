@@ -4683,6 +4683,13 @@ class AgentManager:
                         f"{briefing}\n\nTeam notes (reference):\n{notes}".strip()
                     )
                     req["configurable"] = configurable
+                from octop.infra.agents.bot_onboarding import onboarding_briefing
+
+                guide = onboarding_briefing(self._account_services(), int(uid), agent_id)
+                if guide:
+                    briefing = configurable.get(CONFIG_KEY) or ""
+                    configurable[CONFIG_KEY] = f"{briefing}\n\n{guide}".strip()
+                    req["configurable"] = configurable
         agent_cfg = self.get_config(agent_id)
         plugins_cfg = agent_cfg.get("plugins")
         tool_configs = collect_plugin_tool_configs(

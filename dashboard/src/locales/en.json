@@ -178,28 +178,9 @@
     "skip": "Skip guide",
     "resume": "Continue guide",
     "next": "Next",
-    "previous": "Back",
-    "openDraft": "Edit in Chief’s chat",
     "model": {
-      "label": "Connect a model",
       "title": "Choose a chat model",
       "description": "Sign in to Lynxce to choose a model available to your account. Chats use that account’s credits. You can also connect another provider or a local model under Account and models."
-    },
-    "team": {
-      "label": "Meet your team",
-      "title": "Work with Chief",
-      "description": "Chief coordinates your team. Give Chief a concrete task and ask who can help.",
-      "chat": "Talk one-on-one or as a team",
-      "chatHint": "Select a contact for a private chat. Ask Chief to bring people into a group, then post a question or @mention a member.",
-      "groups": "Organize your contacts",
-      "groupsHint": "Right-click an empty area to create a section, or right-click a contact to move it into one. Open a group chat to read the team’s messages.",
-      "cloud": "Pick up on another computer",
-      "cloudHint": "Sign in to Cloud workspace with the same Lynxce account to continue a cloud chat. Tasks scheduled there can run while your computer is off."
-    },
-    "draft": {
-      "label": "Your first message",
-      "title": "What would you like to try?",
-      "description": "Choose a starting point to bring a draft into Chief’s chat. Edit it to fit your task and send it when you’re ready."
     }
   },
   "lynxceSignIn": {
@@ -240,7 +221,46 @@
     "localFailed": "Could not open the local account. Try again.",
     "loginLegacyBody": "This Octop Bot used a local password. It now signs in with a Lynxce account. Enter the old password once with your first sign-in; after that only your Lynxce account is needed.",
     "legacyPassword": "Old local password (needed only this once)",
-    "loginUnavailable": "This server has not turned on Lynxce sign-in yet. Ask its admin to update Octop Bot."
+    "loginUnavailable": "This server has not turned on Lynxce sign-in yet. Ask its admin to update Octop Bot.",
+    "guide": {
+      "welcomeTitle": "Welcome, I'm Chief",
+      "welcomeLead": "What's your industry, or your job? Pick one and I'll put together a team of bots for it, with a group chat.",
+      "reopenHint": "Skipped guides stay closed. Reopen any time from the account menu → Getting started",
+      "step": "Step {{step}} of {{total}}",
+      "skip": "Skip guide",
+      "skipped": "Getting started skipped. Reopen it from the account menu → Getting started.",
+      "askTitle": "Chief hasn't built the team yet",
+      "askHint": "Answer Chief's question, or say again what you need in the message box.",
+      "buildingTitle": "Chief is building your team",
+      "buildingHint": "Usually 20–40 seconds. New bots and the group appear on the left.",
+      "teamTitle": "“{{name}}” is ready",
+      "teamHint": "The new group chat and bots are in a section on the left. Open the group to give it a first task.",
+      "openGroup": "Open group chat",
+      "coachTitle": "Your team is ready",
+      "coachBody": "Open the group chat and give it a first task.",
+      "groupTitle": "Post your first message",
+      "groupHint": "Chief drafted one for you. Send it as is or edit it. To call on a bot, type @ and pick it.",
+      "done": "You're all set: the team is at work. Reopen the guide any time from the account menu → Getting started.",
+      "new": "New",
+      "industries": "Industry",
+      "other": "Something else",
+      "noteLabel": "Anything specific? (optional)",
+      "notePlaceholder": "For example: home goods, selling on Amazon US",
+      "startTeam": "Build my team",
+      "askHintRetry": "Answer Chief's question, or tap Send again to build a team for the industry you picked.",
+      "retry": "Send again",
+      "roles": "Job",
+      "customIndustry": "What's your industry?",
+      "customIndustryPlaceholder": "For example: pet shop, bookstore",
+      "customRole": "What's your job?",
+      "customRolePlaceholder": "For example: photographer, accountant",
+      "request": {
+        "industry": "I work in {{label}}. ",
+        "role": "I'm a {{label}}. ",
+        "note": "More detail: {{note}}. ",
+        "team": "Please build me a team and set up its group chat."
+      }
+    }
   },
   "botClient": {
     "showOrb": "Show floating button",

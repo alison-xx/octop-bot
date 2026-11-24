@@ -275,7 +275,7 @@ export default function BotClientSettings() {
               </div>
             </div>
           ) : tab === "about" ? (
-            <BotAboutPanel returnTo={back} />
+            <BotAboutPanel />
           ) : tab === "account" ? (
             <div className={`${settings.page} ${settings.wide}`}>
               <h2>{t("botClient.nav.account")}</h2>

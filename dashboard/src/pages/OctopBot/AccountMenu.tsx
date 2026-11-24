@@ -22,11 +22,10 @@ import { clearAuthToken } from "../../api/request";
 import { holdDesktopLocalAutoLogin } from "../../api/desktopSession";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { applyGuestLocale, applyUserLocale } from "../../utils/locale";
-import { isBotOnlyDesktop, isBotWebClient } from "../../utils/desktopBridge";
+import { isBotOnlyDesktop } from "../../utils/desktopBridge";
 import {
   BOT_CAPABILITIES,
   BOT_CLOUD,
-  BOT_GUIDE,
   BOT_SETTINGS,
 } from "../../utils/botClientRoute";
 import { accountInitials } from "../Chat/utils/accountDisplayName";
@@ -89,8 +88,11 @@ export function useLanguage() {
 /** Sidebar footer: who is signed in, with settings and account actions. */
 export default function AccountMenu({
   compact = false,
+  onOnboarding,
 }: {
   compact?: boolean;
+  /** Start the new-user onboarding again from the welcome screen. */
+  onOnboarding?: () => void;
 }) {
   const { t } = useTranslation();
   const user = useCurrentUser();
@@ -126,7 +128,6 @@ export default function AccountMenu({
     lynxce ? "botClient.account.lynxce" : "botClient.account.local",
   );
   const from = { state: { from: location.pathname } };
-  const web = isBotWebClient();
   const credits = useLynxceCredits();
   const billed = credits.status !== "none" && credits.status !== "idle";
   const entry = (label: string, hint: string) => (
@@ -180,14 +181,13 @@ export default function AccountMenu({
         ]
       : []),
     { type: "divider" as const },
-    ...(!web
+    ...(onOnboarding
       ? [
           {
             key: "guide",
             icon: <BookOpen size={16} />,
             label: t("botGuide.title"),
-            onClick: () =>
-              navigate(BOT_GUIDE, { state: { returnTo: location.pathname } }),
+            onClick: onOnboarding,
           },
         ]
       : []),

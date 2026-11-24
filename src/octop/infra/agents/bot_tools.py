@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from langchain_core.tools import StructuredTool
 from langgraph.config import get_config
+from pydantic import BaseModel, Field
 
 from octop.infra.agents.bot_appearance import Character, bot_appearance, set_character
 from octop.infra.agents.bot_sections import SectionAction, SectionName, read_layout, section_action
@@ -16,6 +17,15 @@ from octop.infra.errors import ErrorCode, OctopError
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
     from octop.infra.db.services import SharedServices
+
+TEAM_MAX_BOTS = 6
+
+
+class TeamBot(BaseModel):
+    name: str = Field(description="Short display name.")
+    role: str = Field(description="One line on what this bot does in the team.")
+    instructions: str = Field(description="Concrete role instructions (the bot's system prompt).")
+    avatar: Character | None = None
 
 
 def chief_tools(
@@ -201,6 +211,101 @@ def chief_tools(
         result = group.model_dump()
         if section:
             result.update(await asyncio.to_thread(file_new_entry, section, group=group.group_id))
+        await asyncio.to_thread(
+            note_onboarding_team,
+            group.group_id,
+            [i for i in dict.fromkeys([group.admin_id, *group.member_ids]) if i != chief_id],
+            section or None,
+            "",
+        )
+        return result
+
+    def note_onboarding_team(
+        group_id: str, bot_ids: list[str], section: str | None, first_task: str
+    ) -> None:
+        from octop.infra.agents.bot_onboarding import OnboardingTeam, record_team
+
+        team = OnboardingTeam(
+            group_id=group_id, bot_ids=bot_ids, section=section, first_task=first_task.strip()
+        )
+        record_team(services, owner, team)
+
+    async def octop_bot_create_team(
+        team_name: str,
+        bots: list[TeamBot],
+        admin: str,
+        first_task: str = "",
+        reply_mode: Literal["admin_first", "all_members"] = "admin_first",
+    ) -> dict[str, Any]:
+        """Create a whole team in one call: new bots, a group chat and a sidebar section.
+
+        team_name names both the group chat and the sidebar section. admin is the name of one
+        of the new bots; it answers first in the group. first_task is one message the owner can
+        post in the group to start. If a bot or the group fails, the result lists the bot_ids
+        already created and the error code; reuse those IDs instead of creating them again.
+        """
+        from octop.infra.agents.manager import AgentCreateSpec
+        from octop.infra.bot_groups.service import create_group
+
+        require_owner()
+        name = team_name.strip()
+        names = [b.name.strip() for b in bots]
+        if not name or not bots or len(bots) > TEAM_MAX_BOTS:
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS, f"team_name and 1-{TEAM_MAX_BOTS} bots required"
+            )
+        if any(not n or not b.instructions.strip() for n, b in zip(names, bots, strict=True)):
+            raise OctopError(ErrorCode.SLASH_BAD_ARGS, "every bot needs a name and instructions")
+        if len(set(names)) != len(names) or admin.strip() not in names:
+            raise OctopError(ErrorCode.SLASH_BAD_ARGS, "admin must name one of the new bots")
+        created: list[str] = []
+        try:
+            for bot, bot_name in zip(bots, names, strict=True):
+                row = await registry.create(
+                    AgentCreateSpec(
+                        name=bot_name,
+                        description=bot.role.strip(),
+                        user_id=owner,
+                        system_prompt=bot.instructions,
+                    ),
+                    defer_bootstrap=True,
+                )
+                created.append(row.agent_id)
+                if bot.avatar is not None:
+                    await asyncio.to_thread(
+                        set_character, services.settings_repo, row, chief_id, bot.avatar
+                    )
+                else:
+                    await asyncio.to_thread(bot_appearance, services.settings_repo, row, chief_id)
+            admin_id = created[names.index(admin.strip())]
+            group = await asyncio.to_thread(
+                create_group,
+                services,
+                owner,
+                name=name,
+                admin_id=admin_id,
+                member_ids=[i for i in created if i != admin_id],
+                reply_mode=reply_mode,
+            )
+        except OctopError as exc:
+            if not created:
+                raise
+            return {"bot_ids": created, "error": exc.code.value}
+        result: dict[str, Any] = {
+            "group_id": group.group_id,
+            "name": group.name,
+            "admin_id": admin_id,
+            "bot_ids": created,
+            "section": name,
+        }
+        try:
+            await asyncio.to_thread(
+                section_action, services, owner, "create", name, created, [group.group_id]
+            )
+        except OctopError as exc:
+            # The team exists either way; only filing it in the sidebar failed.
+            result.update({"requested_section": name, "section_error": exc.code.value})
+        await asyncio.to_thread(note_onboarding_team, group.group_id, created, name, first_task)
         return result
 
     def octop_bot_update_group(
@@ -262,6 +367,7 @@ def chief_tools(
         StructuredTool.from_function(func=octop_bot_list_avatar_photos),
         StructuredTool.from_function(coroutine=octop_bot_set_photo),
         StructuredTool.from_function(coroutine=octop_bot_create_group),
+        StructuredTool.from_function(coroutine=octop_bot_create_team),
         StructuredTool.from_function(func=octop_bot_update_group),
         StructuredTool.from_function(func=octop_bot_team_memory),
         StructuredTool.from_function(coroutine=octop_bot_delete),

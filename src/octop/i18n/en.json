@@ -39,6 +39,26 @@
       "question": "{reason}\nOpen this Bot's cloud computer screen, choose Take over and do this step, then choose Done.",
       "done": "Done",
       "cannot": "I can't do it"
+    },
+    "onboarding_briefing": "Onboarding: this is the owner's first request for a team.\n1. Do not ask questions first. Infer the industry and goal from this message and build a team of 2–4 bots right away. Ask one question only if you cannot tell at all what they want.\n2. Build it with one octop_bot_create_team call: give each bot a short name, a one-line role and concrete role instructions; make the bot best suited to talk with the owner the group admin; use the team's name as team_name.\n3. In this turn do not use computer, browser, file or web tools, and do not start the actual work.\n4. Write first_task as one message the owner can post in the group as is; it must be doable with text alone.\n5. Reply in at most 6 lines: one line saying the team is ready, one line per member with their role, and a last line quoting first_task.",
+    "onboarding_choice": {
+      "industry": "On the first onboarding screen the owner picked this industry: {label}. Build the team for it right away; do not ask which line of work they are in.",
+      "role": "On the first onboarding screen the owner picked this job: {label}. Build a team for its everyday work right away; do not ask what they do."
+    },
+    "onboarding_note": "The owner added: {note}",
+    "onboarding_industries": {
+      "trade": {
+        "name": "Export trade",
+        "roles": "Inquiries and quotes|Product research|Overseas social media"
+      },
+      "store": {
+        "name": "Restaurants and shops",
+        "roles": "Daily store report|Promotions|Review replies"
+      }
+    },
+    "onboarding_hint": {
+      "industry": "Roles in similar Bot market templates, for reference: {hint}.",
+      "role": "What this job usually involves: {hint}"
     }
   },
   "slash": {

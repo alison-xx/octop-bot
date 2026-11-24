@@ -1,0 +1,230 @@
+[
+  {
+    "id": "founder",
+    "name": {
+      "zh": "老板 / 创业者",
+      "en": "Founder / Owner"
+    },
+    "blurb": {
+      "zh": "看全局、拍板、找钱，杂事交给 Bot。",
+      "en": "See the whole picture and make the calls; hand the busywork to Bots."
+    },
+    "onboarding": 1
+  },
+  {
+    "id": "operations",
+    "name": {
+      "zh": "运营",
+      "en": "Operations"
+    },
+    "blurb": {
+      "zh": "店铺、社群和活动，每天的数和每周的复盘。",
+      "en": "Stores, communities and campaigns, the daily numbers and the weekly review."
+    },
+    "onboarding": 2
+  },
+  {
+    "id": "marketing",
+    "name": {
+      "zh": "市场",
+      "en": "Marketing"
+    },
+    "blurb": {
+      "zh": "活动方案、搜索内容和竞品动向。",
+      "en": "Campaign plans, search content and competitor moves."
+    },
+    "onboarding": 3
+  },
+  {
+    "id": "sales",
+    "name": {
+      "zh": "销售",
+      "en": "Sales"
+    },
+    "blurb": {
+      "zh": "找线索、跟客户、报价和复盘。",
+      "en": "Find leads, follow up, quote and review."
+    },
+    "onboarding": 4
+  },
+  {
+    "id": "support",
+    "name": {
+      "zh": "客服",
+      "en": "Customer Support"
+    },
+    "blurb": {
+      "zh": "工单、话术和评价回复，口径统一。",
+      "en": "Tickets, scripts and review replies, all saying the same thing."
+    },
+    "onboarding": 5
+  },
+  {
+    "id": "product",
+    "name": {
+      "zh": "产品经理",
+      "en": "Product Manager"
+    },
+    "blurb": {
+      "zh": "需求、PRD、竞品和用户反馈。",
+      "en": "Requirements, PRDs, competitors and user feedback."
+    },
+    "onboarding": 6
+  },
+  {
+    "id": "developer",
+    "name": {
+      "zh": "程序员",
+      "en": "Developer"
+    },
+    "blurb": {
+      "zh": "代码审查、排查故障、写文档和 SQL。",
+      "en": "Code review, incidents, docs and SQL."
+    },
+    "onboarding": 7
+  },
+  {
+    "id": "designer",
+    "name": {
+      "zh": "设计师",
+      "en": "Designer"
+    },
+    "blurb": {
+      "zh": "把需求问清楚，文案和版式先过一遍。",
+      "en": "Pin down the brief and check the copy and layout first."
+    },
+    "onboarding": 8
+  },
+  {
+    "id": "analyst",
+    "name": {
+      "zh": "数据分析",
+      "en": "Data Analyst"
+    },
+    "blurb": {
+      "zh": "看板、问卷和报表，讲清楚变了什么。",
+      "en": "Dashboards, surveys and reports, explaining what changed."
+    },
+    "onboarding": null
+  },
+  {
+    "id": "pm",
+    "name": {
+      "zh": "项目经理",
+      "en": "Project Manager"
+    },
+    "blurb": {
+      "zh": "排期、周报、风险和会议待办。",
+      "en": "Schedules, status reports, risks and meeting actions."
+    },
+    "onboarding": null
+  },
+  {
+    "id": "hr",
+    "name": {
+      "zh": "人力 HR",
+      "en": "HR"
+    },
+    "blurb": {
+      "zh": "招聘、入职和用工问题。",
+      "en": "Hiring, onboarding and employment questions."
+    },
+    "onboarding": 9
+  },
+  {
+    "id": "finance",
+    "name": {
+      "zh": "财务",
+      "en": "Finance"
+    },
+    "blurb": {
+      "zh": "票据、现金流、报价和回款。",
+      "en": "Receipts, cash flow, quotes and collections."
+    },
+    "onboarding": 10
+  },
+  {
+    "id": "legal",
+    "name": {
+      "zh": "法务",
+      "en": "Legal"
+    },
+    "blurb": {
+      "zh": "合同、合规和用工的第一道把关。",
+      "en": "A first pass on contracts, compliance and employment."
+    },
+    "onboarding": null
+  },
+  {
+    "id": "admin",
+    "name": {
+      "zh": "行政",
+      "en": "Admin"
+    },
+    "blurb": {
+      "zh": "差旅、通知、会议和办公杂事。",
+      "en": "Travel, notices, meetings and office errands."
+    },
+    "onboarding": null
+  },
+  {
+    "id": "procurement",
+    "name": {
+      "zh": "采购",
+      "en": "Procurement"
+    },
+    "blurb": {
+      "zh": "比价、跟单和补货。",
+      "en": "Compare suppliers, chase orders and restock."
+    },
+    "onboarding": null
+  },
+  {
+    "id": "creator",
+    "name": {
+      "zh": "内容创作者",
+      "en": "Creator"
+    },
+    "blurb": {
+      "zh": "公众号、短视频、小红书和直播。",
+      "en": "Articles, short video, social posts and live streams."
+    },
+    "onboarding": null
+  },
+  {
+    "id": "teacher",
+    "name": {
+      "zh": "老师",
+      "en": "Teacher"
+    },
+    "blurb": {
+      "zh": "备课、出题、辅导学生。",
+      "en": "Lesson prep, quizzes and tutoring."
+    },
+    "onboarding": null
+  },
+  {
+    "id": "student",
+    "name": {
+      "zh": "学生",
+      "en": "Student"
+    },
+    "blurb": {
+      "zh": "复习、练口语、写论文。",
+      "en": "Revision, speaking practice and papers."
+    },
+    "onboarding": null
+  },
+  {
+    "id": "freelancer",
+    "name": {
+      "zh": "自由职业",
+      "en": "Freelancer"
+    },
+    "blurb": {
+      "zh": "接单、报价、作品集，也照顾好自己的日子。",
+      "en": "Gigs, quotes and portfolios, and everyday life too."
+    },
+    "onboarding": null
+  }
+]

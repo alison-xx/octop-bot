@@ -90,6 +90,8 @@ function GroupRoomView({
   onNewGroup,
   onMember,
   onPreview,
+  guide,
+  onSent,
 }: {
   group: BotGroup;
   bots: WorkspaceBot[];
@@ -99,6 +101,10 @@ function GroupRoomView({
   onNewGroup?: () => void;
   onMember?: (id: string) => void;
   onPreview?: (key: string, text: string) => void;
+  /** Onboarding guide shown above the composer. */
+  guide?: React.ReactNode;
+  /** A message from the composer reached the group. */
+  onSent?: () => void;
 }) {
   const { t } = useTranslation();
   const standalone = Boolean(title);
@@ -269,6 +275,7 @@ function GroupRoomView({
         sending: null,
         outbox: composer.read().outbox.filter((it) => it.id !== request.id),
       });
+      if (request.fromComposer) onSent?.();
       if (active.current) setReload((value) => value + 1);
     } catch (e) {
       const current = composer.read();
@@ -785,6 +792,7 @@ function GroupRoomView({
             </Button>
           )}
         </div>
+        {guide}
         <div
           className={[
             standalone

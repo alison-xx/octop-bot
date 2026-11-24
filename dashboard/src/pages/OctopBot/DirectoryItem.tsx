@@ -25,6 +25,7 @@ export const DIRECTORY_DRAG_TYPE = "application/x-octop-bot-sidebar-item";
 export const DirectoryItem = memo(function DirectoryItem({
   item,
   chief,
+  fresh = false,
   pinned,
   selected,
   compact,
@@ -45,6 +46,8 @@ export const DirectoryItem = memo(function DirectoryItem({
 }: {
   item: DirectoryEntry;
   chief: boolean;
+  /** Just built by Chief during onboarding: highlighted with a "new" badge. */
+  fresh?: boolean;
   pinned: boolean;
   selected: boolean;
   compact: boolean;
@@ -164,6 +167,7 @@ export const DirectoryItem = memo(function DirectoryItem({
       data-selected={selected}
       data-chief={chief}
       data-unread={unread > 0 || undefined}
+      data-onboarding-new={fresh || undefined}
       draggable={!chief && !disabled}
       onDragEnd={() => onDragging(false)}
       onDragStart={(e) => {
@@ -200,6 +204,11 @@ export const DirectoryItem = memo(function DirectoryItem({
           >
             {unread > 99 ? "99+" : unread}
           </b>
+        )}
+        {fresh && !compact && (
+          <span className={directory.freshBadge}>
+            {t("botOnboarding.guide.new")}
+          </span>
         )}
         {pinned && !chief && !compact && <Pin size={12} />}
       </button>

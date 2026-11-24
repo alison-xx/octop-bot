@@ -25,7 +25,7 @@ vi.mock("./useBotServerInfo", () => ({
 function renderAbout() {
   render(
     <MemoryRouter>
-      <BotAboutPanel returnTo="/octop-bot" />
+      <BotAboutPanel />
     </MemoryRouter>,
   );
 }
