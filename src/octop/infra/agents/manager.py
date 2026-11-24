@@ -2355,7 +2355,7 @@ class AgentManager:
             assert self._harness_manager is not None
             factory = self._harness_manager.shared_factory
             if account is not None:
-                config = account.harness_config(config, self._account_services())
+                config = account.harness_config(config, self._account_services(), agent_id)
                 request = account.request(request)
                 factory = None
             agent = await asyncio.to_thread(
@@ -5173,7 +5173,9 @@ class AgentManager:
                 owner = row.user_id
                 agent_middleware.append(
                     LynxceMediaTools(
-                        lynxce_media_tools(ws, lambda: media_auth(account_services, owner))
+                        lynxce_media_tools(
+                            ws, lambda: media_auth(account_services, owner), bot_id=row.agent_id
+                        )
                     )
                 )
         # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.

@@ -35,6 +35,23 @@ SIGNUP_SITE = "octop-bot"
 _ID = r"(?!\.{1,2}(?:/|$))[A-Za-z0-9_.-]{1,256}"
 _WEB_ID = r"[A-Za-z0-9._:-]{4,96}"
 CHECKOUT_PATH = "/api/billing/recharge/checkout-link"
+# The only bodies sent with a checkout link: Lynxce shows Octop Bot's brand on its checkout and,
+# once paid, offers "返回 Octop Bot" to the official site's result page (Lynxce accepts only
+# https://octop-bot.lynxce.cn there and appends recharge=paid&order=…). `from` tells that page
+# which client to go back to (desktop opens octop-bot://recharge/done; web and Android refresh
+# when the user returns). The checkout URL Lynxce returns is unchanged, so released clients that
+# open only recharge?token=… keep working; Lynxce versions without sites ignore the body.
+CHECKOUT_RETURN_URL = "https://octop-bot.lynxce.cn/pay/result.html"
+CHECKOUT_FROM = ("desktop", "web", "android")
+
+
+def checkout_body(origin: str | None = None) -> dict[str, str]:
+    """The checkout-link body for a client; an unknown client gets the plain result page."""
+    query = f"?from={origin}" if origin in CHECKOUT_FROM else ""
+    return {"site": "octopbot", "returnUrl": CHECKOUT_RETURN_URL + query}
+
+
+_CHECKOUT_BODIES = [checkout_body(None), *(checkout_body(o) for o in CHECKOUT_FROM)]
 WORKBUDDY_SESSION_PATH = "/api/oauth/workbuddy/session"
 # Lynxce's WorkBuddy hand-off code: "wb-handoff." + base64url payload + "." + HMAC-SHA256.
 _HANDOFF = re.compile(r"wb-handoff\.[A-Za-z0-9_-]{16,1024}\.[A-Za-z0-9_-]{43}")
@@ -524,7 +541,7 @@ async def request_cloud(
         not _enabled()
         or not _allowed(method, path, params or {})
         or (method == "GET" and json is not None)
-        or (path == CHECKOUT_PATH and (json is not None or not expected_account_id))
+        or (path == CHECKOUT_PATH and (json not in _CHECKOUT_BODIES or not expected_account_id))
         or (path.endswith("/actions") and not _allowed_action(json or {}))
     ):
         raise OctopError.localized(ErrorCode.FORBIDDEN)
