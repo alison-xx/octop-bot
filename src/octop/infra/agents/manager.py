@@ -1862,7 +1862,9 @@ class AgentManager:
             AGENT_FAILED — agent exists but last start failed
             AGENT_NOT_RUNNING — agent exists but is not loaded in harness
         """
-        if self.get_row(agent_id) is None:
+        row = self._repos.agent_repo.get(agent_id)
+        if row is not None and row.kind == "shadow":
+            # A desktop Bot's cloud stand-in never runs an agent.
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
