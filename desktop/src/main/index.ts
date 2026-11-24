@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  desktopCapturer,
   dialog,
   ipcMain,
   Menu,
@@ -10,6 +11,7 @@ import {
   protocol,
   screen,
   shell,
+  systemPreferences,
   Tray,
   type MenuItemConstructorOptions,
   type NativeImage,
@@ -120,6 +122,7 @@ import { BotOrb } from "./windows/bot-orb";
 import { createRemoteWindow } from "./windows/remote-window";
 import { ServerPicker } from "./windows/server-window";
 import { openWorkbuddyLogin } from "./windows/workbuddy-login";
+import { isMacPermission, requestMacPermission } from "./mac-permissions";
 import { sanitizeBadgeCount, sanitizeNotification, trayTooltip } from "./windows/attention";
 import {
   shouldInstallSystemTray,
@@ -754,6 +757,20 @@ function registerIpcHandlers(): void {
     if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" });
     const zh = uiLocale().toLowerCase().startsWith("zh");
     return openWorkbuddyLogin(BrowserWindow.fromWebContents(event.sender), zh);
+  });
+  ipcMain.handle(IPC_CHANNELS.botComputerPermission, (_event, kind: unknown): Promise<boolean> => {
+    if (!botOnly || !isMacPermission(kind)) return Promise.resolve(false);
+    return requestMacPermission(kind, {
+      platform: process.platform,
+      screenStatus: () => systemPreferences.getMediaAccessStatus("screen"),
+      accessibilityTrusted: (prompt) => systemPreferences.isTrustedAccessibilityClient(prompt),
+      touchScreenCapture: () =>
+        desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 1, height: 1 } }),
+      openSettings: (url) => shell.openExternal(url),
+    });
+  });
+  ipcMain.on(IPC_CHANNELS.botRelaunch, () => {
+    if (botOnly) restartApp();
   });
   ipcMain.handle(IPC_CHANNELS.botUseCloud, (_event, accessToken: unknown): boolean => {
     // Only this computer's own page moves the app; a cloud page has no preload.

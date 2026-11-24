@@ -104,3 +104,19 @@ async def test_computer_authorization_handoff_and_window_lease(env_alice_bob_age
     assert (await client.get(path, headers=alice)).status_code == 403
     with pytest.raises(OctopError):
         await run("windows")
+
+
+@pytest.mark.asyncio
+async def test_computer_state_reports_missing_macos_grants(env_alice_bob_agent, monkeypatch):
+    client, server, alice, _bob, bot = env_alice_bob_agent
+    computer = server.app_runtime.agent_registry.bot_computer
+    await server.app_runtime.user_manager.set_permissions("alice", ["desktop"])
+    path = f"/api/octop-bot/bots/{bot}/computer"
+    monkeypatch.setattr(computer, "permissions_needed", lambda: ["screen_recording"])
+
+    monkeypatch.setattr(computer, "available", lambda: False)
+    assert (await client.get(path, headers=alice)).json()["permissions_needed"] == []
+
+    monkeypatch.setattr(computer, "available", lambda: True)
+    state = (await client.get(path, headers=alice)).json()
+    assert state["permissions_needed"] == ["screen_recording"]

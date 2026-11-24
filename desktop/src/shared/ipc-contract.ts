@@ -115,6 +115,10 @@ export const IPC_CHANNELS = {
   botNotificationOpen: "octop:bot:notification-open",
   botUnreadBadge: "octop:bot:unread-badge",
   botWorkbuddyLogin: "octop:bot:workbuddy-login",
+  /** Ask macOS for a privacy grant the Bot's computer needs; true when already granted. */
+  botComputerPermission: "octop:bot:computer-permission",
+  /** Quit and start again (a new Screen Recording grant only applies after a restart). */
+  botRelaunch: "octop:bot:relaunch",
   /** After moving to the Octop Bot cloud: switch there, signed in with this cloud token. */
   botUseCloud: "octop:bot:use-cloud",
   orbPointer: "octop:orb:pointer",
