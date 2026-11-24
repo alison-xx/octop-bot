@@ -2,6 +2,13 @@ import Foundation
 import Observation
 import StoreKit
 
+/// Whether this build offers App Store credit packs. Off until the products have been through App
+/// Review: the app then shows the balance but no way to buy, whatever Lynxce's own switch says, so a
+/// switch flipped during review cannot expose purchases Apple has not seen.
+enum CreditPurchases {
+    nonisolated static let inApp = false
+}
+
 /// Lynxce credit packs bought with App Store in-app purchase (StoreKit 2).
 ///
 /// Flow: Lynxce issues an account token for the pack → StoreKit purchase carries that token →
@@ -72,7 +79,7 @@ final class CreditStore {
     }
 
     func load() async {
-        guard let account = account() else {
+        guard CreditPurchases.inApp, let account = account() else {
             phase = .unavailable
             return
         }
@@ -94,6 +101,7 @@ final class CreditStore {
     }
 
     func buy(_ offer: Offer) async -> Outcome {
+        guard CreditPurchases.inApp else { return .failed(L("credits.unavailable")) }
         guard buying == nil, let account = account() else { return .failed(L("credits.signInFirst")) }
         buying = offer.id
         defer { buying = nil }

@@ -10,17 +10,25 @@ struct APIError: LocalizedError, Equatable {
     var code: String? = nil
 
     var errorDescription: String? {
+        if code == Self.computerOff { return L("error.computerOff") }
+        if code == Self.computerBusy { return L("error.computerBusy") }
         // The server's credits text links to Lynxce's web checkout, which App Store builds don't show.
         if kind != .credits, let message, !message.isEmpty { return message }
         switch kind {
         case .unauthorized: return L("error.unauthorized")
-        case .credits: return L("error.credits")
+        case .credits: return L(CreditPurchases.inApp ? "error.credits" : "error.creditsNoPurchase")
         case .dailyLimit: return L("error.dailyLimit")
         case .rejected: return L("error.rejected %lld", status)
         case .network: return L("error.network")
         case .server: return L("error.server %lld", status)
         }
     }
+
+    /// Octop Bot cloud: the file is on the Bot's cloud computer, which is off (HTTP 409).
+    static let computerOff = "BOT_COMPUTER_OFF"
+
+    /// Octop Bot cloud: every cloud computer slot is taken (HTTP 503).
+    static let computerBusy = "BOT_COMPUTER_BUSY"
 
     /// Octop's error code when a turn billed to the Lynxce wallet runs out of credits.
     static let creditsRequired = "BOT_CLOUD_CREDITS_REQUIRED"

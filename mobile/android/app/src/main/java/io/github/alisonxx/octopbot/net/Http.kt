@@ -39,6 +39,10 @@ class ApiException(val kind: Kind, val status: Int, message: String? = null, val
         const val CREDITS_REQUIRED = "BOT_CLOUD_CREDITS_REQUIRED"
         /** Octop Bot cloud: the account's daily Lynxce cap is used up (HTTP 429). */
         const val DAILY_LIMIT = "BOT_LYNXCE_DAILY_LIMIT"
+        /** Octop Bot cloud: the file is on the Bot's cloud computer, which is off (HTTP 409). */
+        const val COMPUTER_OFF = "BOT_COMPUTER_OFF"
+        /** Octop Bot cloud: every cloud computer slot is taken (HTTP 503). */
+        const val COMPUTER_BUSY = "BOT_COMPUTER_BUSY"
 
         /** Lynxce's own code for the cap (`api_key_credit_limit_reached`), which direct mode may send as a 402. */
         fun isDailyLimit(text: String?): Boolean = text != null && ("credit_limit_reached" in text || DAILY_LIMIT in text)

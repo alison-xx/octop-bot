@@ -36,8 +36,8 @@ android {
         applicationId = "io.github.alisonxx.octopbot"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.0"
+        versionCode = 4
+        versionName = "1.0.1"
 
         buildConfigField("String", "UPDATE_MANIFEST_URL", quoted(updateManifestUrl))
         buildConfigField("String", "UPDATE_PUBLIC_KEY", quoted(updatePublicKey))

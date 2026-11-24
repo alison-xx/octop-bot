@@ -522,8 +522,53 @@ final class AppUpdaterTests: XCTestCase {
     }
 }
 
+/// A Lynxce wallet that sells packs and has App Store purchases switched on, counting what is asked.
+private final class SellingAccount: CreditAccount {
+    var packRequests = 0
+    var intents = 0
+
+    func wallet() async throws -> Wallet { Wallet(credits: 50, accountId: "a1") }
+    func creditPacks() async throws -> (packs: [LynxceBackend.CreditPack], enabled: Bool) {
+        packRequests += 1
+        return ([LynxceBackend.CreditPack(id: "p1", name: "Small", credits: 1000, productId: "cn.lynxce.octopbot.credits.1000")], true)
+    }
+    func purchaseIntent(packId: String) async throws -> (productId: String, accountToken: UUID) {
+        intents += 1
+        return ("cn.lynxce.octopbot.credits.1000", UUID())
+    }
+    func submitTransaction(_ signedTransaction: String) async throws {}
+    func requestDeletion() async throws -> Int? { nil }
+}
+
+@MainActor
+final class CloudComputerTests: XCTestCase {
+    /// A file on a cloud computer that is off, and no computer slot free: the phone's own words, which
+    /// point at the computer icon, rather than whatever the server sent.
+    func testComputerOffAndBusyHaveTheirOwnText() {
+        XCTAssertEqual(APIError.from(status: 409, message: "server text", code: "BOT_COMPUTER_OFF").errorDescription, L("error.computerOff"))
+        XCTAssertEqual(APIError.from(status: 503, message: "server text", code: "BOT_COMPUTER_BUSY").errorDescription, L("error.computerBusy"))
+        XCTAssertEqual(APIError.from(status: 409, message: "server text", code: "OTHER").errorDescription, "server text")
+        XCTAssertNotEqual(L("computer.starting"), "computer.starting")
+    }
+}
+
 @MainActor
 final class CreditTests: XCTestCase {
+    /// 1.0.1 ships before the credit packs have been through App Review: the app must not offer them
+    /// even when Lynxce says purchases are on, and must not show "top up" copy with no way to do it.
+    func testCreditPacksStayHiddenWhateverLynxceSays() async {
+        XCTAssertFalse(CreditPurchases.inApp)
+        let account = SellingAccount()
+        let store = CreditStore()
+        store.start(account: { account }, credited: {})
+        await store.load()
+        XCTAssertEqual(store.phase, .unavailable)
+        XCTAssertTrue(store.offers.isEmpty)
+        XCTAssertEqual(account.packRequests, 0)
+        XCTAssertEqual(APIError(kind: .credits, status: 402, message: nil).errorDescription, L("error.creditsNoPurchase"))
+        XCTAssertFalse(L("credits.titleNoPurchase").isEmpty)
+    }
+
     func testBalanceIsTheWalletNotAMemberAllowance() {
         XCTAssertEqual(LynxceBackend.credits(inQuota: ["creditsRemaining": 1280.5, "effectiveCreditsRemaining": 10]), 1280.5)
         XCTAssertNil(LynxceBackend.credits(inQuota: ["balance": 3]))
