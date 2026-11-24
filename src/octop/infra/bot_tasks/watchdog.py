@@ -136,9 +136,7 @@ def _result_text(result: ToolMessage | Command[Any]) -> str:
         messages = list(result.update.get("messages") or [])
     for message in messages:
         if isinstance(message, ToolMessage):
-            return (
-                message.text() if callable(getattr(message, "text", None)) else str(message.content)
-            )
+            return str(message.text)
     return ""
 
 
