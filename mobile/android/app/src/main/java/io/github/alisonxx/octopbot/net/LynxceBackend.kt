@@ -182,9 +182,9 @@ class LynxceBackend(
         LynxceProtocol.balance(call("GET", "/api/user/quota")) ?: throw ApiException.badResponse()
 
     /** A signed-in link to Lynxce's recharge page for this account, valid for 15 minutes. */
-    override suspend fun checkoutUrl(): String =
-        LynxceProtocol.checkoutUrl(call("POST", "/api/billing/recharge/checkout-link") { Http.body(buildJsonObject {}) })
-            ?: throw CheckoutRefused()
+    override suspend fun checkoutUrl(scenario: CreditScenario?): String =
+        (LynxceProtocol.checkoutUrl(call("POST", "/api/billing/recharge/checkout-link") { Http.body(buildJsonObject {}) })
+            ?: throw CheckoutRefused()).let(LynxceProtocol::boostTab)
 
     /** Ask Lynxce to delete this account; it is signed out everywhere and erased after a cooling-off period. */
     override suspend fun requestDeletion() {

@@ -59,6 +59,16 @@ class PreparedDashboardTurn:
     inbound_attachments: list[dict[str, str]]
 
 
+def _own_session_key(session_key: str | None, *, agent_id: str, user_id: int) -> str:
+    """The session key a dashboard turn uses: the client's only if it is one of this user's
+    dashboard keys for this agent, otherwise the default one."""
+    default = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user_id)
+    own = f"{agent_id}:{ThreadRegistry.CHANNEL_DASHBOARD}:{user_id}:"
+    if session_key and session_key.startswith(own):
+        return session_key
+    return default
+
+
 async def resolve_thread_id(
     *,
     agent_id: str,
@@ -67,7 +77,7 @@ async def resolve_thread_id(
     thread_id: str | None,
     session_key: str | None,
 ) -> tuple[str, str]:
-    sk = session_key or ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user_id)
+    sk = _own_session_key(session_key, agent_id=agent_id, user_id=user_id)
     if thread_id:
         row = thread_registry.get_thread(thread_id)
         if row is None or row.agent_id != agent_id:
@@ -85,6 +95,9 @@ async def resolve_thread_id(
         return thread_id, sk
     bound = thread_registry.get_bound_thread_id(sk)
     if bound:
+        row = thread_registry.get_thread(bound)
+        if row is None or row.agent_id != agent_id or not thread_visible_to(row, user_id):
+            raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
         return bound, sk
     tid = await thread_registry.get_or_create_by_key(
         session_key=sk,

@@ -40,7 +40,14 @@ import { DeviceCredentialStore } from "./session/device-credential";
 import { DeviceSessionClient } from "./session/device-session";
 import { safeStorageCipher, warnIfKeychainUnavailable } from "./session/safe-storage-cipher";
 import { ClientSettingsStore, defaultClientSettingsPath } from "./storage/client-settings";
-import { defaultServerChoicePath, LYNXCE_CLOUD_ORIGIN, ServerChoiceStore } from "./server/server-choice";
+import {
+  botProfileName,
+  defaultServerChoicePath,
+  LYNXCE_CLOUD_ORIGIN,
+  remoteFailurePrompt,
+  ServerChoiceStore,
+} from "./server/server-choice";
+import { uiLocale } from "./ui-locale";
 import {
   cloudOrigin,
   cloudSignInScript,
@@ -153,7 +160,7 @@ let pendingDeepPath: string | null = botOnly ? deepLinkPathFromArgv(process.argv
 if (botOnly) {
   app.setName(productName);
   if (!app.commandLine.hasSwitch("user-data-dir")) {
-    const profile = join(app.getPath("appData"), BOT_PRODUCT_NAME);
+    const profile = join(app.getPath("appData"), botProfileName(BOT_PRODUCT_NAME, app.isPackaged));
     mkdirSync(profile, { recursive: true });
     app.setPath("userData", profile);
     app.setPath("sessionData", profile);
@@ -526,7 +533,7 @@ async function runShellUpdate(
 // blocks the user; a release below `min_supported` only gets stronger wording.
 
 function chineseUi(): boolean {
-  return app.getLocale().toLowerCase().startsWith("zh");
+  return uiLocale().toLowerCase().startsWith("zh");
 }
 
 function appWindow(): BrowserWindow | null {
@@ -741,11 +748,11 @@ function registerIpcHandlers(): void {
   ipcMain.on(IPC_CHANNELS.botUnreadBadge, (_event, count: unknown) => {
     const total = sanitizeBadgeCount(count);
     app.setBadgeCount(total);
-    tray?.setToolTip(trayTooltip(productName, total, app.getLocale()));
+    tray?.setToolTip(trayTooltip(productName, total, uiLocale()));
   });
   ipcMain.handle(IPC_CHANNELS.botWorkbuddyLogin, (event): Promise<WorkbuddyLoginResult> => {
     if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" });
-    const zh = app.getLocale().toLowerCase().startsWith("zh");
+    const zh = uiLocale().toLowerCase().startsWith("zh");
     return openWorkbuddyLogin(BrowserWindow.fromWebContents(event.sender), zh);
   });
   ipcMain.handle(IPC_CHANNELS.botUseCloud, (_event, accessToken: unknown): boolean => {
@@ -764,7 +771,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.windowsMenuModel, () => {
     if (!usesCaptionOverlay()) return null;
-    return windowsMenuModel(app.getLocale(), botOnly);
+    return windowsMenuModel(uiLocale(), botOnly);
   });
   ipcMain.handle(IPC_CHANNELS.windowsMenuInvoke, (event, id: unknown) => {
     const command = windowsMenuCommandId(id);
@@ -1104,7 +1111,7 @@ function revealAppWindow(): void {
 }
 
 function showAboutDialog(version: string): void {
-  const locale = app.getLocale();
+  const locale = uiLocale();
   const stamp = resolveGitStamp(readGitStamp, {
     commit: process.env.OCTOP_GIT_COMMIT,
     date: process.env.OCTOP_GIT_DATE,
@@ -1201,7 +1208,7 @@ function installAppMenu(version: string): void {
           submenu: [
             { role: "about" },
             {
-              label: app.getLocale().startsWith("zh") ? "设置…" : "Settings…",
+              label: uiLocale().startsWith("zh") ? "设置…" : "Settings…",
               accelerator: "Cmd+,",
               click: openBotSettings,
             },
@@ -1225,7 +1232,7 @@ function installAppMenu(version: string): void {
     return;
   }
   const menu = windowsApplicationMenu(
-    app.getLocale(),
+    uiLocale(),
     () => showAboutDialog(version),
     botOnly ? openBotSettings : undefined,
     botOnly ? () => serverPicker?.open(BrowserWindow.getFocusedWindow()) : undefined,
@@ -1304,7 +1311,7 @@ function repoRootWithGit(start: string): string | null {
 /** "Server" submenu: this computer's service, recent self-hosted servers, or a new one. */
 function serverMenuItems(): MenuItemConstructorOptions[] {
   if (!botOnly || !serverChoice) return [];
-  const zh = app.getLocale().startsWith("zh");
+  const zh = uiLocale().startsWith("zh");
   const { current, recent } = serverChoice.load();
   return [
     {
@@ -1378,24 +1385,25 @@ function openRemoteWindow(origin: string): BrowserWindow {
 async function showRemoteFailure(win: BrowserWindow, origin: string, description: string): Promise<void> {
   if (win.isDestroyed()) return;
   if (!win.isVisible()) win.show();
-  const zh = app.getLocale().startsWith("zh");
+  const prompt = remoteFailurePrompt(origin, description, uiLocale().toLowerCase().startsWith("zh"));
   const { response } = await dialog.showMessageBox(win, {
     type: "warning",
-    message: zh ? `连接不上 ${new URL(origin).host}` : `Couldn't reach ${new URL(origin).host}`,
-    detail: description,
-    buttons: zh ? ["重试", "改用本机服务", "换个服务器…"] : ["Retry", "Use This Computer", "Another Server…"],
-    defaultId: 0,
-    cancelId: 0,
+    message: prompt.message,
+    detail: prompt.detail,
+    buttons: prompt.buttons,
+    defaultId: prompt.defaultId,
+    cancelId: prompt.cancelId,
   });
   if (win.isDestroyed()) return;
-  if (response === 0) void win.loadURL(origin + BOT_HOME_PATH);
-  else if (response === 1) serverPicker?.switchTo(null);
+  const action = prompt.actions[response] ?? "retry";
+  if (action === "retry") void win.loadURL(origin + BOT_HOME_PATH);
+  else if (action === "local") serverPicker?.switchTo(null);
   else serverPicker?.open(win);
 }
 
 /** Native menus while showing a self-hosted server: its page draws no desktop menu of its own. */
 function installRemoteMenu(): void {
-  const zh = app.getLocale().startsWith("zh");
+  const zh = uiLocale().startsWith("zh");
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
       label: BOT_PRODUCT_NAME,
@@ -1414,10 +1422,10 @@ function installRemoteMenu(): void {
 }
 
 function trayMenu(): Menu {
-  const labels = trayMenuLabels(app.getLocale(), botOnly);
+  const labels = trayMenuLabels(uiLocale(), botOnly);
   return Menu.buildFromTemplate([
     { label: labels.show, click: () => revealAppWindow() },
-    ...(botOnly && !remoteOrigin ? [{ label: app.getLocale().startsWith("zh") ? "显示桌面悬浮球" : "Show floating button", click: () => botOrb?.show(true) }] : []),
+    ...(botOnly && !remoteOrigin ? [{ label: uiLocale().startsWith("zh") ? "显示桌面悬浮球" : "Show floating button", click: () => botOrb?.show(true) }] : []),
     ...serverMenuItems(),
     ...updateMenuItems(),
     { type: "separator" },
@@ -1509,8 +1517,14 @@ async function boot(): Promise<void> {
   }
   if (botOnly) {
     serverChoice = new ServerChoiceStore(defaultServerChoicePath(app.getPath("userData")));
-    serverPicker = new ServerPicker({ store: serverChoice, restart: restartApp, icon: botWindowIcon() });
-    remoteOrigin = serverChoice.load().current;
+    serverPicker = new ServerPicker({
+      store: serverChoice,
+      restart: restartApp,
+      icon: botWindowIcon(),
+      allowLoopback: !app.isPackaged,
+    });
+    // A loopback server left by a development run: start on this computer, without asking.
+    remoteOrigin = (app.isPackaged ? serverChoice.dropLoopback() : serverChoice.load()).current;
   }
   if (remoteOrigin) installRemoteMenu();
   else installAppMenu(appVersion);

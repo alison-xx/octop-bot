@@ -17,10 +17,10 @@
   <link rel="canonical" href="https://octop-bot.lynxce.cn/pricing.html">
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="stylesheet" href="assets/site.css?v=17">
+  <link rel="stylesheet" href="assets/site.css?v=19">
   <script src="assets/auth.js?v=2" defer></script>
-  <script src="assets/site.js?v=16" defer></script>
-  <script src="assets/pricing.js?v=6" defer></script>
+  <script src="assets/site.js?v=17" defer></script>
+  <script src="assets/pricing.js?v=7" defer></script>
 </head>
 <body>
   <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
@@ -71,13 +71,13 @@
       <h1 class="display" data-en="Bots run free on your computer. &lt;br&gt;Pay only for the cloud.">Bot 在你电脑上免费跑<br>云端协同按需付费</h1>
       <p class="lead" data-en="Bots on your computer use your own models and machine, and cost no credits. With a Lynxce account, text, images, video and cloud computers are billed in credits; members get credits every month.">本机 Bot 用你自己的模型和电脑，不花积分。登录灵策账号后，文本对话、作图、做视频和云电脑按积分计费；会员每月送积分，解锁更多协同能力。</p>
       <div class="price-tabs" id="price-tabs" role="tablist">
-        <button type="button" role="tab" data-view="plans" aria-selected="true" data-en="Membership">会员套餐</button>
-        <button type="button" role="tab" data-view="packs" aria-selected="false" data-en="Credit packs">加油包</button>
-        <button type="button" role="tab" data-view="enterprise" aria-selected="false" data-en="Enterprise">企业定制</button>
+        <button type="button" id="tab-plans" role="tab" aria-controls="v-plans" data-view="plans" aria-selected="true" data-en="Membership">会员套餐</button>
+        <button type="button" id="tab-packs" role="tab" aria-controls="v-packs" data-view="packs" aria-selected="false" tabindex="-1" data-en="Credit packs">加油包</button>
+        <button type="button" id="tab-enterprise" role="tab" aria-controls="v-enterprise" data-view="enterprise" aria-selected="false" tabindex="-1" data-en="Enterprise">企业定制</button>
       </div>
     </section>
 
-    <section class="wrap" id="v-plans">
+    <section class="wrap" id="v-plans" role="tabpanel" aria-labelledby="tab-plans">
       <div class="cycle-wrap">
         <div class="cycle" id="cycle" role="group" aria-label="付款周期" data-en-aria-label="Billing period">
           <button type="button" data-cycle="month" aria-pressed="true" data-en="Monthly">月付</button>
@@ -88,7 +88,7 @@
       <p class="price-note" id="plans-note"></p>
     </section>
 
-    <section class="wrap" id="v-packs" hidden>
+    <section class="wrap" id="v-packs" role="tabpanel" aria-labelledby="tab-packs" hidden>
       <div class="buy">
         <div>
           <h2 class="h3" data-en="Top up when you run low">积分不够时，临时补一点</h2>
@@ -113,7 +113,7 @@
       </div>
     </section>
 
-    <section class="wrap" id="v-enterprise" hidden>
+    <section class="wrap" id="v-enterprise" role="tabpanel" aria-labelledby="tab-enterprise" hidden>
       <div class="enterprise" aria-labelledby="enterprise-title">
         <div class="enterprise-head">
           <span class="eyebrow" data-en="For teams and companies">面向团队和企业</span>

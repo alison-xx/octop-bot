@@ -40,6 +40,7 @@ from typing import Any
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
+from octop.api.common.bot_cloud import is_cloud_tenant
 from octop.api.deps import resolve_user_from_token
 from octop.api.routers.browser.harness import (
     harness_list_tabs,
@@ -402,6 +403,9 @@ async def browser_stream_ws(
         user = resolve_user_from_token(server, token)
     except Exception as exc:
         await websocket.close(code=4001, reason=f"auth failed: {exc}")
+        return
+    if is_cloud_tenant(user):
+        await websocket.close(code=4003, reason="not available")
         return
 
     try:

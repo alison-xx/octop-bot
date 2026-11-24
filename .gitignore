@@ -134,3 +134,12 @@ website/media/*.mp4
 website/film-src/renders/
 website/film-src/assets/audio/
 website/film-src/node_modules/
+
+# Signing keys and keystores never belong in the repository (handbook rule 18)
+*.pem
+*.key
+*.jks
+*.keystore
+*.p12
+*.p8
+*signing.properties

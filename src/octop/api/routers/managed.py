@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import apply_agent_audience
+from octop.api.common.bot_cloud import no_cloud_tenant
 from octop.api.deps import current_user, get_server
 from octop.api.routers.agents import _row_dict
 from octop.infra.agents.acp.session_modes import (
@@ -31,7 +32,8 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.history.trajectory.settings import apply_enable_trajectory
 from octop.infra.users.groups import GroupAccess
 
-router = APIRouter()
+# Host-level operator features: not for cloud tenants.
+router = APIRouter(dependencies=[Depends(no_cloud_tenant)])
 
 
 class _LocalizedText(BaseModel):

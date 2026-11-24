@@ -92,6 +92,7 @@ final class ChatSession {
     }
 
     func send(_ text: String, images: [Data] = []) {
+        guard bot.canSend else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let backend = app?.backend, !trimmed.isEmpty || !images.isEmpty else { return }
         // Never block: while a reply streams, queue the message and send it when the reply ends.
@@ -243,7 +244,10 @@ final class ChatSession {
                 removeEmptyReply(replyId)
             } catch let error as APIError where error.kind == .credits {
                 // Out of credits: the reply becomes a top-up card with "Continue" instead of an error.
-                update(replyId) { $0.status = .outOfCredits }
+                update(replyId) {
+                    $0.status = .outOfCredits
+                    $0.creditScenario = creditScenario(code: error.code, details: error.details)
+                }
                 Task { await self.app?.refreshBalance() }
             } catch let error as APIError where error.kind == .dailyLimit {
                 // Credits are left but today's cap is used up: a card that says when it resets.
