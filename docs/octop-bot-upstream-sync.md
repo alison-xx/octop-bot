@@ -48,17 +48,21 @@ E1 已提交为 [TencentCloud/Octop#3129](https://github.com/TencentCloud/Octop/
 
 和 Bot 无关、上游可以原样收下的改动，按“一个问题一个 PR”提交（流程见 `upstream-octop-prs` 的约定：`alison-xx/Octop` fork，分支基于 `upstream/develop`）：
 
-1. 头像替换：先写新文件再删旧文件，上传失败时不会丢头像。
-2. HITL“本会话全部允许”只作用于连接器写操作的审批，不再把 Agent 原有的 `interrupt_on` 一起冲掉。
-3. 历史投影隐藏工具附带的媒体伪用户消息（`read_file_media`）。
-4. `HEAD /agents/{id}/workspace/download` 返回文件大小。
-5. 浏览器接管：控制权存储下沉到 `infra/control/browser/handoff.py`，用户接管期间暂停 `browser_use`。
-6. HITL 不可绕过标记改成结构字段，不再匹配描述文本。
-7. `CronManager.next_run_time`、`UserManager.disable(reason=)`。
-8. 余额不足（HTTP 402）在流式错误里给稳定的错误码。
-9. 历史附件文本工具从 `api/` 挪到 `infra/history/`（修正分层）。
-10. `filesystem` / `voice` 路由加权限点，云租户限制改成普通角色。
-11. （可选）压缩边界随投影历史一起记录。
+逐条核对后的结论（2026-11-24）：
+
+| # | 改动 | 结论 |
+|---|------|------|
+| 1 | 头像替换：先写新文件再删旧文件 | 已提 [TencentCloud/Octop#3116](https://github.com/TencentCloud/Octop/pull/3116) |
+| 2 | HITL“本会话全部允许”只包连接器写操作 | 不提。上游每次接入连接器会把已有审批判断再包一层，但每层查的是同一个放行表，行为不变，拿不出具体 bug |
+| 3 | 历史投影隐藏 `read_file` 附带的媒体伪用户消息 | 已提 [TencentCloud/Octop#3132](https://github.com/TencentCloud/Octop/pull/3132)。上游可复现：Agent 读图后，这一轮的提问和工具步骤从历史里丢失，刷新后多出一条带图的假用户消息 |
+| 4 | `HEAD /workspace/download` 返回文件大小 | 不提。上游没有调用方，实现靠整份下载算大小 |
+| 5 | 用户接管浏览器时暂停 `browser_use` | 暂缓。fork 里只对 Bot 专属浏览器档案生效，上游版本需要重新设计 |
+| 6 | HITL 不可绕过标记改结构字段 | 不提。fork 的改动只是加了 Bot 自己的标记，归入扩展点 |
+| 7 | `next_run_time`、`disable(reason=)` | 不提。上游没有调用方，跟随用到它们的扩展点一起提 |
+| 8 | 余额不足的稳定错误码 | 不提。上游已有 `INSUFFICIENT_BALANCE` 文案分类，剩下的部分只服务灵策积分 |
+| 9 | 附件文本工具挪到 `infra/` | 不提。上游没有 `infra` → `api` 的反向依赖，只有 fork 需要 |
+| 10 | `filesystem` / `voice` 权限点 | 暂缓。属于权限策略调整，要先和上游讨论 |
+| 11 | 压缩边界随投影历史记录 | 暂缓。改为走 E10 扩展点 |
 
 Windows `npx` 那条已经作为 #3115 合进上游，下次同步上游时 fork 里的那份就消失了。
 
