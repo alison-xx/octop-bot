@@ -961,3 +961,41 @@ async def test_tenant_workspace_replace_keeps_local_files(
         assert sent.status_code == 200, sent.text
         assert (local / "keep.txt").read_text() == "local file"
         assert (store / "new.txt").read_text() == "new"
+
+
+async def test_tenant_group_member_builds_in_its_room(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import octop_harness.middleware.bootstrap as bootstrap
+
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.errors import ErrorCode as _Code
+    from octop.infra.errors import OctopError as _Error
+
+    monkeypatch.setattr(bootstrap, "bootstrap_marker_exists", lambda *a, **k: True)
+    async with octop_client(tmp_octop_home) as (client, srv):
+        signed = await _sign_in(client, "13800000073")
+        registry = srv.app_runtime.agent_registry
+        row = await registry.create(
+            AgentCreateSpec(user_id=signed["user"]["id"], name="G"), defer_bootstrap=True
+        )
+        room = tmp_path / "room"
+        cfg = registry._build_harness_config(
+            srv.services.agent_repo.get(row.agent_id), room_workspace=room
+        )
+        assert cfg is not None
+        with pytest.raises(_Error) as refused:
+            registry._backend_spec_for_row(
+                srv.services.agent_repo.get(row.agent_id),
+                cfg={"backend": {"type": "filesystem", "root_dir": str(tmp_path)}},
+                room=room,
+            )
+        assert refused.value.code == _Code.FORBIDDEN
+        # The room itself, but resolving absolute paths on the host: refused too.
+        with pytest.raises(_Error) as unbounded:
+            registry._backend_spec_for_row(
+                srv.services.agent_repo.get(row.agent_id),
+                cfg={"backend": {"type": "filesystem", "root_dir": str(room)}},
+                room=room,
+            )
+        assert unbounded.value.code == _Code.FORBIDDEN
