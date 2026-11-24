@@ -262,6 +262,7 @@
             `Monthly credits last one month; yearly plans are paid once and credits arrive monthly. Image and video counts use the current default models (${m.imageName}, ${m.videoName}) and are estimates.`,
           )
         : t("月度积分 1 个月有效，年付一次付清、积分按月到账。", "Monthly credits last one month; yearly plans are paid once and credits arrive monthly.");
+      note.textContent += " " + t("会员积分仅限 Octop 使用", "Membership credits are for Octop Bot only");
     }
     document.querySelectorAll("#cycle button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.cycle === cycle)));
   }
@@ -452,7 +453,7 @@
   };
   // Plans render as soon as the finalized prices arrive; image and video counts fill in when the
   // model prices do (live, or the bundled copy if Lynxce is slow or unreachable).
-  getJson("data/pricing.json").then((plans) => {
+  getJson("data/pricing.json?v=1").then((plans) => {
     pricing = plans;
     renderAll();
   });
