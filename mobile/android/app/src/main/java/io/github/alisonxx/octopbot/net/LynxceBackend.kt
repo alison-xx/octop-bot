@@ -69,6 +69,8 @@ class LynxceBackend(
         private fun headers(bearer: String?) = buildMap {
             // 'web' is Lynxce's multi-session channel; signing in here never signs other devices out.
             put("X-Lynxce-Client", "web")
+            // Lynxce serves Octop Bot only the Tencent Cloud TokenHub models and records sign-ups made here.
+            put("X-Lynxce-App", "octopbot")
             bearer?.let { put("Authorization", "Bearer $it") }
         }
 

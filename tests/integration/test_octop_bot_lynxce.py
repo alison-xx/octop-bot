@@ -74,7 +74,7 @@ async def test_first_model_connection_reaches_chief_through_the_personal_gateway
     workspace = await client.get("/api/octop-bot/workspace", headers=auth)
     workspace.raise_for_status()
     chief = workspace.json()["chief_id"]
-    model_id = "personal-chat"
+    model_id = "tencent/personal-chat"
     calls = []
 
     async def register(request):

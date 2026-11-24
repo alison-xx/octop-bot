@@ -513,12 +513,14 @@
     mac: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.6-1-2.6-3.9ZM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4Z"/></svg>',
     phone:
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="6" y="2.5" width="12" height="19" rx="3"/><path d="M10.5 18.5h3"/></svg>',
+    web: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z"/></svg>',
     nas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="4" width="17" height="7" rx="2"/><rect x="3.5" y="13" width="17" height="7" rx="2"/><path d="M7.5 7.5h.01M7.5 16.5h.01M11 7.5h6M11 16.5h6"/></svg>',
   };
   const ARROW =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg>';
   const OUT =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M8 7h9v9"/></svg>';
+  const WEB_APP = "https://bot.lynxce.cn";
   const storeName = (url) => (/testflight\.apple\.com/.test(url) ? "TestFlight" : "App Store");
 
   /* A release can skip a platform (say, no Windows build). Offer that platform's newest package instead. */
@@ -576,7 +578,7 @@
       el.textContent = choice
         ? `${t("版本", "Version")} ${choice.version} · ${choice.sub} · ${t("免费开源", "Free & open source")}`
         : os === "mobile"
-          ? t("Octop Bot 是桌面客户端，请在 Windows 或 Mac 电脑上下载。", "Octop Bot is a desktop app. Download it on a Windows PC or a Mac.")
+          ? t("在手机上可以直接用网页版，客户端请在 Windows 或 Mac 电脑上下载。", "On a phone, use the web app. The desktop app is for Windows PCs and Macs.")
           : t("提供 Windows x64 和 Apple 芯片 Mac 版本。", "Available for Windows x64 and Macs with Apple silicon.");
     });
     $$("[data-version]").forEach((el) => (el.textContent = release.version));
@@ -663,6 +665,18 @@
         ),
       );
     }
+    cards.push(
+      card(
+        "web",
+        OS_ICON.web,
+        t("网页版", "Web"),
+        t("Chrome、Edge、Safari 等浏览器", "Any modern browser"),
+        `<div class="files">
+          <div class="file"><div><b>bot.lynxce.cn</b><small>${t("用灵策智算账号登录", "Sign in with your Lynxce account")}</small></div><a class="btn btn-ghost btn-sm" href="${WEB_APP}"><span>${t("打开网页版", "Open web app")}</span>${OUT}</a></div>
+        </div><p class="muted" style="font-size:14px">${t("不用安装，打开浏览器就能用。", "Nothing to install. It runs in your browser.")}</p>`,
+        false,
+      ),
+    );
     if (fpk || image) {
       cards.push(
         card(
