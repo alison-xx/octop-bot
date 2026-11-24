@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <script>(function(){var d=document.documentElement,t,l;d.classList.remove('no-js');try{t=localStorage.getItem('ob-theme');l=localStorage.getItem('ob-lang')}catch(e){}if(t==='light'||t==='dark')d.dataset.theme=t;if(l!=='zh'&&l!=='en')l=/^zh/i.test((navigator.languages&&navigator.languages[0])||navigator.language||'')?'zh':'en';d.dataset.lang=l;if(l==='en'){d.classList.add('i18n-wait');setTimeout(function(){d.classList.remove('i18n-wait')},1500)}setTimeout(function(){if(!d.dataset.ready)d.classList.add('no-js')},3000)})();</script>
+  <script src="assets/boot.js?v=1"></script>
   <title data-en="Pricing · Octop Bot">定价 · Octop Bot</title>
   <meta name="description" content="Octop Bot 会员套餐、加油包和按量单价。本机 Bot 免费，云端协同按积分计费。" data-en-content="Octop Bot memberships, credit packs and pay-as-you-go prices. Bots on your computer are free; the cloud is billed in credits.">
   <meta name="theme-color" content="#f7f6f2" media="(prefers-color-scheme: light)">
@@ -17,9 +17,10 @@
   <link rel="canonical" href="https://octop-bot.lynxce.cn/pricing.html">
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="stylesheet" href="assets/site.css?v=17">
-  <script src="assets/site.js?v=16" defer></script>
-  <script src="assets/pricing.js?v=6" defer></script>
+  <link rel="stylesheet" href="assets/site.css?v=19">
+  <script src="assets/auth.js?v=1" defer></script>
+  <script src="assets/site.js?v=17" defer></script>
+  <script src="assets/pricing.js?v=7" defer></script>
 </head>
 <body>
   <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
@@ -70,13 +71,13 @@
       <h1 class="display" data-en="Bots run free on your computer. &lt;br&gt;Pay only for the cloud.">Bot 在你电脑上免费跑<br>云端协同按需付费</h1>
       <p class="lead" data-en="Bots on your computer use your own models and machine, and cost no credits. With a Lynxce account, text, images, video and cloud computers are billed in credits; members get credits every month.">本机 Bot 用你自己的模型和电脑，不花积分。登录灵策账号后，文本对话、作图、做视频和云电脑按积分计费；会员每月送积分，解锁更多协同能力。</p>
       <div class="price-tabs" id="price-tabs" role="tablist">
-        <button type="button" role="tab" data-view="plans" aria-selected="true" data-en="Membership">会员套餐</button>
-        <button type="button" role="tab" data-view="packs" aria-selected="false" data-en="Credit packs">加油包</button>
-        <button type="button" role="tab" data-view="enterprise" aria-selected="false" data-en="Enterprise">企业定制</button>
+        <button type="button" id="tab-plans" role="tab" aria-controls="v-plans" data-view="plans" aria-selected="true" data-en="Membership">会员套餐</button>
+        <button type="button" id="tab-packs" role="tab" aria-controls="v-packs" data-view="packs" aria-selected="false" tabindex="-1" data-en="Credit packs">加油包</button>
+        <button type="button" id="tab-enterprise" role="tab" aria-controls="v-enterprise" data-view="enterprise" aria-selected="false" tabindex="-1" data-en="Enterprise">企业定制</button>
       </div>
     </section>
 
-    <section class="wrap" id="v-plans">
+    <section class="wrap" id="v-plans" role="tabpanel" aria-labelledby="tab-plans">
       <div class="cycle-wrap">
         <div class="cycle" id="cycle" role="group" aria-label="付款周期" data-en-aria-label="Billing period">
           <button type="button" data-cycle="month" aria-pressed="true" data-en="Monthly">月付</button>
@@ -87,7 +88,7 @@
       <p class="price-note" id="plans-note"></p>
     </section>
 
-    <section class="wrap" id="v-packs" hidden>
+    <section class="wrap" id="v-packs" role="tabpanel" aria-labelledby="tab-packs" hidden>
       <div class="buy">
         <div>
           <h2 class="h3" data-en="Top up when you run low">积分不够时，临时补一点</h2>
@@ -107,12 +108,13 @@
           <div class="line"><span data-en="Usable in Octop Bot and Lynxce">Octop 与灵策通用</span></div>
           <div class="line"><span data-en="With membership">和会员</span><b data-en="Stacks">可叠加使用</b></div>
           <a class="btn btn-primary" id="pack-buy" href="#"></a>
+          <p data-en="Pay with WeChat Pay, Alipay or card (Visa, Mastercard…)">支持微信、支付宝、银行卡（Visa / Mastercard 等）</p>
           <p class="price-sub" data-en="Until checkout opens here, top up inside the Octop Bot app.">网页购买开通前，可以先在 Octop Bot 客户端里充值。</p>
         </aside>
       </div>
     </section>
 
-    <section class="wrap" id="v-enterprise" hidden>
+    <section class="wrap" id="v-enterprise" role="tabpanel" aria-labelledby="tab-enterprise" hidden>
       <div class="enterprise" aria-labelledby="enterprise-title">
         <div class="enterprise-head">
           <span class="eyebrow" data-en="For teams and companies">面向团队和企业</span>

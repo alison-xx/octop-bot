@@ -26,7 +26,14 @@ data class BotProfile(
     val systemPrompt: String? = null,
     /** True for Bots defined on this phone (Lynxce mode); they can be edited and deleted. */
     val isLocal: Boolean = false,
-)
+    val state: String? = null,
+    val preparing: Boolean = false,
+    val lastError: String? = null,
+) {
+    val canSend: Boolean get() = isLocal || (!preparing && state != "failed")
+}
+
+fun shouldPollBots(bots: List<BotProfile>): Boolean = bots.any { !it.isLocal && it.preparing }
 
 data class ConversationSummary(
     val id: String,

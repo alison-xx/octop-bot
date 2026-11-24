@@ -14,6 +14,7 @@ from fastapi import APIRouter, Body, Depends, Request
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
+from octop.api.common.bot_cloud import no_cloud_tenant
 from octop.api.deps import current_user, get_server, require_admin
 from octop.infra.agents.settings.acp_host import acp_host_ask, acp_host_status
 from octop.infra.errors import ErrorCode, OctopError
@@ -21,7 +22,8 @@ from octop.infra.utils.locale import resolve_request_locale
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+# Host-level operator features: not for cloud tenants.
+router = APIRouter(dependencies=[Depends(no_cloud_tenant)])
 
 _BUILTIN_RUNNERS = frozenset(
     {

@@ -117,15 +117,24 @@ def _parse_https_host(url: str) -> tuple[str, int | None]:
 def _check_ip_not_private(ip_str: str, *, host: str = "") -> None:
     if _ip_in_allowlist(ip_str) or (host and _host_in_allowlist(host)):
         return
-    addr = ipaddress.ip_address(ip_str)
-    if (
-        addr.is_private
-        or addr.is_loopback
-        or addr.is_link_local
-        or addr.is_reserved
-        or addr.is_multicast
-    ):
+    if not is_public_ip(ip_str):
         raise UnsafeOutboundUrl("private or reserved IP addresses are not allowed")
+
+
+def is_public_ip(ip_str: str) -> bool:
+    """A globally routable unicast address (an IPv4-mapped IPv6 address is judged as IPv4).
+
+    ``is_global`` also rules out shared address space (100.64.0.0/10), benchmarking and
+    documentation ranges, which ``is_private`` alone lets through.
+    """
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    mapped = getattr(addr, "ipv4_mapped", None)
+    if mapped is not None:
+        addr = mapped
+    return addr.is_global and not addr.is_multicast
 
 
 def _check_ip_literal(host: str) -> None:

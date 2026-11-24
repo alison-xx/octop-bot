@@ -52,6 +52,13 @@ struct HomeView: View {
                 AppUpdater.shared.checkIfDue()
             }
         }
+        .task(id: scenePhase == .active && shouldPollBots(model.bots)) {
+            guard scenePhase == .active, shouldPollBots(model.bots) else { return }
+            while !Task.isCancelled && shouldPollBots(model.bots) {
+                do { try await Task.sleep(for: .milliseconds(1500)) } catch { return }
+                await model.refreshPreparingBots()
+            }
+        }
         // A deleted Bot closes its conversation in the side-by-side layout.
         .onChange(of: model.bots.map(\.id)) { _, ids in
             if case .bot(let id)? = selection, !ids.contains(id) { selection = nil }
@@ -112,7 +119,7 @@ struct HomeView: View {
                             }
                         }
                         .swipeActions(edge: .leading) {
-                            Button("voice.title", systemImage: "waveform") { voiceBot = bot }.tint(.indigo)
+                            Button("voice.title", systemImage: "waveform") { voiceBot = bot }.tint(.indigo).disabled(!bot.canSend)
                         }
                         .accessibilityIdentifier("bot-\(bot.name)")
                 }
@@ -220,7 +227,7 @@ struct HomeView: View {
         if model.canEdit(bot) {
             Button("bot.edit", systemImage: "paintpalette") { editing = bot }
         }
-        Button("voice.title", systemImage: "waveform") { voiceBot = bot }
+        Button("voice.title", systemImage: "waveform") { voiceBot = bot }.disabled(!bot.canSend)
         if bot.isLocal {
             Button("common.delete", systemImage: "trash", role: .destructive) { model.deleteLocalBot(bot) }
         }
@@ -236,6 +243,7 @@ struct HomeView: View {
                 .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
         }
         .accessibilityLabel(Text("voice.title"))
+        .disabled(model.lastBot?.canSend != true)
         .padding(20)
         .disabled(model.bots.isEmpty)
     }
@@ -267,7 +275,14 @@ private struct BotRow: View {
                     }
                 }
                 Group {
-                    if motion != .idle {
+                    if !bot.isLocal && bot.state == "failed" {
+                        HStack {
+                            Text("bot.startFailed")
+                            Button("common.retry") { Task { await model.retryBot(bot) } }.buttonStyle(.borderless)
+                        }.foregroundStyle(Palette.secondary)
+                    } else if !bot.isLocal && bot.preparing {
+                        Text("bot.preparing").foregroundStyle(Palette.secondary)
+                    } else if motion != .idle {
                         Text(motion == .thinking ? "chat.thinking" : "chat.typing").foregroundStyle(bot.accent)
                     } else {
                         Text(preview?.text ?? bot.subtitle ?? "")

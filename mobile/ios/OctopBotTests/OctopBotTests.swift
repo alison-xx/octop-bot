@@ -242,6 +242,22 @@ final class LynxceCodeLoginTests: XCTestCase {
 
 @MainActor
 final class ServerTests: XCTestCase {
+    func testBotPreparationFieldsAndPolling() throws {
+        let legacy = try XCTUnwrap(ServerBackend.bot(["agent_id": "old"]))
+        let starting = try XCTUnwrap(ServerBackend.bot(["agent_id": "new", "state": "starting", "preparing": true]))
+        let failed = try XCTUnwrap(ServerBackend.bot(["agent_id": "bad", "state": "failed", "preparing": false, "last_error": "problem"]))
+        XCTAssertTrue(legacy.canSend)
+        XCTAssertNil(legacy.state)
+        XCTAssertFalse(starting.canSend)
+        XCTAssertEqual(starting.state, "starting")
+        XCTAssertFalse(failed.canSend)
+        XCTAssertEqual(failed.lastError, "problem")
+        XCTAssertTrue(shouldPollBots([legacy, starting, failed]))
+        XCTAssertFalse(shouldPollBots([legacy, failed]))
+        let oldJSON = #"{"id":"old","name":"Old","look":{"shape":"gumdrop","color":"blue"},"isChief":false}"#.data(using: .utf8)!
+        XCTAssertTrue(try JSONDecoder().decode(BotProfile.self, from: oldJSON).canSend)
+    }
+
     func testAddressNormalization() {
         XCTAssertEqual(ServerBackend.normalize("nas.local:8080/")?.absoluteString, "https://nas.local:8080")
         XCTAssertEqual(ServerBackend.normalize("http://10.0.0.2:8080")?.absoluteString, "http://10.0.0.2:8080")
@@ -472,6 +488,21 @@ private final class FakeBackend: ChatBackend {
 
 @MainActor
 final class QueueTests: XCTestCase {
+    func testPreparingAndFailedBotsDoNotSend() async {
+        let app = AppModel()
+        let backend = FakeBackend()
+        await app.use(backend)
+        let chat = app.session(for: app.bots[0])
+        chat.bot.preparing = true
+        chat.send("preparing")
+        chat.bot.preparing = false
+        chat.bot.state = "failed"
+        chat.send("failed")
+        XCTAssertTrue(backend.sent.isEmpty)
+        XCTAssertTrue(chat.messages.isEmpty)
+        XCTAssertTrue(chat.queued.isEmpty)
+    }
+
     func testMessagesWrittenDuringAReplyAreSentInOrderAfterIt() async throws {
         let app = AppModel()
         let backend = FakeBackend()

@@ -167,7 +167,7 @@
     return li;
   }
 
-  function renderPlans() {
+  function renderPlans(animate = false) {
     const box = $("#plans");
     if (!box || !pricing) return;
     const m = media();
@@ -197,6 +197,10 @@
         card.append(renew);
 
         const credits = node("div", "credits");
+        if (animate) {
+          amount.classList.add("pricing-enter");
+          credits.classList.add("pricing-enter");
+        }
         const main = node("div", "row");
         if (plan.creditsNote) main.append(node("span", "", "✦ " + pick(plan.creditsNote)));
         else {
@@ -211,9 +215,6 @@
         if (plan.monthly === 0) {
           button.textContent = t("免费开始", "Start free");
           button.href = "https://bot.lynxce.cn";
-        } else if (pricing.membershipOpen) {
-          button.textContent = t(`开通${pick(plan.name)}版`, `Get ${pick(plan.name)}`);
-          button.href = "#";
         } else {
           button.textContent = t("即将开通", "Coming soon");
           button.setAttribute("aria-disabled", "true");
@@ -293,8 +294,9 @@
         ? t(`请输入 ${min}–${num(max)} 之间的整数`, `Enter a whole number from ${min} to ${num(max)}`)
         : "";
     const buy = $("#pack-buy");
-    if (pricing.packsOpen && yuan !== null) {
-      buy.textContent = t(`${money(yuan)} 立即购买`, `Buy for ${money(yuan)}`);
+    // Lynxce's cashier cannot take the chosen amount yet: the buyer picks the pack there.
+    if (pricing.packsOpen && window.OctopAuth.config.checkoutEnabled && yuan !== null) {
+      buy.textContent = t("去收银台选择金额", "Choose an amount at checkout");
       buy.removeAttribute("aria-disabled");
       buy.classList.remove("disabled");
     } else {
@@ -401,9 +403,44 @@
 
   /* ---------- views: plans or packs ---------- */
   const VIEW_HASH = { plans: "", packs: "#credits", enterprise: "#enterprise" };
-  function showView(view) {
-    document.querySelectorAll("#price-tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === view)));
-    for (const name of Object.keys(VIEW_HASH)) $("#v-" + name).hidden = name !== view;
+  const segments = [$("#price-tabs"), $("#cycle")];
+  for (const group of segments) {
+    const indicator = node("span", "segment-indicator");
+    indicator.setAttribute("aria-hidden", "true");
+    group.prepend(indicator);
+  }
+  function positionIndicator(group) {
+    const active = group.querySelector('[aria-selected="true"], [aria-pressed="true"]');
+    if (!active || !active.offsetWidth) return;
+    const indicator = group.querySelector(".segment-indicator");
+    indicator.style.setProperty("--indicator-scale", active.offsetWidth);
+    indicator.style.transform = `translateX(${active.offsetLeft}px) scaleX(${active.offsetWidth})`;
+    if (!indicator.classList.contains("ready")) {
+      requestAnimationFrame(() => requestAnimationFrame(() => indicator.classList.add("ready")));
+    }
+  }
+  function positionIndicators() {
+    segments.forEach(positionIndicator);
+  }
+  let currentView = null;
+  function showView(view, animate = true) {
+    const changed = currentView !== view;
+    document.querySelectorAll("#price-tabs button").forEach((b) => {
+      const selected = b.dataset.view === view;
+      b.setAttribute("aria-selected", String(selected));
+      b.tabIndex = selected ? 0 : -1;
+    });
+    for (const name of Object.keys(VIEW_HASH)) {
+      const panel = $("#v-" + name);
+      panel.hidden = name !== view;
+      panel.classList.remove("pricing-enter");
+      if (name === view && changed && animate) {
+        void panel.offsetWidth;
+        panel.classList.add("pricing-enter");
+      }
+    }
+    currentView = view;
+    positionIndicators();
   }
 
   document.addEventListener("click", (e) => {
@@ -413,9 +450,11 @@
       history.replaceState(null, "", VIEW_HASH[tab.dataset.view] || location.pathname + location.search);
     }
     const c = e.target.closest("#cycle button");
-    if (c) {
+    if (c && cycle !== c.dataset.cycle) {
       cycle = c.dataset.cycle;
-      renderPlans();
+      document.querySelectorAll("#cycle button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.cycle === cycle)));
+      positionIndicator($("#cycle"));
+      renderPlans(true);
     }
     const p = e.target.closest(".pack");
     if (p) {
@@ -435,14 +474,50 @@
       modelTab = m.dataset.tab;
       renderRates();
     }
+    if (e.target.closest("#pack-buy")) {
+      e.preventDefault();
+      if (!pricing?.packsOpen || !window.OctopAuth.config.checkoutEnabled || e.target.closest(".disabled")) return;
+      const auth = window.OctopAuth;
+      if (!auth.requireLogin("/pricing.html#credits")) return;
+      auth.api("/api/billing/recharge/checkout-link", { method: "POST", body: { site: "octopbot", returnUrl: "https://octop-bot.lynxce.cn/pay/result.html" } }).then((data) => {
+        const url = new URL(data.url);
+        if (url.origin !== "https://admin.lynxce.cn" || url.pathname !== "/recharge" || url.username || url.password) throw new Error("Invalid checkout URL");
+        url.searchParams.append("tab", "boost"); location.assign(url.href);
+      }).catch(() => { alert(t("无法打开收银台，请稍后重试。", "Unable to open checkout. Please try again.")); });
+    }
     if (e.target.closest("a.disabled")) e.preventDefault();
   });
   $("#custom-amount")?.addEventListener("input", (e) => {
     customAmount = e.target.value.trim();
     renderPacks();
   });
-  document.addEventListener("langchange", renderAll);
-  showView(location.hash === "#credits" ? "packs" : location.hash === "#enterprise" ? "enterprise" : "plans");
+  $("#price-tabs").addEventListener("keydown", (e) => {
+    const buttons = [...$("#price-tabs").querySelectorAll('[role="tab"]')];
+    const index = buttons.indexOf(e.target);
+    if (index < 0) return;
+    let next;
+    if (e.key === "ArrowRight") next = (index + 1) % buttons.length;
+    else if (e.key === "ArrowLeft") next = (index + buttons.length - 1) % buttons.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = buttons.length - 1;
+    else return;
+    e.preventDefault();
+    buttons[next].focus();
+    buttons[next].click();
+  });
+  document.addEventListener("langchange", () => {
+    renderAll();
+    positionIndicators();
+  });
+  window.addEventListener("resize", positionIndicators);
+  document.fonts.ready.then(positionIndicators);
+  document.fonts.addEventListener("loadingdone", positionIndicators);
+  window.addEventListener("hashchange", () => {
+    const view = Object.keys(VIEW_HASH).find((name) => VIEW_HASH[name] === location.hash);
+    if (view) showView(view);
+  });
+  showView(Object.keys(VIEW_HASH).find((name) => VIEW_HASH[name] === location.hash) || "plans", false);
+  window.OctopAuth.ready.then(async () => { await window.OctopAuth.redeemHash(); renderPacks(); });
 
   const getJson = (url, timeoutMs = 8000) => {
     const ctrl = new AbortController();

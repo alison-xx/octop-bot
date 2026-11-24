@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.device.DeviceConnectors
 import io.github.alisonxx.octopbot.model.BotProfile
+import io.github.alisonxx.octopbot.model.shouldPollBots
 import io.github.alisonxx.octopbot.model.FileAttachment
 import io.github.alisonxx.octopbot.model.FileCards
 import io.github.alisonxx.octopbot.model.GroupSummary
@@ -44,6 +45,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -126,8 +128,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     /** The recharge page was opened; coming back refreshes the balance. */
     private var rechargeOpened = false
     /** The app comes back to the foreground: the balance may have changed on the website or another device. */
+    private var pollJob: Job? = null
     private val foreground = LifecycleEventObserver { _, event ->
-        if (event == Lifecycle.Event.ON_START && session.value is SessionState.Ready) refreshBalance()
+        if (event == Lifecycle.Event.ON_START && session.value is SessionState.Ready) {
+            refreshBalance()
+            if (shouldPollBots(_bots.value)) refreshDirectory()
+        }
+        if (event == Lifecycle.Event.ON_STOP) { pollJob?.cancel(); pollJob = null }
     }
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing
@@ -306,6 +313,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     fun signOut(notice: String? = null, reopenServer: Boolean = false) {
         val backend = (session.value as? SessionState.Ready)?.backend ?: return
+        pollJob?.cancel()
+        pollJob = null
         stopReading()
         voiceInput.cancel()
         chats.clear()
@@ -353,7 +362,46 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
                 }
             }
             _refreshing.value = false
+            scheduleBotPolling()
             _launchReady.value = true
+        }
+    }
+
+    private fun scheduleBotPolling() {
+        if (!shouldPollBots(_bots.value) || !ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            pollJob?.cancel()
+            pollJob = null
+            return
+        }
+        if (pollJob?.isActive == true) return
+        pollJob = viewModelScope.launch {
+            while (shouldPollBots(_bots.value)) {
+                delay(1500)
+                val server = (session.value as? SessionState.Ready)?.backend as? ServerBackend ?: break
+                try {
+                    val bots = server.bots()
+                    _bots.value = bots
+                    _directoryError.value = null
+                    store.setDirectory(DirectoryCache(bots, _groups.value))
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    if (error is ApiException && error.kind == ApiException.Kind.Unauthorized) {
+                        failed(error)
+                        break
+                    }
+                    _directoryError.value = resources.describe(error)
+                }
+            }
+        }
+    }
+
+    fun retryBot(bot: BotProfile) {
+        val server = (session.value as? SessionState.Ready)?.backend as? ServerBackend ?: return
+        viewModelScope.launch {
+            runCatching { server.startBot(bot) }
+                .onSuccess { refreshDirectory() }
+                .onFailure { _directoryError.value = resources.describe(it) }
         }
     }
 
