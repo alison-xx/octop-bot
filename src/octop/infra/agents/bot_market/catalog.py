@@ -128,9 +128,16 @@ class Category(BaseModel):
 class Catalog(BaseModel):
     categories: list[Category]
     templates: list[Template]
+    portraits: frozenset[str] = Field(
+        default=frozenset(), description="Slugs that ship a portrait, read once at load."
+    )
 
     def get(self, slug: str) -> Template | None:
         return next((t for t in self.templates if t.slug == slug), None)
+
+    def portrait(self, slug: str) -> Path | None:
+        """The portrait file, without touching the disk (see ``portraits``)."""
+        return AVATARS_DIR / f"{slug}.webp" if slug in self.portraits else None
 
 
 def avatar_path(slug: str) -> Path | None:
@@ -140,7 +147,10 @@ def avatar_path(slug: str) -> Path | None:
 
 @lru_cache(maxsize=1)
 def load_catalog() -> Catalog:
-    """Read and validate every bundled template once per process."""
+    """Read and validate every bundled template once per process.
+
+    Blocking file I/O on the first call: async callers use ``asyncio.to_thread``.
+    """
     raw = json.loads((ROOT / "categories.json").read_text(encoding="utf-8"))
     categories = [Category.model_validate(item) for item in raw]
     order = {c.id: i for i, c in enumerate(categories)}
@@ -153,4 +163,5 @@ def load_catalog() -> Catalog:
             raise ValueError(f"{path.name}: unknown category {template.category!r}")
         templates.append(template)
     templates.sort(key=lambda t: (order[t.category], t.slug))
-    return Catalog(categories=categories, templates=templates)
+    portraits = frozenset(t.slug for t in templates if avatar_path(t.slug) is not None)
+    return Catalog(categories=categories, templates=templates, portraits=portraits)

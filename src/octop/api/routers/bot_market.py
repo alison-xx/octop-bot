@@ -12,9 +12,9 @@ from pydantic import BaseModel, Field
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.bot_appearance import Character
 from octop.infra.agents.bot_market.catalog import (
+    Catalog,
     Locale,
     Template,
-    avatar_path,
     load_catalog,
     pick_locale,
 )
@@ -114,13 +114,18 @@ def _locale(request: Request, locale: str | None) -> Locale:
     return pick_locale(locale or resolve_request_locale(request))
 
 
-def _avatar(t: Template) -> str | None:
-    if avatar_path(t.slug) is None:
+async def _catalog() -> Catalog:
+    # Cached after the first call, which reads every template file.
+    return await asyncio.to_thread(load_catalog)
+
+
+def _avatar(catalog: Catalog, t: Template) -> str | None:
+    if t.slug not in catalog.portraits:
         return None
     return f"/api/octop-bot/market/{t.slug}/avatar?v={t.version}"
 
 
-def _card(t: Template, loc: Locale) -> MarketCard:
+def _card(catalog: Catalog, t: Template, loc: Locale) -> MarketCard:
     return MarketCard(
         slug=t.slug,
         category=t.category,
@@ -128,7 +133,7 @@ def _card(t: Template, loc: Locale) -> MarketCard:
         name=t.name.get(loc),
         tagline=t.tagline.get(loc),
         look=t.look,
-        avatar=_avatar(t),
+        avatar=_avatar(catalog, t),
     )
 
 
@@ -139,8 +144,8 @@ def _integration(kind: str, loc: Locale) -> MarketIntegration:
     return MarketIntegration(kind=kind, name=getattr(entry.name, loc), color=entry.color)
 
 
-def _template(slug: str) -> Template:
-    template = load_catalog().get(slug)
+def _template(catalog: Catalog, slug: str) -> Template:
+    template = catalog.get(slug)
     if template is None:
         raise OctopError.localized(ErrorCode.NOT_FOUND)
     return template
@@ -154,7 +159,7 @@ def _template(slug: str) -> Template:
 )
 async def market(request: Request, locale: LocaleParam = None) -> Market:
     loc = _locale(request, locale)
-    catalog = load_catalog()
+    catalog = await _catalog()
     counts: dict[str, int] = {}
     for t in catalog.templates:
         counts[t.category] = counts.get(t.category, 0) + 1
@@ -165,7 +170,7 @@ async def market(request: Request, locale: LocaleParam = None) -> Market:
             )
             for c in catalog.categories
         ],
-        templates=[_card(t, loc) for t in catalog.templates],
+        templates=[_card(catalog, t, loc) for t in catalog.templates],
     )
 
 
@@ -176,10 +181,11 @@ async def market(request: Request, locale: LocaleParam = None) -> Market:
     description="Public. Everything the import will set up: rules, memory, skills, routines, connectors.",
 )
 async def market_detail(slug: str, request: Request, locale: LocaleParam = None) -> MarketDetail:
-    t = _template(slug)
+    catalog = await _catalog()
+    t = _template(catalog, slug)
     loc = _locale(request, locale)
     return MarketDetail(
-        **_card(t, loc).model_dump(),
+        **_card(catalog, t, loc).model_dump(),
         version=t.version,
         description=t.description.get(loc),
         role=t.role.get(loc),
@@ -210,7 +216,7 @@ async def market_detail(slug: str, request: Request, locale: LocaleParam = None)
     description="Public 512px WebP. 404 when the template draws its SVG character instead.",
 )
 async def market_avatar(slug: str) -> FileResponse:
-    path = avatar_path(_template(slug).slug)
+    path = (await _catalog()).portrait(slug)
     if path is None:
         raise OctopError.localized(ErrorCode.NOT_FOUND)
     return FileResponse(
@@ -249,7 +255,7 @@ async def import_bot(body: ImportBody, request: Request, user: Owner, server: Se
         cron=runtime.cron_manager,
         user_id=user.id,
         username=user.username,
-        slug=_template(body.slug).slug,
+        slug=body.slug,
         locale=_locale(request, None),
         name=body.name,
         routine_ids=body.routines,

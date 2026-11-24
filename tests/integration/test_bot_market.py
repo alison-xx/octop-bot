@@ -1,5 +1,7 @@
 """Bot market: the public catalog and importing a template as my own Bot."""
 
+from octop_harness.middleware.bootstrap import bootstrap_marker_exists
+
 from octop.infra.agents.bot_market.catalog import load_catalog
 
 BASE = "/api/octop-bot"
@@ -54,6 +56,11 @@ async def test_import_creates_a_ready_bot_with_chosen_routines(env_admin_alice):
     assert skill.startswith("---\nname: daily-brief\ndescription: ")
     memory = await workspace.aread_text("MEMORY.md")
     assert "转化率 = 支付买家数 ÷ 访客数" in memory
+    # The template replaces first-run onboarding, so its persona and memory reach the
+    # harness (the test harness manager is a mock; check the row's own workspace).
+    assert bootstrap_marker_exists(registry._backend_workspace_for_row(row))
+    harness = registry._build_harness_config(row)
+    assert harness.system_prompt == row.system_prompt and harness.memory != ()
 
     jobs = server.app_runtime.cron_manager.list_by_agent(agent_id)
     assert [(j.cron_id, j.name, j.trigger) for j in jobs] == [

@@ -69,6 +69,11 @@ def memory_file(template: Template, locale: Locale) -> bytes:
     return f"{head}\n\n<!-- {note} -->\n{facts}\n".encode()
 
 
+def _portrait_bytes(slug: str) -> bytes | None:
+    path = avatar_path(slug)
+    return path.read_bytes() if path else None
+
+
 def _available_name(rows: list[AgentRow], wanted: str) -> str:
     taken = {row.name.casefold() for row in rows}
     name, index = wanted, 1
@@ -104,10 +109,12 @@ async def import_template(
     unknown ids are ignored).
     Importing the same template twice gives two Bots; names get a number suffix.
     """
+    from octop_harness.middleware.bootstrap import BOOTSTRAPPED_MARKER
+
     from octop.infra.agents.manager import AgentCreateSpec
     from octop.infra.cron.manager import CronCreateSpec
 
-    template = load_catalog().get(slug)
+    template = (await asyncio.to_thread(load_catalog)).get(slug)
     if template is None:
         raise OctopError.localized(ErrorCode.NOT_FOUND)
     chosen = [
@@ -118,10 +125,11 @@ async def import_template(
     if chosen and cron is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "scheduler not running")
 
+    # Chief first: a failed Chief create must not leave a half-imported Bot holding the quota.
+    chief_id = await ensure_chief(services, registry, user_id)
     rows = await asyncio.to_thread(registry.list_agents, user_id)
     final_name = _available_name(rows, (name or "").strip()[:64] or template.name.get(locale))
-    portrait = avatar_path(slug)
-    portrait_bytes = await asyncio.to_thread(portrait.read_bytes) if portrait else None
+    portrait_bytes = await asyncio.to_thread(_portrait_bytes, slug)
 
     async def seed(_row: Any, workspace: Any) -> None:
         files = [skill_file(template, i, locale) for i in range(len(template.skills))]
@@ -137,6 +145,10 @@ async def import_template(
         )
         if portrait_bytes:
             await write_workspace_avatar(workspace, portrait_bytes)
+        # The template is the onboarding: without the marker the harness drops the
+        # system prompt and memory and runs the generic first-run interview instead.
+        marker = workspace.resolve_path(None, default=BOOTSTRAPPED_MARKER)
+        await asyncio.to_thread(workspace.write_text, marker, "", force=True)
 
     row = await registry.create(
         AgentCreateSpec(
@@ -150,7 +162,6 @@ async def import_template(
         defer_bootstrap=True,
         workspace_initializer=seed,
     )
-    chief_id = await ensure_chief(services, registry, user_id)
     await asyncio.to_thread(set_character, services.settings_repo, row, chief_id, template.look)
     if portrait_bytes:
         icon_url = f"{agent_avatar_api_path(row.agent_id)}?market={slug}-{template.version}"
