@@ -26,6 +26,11 @@ export function readWechatLanding(url: string, redirectUri: string): WechatLogin
   }
 }
 
+/** Only WeChat's own https pages may load inside the sign-in window. */
+export function isWechatPage(url: string): boolean {
+  return /^https:\/\/([a-z0-9-]+\.)*qq\.com\//i.test(url);
+}
+
 let pending: { win: BrowserWindow; result: Promise<WechatLoginResult> } | null = null;
 export function openWechatLogin(parent: BrowserWindow | null, zh: boolean, qrUrl: string, redirectUri: string): Promise<WechatLoginResult> {
   if (typeof qrUrl !== "string" || typeof redirectUri !== "string" || !validWechatUrls(qrUrl, redirectUri)) return Promise.resolve({ ok: false, reason: "failed" });
@@ -46,6 +51,7 @@ export function openWechatLogin(parent: BrowserWindow | null, zh: boolean, qrUrl
     const intercept = (event: { preventDefault(): void }, url: string) => {
       const outcome = readWechatLanding(url, redirectUri);
       if (outcome) { event.preventDefault(); finish(outcome); }
+      else if (!isWechatPage(url)) event.preventDefault();
     };
     const redirect = new URL(redirectUri);
     partition.webRequest.onBeforeRequest({ urls: [`${redirect.origin}/*`] }, (details, callback) => {
@@ -59,7 +65,7 @@ export function openWechatLogin(parent: BrowserWindow | null, zh: boolean, qrUrl
       const outcome = readWechatLanding(url, redirectUri);
       if (outcome) finish(outcome);
       // Only WeChat's own pages may replace the QR page inside this window.
-      else if (/^https:\/\/([a-z0-9-]+\.)*qq\.com\//i.test(url)) void win.loadURL(url);
+      else if (isWechatPage(url)) void win.loadURL(url);
       return { action: "deny" };
     });
     win.webContents.on("page-title-updated", (event) => event.preventDefault());
