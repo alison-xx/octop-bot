@@ -289,9 +289,16 @@
         ? t(`请输入 ${min}–${num(max)} 之间的整数`, `Enter a whole number from ${min} to ${num(max)}`)
         : "";
     const buy = $("#pack-buy");
-    // Lynxce's cashier cannot take the chosen amount yet: the buyer picks the pack there.
-    if (pricing.packsOpen && window.OctopAuth.config.checkoutEnabled && yuan !== null) {
-      buy.textContent = t("去收银台选择金额", "Choose an amount at checkout");
+    const cfg = window.OctopAuth.config;
+    // The custom amount shows only once Lynxce's cashier takes amountYuan.
+    const customRow = $("#custom-amount")?.closest(".pack.custom");
+    if (customRow) customRow.hidden = !cfg.checkoutAmount;
+    // Until the cashier can preselect (packageId / amountYuan), the buyer picks the amount there.
+    const preselect = customAmount ? cfg.checkoutAmount : cfg.checkoutPackageId;
+    if (pricing.packsOpen && cfg.checkoutEnabled && yuan !== null) {
+      buy.textContent = preselect
+        ? t(`${money(yuan)} 立即购买`, `Buy for ${money(yuan)}`)
+        : t("去收银台选择金额", "Choose an amount at checkout");
       buy.removeAttribute("aria-disabled");
       buy.classList.remove("disabled");
     } else {
@@ -437,7 +444,7 @@
       if (!pricing?.packsOpen || !window.OctopAuth.config.checkoutEnabled || e.target.closest(".disabled")) return;
       const auth = window.OctopAuth;
       if (!auth.requireLogin("/pricing.html#credits")) return;
-      auth.api("/api/billing/recharge/checkout-link", { method: "POST", body: { site: "octopbot", returnUrl: "https://octop-bot.lynxce.cn/pay/result.html" } }).then((data) => {
+      checkoutBody(auth).then((body) => auth.api("/api/billing/recharge/checkout-link", { method: "POST", body })).then((data) => {
         const url = new URL(data.url);
         if (url.origin !== "https://admin.lynxce.cn" || url.pathname !== "/recharge" || url.username || url.password) throw new Error("Invalid checkout URL");
         url.searchParams.append("tab", "boost"); location.assign(url.href);
@@ -445,6 +452,28 @@
     }
     if (e.target.closest("a.disabled")) e.preventDefault();
   });
+  /* checkout-link takes site and returnUrl, plus either packageId (Lynxce's pack with the same
+     price, from its octop_bot catalog) or amountYuan (custom amount, 10–5000), never both.
+     Each is sent only once its switch is on; without them the cashier asks for the amount. */
+  async function checkoutBody(auth) {
+    const body = { site: "octopbot", returnUrl: "https://octop-bot.lynxce.cn/pay/result.html" };
+    const cfg = auth.config;
+    const custom = Number(customAmount);
+    if (customAmount) {
+      if (cfg.checkoutAmount && Number.isInteger(custom) && custom >= 10 && custom <= 5000) body.amountYuan = custom;
+      return body;
+    }
+    if (!cfg.checkoutPackageId) return body;
+    try {
+      const data = await auth.api("/api/billing/recharge/packages?product=octop_bot");
+      const hit = (data?.packages || []).find((p) => Number(p.amountCents) === pack * 100);
+      if (hit && typeof hit.id === "string") body.packageId = hit.id;
+    } catch (_) {
+      /* No preselection: the cashier still works. */
+    }
+    return body;
+  }
+
   $("#custom-amount")?.addEventListener("input", (e) => {
     customAmount = e.target.value.trim();
     renderPacks();
