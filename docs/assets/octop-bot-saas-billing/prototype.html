@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="zh-CN" data-lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Octop Bot 定价与账户原型</title>
+<link rel="stylesheet" href="../../../website/assets/site.css">
+<style>
+  /* Prototype-only additions on top of the website's own stylesheet. */
+  body { background: var(--bg); }
+  .proto { position: sticky; top: 0; z-index: 60; background: #1b1a18; color: #eee; font-size: 12px; display: flex; gap: 6px; align-items: center; padding: 6px 14px; flex-wrap: wrap; }
+  .proto b { color: #ffd86b; margin-right: 6px; }
+  .proto a { color: #ddd; text-decoration: none; padding: 2px 8px; border-radius: 6px; background: #2d2b28; }
+  .proto a.on { background: #ffd86b; color: #1b1a18; }
+  body.clean .proto { display: none; }
+  .header { position: sticky; top: 0; }
+  body:not(.clean) .header { top: 30px; }
+  .page { display: none; }
+  .page.on { display: block; }
+  .draft { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #9a6a0c; background: rgba(255, 196, 61, .18); border-radius: 999px; padding: 1px 8px; font-weight: 500; vertical-align: middle; letter-spacing: 0; }
+  .muted { color: var(--ink-3); }
+  .center { text-align: center; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #ff8a5c, #f2484f); color: #fff; display: inline-grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; }
+  .acct-btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px 12px 3px 3px; background: var(--surface); font-size: 13px; color: var(--ink); text-decoration: none; }
+  .acct-btn small { color: var(--ink-3); }
+
+  .price-hero { padding: 64px 0 28px; text-align: center; }
+  .price-hero h1 { font-size: clamp(34px, 5vw, 54px); letter-spacing: -0.03em; margin: 12px 0 10px; line-height: 1.1; }
+  .price-hero p { color: var(--ink-2); font-size: 17px; max-width: 660px; margin: 0 auto; }
+  .cycle { display: inline-flex; margin-top: 22px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
+  .cycle button { border: 0; background: none; padding: 7px 16px; border-radius: 999px; font: inherit; font-size: 14px; color: var(--ink-2); cursor: pointer; }
+  .cycle button.on { background: var(--ink); color: var(--on-ink); }
+  .cycle em { font-style: normal; color: var(--accent); font-size: 12px; margin-left: 4px; }
+  .cycle button.on em { color: inherit; opacity: .8; }
+  .plans { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 26px 0 10px; }
+  .plan { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 20px; display: flex; flex-direction: column; gap: 12px; position: relative; }
+  .plan.hot { border-color: var(--ink); box-shadow: var(--shadow-lg); }
+  .plan .tag { position: absolute; top: -11px; left: 20px; background: var(--ink); color: var(--on-ink); font-size: 11px; border-radius: 999px; padding: 2px 10px; }
+  .plan h3 { margin: 0; font-size: 18px; }
+  .plan .who { color: var(--ink-3); font-size: 13px; min-height: 36px; }
+  .plan .amount { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+  .plan .amount small { font-size: 14px; font-weight: 500; color: var(--ink-3); }
+  .plan .credits { font-size: 13px; color: var(--ink-2); background: var(--bg-soft); border-radius: 10px; padding: 8px 10px; line-height: 1.5; }
+  .plan .credits b { color: var(--ink); }
+  .plan ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 7px; font-size: 13.5px; color: var(--ink-2); }
+  .plan li::before { content: "✓"; color: var(--accent); font-weight: 700; margin-right: 8px; }
+  .plan li.off { color: var(--ink-3); }
+  .plan li.off::before { content: "–"; color: var(--ink-3); }
+  .plan .btn { justify-content: center; margin-top: auto; }
+  .note { font-size: 12.5px; color: var(--ink-3); text-align: center; margin: 6px 0 0; }
+  .packs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
+  .pack { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+  .pack.on { border-color: var(--ink); box-shadow: 0 0 0 2px var(--line-strong); }
+  .pack b { display: block; font-size: 22px; }
+  .pack span { color: var(--ink-3); font-size: 13px; }
+  .pack em { display: inline-block; margin-top: 8px; font-style: normal; font-size: 12px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
+  .rates { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 22px; }
+  .rate { border: 1px dashed var(--line-strong); border-radius: 14px; padding: 14px; font-size: 13px; color: var(--ink-2); }
+  .rate b { display: block; font-size: 15px; color: var(--ink); margin-bottom: 4px; }
+  .faq { max-width: 760px; margin: 0 auto; display: grid; gap: 10px; }
+  .faq details { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; }
+  .faq summary { cursor: pointer; font-weight: 600; }
+  .faq p { color: var(--ink-2); margin: 8px 0 0; font-size: 14px; }
+
+  .auth { min-height: calc(100vh - 160px); display: grid; place-items: center; padding: 40px 16px; }
+  .auth-card { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 28px; box-shadow: var(--shadow-lg); }
+  .auth-card .chief { width: 64px; display: block; margin: 0 auto 6px; }
+  .auth-card h2 { text-align: center; margin: 0 0 4px; }
+  .seg { display: flex; background: var(--bg-soft); border-radius: 12px; padding: 4px; margin: 16px 0 12px; }
+  .seg button { flex: 1; border: 0; background: none; padding: 8px; border-radius: 9px; font: inherit; font-size: 14px; color: var(--ink-2); cursor: pointer; }
+  .seg button.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+  .field { display: grid; gap: 6px; margin-bottom: 12px; font-size: 13px; color: var(--ink-2); }
+  .input { border: 1px solid var(--line-strong); border-radius: 12px; padding: 11px 12px; background: var(--surface); color: var(--ink-3); font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+  .input.filled { color: var(--ink); }
+  .input .get { color: var(--accent); font-size: 13px; }
+  .auth-card .btn { width: 100%; justify-content: center; }
+  .or { display: flex; align-items: center; gap: 10px; color: var(--ink-3); font-size: 12px; margin: 14px 0; }
+  .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .fine { font-size: 12px; color: var(--ink-3); text-align: center; margin-top: 12px; }
+
+  .checkout { display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px; max-width: 920px; margin: 40px auto 80px; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }
+  .panel h3 { margin: 0 0 14px; font-size: 17px; }
+  .line { display: flex; justify-content: space-between; align-items: center; font-size: 14px; padding: 8px 0; color: var(--ink-2); gap: 10px; }
+  .line b { color: var(--ink); }
+  .line.total { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 14px; font-size: 16px; }
+  .line.total b { font-size: 22px; }
+  .methods { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .method { border: 1px solid var(--line-strong); border-radius: 12px; padding: 12px; display: flex; gap: 8px; align-items: center; font-size: 14px; }
+  .method.on { border-color: var(--ink); box-shadow: 0 0 0 2px var(--line); }
+  .dot { width: 22px; height: 22px; border-radius: 6px; display: inline-grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; }
+  .qr { width: 180px; height: 180px; margin: 6px auto 10px; border-radius: 14px; background:
+      conic-gradient(#111 25%, #fff 0 50%, #111 0 75%, #fff 0) 0 0 / 24px 24px; border: 12px solid #fff; box-shadow: 0 0 0 1px var(--line-strong); }
+  .who-pays { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); background: var(--bg-soft); border-radius: 12px; padding: 10px 12px; margin-top: 14px; }
+
+  .result { max-width: 520px; margin: 60px auto 100px; text-align: center; padding: 0 16px; }
+  .result .ok { width: 64px; height: 64px; border-radius: 50%; background: #1f9d63; color: #fff; display: inline-grid; place-items: center; font-size: 30px; }
+  .result h2 { margin: 14px 0 6px; }
+  .result .panel { text-align: left; margin: 20px 0; }
+  .result .row { display: flex; gap: 10px; justify-content: center; }
+
+  .acct { display: grid; grid-template-columns: 230px 1fr; gap: 24px; padding: 28px 0 80px; }
+  .side { position: sticky; top: 110px; align-self: start; display: grid; gap: 2px; }
+  .side .me { display: flex; gap: 10px; align-items: center; padding: 6px 10px 16px; }
+  .side .me b { display: block; font-size: 14px; }
+  .side .me small { color: var(--ink-3); font-size: 12px; }
+  .side a { padding: 9px 12px; border-radius: 10px; color: var(--ink-2); text-decoration: none; font-size: 14px; }
+  .side a.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); font-weight: 600; }
+  .main h2 { margin: 4px 0 16px; font-size: 24px; }
+  .grid3 { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 14px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .stat small { color: var(--ink-3); font-size: 13px; }
+  .stat .big { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; margin: 4px 0; }
+  .stat .split { font-size: 12.5px; color: var(--ink-3); }
+  .stat .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .pill { display: inline-block; font-size: 12px; border-radius: 999px; padding: 2px 10px; background: var(--accent-soft); color: var(--accent); font-weight: 600; vertical-align: middle; }
+  .pill.gray { background: var(--bg-soft); color: var(--ink-2); }
+  .pill.green { background: rgba(31,157,99,.12); color: #1f9d63; }
+  .bars { display: grid; gap: 10px; margin-top: 12px; }
+  .bar { display: grid; grid-template-columns: 96px 1fr 70px; gap: 10px; align-items: center; font-size: 13px; color: var(--ink-2); }
+  .bar i { display: block; height: 8px; border-radius: 999px; background: var(--bg-soft); position: relative; overflow: hidden; }
+  .bar i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--w); background: var(--c, var(--ink)); border-radius: inherit; }
+  .bar b { text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+  table.t { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.t th { text-align: left; color: var(--ink-3); font-weight: 500; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  table.t td { padding: 12px; border-bottom: 1px solid var(--line); color: var(--ink-2); }
+  table.t tr:last-child td { border-bottom: 0; }
+  table.t td b { color: var(--ink); font-weight: 600; }
+  table.t .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .chip { border: 1px solid var(--line-strong); border-radius: 999px; padding: 5px 12px; font-size: 13px; color: var(--ink-2); background: var(--surface); }
+  .chip.on { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+  .item { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .item:last-child { border-bottom: 0; }
+  .item .grow { flex: 1; }
+  .item small { display: block; color: var(--ink-3); font-size: 12.5px; }
+  .ic { width: 36px; height: 36px; border-radius: 10px; background: var(--bg-soft); display: grid; place-items: center; font-size: 15px; flex: none; }
+  .plan-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+  .mini { border: 1px solid var(--line); border-radius: 14px; padding: 14px; font-size: 13px; color: var(--ink-2); background: var(--surface); }
+  .mini.cur { border-color: var(--ink); }
+  .mini b { display: block; font-size: 15px; color: var(--ink); margin-bottom: 4px; }
+  .small { font-size: 12.5px; }
+  .plan { padding: 20px 16px; }
+  .plan .renew { font-size: 12px; color: var(--ink-3); margin-top: -6px; }
+  .plan .credits .row { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
+  .plan .credits .row + .row { margin-top: 4px; }
+  .plan .credits .gift { color: var(--accent); }
+  .plan .credits .later { color: var(--ink-3); }
+  .plan .credits em { font-style: normal; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+  .plan .yr { font-size: 12px; color: var(--ink-3); }
+  body.app .header, body.app .footer { display: none; }
+  .appwrap { padding: 28px 24px 60px; background: #e9e7e2; min-height: 100vh; }
+  .appcap { max-width: 1180px; margin: 0 auto 12px; display: flex; justify-content: space-between; align-items: baseline; }
+  .appcap b { font-size: 16px; }
+  .win { max-width: 1180px; margin: 0 auto; height: 720px; background: #fbfaf8; border-radius: 14px; box-shadow: 0 30px 80px -20px rgba(0,0,0,.35); overflow: hidden; display: grid; grid-template-columns: 260px 1fr; position: relative; font-size: 14px; color: #1d1c1a; }
+  .win .bar3 { position: absolute; top: 14px; left: 16px; display: flex; gap: 7px; } .win .bar3 i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; } .win .bar3 i:nth-child(2) { background: #febc2e; } .win .bar3 i:nth-child(3) { background: #28c840; }
+  .aside { background: #f4f3f0; border-right: 1px solid #e8e6e1; padding: 46px 12px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .aside .c { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: 10px; }
+  .aside .c.on { background: #e6e4df; }
+  .aside .c .d { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 15px; }
+  .aside .c small { display: block; color: #8a877f; font-size: 12px; }
+  .acard { margin-top: auto; background: #fff; border: 1px solid #e8e6e1; border-radius: 12px; padding: 10px; display: flex; gap: 10px; align-items: center; }
+  .acard .av { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg,#ff8a5c,#f2484f); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 12px; }
+  .tierb { font-size: 10.5px; border-radius: 6px; padding: 0 6px; background: #fff2c4; color: #8a5a00; font-weight: 600; margin-left: 4px; }
+  .acard .bal { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .chatp { display: flex; flex-direction: column; min-width: 0; }
+  .chatp .top { height: 54px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #efede8; font-weight: 600; }
+  .warn { margin: 10px 24px 0; background: #fff7e6; border: 1px solid #f3d9a4; border-radius: 12px; padding: 9px 12px; display: flex; gap: 10px; align-items: center; font-size: 13px; }
+  .warn .x { margin-left: auto; color: #8a877f; }
+  .feedx { flex: 1; padding: 18px 40px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+  .msgme { align-self: flex-end; background: #1d1c1a; color: #fff; border-radius: 16px; padding: 9px 14px; max-width: 70%; }
+  .msgb { display: flex; gap: 10px; align-items: flex-start; max-width: 76%; }
+  .msgb .d { width: 30px; height: 30px; border-radius: 50%; flex: none; display: grid; place-items: center; background: #ffe1dc; }
+  .bub { background: #efeeeb; border-radius: 16px; padding: 9px 14px; }
+  .cp { background: #fff; border: 1px solid #f2c9c0; border-radius: 14px; padding: 12px 14px; margin-top: 6px; }
+  .cp strong { display: flex; gap: 8px; align-items: center; } .cp p { margin: 4px 0 10px; color: #5b5850; font-size: 13px; }
+  .cp .btns { display: flex; gap: 8px; flex-wrap: wrap; } .cp .btns span { border-radius: 10px; padding: 6px 12px; font-size: 13px; border: 1px solid #ddd; background: #fff; }
+  .cp .btns .pri { background: #1d1c1a; color: #fff; border-color: #1d1c1a; }
+  .cp .tip { font-size: 12px; color: #8a877f; margin-top: 8px; }
+  .composerx { margin: 0 40px 20px; border: 1px solid #e8e6e1; border-radius: 18px; background: #fff; padding: 12px 14px; color: #8a877f; }
+  .menu { position: absolute; left: 14px; bottom: 66px; width: 300px; background: #fff; border-radius: 16px; box-shadow: 0 18px 50px -10px rgba(0,0,0,.3); border: 1px solid #ececec; padding: 14px; z-index: 5; }
+  .menu .big2 { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .menu .rowx { display: flex; justify-content: space-between; font-size: 12.5px; color: #5b5850; padding: 3px 0; }
+  .menu .rowx b { color: #1d1c1a; font-weight: 600; }
+  .menu .two { display: flex; gap: 8px; margin: 10px 0 8px; } .menu .two span { flex: 1; text-align: center; border-radius: 10px; padding: 7px; font-size: 13px; border: 1px solid #ddd; } .menu .two .pri { background: #1d1c1a; color: #fff; border-color: #1d1c1a; }
+  .menu hr { border: 0; border-top: 1px solid #eee; margin: 8px 0; } .menu .li { padding: 6px 2px; font-size: 13.5px; color: #3d3b37; }
+  .note2 { position: absolute; right: 18px; top: 66px; width: 250px; background: #1d1c1a; color: #eee; border-radius: 12px; padding: 10px 12px; font-size: 12px; z-index: 6; }
+  .note2 b { color: #ffd86b; display: block; margin-bottom: 2px; }
+  .float { position: absolute; right: 22px; bottom: 90px; width: 330px; background: #1d1c1a; border-radius: 14px; overflow: hidden; color: #eee; box-shadow: 0 18px 40px -10px rgba(0,0,0,.4); }
+  .float .scr { height: 150px; background: repeating-linear-gradient(45deg,#2a2926 0 8px,#24231f 8px 16px); display: grid; place-items: center; color: #bbb; font-size: 13px; }
+  .float .ft { padding: 10px 12px; font-size: 12.5px; } .float .ft .btns span { background: #ffd86b; color: #1d1c1a; border-radius: 8px; padding: 4px 10px; font-size: 12px; display: inline-block; margin-top: 6px; }
+  .dlg { position: absolute; inset: 0; background: rgba(250,248,244,.6); display: grid; place-items: center; z-index: 7; }
+  .dlg .box { width: 380px; background: #fff; border-radius: 18px; padding: 20px; box-shadow: 0 30px 70px -20px rgba(0,0,0,.4); }
+  .dlg .box h4 { margin: 0 0 6px; font-size: 17px; } .dlg .box p { margin: 0 0 12px; color: #5b5850; font-size: 13.5px; }
+  .dlg .opts { display: grid; gap: 8px; } .dlg .opts span { border: 1px solid #ddd; border-radius: 12px; padding: 10px 12px; font-size: 13.5px; } .dlg .opts .pri { background: #1d1c1a; color: #fff; border-color: #1d1c1a; }
+  .phones { display: flex; gap: 26px; justify-content: center; flex-wrap: wrap; }
+  .phone { width: 300px; height: 620px; border: 10px solid #1d1c1a; border-radius: 42px; background: #fbfaf8; position: relative; overflow: hidden; font-size: 13px; }
+  .phone .cap2 { text-align: center; font-size: 12px; color: #5b5850; margin-top: 8px; }
+  .phone .st { height: 34px; } .phone .hd { padding: 4px 16px 10px; font-weight: 700; font-size: 20px; }
+  .wf { border: 1.5px dashed #b9b5ac; border-radius: 12px; padding: 10px 12px; margin: 8px 14px; color: #5b5850; }
+  .wf b { color: #1d1c1a; } .wf .bt { display: inline-block; border: 1.5px solid #1d1c1a; border-radius: 9px; padding: 3px 10px; margin: 6px 6px 0 0; color: #1d1c1a; font-size: 12px; } .wf .bt.pri { background: #1d1c1a; color: #fff; }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; background: #fff; border-radius: 20px 20px 0 0; padding: 14px 14px 26px; box-shadow: 0 -10px 30px rgba(0,0,0,.15); }
+  .sheet .grab { width: 40px; height: 4px; border-radius: 2px; background: #ddd; margin: 0 auto 10px; }
+  .phone .dim { position: absolute; inset: 0; background: rgba(0,0,0,.25); }
+  .pcap { text-align: center; max-width: 300px; font-size: 12.5px; color: #3d3b37; margin-top: 8px; }
+  .ptabs { display: inline-flex; background: var(--bg-soft); border-radius: 14px; padding: 4px; margin-top: 22px; }
+  .ptabs button { border: 0; background: none; padding: 8px 20px; border-radius: 11px; font: inherit; font-size: 14px; color: var(--ink-2); cursor: pointer; }
+  .ptabs button.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); font-weight: 600; }
+  .pview { display: none; } .pview.on { display: block; }
+  .buy { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; margin-top: 24px; }
+  .buy .summary { position: sticky; top: 110px; }
+  .packs.two { grid-template-columns: repeat(3, 1fr); }
+  .pack.custom span.inp { display: block; border-bottom: 1px solid var(--line-strong); padding: 4px 0; color: var(--ink-3); margin-top: 6px; }
+  .models { margin-top: 26px; }
+  .models .seg { display: inline-flex; margin: 0 0 12px; }
+  .tick { display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: var(--ink); color: var(--on-ink); font-size: 11px; line-height: 18px; text-align: center; }
+  .cl-hero { text-align: center; padding: 64px 0 24px; }
+  .cl-hero h1 { font-size: clamp(34px, 5vw, 48px); margin: 10px 0 8px; letter-spacing: -0.03em; }
+  .cl-filter { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 18px 0 8px; }
+  .cl-filter .chip { cursor: pointer; }
+  .cl { max-width: 860px; margin: 0 auto 90px; }
+  .cl .count { color: var(--ink-3); font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 12px; display: flex; justify-content: space-between; }
+  .rel { display: grid; grid-template-columns: 140px 1fr; gap: 24px; padding: 30px 0; border-bottom: 1px solid var(--line); }
+  .rel time { position: sticky; top: 110px; align-self: start; color: var(--ink-3); font-size: 13px; }
+  .rel h3 { margin: 0; font-family: var(--mono); font-size: 22px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .rel .headline { font-weight: 600; margin: 8px 0 10px; }
+  .badge { font-family: var(--font); font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 8px; }
+  .badge.latest { background: var(--accent); color: #fff; }
+  .badge.beta { background: rgba(122,92,240,.14); color: #7a5cf0; }
+  .badge.stable { background: rgba(31,157,99,.12); color: #1f9d63; }
+  .plats { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+  .plat { font-size: 11.5px; color: var(--ink-2); border: 1px solid var(--line-strong); border-radius: 6px; padding: 1px 7px; }
+  .grp { margin-top: 12px; }
+  .grp h4 { margin: 0 0 6px; font-size: 13px; color: var(--ink-3); font-weight: 600; }
+  .grp ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 14.5px; display: grid; gap: 6px; }
+  .grp li::marker { color: var(--accent); }
+  .grp li .plat { margin-left: 6px; }
+  @media (max-width: 900px) { .buy { grid-template-columns: 1fr; } .rel { grid-template-columns: 1fr; gap: 6px; } .rel time { position: static; } .packs.two { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 900px) {
+    .plans, .packs, .rates { grid-template-columns: 1fr 1fr; }
+    .checkout, .acct, .grid3, .grid2, .plan-row { grid-template-columns: 1fr; }
+    .side { position: static; grid-auto-flow: column; overflow-x: auto; }
+    .side .me { display: none; }
+  }
+</style>
+</head>
+<body>
+<nav class="proto" id="proto"></nav>
+
+<header class="header">
+  <div class="wrap">
+    <a class="brand" href="#pricing"><img src="../../../website/assets/app-icon.webp" alt="" width="30" height="30">Octop Bot</a>
+    <nav class="nav">
+      <a href="#">首页</a><a href="#">功能</a><a href="#">Bot 市场</a><a href="#pricing" id="navPricing">定价</a><a href="#">下载</a><a href="#">网页版</a><a href="#">使用指南</a><a href="#changelog" id="navChangelog">更新日志</a>
+    </nav>
+    <div class="header-tools" id="tools"></div>
+  </div>
+</header>
+
+<main class="page" id="p-pricing">
+  <div class="wrap">
+    <section class="price-hero">
+      <span class="eyebrow">定价</span>
+      <h1>Bot 在你电脑上免费跑<br>云端协同按需付费</h1>
+      <p>本机 Bot 用你自己的模型和电脑，不花积分。登录灵策账号后，文本对话、作图、做视频和云电脑按积分计费；会员每月送积分，解锁更多协同能力。</p>
+      <div><div class="ptabs" id="ptabs"><button class="on" data-v="plans">会员套餐</button><button data-v="packs">加油包</button></div></div>
+    </section>
+    <div class="pview on" id="v-plans">
+      <div class="center"><div class="cycle" id="cycle" style="margin-top:0"><button class="on" data-c="m">月付</button><button data-c="y">年付<em>限时 9 折</em></button></div></div>
+      <div class="plans" id="plans"></div>
+      <p class="note">每月积分从发放起 1 个月有效；年付也是每月发一次。第一期到期手动续费。签到将于第二期上线，上线前不显示那一行。</p>
+    </div>
+    <div class="pview" id="v-packs">
+      <div class="buy">
+        <div>
+          <h2 style="margin:0">积分不够时，临时补一点</h2>
+          <p class="muted" style="margin:4px 0 0">加油包适合偶尔补充；常用的话会员每月送积分更划算。</p>
+          <div class="packs two" id="packs"></div>
+        </div>
+        <div class="panel summary">
+          <h3>加油包 <span class="pill gray" style="float:right">一次性购买</span></h3>
+          <div style="font-size:36px;font-weight:700">¥50</div>
+          <div class="line"><span>到账</span><b>5,000 积分</b></div>
+          <div class="line"><span>有效期</span><b>365 天 <span class="draft">待确认</span></b></div>
+          <div class="line"><span>和会员</span><b>可叠加使用</b></div>
+          <a class="btn btn-primary" href="#result" style="width:100%;justify-content:center;margin-top:10px">¥50 立即购买</a>
+          <p class="muted small" style="margin:12px 0 0">第一期在灵策收银台付款，付完回到这里。长期使用，开通会员更划算 → <a href="#pricing">看会员</a></p>
+        </div>
+      </div>
+    </div>
+
+    <section style="padding-top:64px">
+      <div class="section-head"><h2>按量单价</h2><p class="muted">所有消耗都用积分结算；本机 Bot 用自己的模型和电脑，不花积分。</p></div>
+      <div class="rates" style="margin-top:0">
+        <div class="rate"><b>文本对话</b>按 token 计，一次普通对话约 10–20 积分</div>
+        <div class="rate"><b>作图</b>按张计（默认模型由灵策后台设定），价格读灵策</div>
+        <div class="rate"><b>做视频</b>按秒计（默认模型由灵策后台设定），价格读灵策</div>
+        <div class="rate"><b>标准云电脑</b>1.70 积分 / 分钟（约 102 / 小时），暂停不收</div>
+        <div class="rate"><b>专业云电脑</b>3.40 积分 / 分钟（约 204 / 小时）</div>
+        <div class="rate"><b>云电脑磁盘</b>4.80 积分 / GB·天，删除电脑后停止计费</div>
+      </div>
+      <div class="models card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><h3 style="margin:0">模型价格 <span class="muted small">文本：积分 / 百万 token</span></h3><div class="seg" style="margin:0"><button class="on">文本</button><button>作图</button><button>视频</button></div></div>
+        <table class="t"><thead><tr><th>模型</th><th class="num">输入</th><th class="num">输出</th><th class="num">缓存命中</th><th>看图</th><th>深度思考</th><th>可用套餐</th></tr></thead><tbody>
+          <tr><td><b>tencent/auto</b><br><small class="muted">智能路由，默认</small></td><td class="num">读后台</td><td class="num">读后台</td><td class="num">读后台</td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td>全部</td></tr>
+          <tr><td><b>更多模型</b><br><small class="muted">开通腾讯专业套餐后上线</small></td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td>—</td><td>—</td><td>标准起</td></tr>
+        </tbody></table>
+        <p class="muted small" style="margin:8px 0 0">价格从灵策后台读取，原型只示意表格结构。</p>
+      </div>
+    </section>
+
+    <section style="padding:56px 0 80px">
+      <div class="section-head center"><h2>常见问题</h2></div>
+      <div class="faq">
+        <details open><summary>不登录也能用吗？</summary><p>能。本机用法免费，自己配模型（API Key 或本地模型），数据只在这台电脑上。登录灵策账号后才有云端协同、灵策模型和云电脑。</p></details>
+        <details><summary>会员积分和加油包怎么一起用？</summary><p>都在同一个灵策钱包里。先扣最快到期的积分（会员月度积分从发放起 1 个月有效），最后扣加油包和灵策原有余额。</p></details>
+        <details><summary>会员会自动续费吗？</summary><p>暂时不会。到期前 3 天提醒，到期后手动续费；不续费就不再发下个月的积分，已发的按有效期继续可用。</p></details>
+        <details><summary>在 iPhone 上怎么充值？</summary><p>iPhone 上按苹果规定用 App 内购买积分包；在网页或电脑上充值也行，余额全端通用。</p></details>
+        <details><summary>能开发票吗？</summary><p>在个人中心 → 订单与发票里，对已支付的订单申请电子发票。</p></details>
+      </div>
+    </section>
+  </div>
+</main>
+
+<main class="page" id="p-login">
+  <div class="auth">
+    <div class="auth-card">
+      <img class="chief" src="../../../website/assets/chief.webp" alt="">
+      <h2>登录 Octop Bot</h2>
+      <p class="muted center" style="margin:0;font-size:14px">使用灵策账号，没有账号会自动注册</p>
+      <div class="seg"><button class="on">验证码</button><button>密码</button></div>
+      <label class="field">手机号或邮箱<div class="input filled">138 **** 0001</div></label>
+      <label class="field">验证码<div class="input">6 位验证码<span class="get">获取验证码</span></div></label>
+      <a class="btn btn-primary" href="#account">登录 / 注册</a>
+      <div class="or">或</div>
+      <a class="btn btn-ghost" href="#account">用 WorkBuddy 登录</a>
+      <p class="fine">登录即同意《用户协议》《隐私政策》。同一个账号在桌面端、网页版和手机上通用。</p>
+    </div>
+  </div>
+</main>
+
+<main class="page" id="p-checkout">
+  <div class="wrap">
+    <div class="checkout">
+      <div class="panel">
+        <h3>订单</h3>
+        <div class="line"><span>积分充值包</span><b>10,000 积分</b></div>
+        <div class="line"><span>赠送</span><b>+800 积分</b></div>
+        <div class="line"><span>到账账户</span><b>灵策账号 138****0001</b></div>
+        <div class="line total"><span>应付</span><span><b>¥100.00</b> <span class="draft">建议价·待定</span></span></div>
+        <div class="who-pays"><span class="avatar">A</span><div>积分到账后，Octop Bot 桌面、网页、手机自动刷新余额。<br><span class="muted">从桌面端「积分不足」打开 · 订单来源 octop-bot</span></div></div>
+      </div>
+      <div class="panel">
+        <h3>支付方式</h3>
+        <div class="methods">
+          <div class="method on"><span class="dot" style="background:#1677ff">支</span>支付宝</div>
+          <div class="method"><span class="dot" style="background:#07c160">微</span>微信支付</div>
+        </div>
+        <div class="qr"></div>
+        <p class="center muted" style="font-size:13px;margin:0">用支付宝扫码支付 · 15 分钟内有效</p>
+        <p class="center" style="margin-top:14px"><a class="btn btn-primary btn-sm" href="#result">模拟支付成功</a></p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<main class="page" id="p-result">
+  <div class="result">
+    <div class="ok">✓</div>
+    <h2>支付成功，积分已到账</h2>
+    <p class="muted">订单 OB2611250001 · 2026-11-25 10:24</p>
+    <div class="panel">
+      <div class="line"><span>本次到账</span><b>10,800 积分</b></div>
+      <div class="line"><span>当前余额</span><b>23,280 积分</b></div>
+    </div>
+    <div class="row"><a class="btn btn-primary" href="#">返回 Octop Bot</a><a class="btn btn-ghost" href="#orders">查看订单</a></div>
+    <p class="fine">从客户端打开的会自动跳回 App（octop-bot://recharge/done）；没有跳回时点上面的按钮。</p>
+  </div>
+</main>
+
+<main class="page" id="p-account">
+  <div class="wrap">
+    <div class="acct">
+      <aside class="side" id="side"></aside>
+      <section class="main" id="acctMain"></section>
+    </div>
+  </div>
+</main>
+
+<main class="page" id="p-changelog">
+  <div class="wrap">
+    <section class="cl-hero">
+      <span class="eyebrow" data-zh="更新日志" data-en="Changelog">更新日志</span>
+      <h1 data-zh="Octop Bot 最近学会了什么" data-en="What's new in Octop Bot">Octop Bot 最近学会了什么</h1>
+      <p class="muted" data-zh="桌面、手机和网页版的每一次更新。发版后由后台自动更新这一页。" data-en="Every update to the desktop, phone and web apps, published from the admin console.">桌面、手机和网页版的每一次更新。发版后由后台自动更新这一页。</p>
+      <div class="cl-filter" id="clFilter"></div>
+    </section>
+    <div class="cl" id="cl"></div>
+  </div>
+</main>
+
+<main class="page" id="p-app">
+  <div class="appwrap" id="appwrap"></div>
+</main>
+
+<footer class="footer"><div class="wrap"><p class="muted" style="font-size:13px;margin:0">© 2026 Octop Bot · 账号与支付由灵策智算提供 · 用户协议 · 隐私政策</p></div></footer>
+
+<script>
+const PAGES = [["pricing","定价·月付"],["pricing-year","定价·年付"],["packs","定价·积分包"],["changelog","更新日志"],["changelog-en","Changelog (EN)"],["login","登录"],["checkout","结账"],["result","支付结果"],["account","个人中心·概览"],["usage","用量明细"],["orders","订单与发票"],["plan","套餐管理"],["security","账号与安全"],["devices","登录设备"],["bots","我的 Bot 与下载"],["app-desktop","客户端·余额与不足"],["app-limits","客户端·云电脑与上限"],["app-mobile","客户端·手机线框"]];
+const ACCOUNT = ["account","usage","orders","plan","security","devices","bots"];
+let cycle = "m";
+const PLANS = [
+  { id:"trial", name:"体验", m:0, credits:[["新用户赠送 300 积分","14 天有效"]], items:["本机 Bot 不限，自带模型免费","文本对话、作图、做视频（按积分）","标准云电脑（按积分）","协同 Bot 3 个、协同群聊 2 个","同步 2 台设备"], off:["优先排队"], btn:"当前套餐", cur:true },
+  { id:"standard", name:"标准", m:69, credits:[["7,000 积分每月","1 个月有效"]], gift:"加赠 700 积分", items:["包含体验版全部","更多文本模型（腾讯专业套餐开通后）","协同 Bot 20 个、协同群聊 10 个","同步 3 台设备"], off:["专业云电脑","优先排队"], btn:"开通标准版" },
+  { id:"plus", name:"进阶", m:99, credits:[["10,000 积分每月","1 个月有效"]], gift:"加赠 1,000 积分", items:["包含标准版全部","协同 Bot 50 个、协同群聊不限","同步 5 台设备"], off:["专业云电脑","优先排队"], btn:"开通进阶版", hot:"稳定使用推荐" },
+  { id:"pro", name:"专业", m:199, credits:[["20,000 积分每月","1 个月有效"]], gift:"首月加赠 4,000 积分", items:["包含进阶版全部","专业云电脑（8 核 16G）","协同 Bot、群聊不限","同步 10 台设备","模型和云电脑优先排队"], off:[], btn:"开通专业版" },
+  { id:"max", name:"卓越", m:699, credits:[["70,000 积分每月","1 个月有效"]], gift:"首月加赠 14,000 积分", items:["包含专业版全部","同步 20 台设备","最高优先级排队"], off:[], btn:"开通卓越版" },
+];
+const PACKS = [[20, "2,000"], [50, "5,000"], [100, "10,000"], [200, "20,000"], [500, "50,000"]];
+const money = v => "¥" + (Number.isInteger(v) ? v.toLocaleString("en-US") : v.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 2 }));
+function renderPlans() {
+  document.getElementById("plans").innerHTML = PLANS.map(p => {
+    const year = Math.round(p.m * 12 * 0.9 * 100) / 100;
+    const price = p.m === 0 ? `¥0` : cycle === "m" ? `${money(p.m)}<small>/月</small>` : `${money(year)}<small>/年</small>`;
+    const sub = p.m === 0 ? "免费" : cycle === "m" ? "到期手动续费" : `折合 ${money(Math.round(year / 12 * 10) / 10)}/月 · 到期手动续费`;
+    const rows = p.credits.map(([a, b]) => `<div class="row"><span>✦ <b>${a}</b></span><em>${b}</em></div>`).join("")
+      + (p.gift ? `<div class="row gift"><span>🎁 ${p.gift}</span></div>` : "")
+      + (p.m ? `<div class="row later"><span>📅 签到得 3,000 积分每月</span><em>第二期</em></div>` : "");
+    return `<div class="plan ${p.hot ? "hot" : ""}">${p.hot ? `<span class="tag">${p.hot}</span>` : ""}
+      <h3>${p.name}</h3>
+      <div class="amount">${price}</div><div class="renew">${sub}</div>
+      <div class="credits">${rows}</div>
+      <a class="btn ${p.hot ? "btn-primary" : "btn-ghost"}" href="${p.cur ? "#login" : "#result"}">${p.btn}</a>
+      <ul>${p.items.map(i => `<li>${i}</li>`).join("")}${p.off.map(i => `<li class="off">${i}</li>`).join("")}</ul>
+    </div>`; }).join("");
+  document.querySelectorAll("#cycle button").forEach(b => b.classList.toggle("on", b.dataset.c === cycle));
+}
+document.getElementById("cycle").onclick = e => { const c = e.target.closest("button")?.dataset.c; if (c) { cycle = c; renderPlans(); } };
+document.getElementById("packs").innerHTML = PACKS.map((p, i) => `<button class="pack ${i === 1 ? "on" : ""}"><b>¥${p[0]}</b><span>✦ ${p[1]} 积分</span></button>`).join("") + `<button class="pack custom"><b>自定义</b><span class="inp">¥ 输入 10–5,000 之间的整数</span></button>`;
+document.getElementById("ptabs").onclick = e => { const v = e.target.closest("button")?.dataset.v; if (v) showView(v); };
+function showView(v) { document.querySelectorAll("#ptabs button").forEach(b => b.classList.toggle("on", b.dataset.v === v)); document.querySelectorAll(".pview").forEach(x => x.classList.toggle("on", x.id === "v-" + v)); }
+document.getElementById("packs").onclick = e => { const b = e.target.closest(".pack"); if (b) document.querySelectorAll(".pack").forEach(x => x.classList.toggle("on", x === b)); };
+
+const SIDE = [["account","概览"],["usage","用量明细"],["orders","订单与发票"],["plan","套餐"],["security","账号与安全"],["devices","登录设备"],["bots","我的 Bot 与下载"]];
+const BARS = rows => `<div class="bars">${rows.map(([n, v, w, c]) => `<div class="bar"><span>${n}</span><i style="--w:${w};--c:${c}"></i><b>${v}</b></div>`).join("")}</div>`;
+const VIEWS = {
+  account: () => `<h2>概览</h2>
+    <div class="grid3">
+      <div class="card stat"><small>积分余额</small><div class="big">23,280</div><div class="split">会过期 2,300（11-30 到期）· 永久 20,980<br><a href="#">查看扣费顺序</a></div><div class="actions"><a class="btn btn-primary btn-sm" href="#packs">买加油包</a><a class="btn btn-ghost btn-sm" href="#usage">明细</a></div></div>
+      <div class="card stat"><small>当前套餐</small><div class="big" style="font-size:24px">进阶 <span class="pill">月付</span></div><div class="split">12-25 到期（到期手动续费）· 下次发放 10,000 积分</div><div class="actions"><a class="btn btn-ghost btn-sm" href="#plan">续费或升级</a></div></div>
+      <div class="card stat"><small>本月已用</small><div class="big">6,410</div><div class="split">约 ¥64.1 · 比上月多 18%</div></div>
+    </div>
+    <div class="grid2" style="margin-top:14px">
+      <div class="card"><h3 style="margin:0">本月用量</h3>${BARS([["文本对话","2,310","36%","#1d1c1a"],["作图","690","11%","#2bb3c0"],["做视频","1,000","16%","#7a5cf0"],["云电脑","1,834","29%","#f2484f"],["云电脑磁盘","576","9%","#f4b41a"]])}</div>
+      <div class="card"><h3 style="margin:0">用得最多的 Bot</h3>${BARS([["阿贸","2,480","39%","#f4b41a"],["小选","1,820","28%","#2bb3c0"],["Mia","1,550","24%","#7a5cf0"],["Chief","560","9%","#f2484f"]])}</div>
+    </div>
+    <div class="card" style="margin-top:14px;display:flex;align-items:center;gap:14px"><img src="../../../website/assets/chief.webp" style="width:44px" alt=""><div style="flex:1"><b>在别的设备上接着聊</b><br><span class="muted small">桌面端、网页版、iPhone、Android 用同一个灵策账号登录即可。</span></div><a class="btn btn-ghost btn-sm" href="#bots">下载客户端</a></div>`,
+  usage: () => `<h2>用量明细</h2>
+    <div class="filters"><span class="chip on">2026 年 11 月</span><span class="chip on">按 Bot</span><span class="chip">按模型</span><span class="chip">按类别</span><span class="chip">导出 CSV</span></div>
+    <div class="card"><table class="t"><thead><tr><th>Bot</th><th>文本对话</th><th>作图</th><th>做视频</th><th>云电脑</th><th>磁盘</th><th class="num">合计积分</th></tr></thead><tbody>
+      <tr><td><b>阿贸</b><br><small class="muted">外贸团队</small></td><td>412 次 · 980</td><td>—</td><td>—</td><td>标准 9.5 小时 · 969</td><td>20 GB · 6 天 · 576</td><td class="num"><b>2,480</b></td></tr>
+      <tr><td><b>小选</b></td><td>260 次 · 520</td><td>12 张 · 690</td><td>—</td><td>标准 6 小时 · 612</td><td>—</td><td class="num"><b>1,820</b></td></tr>
+      <tr><td><b>Mia</b></td><td>301 次 · 550</td><td>—</td><td>2 段 · 1,000</td><td>—</td><td>—</td><td class="num"><b>1,550</b></td></tr>
+      <tr><td><b>Chief</b></td><td>188 次 · 260</td><td>—</td><td>—</td><td>专业 0.5 小时 · 102</td><td>—</td><td class="num"><b>560</b></td></tr>
+    </tbody></table></div>
+    <p class="muted small">只统计灵策账号的消耗；本机 Bot、自带 API Key 和本地模型不经过灵策，不在这里。作图、做视频的单价按灵策后台设定的模型价格。</p>`,
+  orders: () => `<h2>订单与发票</h2>
+    <div class="grid3"><div class="card stat"><small>累计支付</small><div class="big" style="font-size:24px">¥248.00</div></div><div class="card stat"><small>可开票金额</small><div class="big" style="font-size:24px">¥149.00</div></div><div class="card stat"><small>已开票</small><div class="big" style="font-size:24px">¥99.00</div><div class="actions"><a class="btn btn-ghost btn-sm">批量开票</a></div></div></div>
+    <div class="card" style="margin-top:14px"><table class="t"><thead><tr><th>订单号</th><th>时间</th><th>内容</th><th class="num">金额</th><th>状态</th><th>发票</th></tr></thead><tbody>
+      <tr><td>OB2611250001</td><td>11-25 10:24</td><td>加油包 5,000 积分</td><td class="num">¥50.00</td><td><span class="pill green">已支付</span></td><td><a href="#">开发票</a></td></tr>
+      <tr><td>OB2611250002</td><td>11-25 09:02</td><td>进阶 · 月付</td><td class="num">¥99.00</td><td><span class="pill green">已支付</span></td><td><a href="#">开发票</a></td></tr>
+      <tr><td>OB2610280003</td><td>10-28 21:40</td><td>标准 · 月付</td><td class="num">¥69.00</td><td><span class="pill gray">已关闭</span></td><td class="muted">—</td></tr>
+    </tbody></table></div>
+    <p class="muted small">iPhone 上的 App 内购买由苹果开具收据，不在这里开票。需要退款请联系客服。</p>`,
+  plan: () => `<h2>套餐</h2>
+    <div class="card stat"><small>当前</small><div class="big" style="font-size:24px">进阶 · 月付</div><div class="split">本期 11-25 至 12-25 · 到期前 3 天提醒 · 第一期到期手动续费</div>
+      <div class="actions"><a class="btn btn-primary btn-sm" href="#result">续费一个月</a><a class="btn btn-ghost btn-sm" href="#pricing">改为年付（限时 9 折）</a></div></div>
+    <div class="plan-row" style="grid-template-columns:repeat(4,1fr)">
+      <div class="mini"><b>标准 ¥69</b>每月 7,000 积分</div>
+      <div class="mini cur"><b>进阶 ¥99 · 当前</b>每月 10,000 积分</div>
+      <div class="mini"><b>专业 ¥199</b>每月 20,000 积分 · 专业云电脑<br><a href="#result">升级</a></div>
+      <div class="mini"><b>卓越 ¥699</b>每月 70,000 积分<br><a href="#result">升级</a></div>
+    </div>
+    <p class="muted small">升级当天生效并按新档位发放积分；换档规则以灵策会员规则为准。</p>`,
+  security: () => `<h2>账号与安全</h2>
+    <div class="card">
+      <div class="item"><span class="ic">☎</span><div class="grow">手机号<small>138****0001</small></div><a class="btn btn-ghost btn-sm">更换</a></div>
+      <div class="item"><span class="ic">✉</span><div class="grow">邮箱<small>未绑定 · 绑定后可用邮箱登录</small></div><a class="btn btn-ghost btn-sm">绑定</a></div>
+      <div class="item"><span class="ic">🔑</span><div class="grow">登录密码<small>自助修改第二期上线</small></div><span class="pill gray">第二期</span></div>
+      <div class="item"><span class="ic">W</span><div class="grow">WorkBuddy<small>已绑定</small></div></div>
+      <div class="item"><span class="ic">!</span><div class="grow">注销账号<small>冷静期内登录即撤销；本机 Bot 不受影响</small></div><a class="btn btn-ghost btn-sm">注销</a></div>
+    </div>`,
+  devices: () => `<h2>登录设备</h2>
+    <div class="card">
+      <div class="item"><span class="ic">💻</span><div class="grow">MacBook · Octop Bot 1.0.5<small>最近 今天 10:20</small></div><a class="btn btn-ghost btn-sm">移除</a></div>
+      <div class="item"><span class="ic">📱</span><div class="grow">iPhone 16 · Octop Bot 1.0.0<small>最近 2 小时前</small></div><a class="btn btn-ghost btn-sm">移除</a></div>
+      <div class="item"><span class="ic">🤖</span><div class="grow">Android · Octop Bot 1.0.0<small>最近 昨天</small></div><a class="btn btn-ghost btn-sm">移除</a></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px"><p class="muted small" style="margin:0">网页登录不单独列出。怀疑账号被盗时用「全部下线」，所有设备和网页都要重新登录。</p><a class="btn btn-ghost btn-sm">全部下线</a></div>`,
+  bots: () => `<h2>我的 Bot 与下载</h2>
+    <div class="grid2">
+      <div class="card"><h3 style="margin:0 0 6px">协同 Bot · 6 / 20</h3>
+        <div class="item"><span class="ic">🐙</span><div class="grow">Chief<small>总管</small></div></div>
+        <div class="item"><span class="ic">⭐</span><div class="grow">阿贸<small>外贸团队 · 管理员</small></div></div>
+        <div class="item"><span class="ic">💧</span><div class="grow">小选<small>外贸团队</small></div></div>
+        <a class="btn btn-ghost btn-sm" href="#" style="margin-top:10px">在网页版打开</a></div>
+      <div class="card"><h3 style="margin:0 0 6px">下载客户端</h3>
+        <div class="item"><span class="ic"></span><div class="grow">macOS<small>1.0.5 · Apple 芯片</small></div><a class="btn btn-primary btn-sm">下载</a></div>
+        <div class="item"><span class="ic">⊞</span><div class="grow">Windows<small>1.0.4</small></div><a class="btn btn-ghost btn-sm">下载</a></div>
+        <div class="item"><span class="ic">A</span><div class="grow">Android<small>1.0.0</small></div><a class="btn btn-ghost btn-sm">下载</a></div>
+        <div class="item"><span class="ic">📱</span><div class="grow">iPhone<small>App Store</small></div><a class="btn btn-ghost btn-sm">前往</a></div></div>
+    </div>
+    <p class="muted small">本机 Bot 只在你自己的电脑上，这里看不到，也不会上传。</p>`,
+};
+const PLAT = { darwin: "macOS", win32: "Windows", ios: "iPhone", android: "Android", web: "网页版", server: "Docker / NAS" };
+const PLAT_EN = { web: "Web" };
+const GROUPS = { highlight: ["亮点", "Highlights"], new: ["新增", "New"], improved: ["改进", "Improved"], fixed: ["修复", "Fixed"] };
+// Same shape as the proposed changelog.json written by the admin console (doc §11).
+const CHANGELOG = { schemaVersion: 2, product: "octop-bot", releases: [
+  { version: "1.0.5", channel: "stable", date: "2026-11-26", platforms: ["darwin","win32","web"], title: { zh: "新用户引导：和总管一起组第一支团队", en: "Build your first team with Chief" },
+    items: [
+      { type: "highlight", zh: "第一次打开时选行业或岗位，总管一次建好几个 Bot 和一个群聊", en: "Pick an industry or a job on first launch and Chief builds a few bots and a group chat in one go" },
+      { type: "new", zh: "账号菜单新增「新手引导」，随时重新走一遍", en: "Getting started in the account menu replays the guide" },
+      { type: "improved", zh: "建 Bot 时不再顺带启动云电脑", en: "Creating a bot no longer starts its cloud computer", platforms: ["web"] },
+      { type: "fixed", zh: "修复 Windows 上偶尔无法退出登录", en: "Fixed sign-out occasionally failing on Windows", platforms: ["win32"] } ] },
+  { version: "1.0.5-beta.2", channel: "beta", date: "2026-11-24", platforms: ["darwin"], title: { zh: "云电脑浮窗测试版", en: "Cloud computer float (beta)" },
+    items: [
+      { type: "new", zh: "Bot 用云电脑干活时，对话旁边浮出实时画面，可以接管", en: "A live view of the cloud computer floats beside the chat, and you can take over" },
+      { type: "fixed", zh: "修复浮窗在全屏时被遮挡", en: "Fixed the float hiding behind full-screen windows" } ] },
+  { version: "1.0.0", channel: "stable", date: "2026-11-23", platforms: ["ios","android"], title: { zh: "手机客户端上线", en: "The phone apps are here" },
+    items: [
+      { type: "highlight", zh: "iPhone 和 Android 客户端：每个 Bot 是会动的角色", en: "iPhone and Android apps where every bot is an animated character" },
+      { type: "new", zh: "用灵策账号登录，或连接自己的 NAS / Docker 服务器", en: "Sign in with Lynxce or connect your own NAS or Docker server" } ] },
+] };
+let clPlat = "all";
+function platName(p, L) { return (L && PLAT_EN[p]) || PLAT[p]; }
+function renderChangelog(lang) {
+  const L = lang === "en" ? 1 : 0;
+  document.querySelectorAll("#p-changelog [data-zh]").forEach(el => el.textContent = el.dataset[lang]);
+  const all = ["all", "darwin", "win32", "ios", "android", "web"];
+  const filter = document.getElementById("clFilter");
+  filter.innerHTML = all.map(k => `<span class="chip ${clPlat === k ? "on" : ""}" data-p="${k}">${k === "all" ? (L ? "All" : "全部") : platName(k, L)}</span>`).join("");
+  filter.onclick = e => { const k = e.target.dataset.p; if (k) { clPlat = k; renderChangelog(lang); } };
+  const rels = CHANGELOG.releases.filter(r => clPlat === "all" || r.platforms.includes(clPlat));
+  const fmt = d => { const [y, m, dd] = d.split("-").map(Number); return L ? `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m - 1]} ${dd}, ${y}` : `${y} 年 ${m} 月 ${dd} 日`; };
+  document.getElementById("cl").innerHTML = `<div class="count"><span>${L ? rels.length + " releases" : "共 " + rels.length + " 个版本"}</span><span>changelog.json</span></div>` + rels.map((r, i) => `
+    <article class="rel"><time datetime="${r.date}">${fmt(r.date)}</time><div>
+      <h3>v${r.version}${i === 0 ? `<span class="badge latest">${L ? "Latest" : "最新"}</span>` : ""}<span class="badge ${r.channel}">${r.channel === "beta" ? (L ? "Beta" : "测试版") : (L ? "Stable" : "正式版")}</span></h3>
+      <div class="headline">${r.title[lang]}</div>
+      <div class="plats">${r.platforms.map(p => `<span class="plat">${platName(p, L)}</span>`).join("")}</div>
+      ${Object.keys(GROUPS).map(g => { const it = r.items.filter(x => x.type === g); return it.length ? `<div class="grp"><h4>${GROUPS[g][L]}</h4><ul>${it.map(x => `<li>${x[lang]}${x.platforms ? x.platforms.map(p => `<span class="plat">${platName(p, L)}</span>`).join("") : ""}</li>`).join("")}</ul></div>` : ""; }).join("")}
+    </div></article>`).join("");
+}
+const APP = {
+  "app-desktop": () => `<div class="appcap"><b>桌面 / 网页客户端：余额、预警、余额不足（§8.1–8.3）</b><span class="muted small">网页版 bot.lynxce.cn 与桌面同一套界面</span></div>
+  <div class="win"><div class="bar3"><i></i><i></i><i></i></div>
+    <div class="aside">
+      <div class="c"><span class="d">🐙</span><div><b>Chief</b><small>总管</small></div></div>
+      <div class="c on"><span class="d" style="background:#e7f6f8">💧</span><div><b>小选</b><small>选品与竞品分析 · ☁</small></div></div>
+      <div class="c"><span class="d" style="background:#fff3d0">⭐</span><div><b>阿贸</b><small>询盘回复与报价 · ☁</small></div></div>
+      <div class="c"><span class="d" style="background:#efe9ff">☁</span><div><b>Mia</b><small>海外社媒 · 🔒 本机</small></div></div>
+      <div class="acard"><span class="av">A</span><div style="flex:1"><b>Alison</b><span class="tierb">进阶</span><br><span class="bal">820</span> <small style="color:#8a877f">积分</small></div></div>
+    </div>
+    <div class="chatp">
+      <div class="top">小选</div>
+      <div class="warn">⚠ 积分快用完了，剩 820。<span style="color:#b07a12">11-30 还有 300 积分到期。</span><span style="border:1px solid #1d1c1a;border-radius:8px;padding:2px 8px">买加油包</span><span class="x">✕</span></div>
+      <div class="feedx">
+        <div class="msgme">帮我画 12 张主图，白底，突出杯身的双层结构。</div>
+        <div class="msgb"><span class="d" style="background:#e7f6f8">💧</span><div><div class="bub">好的，先按 1:1 出 12 张。</div>
+          <div class="cp"><strong>🪙 积分不足，作图没做完</strong><p>12 张主图需要约 540 积分，当前余额 820，已经做完 4 张，剩下的还需要约 360 积分。充值后点继续，从第 5 张接着做。</p>
+            <div class="btns"><span class="pri">买加油包</span><span>升级会员</span><span>继续</span></div>
+            <div class="tip">进阶会员 · 12-25 到期。加油包一次性买；会员每月送积分。</div></div></div></div>
+      </div>
+      <div class="composerx">给 小选 发消息</div>
+    </div>
+    <div class="menu"><div class="rowx"><span>积分余额</span><span class="tierb">进阶 · 12-25 到期</span></div><div class="big2">820</div>
+      <div class="rowx"><span>会过期</span><b>300（11-30 到期）</b></div><div class="rowx"><span>永久</span><b>520</b></div>
+      <div class="two"><span class="pri">买加油包</span><span>续费 / 升级</span></div>
+      <div class="li">📈 查看用量明细（官网）</div><hr><div class="li">⚙ 设置 → 账号与积分</div><div class="li">🔒 本机账号 · 灵策已连接</div></div>
+    <div class="note2"><b>账号菜单</b>点侧栏底部账号卡片打开。按钮都跳官网（带票据、免登录、带 need）。</div>
+  </div>`,
+  "app-limits": () => `<div class="appcap"><b>桌面 / 网页客户端：云电脑余额不足暂停、套餐上限（§8.3–8.4）</b><span class="muted small">上限提示第二期生效</span></div>
+  <div class="win"><div class="bar3"><i></i><i></i><i></i></div>
+    <div class="aside">
+      <div class="c"><span class="d">🐙</span><div><b>Chief</b><small>总管</small></div></div>
+      <div class="c on"><span class="d" style="background:#fff3d0">⭐</span><div><b>阿贸</b><small>询盘回复与报价 · ☁</small></div></div>
+      <div class="acard"><span class="av">A</span><div style="flex:1"><b>Alison</b><span class="tierb">标准</span><br><span class="bal">0</span> <small style="color:#8a877f">积分</small></div></div>
+    </div>
+    <div class="chatp">
+      <div class="top">阿贸</div>
+      <div class="feedx">
+        <div class="msgme">打开亚马逊后台，把 3 个新品的标题改一下。</div>
+        <div class="msgb"><span class="d" style="background:#fff3d0">⭐</span><div><div class="bub">已改完第 1 个。</div>
+          <div class="cp"><strong>⏸ 积分不足，云电脑已暂停</strong><p>电脑里的文件和打开的页面都还在。充值后点继续，从第 2 个新品接着改。</p>
+            <div class="btns"><span class="pri">开通会员</span><span>买加油包</span><span>继续</span></div></div></div></div>
+      </div>
+      <div class="composerx">给 阿贸 发消息</div>
+    </div>
+    <div class="float"><div class="scr">云电脑已暂停</div><div class="ft">积分不足，已暂停 · 文件保留<div class="btns"><span>充值后继续</span></div></div></div>
+    <div class="dlg"><div class="box"><h4>标准版最多 20 个协同 Bot</h4><p>协同 Bot 会同步到灵策云，手机和网页上能接着聊。也可以把这个 Bot 建成本机 Bot，本机 Bot 不限数量。</p>
+      <div class="opts"><span class="pri">升级会员（进阶 50 个）</span><span>改为本机 Bot</span><span style="border:0;color:#8a877f;text-align:center">取消</span></div></div></div>
+  </div>`,
+  "app-mobile": () => `<div class="appcap"><b>手机线框：「我」页余额、余额不足、iPhone 内购（§8，移动端实现）</b><span class="muted small">Android 跳官网；iPhone 只内购积分包</span></div>
+  <div class="phones">
+    <div><div class="phone"><div class="st"></div><div class="hd">我</div>
+      <div class="wf"><b>Alison</b> <span class="tierb">进阶</span><br>积分余额 <b style="font-size:20px">23,280</b><br><small>会过期 2,300（11-30）· 永久 20,980</small><br><span class="bt pri">买加油包</span><span class="bt">续费 / 升级</span></div>
+      <div class="wf">⚠ 进阶会员 12-25 到期 <span class="bt">续费</span></div>
+      <div class="wf">本月用量：文本 · 作图 · 做视频 · 云电脑 · 磁盘<br><small>查看明细 → 官网个人中心</small></div>
+      <div class="wf">本机账号 · 灵策已连接</div></div><div class="pcap">Android：「我」页。按钮用 Custom Tabs 打开官网，回到 App 刷新余额。</div></div>
+    <div><div class="phone"><div class="st"></div><div class="hd">小选</div>
+      <div class="wf" style="margin-top:30px">帮我做一段 10 秒的产品视频</div>
+      <div class="dim"></div>
+      <div class="sheet"><div class="grab"></div><b style="font-size:16px">积分不足</b><p style="margin:6px 0;color:#5b5850">这段 10 秒视频需要约 500 积分，当前 120。</p>
+        <div class="wf" style="margin:0 0 8px"><span class="bt pri">开通会员</span><span class="bt">买加油包</span><span class="bt">稍后</span></div><small style="color:#8a877f">付完回到 App，点「继续」接着做。</small></div></div>
+      <div class="pcap">Android：余额不足底部弹层。不是会员时主按钮「开通会员」。</div></div>
+    <div><div class="phone"><div class="st"></div><div class="hd">我</div>
+      <div class="wf"><b>Alison</b> <span class="tierb">进阶</span><br>积分余额 <b style="font-size:20px">820</b><br><small>会员状态只显示，不在 App 内购买</small></div>
+      <div class="dim"></div>
+      <div class="sheet"><div class="grab"></div><b style="font-size:16px">购买积分</b>
+        <div class="wf" style="margin:8px 0">✦ 积分包 A · App Store 价格</div><div class="wf" style="margin:8px 0">✦ 积分包 B · App Store 价格</div><div class="wf" style="margin:8px 0">✦ 积分包 C · App Store 价格</div>
+        <small style="color:#8a877f">苹果内购，1.0.2 起显示。不出现官网链接和会员购买。</small></div></div>
+      <div class="pcap">iPhone：只有内购积分包。</div></div>
+  </div>`,
+};
+function render() {
+  const raw = location.hash.slice(1) || "pricing";
+  const id = PAGES.some(p => p[0] === raw) ? raw : "pricing";
+  const inAccount = ACCOUNT.includes(id);
+  const isApp = id.startsWith("app-");
+  document.body.classList.toggle("app", isApp);
+  if (isApp) document.getElementById("appwrap").innerHTML = APP[id]();
+  if (id === "pricing-year" && cycle !== "y") { cycle = "y"; renderPlans(); }
+  if (id === "pricing" && cycle !== "m") { cycle = "m"; renderPlans(); }
+  const pageId = isApp ? "app" : inAccount ? "account" : (id === "packs" || id === "pricing-year") ? "pricing" : id.startsWith("changelog") ? "changelog" : id;
+  document.querySelectorAll(".page").forEach(p => p.classList.toggle("on", p.id === "p-" + pageId));
+  if (pageId === "pricing") showView(id === "packs" ? "packs" : "plans");
+  if (pageId === "changelog") renderChangelog(id === "changelog-en" ? "en" : "zh");
+  document.getElementById("navChangelog").setAttribute("aria-current", pageId === "changelog" ? "page" : "false");
+  document.getElementById("proto").innerHTML = "<b>原型 · 页面</b>" + PAGES.map(([k, n]) => `<a href="#${k}" class="${k === id ? "on" : ""}">${n}</a>`).join("");
+  const signedIn = !["pricing", "pricing-year", "packs", "login", "changelog", "changelog-en"].includes(id);
+  document.getElementById("tools").innerHTML = signedIn
+    ? `<a class="acct-btn" href="#account"><span class="avatar">A</span>23,280 <small>积分</small></a>`
+    : `<a class="btn btn-ghost btn-sm" href="#login">登录</a><a class="btn btn-primary btn-sm" href="#">下载</a>`;
+  document.getElementById("navPricing").setAttribute("aria-current", pageId === "pricing" ? "page" : "false");
+  if (inAccount) {
+    document.getElementById("side").innerHTML = `<div class="me"><span class="avatar">A</span><div><b>Alison</b><small>138****0001 · 灵策账号</small></div></div>` +
+      SIDE.map(([k, n]) => `<a href="#${k}" class="${k === id ? "on" : ""}">${n}</a>`).join("");
+    document.getElementById("acctMain").innerHTML = VIEWS[id]();
+  }
+  window.scrollTo(0, 0);
+}
+if (new URLSearchParams(location.search).has("clean")) document.body.classList.add("clean");
+renderPlans();
+window.onhashchange = render;
+render();
+</script>
+</body>
+</html>
