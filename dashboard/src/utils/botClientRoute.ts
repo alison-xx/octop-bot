@@ -5,6 +5,14 @@ export const BOT_SETTINGS = BOT_HOME + "/settings";
 export const BOT_CLOUD = BOT_HOME + "/cloud";
 export const BOT_GUIDE = BOT_HOME + "/guide";
 export const BOT_CAPABILITIES = BOT_HOME + "/capabilities";
+export const BOT_MARKET = BOT_HOME + "/market";
+
+/** A market template page; ``importNow`` opens its import dialog on arrival. */
+export function botMarketPath(slug: string, importNow = false): string {
+  return (
+    BOT_MARKET + "/" + encodeURIComponent(slug) + (importNow ? "/import" : "")
+  );
+}
 
 /** Capability sections of the standalone client, in navigation order. */
 export const BOT_CAPABILITY_SECTIONS = [
@@ -72,7 +80,7 @@ export function botClientDestination(path: string): string {
   if (capability) return botCapabilityPath(capability);
   if (path.replace(/\/$/, "") === "/admin/models") return BOT_SETTINGS;
   if (
-    /^\/octop-bot(?:\/settings|\/cloud|\/guide|\/bots\/[^/?#\\]+(?:\/[^/?#\\]+)?|\/groups\/[^/?#\\]+)?\/?$/.test(
+    /^\/octop-bot(?:\/settings|\/cloud|\/guide|\/market(?:\/[a-z0-9-]+(?:\/import)?)?|\/bots\/[^/?#\\]+(?:\/[^/?#\\]+)?|\/groups\/[^/?#\\]+)?\/?$/.test(
       path,
     )
   )

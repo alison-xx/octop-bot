@@ -21,6 +21,7 @@ import {
   BOT_CAPABILITIES,
   BOT_CLOUD,
   BOT_GUIDE,
+  BOT_MARKET,
   BOT_SETTINGS,
   botClientDestination,
 } from "../../utils/botClientRoute";
@@ -33,6 +34,7 @@ const Settings = lazy(() => import("./BotClientSettings"));
 const Setup = lazy(() => import("./BotClientSetup"));
 const Guide = lazy(() => import("./BotGettingStarted"));
 const Capabilities = lazy(() => import("./BotCapabilities"));
+const Market = lazy(() => import("./BotMarket"));
 
 // Neutral black-and-white accents for the Bot client, also inside portals.
 // antd derives selection fills, focus borders and outlines from colorPrimary;
@@ -197,6 +199,10 @@ export default function BotClientRoutes() {
             />
             <Route path="/octop-bot/groups/:groupId" element={<Workspace />} />
             <Route path={BOT_SETTINGS} element={<Settings />} />
+            <Route
+              path={BOT_MARKET + "/:slug?/:action?"}
+              element={<Market />}
+            />
             <Route
               path={BOT_CAPABILITIES + "/:section?"}
               element={<Capabilities />}

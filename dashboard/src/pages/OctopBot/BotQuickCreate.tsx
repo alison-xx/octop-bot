@@ -25,11 +25,14 @@ export default function BotQuickCreate({
   onChoose,
   onClose,
   onCreated,
+  onBrowseMarket,
 }: {
   choice: AppearanceChoice | null;
   onChoose: (choice: AppearanceChoice) => void;
   onClose: () => void;
   onCreated: (id: string) => Promise<void>;
+  /** Leave for the Bot market (more ready-made templates). */
+  onBrowseMarket?: () => void;
 }) {
   const { t } = useTranslation();
   const [form] = Form.useForm<Fields>();
@@ -101,6 +104,17 @@ export default function BotQuickCreate({
     >
       <div className={styles.exampleLabel} id="bot-example-title">
         {t("botForms.examples")}
+        {onBrowseMarket && (
+          <Button
+            type="link"
+            size="small"
+            className={styles.marketLink}
+            disabled={saving}
+            onClick={onBrowseMarket}
+          >
+            {t("botMarket.browse")}
+          </Button>
+        )}
       </div>
       <div
         className={styles.examples}

@@ -1,0 +1,440 @@
+/* Bot market page. Builds on site.css tokens. */
+
+.market-hero {
+  padding-bottom: clamp(24px, 3vw, 36px);
+}
+.market-bar {
+  position: sticky;
+  top: 68px;
+  z-index: 30;
+  padding: 10px 0;
+  background: var(--header-bg);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--line);
+}
+.market-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.market-tabs {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.market-tabs::-webkit-scrollbar {
+  display: none;
+}
+.m-tab {
+  flex: none;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.2s,
+    color 0.2s,
+    border-color 0.2s;
+}
+.m-tab:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+.m-tab[aria-selected="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--on-ink);
+}
+.market-search {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 240px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-3);
+}
+.market-search svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.market-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+.market-search:focus-within {
+  border-color: var(--ink-3);
+}
+
+.market-list {
+  padding-bottom: 24px;
+}
+.m-block {
+  padding-top: 40px;
+  scroll-margin-top: 140px;
+}
+.m-block > header {
+  margin-bottom: 16px;
+}
+.m-block > header .h2 {
+  font-size: clamp(22px, 2.4vw, 28px);
+}
+.m-block > header p {
+  margin-top: 4px;
+  color: var(--ink-2);
+}
+.m-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+.m-card {
+  position: relative;
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  transition:
+    transform 0.35s var(--ease),
+    box-shadow 0.35s var(--ease),
+    border-color 0.25s;
+}
+.m-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--line-strong);
+}
+.m-card-main {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 20px 20px 64px;
+  color: inherit;
+  border-radius: inherit;
+}
+.m-card-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.m-card-text strong {
+  font-size: 16px;
+  font-weight: 650;
+}
+.m-card-text small {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.m-card-text > span {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.m-add {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+}
+.m-avatar {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--s);
+  height: var(--s);
+  overflow: hidden;
+  border-radius: 28%;
+  /* The warm paper the portraits are rendered on. */
+  background: #f6f4f0;
+}
+.m-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Portraits leave a wide margin; fill the tile with the character. */
+  transform: scale(1.2);
+}
+.m-avatar i {
+  width: 62%;
+  height: 62%;
+  border-radius: 50%;
+}
+.m-empty {
+  padding: 64px 0;
+  text-align: center;
+  color: var(--ink-2);
+}
+.market-make {
+  padding: 56px 0 96px;
+}
+
+/* Detail */
+.market-detail {
+  padding: 32px 0 96px;
+}
+.m-back {
+  margin-bottom: 28px;
+}
+.m-hero {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+  margin-bottom: 40px;
+}
+.m-hero .h2 {
+  margin-top: 8px;
+}
+.m-hero small {
+  color: var(--ink-3);
+}
+.m-hero p {
+  max-width: 700px;
+  margin-top: 12px;
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+.m-hero .m-tagline {
+  color: var(--ink);
+  font-size: 17px;
+}
+.m-actions {
+  margin-top: 22px;
+}
+.m-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.m-section {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.m-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 17px;
+  font-weight: 650;
+}
+.m-section h2 svg {
+  width: 18px;
+  height: 18px;
+  color: var(--ink-3);
+}
+.m-hint {
+  margin: -6px 0 12px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.m-role {
+  margin-bottom: 10px;
+  line-height: 1.7;
+}
+.m-section ul {
+  padding-left: 18px;
+  list-style: disc;
+}
+.m-section li {
+  margin: 6px 0;
+  line-height: 1.65;
+  color: var(--ink-2);
+}
+.m-starters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.m-starters span {
+  align-self: flex-start;
+  padding: 9px 14px;
+  border-radius: 16px 16px 16px 4px;
+  background: var(--bg-soft);
+  line-height: 1.5;
+}
+.m-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.m-item:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+.m-item span {
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+.m-item em {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+details.m-item summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  list-style: none;
+}
+details.m-item summary::-webkit-details-marker {
+  display: none;
+}
+details.m-item summary strong::after {
+  content: " +";
+  color: var(--ink-3);
+}
+details.m-item[open] summary strong::after {
+  content: " −";
+}
+.m-steps {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--bg-soft);
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--ink-2);
+}
+.m-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.m-chips span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 14px;
+}
+.m-chips i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+
+/* Import chooser */
+.market-dialog {
+  width: min(440px, calc(100% - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+}
+.market-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.36);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+.market-dialog-body {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 28px;
+}
+.market-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
+}
+.market-dialog-head .m-avatar {
+  --s: 52px;
+}
+.market-choice {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  color: inherit;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+.market-choice:hover {
+  border-color: var(--ink);
+  background: var(--surface-2);
+}
+.market-choice span {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.market-dialog-foot {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.market-dialog-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+@media (max-width: 860px) {
+  .market-bar-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .market-search {
+    width: auto;
+  }
+  .m-sections {
+    grid-template-columns: 1fr;
+  }
+  .m-hero {
+    flex-direction: column;
+    gap: 18px;
+  }
+}
+@media (max-width: 520px) {
+  .m-grid {
+    grid-template-columns: 1fr;
+  }
+  .market-bar {
+    top: 60px;
+  }
+}
