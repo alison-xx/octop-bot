@@ -1212,16 +1212,7 @@ export default function OctopBotPage() {
             compactDirectory ? directory.railFooter : sectionStyles.footer
           }
         >
-          <AccountMenu
-            compact={compactDirectory}
-            onOnboarding={() =>
-              void changeOnboarding({ action: "restart" }).then(() =>
-                jump(
-                  BOT_HOME + "/bots/" + encodeURIComponent(chiefKey.slice(4)),
-                ),
-              )
-            }
-          />
+          <AccountMenu compact={compactDirectory} />
           <CloudMove />
           {isBotOnlyDesktop() && (
             <Button

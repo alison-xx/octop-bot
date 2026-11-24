@@ -61,8 +61,10 @@ describe("Settings → About", () => {
   it("leaves the server out in a plain browser", () => {
     renderAbout();
     expect(screen.queryByText("botAbout.server")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "botGuide.title" }),
-    ).toBeInTheDocument();
+  });
+
+  it("does not offer to restart onboarding: it only runs on first use", () => {
+    renderAbout();
+    expect(screen.queryByRole("button", { name: "botGuide.title" })).toBeNull();
   });
 });

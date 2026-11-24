@@ -1,14 +1,6 @@
 import { useEffect, useState } from "react";
 import { Dropdown, type MenuProps } from "antd";
-import {
-  Blocks,
-  BookOpen,
-  Cloud,
-  Coins,
-  LogIn,
-  LogOut,
-  Settings2,
-} from "lucide-react";
+import { Blocks, Cloud, Coins, LogIn, LogOut, Settings2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   useLocation,
@@ -88,11 +80,8 @@ export function useLanguage() {
 /** Sidebar footer: who is signed in, with settings and account actions. */
 export default function AccountMenu({
   compact = false,
-  onOnboarding,
 }: {
   compact?: boolean;
-  /** Start the new-user onboarding again from the welcome screen. */
-  onOnboarding?: () => void;
 }) {
   const { t } = useTranslation();
   const user = useCurrentUser();
@@ -181,16 +170,6 @@ export default function AccountMenu({
         ]
       : []),
     { type: "divider" as const },
-    ...(onOnboarding
-      ? [
-          {
-            key: "guide",
-            icon: <BookOpen size={16} />,
-            label: t("botGuide.title"),
-            onClick: onOnboarding,
-          },
-        ]
-      : []),
     // Desktop has two ways in, Lynxce or this computer; both leave through the start page.
     desktop && !lynxce
       ? {

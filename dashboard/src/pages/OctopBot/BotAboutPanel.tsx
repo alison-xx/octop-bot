@@ -1,10 +1,7 @@
 import { Button } from "antd";
 import { ArrowLeftRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import { getDesktopBridge } from "../../utils/desktopBridge";
-import { botOnboardingApi } from "../../api/modules/botOnboarding";
-import { BOT_HOME } from "../../utils/botClientRoute";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
 import BotUpdatePanel from "./BotUpdatePanel";
 import { useBotServerInfo } from "./useBotServerInfo";
@@ -15,7 +12,6 @@ const SITE = "https://ai.lynxce.cn";
 /** Settings → About & updates: version, the desktop updater, which server, and links. */
 export default function BotAboutPanel() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const info = useBotServerInfo();
   const bridge = getDesktopBridge();
   // The desktop app: its own service has the shell bridge; a remote server's window has none.
@@ -81,17 +77,6 @@ export default function BotAboutPanel() {
         </>
       )}
       <nav className={settings.links} aria-label={t("botAbout.links")}>
-        <button
-          type="button"
-          onClick={() =>
-            void botOnboardingApi
-              .change({ action: "restart" })
-              .catch(() => null)
-              .then(() => navigate(BOT_HOME))
-          }
-        >
-          {t("botGuide.title")}
-        </button>
         <a href={SITE} target="_blank" rel="noopener noreferrer">
           {t("botAbout.site")}
         </a>
