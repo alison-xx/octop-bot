@@ -151,7 +151,7 @@ fun HomeScreen(
         onSettings = onSettings,
         onVoice = { botId ->
             val target = botId ?: lastBot?.takeIf { id -> bots.any { it.id == id } } ?: bots.firstOrNull()?.id
-            if (target != null) onVoice(target)
+            if (target != null && bots.firstOrNull { it.id == target }?.canSend == true) onVoice(target)
         },
         onDeleteBot = model::deleteBot,
         onNewGroup = { newGroup = true },
@@ -160,6 +160,7 @@ fun HomeScreen(
         onDismissUpdate = { model.dismissUpdate(it) },
         onCredits = onCredits,
         onRetryBalance = model::refreshBalance,
+        onRetryBot = model::retryBot,
     )
     if (newGroup) NewGroupSheet(bots, onCreate = model::createGroup, onDismiss = { newGroup = false })
 }
@@ -185,6 +186,7 @@ fun Directory(
     onDismissUpdate: (Int) -> Unit = {},
     onCredits: () -> Unit = {},
     onRetryBalance: () -> Unit = {},
+    onRetryBot: (BotProfile) -> Unit = {},
 ) {
     val palette = LocalPalette.current
     var query by rememberSaveable { mutableStateOf("") }
@@ -250,6 +252,7 @@ fun Directory(
                             onEdit = { onEditBot(bot.id) },
                             onVoice = { onVoice(bot.id) },
                             onDelete = if (bot.isLocal) ({ deleting = bot }) else null,
+                            onRetry = { onRetryBot(bot) },
                         )
                     }
                     if (state.showGroups && (groups.isNotEmpty() || query.isBlank())) {
@@ -427,6 +430,7 @@ private fun BotRow(
     onEdit: () -> Unit,
     onVoice: () -> Unit,
     onDelete: (() -> Unit)?,
+    onRetry: () -> Unit,
 ) {
     val palette = LocalPalette.current
     val haptics = rememberHaptics()
@@ -474,13 +478,21 @@ private fun BotRow(
                 }
                 Text(
                     // Previews saved by older versions may still hold Markdown marks.
-                    if (replying) stringResource(R.string.chat_replying) else preview?.text?.let(Previews::snippet) ?: bot.subtitle.orEmpty(),
+                    when {
+                        !bot.isLocal && bot.state == "failed" -> bot.lastError?.takeIf { it.isNotBlank() } ?: stringResource(R.string.bot_preparation_failed)
+                        !bot.isLocal && bot.preparing -> stringResource(R.string.bot_preparing)
+                        replying -> stringResource(R.string.chat_replying)
+                        else -> preview?.text?.let(Previews::snippet) ?: bot.subtitle.orEmpty()
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (unread) palette.text else palette.secondary,
                     fontWeight = if (unread) FontWeight.SemiBold else null,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+            if (!bot.isLocal && bot.state == "failed") {
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.chat_retry)) }
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, offset = DpOffset(72.dp, 0.dp)) {
@@ -492,6 +504,7 @@ private fun BotRow(
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.voice_title)) },
                 leadingIcon = { Icon(Icons.Rounded.GraphicEq, null) },
+                enabled = bot.canSend,
                 onClick = { menu = false; onVoice() },
             )
             onDelete?.let { delete ->

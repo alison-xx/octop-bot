@@ -73,6 +73,21 @@ class ServerProtocolTest {
     private fun obj(text: String) = Http.parse(text) as JsonObject
 
     @Test
+    fun botPreparationFieldsAndPolling() {
+        val legacy = ServerProtocol.bot(obj("""{"agent_id":"old"}"""))!!
+        val starting = ServerProtocol.bot(obj("""{"agent_id":"new","state":"starting","preparing":true}"""))!!
+        val failed = ServerProtocol.bot(obj("""{"agent_id":"bad","state":"failed","preparing":false,"last_error":"problem"}"""))!!
+        assertTrue(legacy.canSend)
+        assertNull(legacy.state)
+        assertFalse(starting.canSend)
+        assertEquals("starting", starting.state)
+        assertFalse(failed.canSend)
+        assertEquals("problem", failed.lastError)
+        assertTrue(io.github.alisonxx.octopbot.model.shouldPollBots(listOf(legacy, starting, failed)))
+        assertFalse(io.github.alisonxx.octopbot.model.shouldPollBots(listOf(legacy, failed)))
+    }
+
+    @Test
     fun historyMergesAssistantSegmentsAndSkipsToolRows() {
         val page = ServerProtocol.historyPage(
             Http.parse(

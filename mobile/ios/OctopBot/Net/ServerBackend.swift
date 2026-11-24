@@ -252,7 +252,10 @@ final class ServerBackend: ChatBackend {
             name: row["name"] as? String ?? id,
             subtitle: (row["description"] as? String).flatMap { $0.isEmpty ? nil : $0 },
             look: normalizedLook(shape: avatar?["shape"] as? String, color: avatar?["color"] as? String, chief: chief),
-            isChief: chief
+            isChief: chief,
+            state: row["state"] as? String,
+            preparing: row["preparing"] as? Bool ?? false,
+            lastError: row["last_error"] as? String
         )
     }
 
@@ -261,6 +264,10 @@ final class ServerBackend: ChatBackend {
         guard let shape, let color else { return chief ? .chief : .fallback }
         if shape == "whale" { return chief ? .chief : Look(shape: "gumdrop", color: color == "deepseek" ? "blue" : color) }
         return Look(shape: shape, color: color == "deepseek" ? "blue" : color)
+    }
+
+    func startBot(_ bot: BotProfile) async throws {
+        _ = try await json(.post, "/api/agents/\(bot.id)/start")
     }
 
     func setLook(_ look: Look, for bot: BotProfile) async throws {

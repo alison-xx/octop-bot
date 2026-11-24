@@ -92,6 +92,7 @@ final class ChatSession {
     }
 
     func send(_ text: String, images: [Data] = []) {
+        guard bot.canSend else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let backend = app?.backend, !trimmed.isEmpty || !images.isEmpty else { return }
         // Never block: while a reply streams, queue the message and send it when the reply ends.

@@ -374,6 +374,54 @@
         }
       }
     },
+    "bot.preparationFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't get ready"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "准备失败"
+          }
+        }
+      }
+    },
+    "bot.preparing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Getting ready…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "准备中…"
+          }
+        }
+      }
+    },
+    "bot.preparingChat": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Bot is getting ready…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bot 正在准备，稍等片刻"
+          }
+        }
+      }
+    },
     "bot.researcher.name": {
       "localizations": {
         "en": {

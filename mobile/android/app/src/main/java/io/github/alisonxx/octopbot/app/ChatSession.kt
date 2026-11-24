@@ -157,6 +157,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
      * the approval with this text as the reason.
      */
     fun send(text: String, images: List<ImageAttachment>, answers: List<List<HitlAnswer>> = emptyList()) {
+        if (bot?.canSend == false) return
         val body = text.trim()
         if (body.isEmpty() && images.isEmpty()) return
         val state = _state.value
@@ -183,6 +184,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
 
     private fun startTurn(text: String, images: List<ImageAttachment>) {
         val bot = bot ?: return
+        if (!bot.canSend) return
         val state = _state.value
         lastAttachments = images
         val history = state.messages.filter { it.role != MessageRole.Note }

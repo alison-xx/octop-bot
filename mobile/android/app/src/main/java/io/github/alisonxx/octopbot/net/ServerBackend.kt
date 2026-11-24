@@ -367,6 +367,8 @@ class ServerBackend(
         return bots
     }
 
+    suspend fun startBot(bot: BotProfile) { raw("POST", agent(bot) + "/start") }
+
     override suspend fun setLook(bot: BotProfile, look: Look) {
         json("PUT", "/api/octop-bot/bots/${segment(bot.id)}/appearance", body = Http.body(buildJsonObject {
             put("shape", look.shape)

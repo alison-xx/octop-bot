@@ -114,6 +114,7 @@ struct ChatScreen: View {
                 Image(systemName: "waveform").font(.title3.weight(.medium)).frame(width: 40, height: 44)
             }
             .accessibilityLabel(Text("voice.title"))
+            .disabled(!chat.bot.canSend)
             Button {
                 Haptics.tap()
                 withAnimation(.snappy) { chat.newChat() }
@@ -639,6 +640,14 @@ struct Composer: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            if !chat.bot.canSend {
+                HStack {
+                    Text(chat.bot.state == "failed" ? (chat.bot.lastError?.isEmpty == false ? chat.bot.lastError! : L("bot.preparationFailed")) : L("bot.preparingChat"))
+                    if chat.bot.state == "failed" {
+                        Button("common.retry") { Task { await model.retryBot(chat.bot) } }
+                    }
+                }.font(.subheadline).foregroundStyle(Palette.secondary).padding(.horizontal)
+            }
             if !images.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -672,6 +681,7 @@ struct Composer: View {
                     .accessibilityIdentifier("composer")
                 trailingButton
             }
+            .disabled(!chat.bot.canSend)
             .padding(.leading, 6)
             .padding(.trailing, 5)
             .padding(.vertical, 4)
@@ -736,6 +746,7 @@ struct Composer: View {
     }
 
     private func send() {
+        guard chat.bot.canSend else { return }
         Haptics.tap()
         chat.send(chat.draft, images: images)
         chat.draft = ""
