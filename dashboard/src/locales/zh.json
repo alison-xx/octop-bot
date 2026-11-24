@@ -659,6 +659,9 @@
       "mimo": "小米 MiMo",
       "other": "其他模型"
     },
+    "modelRoutes": "{{n}} 条线路",
+    "modelRoute": "线路",
+    "modelRouteN": "线路 {{n}}",
     "searchModels": "搜索模型"
   },
   "app": {
