@@ -9009,5 +9009,32 @@
       "later": "Choose later",
       "useModel": "Use this model"
     }
+  },
+  "botTask": {
+    "label": "Task: {{goal}}",
+    "deep": "Deep",
+    "steps": "{{done}}/{{total}} steps",
+    "seconds": "{{count}}s",
+    "minutes": "{{count}} min",
+    "criteria": "Acceptance criteria ({{count}})",
+    "acceptance": "Acceptance",
+    "openIssues": "Not done",
+    "assumptions": "Decided on my own",
+    "reportDone": "Done: {{goal}}",
+    "reportPartial": "Partly done: {{goal}}",
+    "duration": "Took {{time}}",
+    "phase": {
+      "live": "Working",
+      "paused": "Paused",
+      "done": "Done",
+      "partial": "Partly done",
+      "stopped": "Stopped"
+    },
+    "check": {
+      "pending": "To check",
+      "passed": "Passed",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    }
   }
 }

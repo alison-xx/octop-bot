@@ -5052,7 +5052,19 @@ class AgentManager:
             # Lynxce cloud: the Bot's computer is its own cloud computer, never the host's,
             # and it works there on every turn (web, phone, IM, schedules).
             computer_tools = self._cloud_computer_tools(row)
-            if not self._cloud_tenant(row.user_id) and not row.is_shared and row.kind == "expert":
+            # Tasks (plan, evidence, finish gate) wherever the Bot works: every turn for a
+            # cloud tenant, Octop Bot client turns otherwise.
+            from octop.infra.bot_tasks.store import TaskStore
+            from octop.infra.bot_tasks.tools import task_tools
+            from octop.infra.bot_tasks.watchdog import BotTaskMiddleware
+
+            tenant = self._cloud_tenant(row.user_id)
+            tasks = TaskStore(self._repos.settings_repo)
+            task_kit = task_tools(tasks)
+            anywhere = [*computer_tools, *task_kit] if tenant else computer_tools
+            if not tenant:
+                workspace_tools.extend(task_kit)
+            if not tenant and not row.is_shared and row.kind == "expert":
                 from octop.infra.agents.bot_computer import computer_tool
 
                 workspace_tools.append(
@@ -5062,7 +5074,8 @@ class AgentManager:
                 from octop.infra.agents.bot_tools import chief_tools
 
                 workspace_tools.extend(chief_tools(self, services, row.agent_id, row.user_id))
-            agent_middleware.append(BotWorkspaceTools(workspace_tools, computer_tools))
+            agent_middleware.append(BotWorkspaceTools(workspace_tools, anywhere))
+            agent_middleware.append(BotTaskMiddleware(tasks, always=tenant))
             if computer_tools:
                 from octop.infra.cloud.computers.computer_use import ComputerBriefing
 

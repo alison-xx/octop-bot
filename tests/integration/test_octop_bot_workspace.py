@@ -385,3 +385,17 @@ async def test_bot_config_mounts_phone_tools_behind_the_phone(env_with_agent):
         text="明天下午三点开会", thread_id="t1", device_tools=["device_calendar_create_event"]
     ).to_turn_body()
     assert turn.device_tools == ["device_calendar_create_event"]
+
+
+async def test_bots_get_the_task_contract_on_bot_chat_turns(env_with_provider):
+    from octop.infra.agents.middleware.bot_workspace import BotWorkspaceTools
+    from octop.infra.bot_tasks.watchdog import BotTaskMiddleware
+
+    client, server, auth = env_with_provider
+    chief = (await client.get("/api/octop-bot/workspace", headers=auth)).json()["chief_id"]
+    manager = server.app_runtime.agent_registry
+    cfg = manager._build_harness_config(manager.get_row(chief))
+    tools = next(m for m in cfg.middleware if isinstance(m, BotWorkspaceTools))
+    # Shown on Octop Bot client turns (a desktop user's Bot), with the watchdog around them.
+    assert {"task_plan", "task_check", "task_finish"} <= tools._names
+    assert any(isinstance(m, BotTaskMiddleware) for m in cfg.middleware)

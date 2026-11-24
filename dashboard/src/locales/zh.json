@@ -9009,5 +9009,32 @@
       "later": "稍后再选",
       "useModel": "使用这个模型"
     }
+  },
+  "botTask": {
+    "label": "任务：{{goal}}",
+    "deep": "深度",
+    "steps": "{{done}}/{{total}} 步",
+    "seconds": "{{count}} 秒",
+    "minutes": "{{count}} 分钟",
+    "criteria": "验收条件 {{count}} 条",
+    "acceptance": "验收",
+    "openIssues": "没做完的",
+    "assumptions": "我自己定的",
+    "reportDone": "已完成：{{goal}}",
+    "reportPartial": "部分完成：{{goal}}",
+    "duration": "用时 {{time}}",
+    "phase": {
+      "live": "进行中",
+      "paused": "已暂停",
+      "done": "已完成",
+      "partial": "部分完成",
+      "stopped": "已停止"
+    },
+    "check": {
+      "pending": "待核对",
+      "passed": "通过",
+      "failed": "未通过",
+      "skipped": "跳过"
+    }
   }
 }
