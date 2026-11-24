@@ -2,6 +2,7 @@
   "slug": "trip-planner",
   "version": 1,
   "category": "personal",
+  "roles": ["freelancer"],
   "featured": false,
   "name": {
     "zh": "旅行规划师",

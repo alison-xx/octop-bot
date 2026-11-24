@@ -29,6 +29,7 @@ from octop.infra.backend.mention_index import collect_mention_paths
 from octop.infra.backend.tree_listing import dedupe_tree_rows
 from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
 from octop.infra.cloud.bot_cloud import files as cloud_files
+from octop.infra.cloud.computers.backend import computer_off
 from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.backend_files import (
@@ -88,6 +89,14 @@ def _guard_workspace_read(io_path: str, workspace: Path, *, host_files: bool) ->
         return io_path
     _reject_parent_segments(io_path)
     return io_path
+
+
+def _keep_computer_off(ws: Any, *paths: str, search: bool = False) -> None:
+    """A dashboard or app request never starts a Bot's cloud computer: a file that is only on
+    the computer while it is off answers ``BOT_COMPUTER_OFF`` (the user opens the computer
+    from its icon, or the Bot starts it when it works there)."""
+    if any(computer_off(ws, path, search=search) for path in paths):
+        raise OctopError.localized(ErrorCode.BOT_COMPUTER_OFF)
 
 
 def _map_workspace_fs_error(exc: Exception, *, operation: str, path: str) -> OctopError:
@@ -171,6 +180,7 @@ async def list_tree(
     io_path = _guard_workspace_read(
         io_path, ws.workspace_dir, host_files=_host_files(server, agent_id)
     )
+    _keep_computer_off(ws, io_path)
     result = await ws.als(io_path)
     if result is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot list {path!r}")
@@ -215,6 +225,7 @@ async def read_file(
     io_path = _guard_workspace_read(
         io_path, ws.workspace_dir, host_files=_host_files(server, agent_id)
     )
+    _keep_computer_off(ws, io_path)
     content = await ws.aread_text(io_path)
     if content is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot read {path!r}")
@@ -237,6 +248,7 @@ async def write_file(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    _keep_computer_off(ws, io_path)
     converter = get_doc_converter(path)
     if converter is not None:
         # Editable-document paths are always stored as the binary document
@@ -286,6 +298,7 @@ async def mkdir_workspace_dir(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    _keep_computer_off(ws, rel)
     try:
         await ws.amkdir(rel)
     except Exception as exc:
@@ -316,6 +329,7 @@ async def delete_workspace_file(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    _keep_computer_off(ws, rel)
     try:
         await ws.adelete(rel)
     except Exception as exc:
@@ -346,6 +360,7 @@ async def move_workspace_file(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    _keep_computer_off(ws, src, dest)
     try:
         await ws.amove(src, dest)
     except Exception as exc:
@@ -371,6 +386,7 @@ async def upload_file(
     )
     target = path or f"/{file.filename or 'upload.bin'}"
     io_path = _assert_workspace_mutable(target)
+    _keep_computer_off(ws, io_path)
     data = await file.read()
     try:
         await ws.aupload_bytes(io_path, data)
@@ -445,6 +461,7 @@ async def _read_download(
     io_path = _guard_workspace_read(
         io_path, ws.workspace_dir, host_files=_host_files(server, agent_id)
     )
+    _keep_computer_off(ws, io_path)
 
     try:
         file_blob = await ws.adownload_bytes(io_path)
@@ -481,6 +498,7 @@ async def download_link(
     io_path = _guard_workspace_read(
         io_path, ws.workspace_dir, host_files=_host_files(server, agent_id)
     )
+    _keep_computer_off(ws, io_path)
     try:
         file_blob = await ws.adownload_bytes(io_path)
     except PermissionError as exc:
@@ -514,6 +532,7 @@ async def read_doc(
     io_path = _guard_workspace_read(
         io_path, ws.workspace_dir, host_files=_host_files(server, agent_id)
     )
+    _keep_computer_off(ws, io_path)
     try:
         blob = await ws.adownload_bytes(io_path)
     except PermissionError as exc:
@@ -545,6 +564,7 @@ async def write_doc(
     rel = _assert_workspace_mutable(path)
     converter = _ensure_editable_doc(path)
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    _keep_computer_off(ws, rel)
     try:
         data = converter.from_markdown(body.content)
     except Exception as exc:
@@ -641,6 +661,9 @@ async def glob_files(
     )
     root = _workspace_io_path(path, from_workspace=from_workspace)
     root = _guard_workspace_read(root, ws.workspace_dir, host_files=_host_files(server, agent_id))
+    # Markdown at the top level lists the store's copy (never the computer); any other search
+    # runs on the computer.
+    _keep_computer_off(ws, root, search=not (pattern in ("**/*.md", "*.md") and root == "."))
     if pattern in ("**/*.md", "*.md") and root == ".":
         ls_result = await ws.als(".")
         if ls_result is None:
@@ -679,6 +702,7 @@ async def grep_files(
     io_path = _guard_workspace_read(
         io_path, ws.workspace_dir, host_files=_host_files(server, agent_id)
     )
+    _keep_computer_off(ws, io_path, search=True)
     result = await ws.agrep(pattern, io_path)
     if result is None:
         raise OctopError(ErrorCode.NOT_FOUND, "grep failed")
@@ -704,6 +728,7 @@ async def export_workspace_archive(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    _keep_computer_off(ws, ".", search=True)
     data = await export_workspace_zip(ws)
     filename = f"workspace-{agent_id}.zip"
     return StreamingResponse(
@@ -735,7 +760,11 @@ async def import_workspace_archive(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
-    local_ws = resolve_agent_workspace_dir(server, agent_id)
+    _keep_computer_off(ws, ".", search=True)
+    # Replace clears the agent's local folder first, for agents whose files live there.
+    local_ws = (
+        resolve_agent_workspace_dir(server, agent_id) if _host_files(server, agent_id) else None
+    )
     result = await import_workspace_zip(
         ws,
         raw,

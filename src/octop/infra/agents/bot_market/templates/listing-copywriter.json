@@ -2,6 +2,7 @@
   "slug": "listing-copywriter",
   "version": 1,
   "category": "ecommerce",
+  "roles": ["operations"],
   "featured": false,
   "name": { "zh": "商品上新文案", "en": "Listing Copywriter" },
   "tagline": {

@@ -30,6 +30,21 @@ if TYPE_CHECKING:
 # Fills a brand-new computer: called with ``write(path_on_computer, data)``.
 Seeder = Callable[[Callable[[str, bytes], None]], None]
 
+
+@dataclass(frozen=True)
+class ComputerIO:
+    """A computer that just started or resumed, for a wake callback (which runs under the
+    computer's lock, so it must use these and never the manager's own methods)."""
+
+    write: Callable[[str, bytes], None]
+    read: Callable[[str], bytes | None]
+    run: Callable[[str], tuple[int, str]]
+
+
+Waker = Callable[[ComputerIO], None]
+# A wake callback's commands are short listings; the desktop server stops a request at 120 s.
+WAKE_COMMAND_TIMEOUT = 90
+
 logger = logging.getLogger(__name__)
 
 IDLE_PAUSE_SECONDS = 10 * 60
@@ -297,6 +312,8 @@ class ComputerManager:
         # Which conversation drives each computer's screen, and when it last did: (thread, time).
         self._screen_holders: dict[str, tuple[str, float]] = {}
         self._last_orphan_scan = 0.0
+        # Per Bot: called whenever its computer starts or resumes (see ``on_wake``).
+        self._wakers: dict[str, Waker] = {}
 
     # Records
 
@@ -385,7 +402,27 @@ class ComputerManager:
                     self._save(record)
                 except Exception:  # noqa: BLE001 - the computer works; files are copied next time
                     logger.warning("copying files onto the computer of %s failed", agent_id)
+            waker = self._wakers.get(agent_id)
+            if waker is not None:
+                instance = record.instance_id
+                try:
+                    waker(
+                        ComputerIO(
+                            write=lambda path, data: self._driver.write(instance, path, data),
+                            read=lambda path: self._driver.read(instance, path),
+                            run=lambda command: self._driver.run(
+                                instance, command, WAKE_COMMAND_TIMEOUT
+                            ),
+                        )
+                    )
+                except Exception:  # noqa: BLE001 - the computer works; files sync next time
+                    logger.warning("syncing files with the computer of %s failed", agent_id)
             return record.instance_id
+
+    def on_wake(self, agent_id: str, waker: Waker) -> None:
+        """Call ``waker`` each time this Bot's computer starts or resumes, whatever woke it (a
+        command, ``cloud_computer``, the user opening its screen). The latest one wins."""
+        self._wakers[agent_id] = waker
 
     def _wake(self, record: ComputerRecord) -> bool:
         """Resume the record's paused instance or start a new one; True when it is brand new."""

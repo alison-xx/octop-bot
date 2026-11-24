@@ -1,6 +1,6 @@
 # Bot 市场（Bot Market）
 
-Bot 市场是一组按行业准备好的 Bot 模板，参考 Grok Bot 的 Marketplace 设计：用户在官网或应用里挑一个模板，一键导入成自己的 Bot，导入后马上能用，之后可以随意修改。
+Bot 市场是一组按行业和岗位准备好的 Bot 模板，参考 Grok Bot 的 Marketplace 设计：用户在官网或应用里挑一个模板，一键导入成自己的 Bot，导入后马上能用，之后可以随意修改。
 
 ## 用户能看到的地方
 
@@ -18,6 +18,7 @@ Bot 市场是一组按行业准备好的 Bot 模板，参考 Grok Bot 的 Market
 
 | 字段 | 导入后落到哪里 |
 |------|----------------|
+| `category`、`roles` | 所属行业（`categories.json`）和一到三个岗位（`roles.json`），市场按这两个维度筛选；不落到 Bot 上 |
 | `name`、`tagline`、`description` | Bot 名字、简介（`description` 列）、首次对话的欢迎语 |
 | `role` + `instructions` | Bot 的系统提示词（`system_prompt`），末尾附上技能清单 |
 | `memories` | 工作区 `MEMORY.md`（在 harness 默认模板后追加），每个会话都会加载 |
@@ -34,7 +35,7 @@ Bot 市场是一组按行业准备好的 Bot 模板，参考 Grok Bot 的 Market
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/octop-bot/market` | 公开。分类和卡片，`?locale=zh|en` |
+| GET | `/api/octop-bot/market` | 公开。行业分类、岗位和卡片，`?locale=zh|en`；岗位带 `onboarding`（新用户引导里显示的顺序，null 表示只在市场筛选里出现） |
 | GET | `/api/octop-bot/market/{slug}` | 公开。详情 |
 | GET | `/api/octop-bot/market/{slug}/avatar` | 公开。512px WebP |
 | GET | `/api/octop-bot/market-imports` | 需登录。我导入过的模板 → Bot id |
@@ -42,7 +43,7 @@ Bot 市场是一组按行业准备好的 Bot 模板，参考 Grok Bot 的 Market
 
 ## 新增或修改模板
 
-1. 写 `templates/<slug>.json`（参考 `store-daily-brief.json`），分类在 `categories.json`。改了已发布模板的内容就把 `version` 加一（头像和官网缓存会刷新）。
+1. 写 `templates/<slug>.json`（参考 `store-daily-brief.json`），行业在 `categories.json`，岗位在 `roles.json`。每个行业和每个岗位至少要有 3 个模板（测试会查）。改了已发布模板的内容就把 `version` 加一（头像和官网缓存会刷新）。
 2. 生成头像（gpt-image-2.5，灵策接口，统一风格：Bot 的软形状角色 + 斜胶囊眼 + 一个行业道具）：
    ```bash
    LYNXCE_API_KEY=... uv run python scripts/bot_market_avatars.py <slug>

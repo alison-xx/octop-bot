@@ -2,6 +2,7 @@
   "slug": "report-reader",
   "version": 1,
   "category": "finance",
+  "roles": ["finance", "analyst"],
   "featured": false,
   "name": { "zh": "财报速读", "en": "Financial Report Reader" },
   "tagline": {

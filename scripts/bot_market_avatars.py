@@ -134,13 +134,17 @@ def main() -> None:
     ]
 
     def run(t: Template) -> str:
-        try:
-            save(t.slug, generate(t, key))
-            return f"ok   {t.slug}"
-        except Exception as exc:  # noqa: BLE001 - report and keep going
-            return f"FAIL {t.slug}: {exc}"
+        error: Exception | None = None
+        for _ in range(2):  # one retry, then report and keep going
+            try:
+                save(t.slug, generate(t, key))
+                return f"ok   {t.slug}"
+            except Exception as exc:  # noqa: BLE001
+                error = exc
+        return f"FAIL {t.slug}: {error}"
 
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    # Two at a time: the image API is shared with production traffic.
+    with ThreadPoolExecutor(max_workers=2) as pool:
         for future in as_completed([pool.submit(run, t) for t in todo]):
             print(future.result(), flush=True)
 

@@ -2,6 +2,7 @@
   "slug": "fitness-coach",
   "version": 1,
   "category": "personal",
+  "roles": ["freelancer", "student"],
   "featured": false,
   "name": {
     "zh": "健身饮食教练",

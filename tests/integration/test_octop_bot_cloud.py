@@ -743,3 +743,221 @@ async def test_model_key_names_are_fixed_per_server_and_user(
         # A new database on the same OCTOP_HOME keeps the names; another home does not.
         (tmp_octop_home / accounts.INSTANCE_FILE).write_text("other-server")
         assert accounts.key_name(srv.services, 1) != first
+
+
+async def test_only_the_bots_work_or_its_screen_start_a_cloud_computer(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Signing up, making Bots, writing deliverables, file cards, previews and the @ menu
+    never start a cloud computer; opening its screen does (as do commands, unit-tested)."""
+    import octop_harness.backends as harness_backends
+    from deepagents.backends.filesystem import FilesystemBackend
+    from octop_harness.backends.workspace import BackendWorkspace
+
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.cloud.computers import manager as computers
+    from octop.infra.cloud.computers.backend import CloudComputer
+
+    # As in production: new computers on CVM, older ones on AGS.
+    for name, value in {
+        "OCTOP_AGS_SECRET_ID": "id",
+        "OCTOP_AGS_SECRET_KEY": "key",
+        "OCTOP_AGS_TOOL": "octop-bot-desktop",
+        "OCTOP_CVM_SECRET_ID": "AKID-test",
+        "OCTOP_CVM_SECRET_KEY": "secret-test",
+        "OCTOP_CVM_IMAGE_ID": "img-octop",
+        "OCTOP_CVM_VPC_ID": "vpc-1",
+        "OCTOP_CVM_SUBNETS": "ap-guangzhou-6:subnet-6",
+        "OCTOP_CVM_SECURITY_GROUP": "sg-1",
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(computers, "_manager", None)
+    started: list[str] = []
+    monkeypatch.setattr(
+        computers.ComputerManager,
+        "ensure_running",
+        lambda self, agent_id, user_id, seed=None: started.append(agent_id) or "ins-1",
+    )
+    # The object store, as a local folder per Bot.
+    monkeypatch.setattr(
+        cloud_files.FileStoreConfig, "from_env", classmethod(lambda cls, env=None: object())
+    )
+    monkeypatch.setattr(
+        cloud_files,
+        "harness_spec",
+        lambda spec, config=None: {"type": "test-store", "agent_id": spec["agent_id"]},
+    )
+    real_resolve = harness_backends.resolve_backend
+
+    def resolve(spec: Any, *args: Any, **kwargs: Any) -> Any:
+        if isinstance(spec, dict) and spec.get("type") == "test-store":
+            return FilesystemBackend(root_dir=str(tmp_path / spec["agent_id"]), virtual_mode=True)
+        return real_resolve(spec, *args, **kwargs)
+
+    monkeypatch.setattr(harness_backends, "resolve_backend", resolve)
+
+    async with octop_client(tmp_octop_home) as (client, srv):
+        from octop.infra.cloud.computers.mixed import MixedDriver
+
+        assert isinstance(computers.current_manager()._driver, MixedDriver)  # type: ignore[union-attr]
+        signed = await _sign_in(client, "13800000040")
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        assert (await client.get("/api/octop-bot/workspace", headers=auth)).status_code == 200
+        row = await srv.app_runtime.agent_registry.create(
+            AgentCreateSpec(user_id=signed["user"]["id"], name="Analyst")
+        )
+        aid = row.agent_id
+        # Tests run a fake harness agent: give it the workspace production builds, on the
+        # Bot's own backend (its cloud computer, with the store in front).
+        entry = srv.app_runtime.agent_registry._harness_manager.get_agent(aid)
+        assert isinstance(entry.config.backend, CloudComputer)
+        entry.agent._backend = entry.config.backend
+        entry.agent._workspace = BackendWorkspace(entry.config.backend, tmp_path / "host")
+        # A document it writes in a chat, an image it generates.
+        workspace = srv.app_runtime.agent_registry.workspace_for_agent(aid)
+        await workspace.aupload_bytes("generated/report.md", b"# Report")
+        await workspace.aupload_bytes("generated/cat.png", b"\x89PNG fake")
+        assert started == []
+
+        base = f"/api/agents/{aid}"
+        card = await client.head(
+            base + "/workspace/download", params={"path": "/generated/report.md"}, headers=auth
+        )
+        assert card.status_code == 200 and card.headers["content-length"] == "8"
+        preview = await client.get(
+            base + "/media/preview", params={"source": "/generated/cat.png"}, headers=auth
+        )
+        assert preview.status_code == 200
+        mentions = await client.get(base + "/workspace/mention-index", headers=auth)
+        assert mentions.status_code == 200
+        assert "generated/report.md" in mentions.json()["paths"]
+        # Files only on the (off) computer: a clear answer instead of starting it.
+        off = await client.head(
+            base + "/workspace/download", params={"path": "/notes/plan.md"}, headers=auth
+        )
+        assert off.status_code == 409
+        shot = await client.get(
+            base + "/media/preview", params={"source": "/shots/screen.png"}, headers=auth
+        )
+        assert shot.status_code == 409
+        assert shot.json()["error"]["code"] == "BOT_COMPUTER_OFF"
+        assert started == []
+
+        # The user opening its screen starts it.
+        screen = await client.post(f"/api/octop-bot/computers/{aid}/screen", headers=auth)
+        assert screen.status_code == 200, screen.text
+        assert started == [aid]
+
+
+async def test_tenant_config_allowlist(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A tenant's agent config keeps only what a tenant may set, whether sent when creating or
+    editing a Bot or already stored; the agent is built on its object-store backend."""
+    import json as _json
+
+    import octop_harness.middleware.bootstrap as bootstrap
+
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.agents.workspace.dir import default_workspace_for_chat_agent
+
+    monkeypatch.setattr(bootstrap, "bootstrap_marker_exists", lambda *a, **k: True)
+    target = tmp_path / "victim"
+    extra = {
+        "acp": {"tool_enabled": True, "runners": {"sh": {"command": "/bin/sh", "enabled": True}}},
+        "workspace_dir": str(target),
+        "memory": {"backend": {"type": "sqlite", "db_path": str(tmp_path / "x.db")}, "x": 1},
+        "security": {"enabled": False},
+        "skills": [str(tmp_path)],
+        "persona": "INTJ",
+    }
+    async with octop_client(tmp_octop_home) as (client, srv):
+        signed = await _sign_in(client, "13800000060")
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        uid = signed["user"]["id"]
+        registry = srv.app_runtime.agent_registry
+        rows = srv.services.agent_repo
+
+        made = await client.post("/api/agents", headers=auth, json={"name": "A", "config": extra})
+        assert made.status_code == 201, made.text
+        aid = made.json()["agent_id"]
+        stored = _json.loads(rows.get(aid).config_json)
+        assert {"acp", "security", "skills"}.isdisjoint(stored)
+        assert stored["workspace_dir"] == default_workspace_for_chat_agent(aid)
+        assert "backend" not in stored.get("memory", {})
+        assert stored["backend"]["type"] == "bot_cloud"
+        assert not target.exists()
+
+        edited = await client.patch(f"/api/agents/{aid}", headers=auth, json={"config": extra})
+        assert edited.status_code == 200, edited.text
+        stored = _json.loads(rows.get(aid).config_json)
+        assert "acp" not in stored and stored["workspace_dir"] == default_workspace_for_chat_agent(
+            aid
+        )
+
+        # A stored row with extra keys, and runners saved for the account: built the same way.
+        rows.update_config(
+            aid, config_json=_json.dumps({**extra, "backend": {"type": "local_shell"}})
+        )
+        registry._acp_settings.save_runners(uid, {"sh": {"command": "/bin/sh", "enabled": True}})
+        cfg = registry._build_harness_config(rows.get(aid))
+        assert cfg.acp_delegate_enabled is False
+        assert "sh" not in cfg.acp_runners
+        assert {"acp_runner", "web_fetch", "browser_use"} <= set(cfg.tools_disabled)
+        assert not target.exists()
+        healed = _json.loads(rows.get(aid).config_json)
+        assert "acp" not in healed and healed["backend"]["type"] == "bot_cloud"
+
+        # A tenant row without its object-store backend does not build.
+        from octop.infra.errors import ErrorCode as _Code
+        from octop.infra.errors import OctopError as _Error
+
+        with pytest.raises(_Error) as refused:
+            registry._backend_spec_for_row(rows.get(aid), cfg={"workspace_dir": str(tmp_path)})
+        assert refused.value.code == _Code.FORBIDDEN
+
+        # Managed agents are not for tenants.
+        with pytest.raises(_Error):
+            await registry.create(AgentCreateSpec(user_id=uid, name="M", kind="managed"))
+
+
+async def test_tenant_workspace_replace_keeps_local_files(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import io
+    import zipfile
+
+    from deepagents.backends.filesystem import FilesystemBackend
+    from octop_harness.backends.workspace import BackendWorkspace
+
+    from octop.api.routers import workspace as workspace_routes
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    store = tmp_path / "store"
+    store.mkdir()
+
+    async def running(*args: Any, **kwargs: Any) -> Any:
+        return BackendWorkspace(FilesystemBackend(root_dir=str(store), virtual_mode=True), store)
+
+    monkeypatch.setattr(workspace_routes, "require_running_workspace", running)
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("new.txt", "new")
+    async with octop_client(tmp_octop_home) as (client, srv):
+        signed = await _sign_in(client, "13800000061")
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        registry = srv.app_runtime.agent_registry
+        row = await registry.create(
+            AgentCreateSpec(user_id=signed["user"]["id"], name="R"), defer_bootstrap=True
+        )
+        local = registry.resolve_workspace_dir(row.agent_id)
+        (local / "keep.txt").write_text("local file")
+        sent = await client.post(
+            f"/api/agents/{row.agent_id}/workspace/archive",
+            params={"mode": "replace"},
+            headers=auth,
+            files={"file": ("w.zip", archive.getvalue(), "application/zip")},
+        )
+        assert sent.status_code == 200, sent.text
+        assert (local / "keep.txt").read_text() == "local file"
+        assert (store / "new.txt").read_text() == "new"

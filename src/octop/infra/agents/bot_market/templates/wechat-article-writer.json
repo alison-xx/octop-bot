@@ -2,6 +2,7 @@
   "slug": "wechat-article-writer",
   "version": 1,
   "category": "content",
+  "roles": ["creator", "marketing"],
   "featured": true,
   "name": { "zh": "公众号主笔", "en": "WeChat Article Writer" },
   "tagline": {

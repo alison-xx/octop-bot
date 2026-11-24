@@ -2,6 +2,7 @@
   "slug": "homework-tutor",
   "version": 1,
   "category": "education",
+  "roles": ["teacher", "student"],
   "featured": true,
   "name": { "zh": "作业辅导老师", "en": "Homework Tutor" },
   "tagline": {

@@ -16,6 +16,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from octop.infra.backend.tree_listing import is_listing_self
+from octop.infra.cloud.computers.backend import computer_off
 
 # Keep in step with ``SKIP_SEGMENTS`` in ``dashboard/src/pages/Chat/utils/fileMention.ts``.
 MENTION_SKIP_DIRS = frozenset(
@@ -119,6 +120,9 @@ async def list_workspace_mention_paths(
         if current in seen:
             continue
         seen.add(current)
+        if computer_off(workspace, current):
+            # A folder on a cloud Bot's computer while it is off: the @ menu never wakes it.
+            continue
         listed += 1
         result = await als(current)
         if result is None:

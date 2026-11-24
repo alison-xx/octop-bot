@@ -2,6 +2,7 @@
   "slug": "onboarding-guide",
   "version": 1,
   "category": "hr",
+  "roles": ["hr"],
   "featured": false,
   "name": { "zh": "新人入职向导", "en": "Onboarding Guide" },
   "tagline": {

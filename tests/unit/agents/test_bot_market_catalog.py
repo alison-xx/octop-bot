@@ -18,6 +18,14 @@ def test_catalog_covers_every_category_with_portraits_and_known_connectors():
         assert len(t.starters.zh) >= 3, t.slug
 
 
+def test_every_role_has_templates_and_the_picker_lists_a_few():
+    catalog = load_catalog()
+    for role in catalog.roles:
+        assert sum(role.id in t.roles for t in catalog.templates) >= 3, role.id
+    picker = sorted(r.onboarding for r in catalog.roles if r.onboarding is not None)
+    assert picker == list(range(1, len(picker) + 1)) and 6 <= len(picker) <= 12
+
+
 def test_rendered_files_follow_the_locale():
     t = load_catalog().get("store-daily-brief")
     assert t is not None

@@ -45,6 +45,26 @@
     "blurb": { "zh": "代码审查、线上值班和需求拆解。", "en": "Code review, on-call checks and turning requests into tasks." }
   },
   {
+    "id": "office",
+    "name": { "zh": "企业办公", "en": "Office & Management" },
+    "blurb": { "zh": "周报、会议、项目和行政，团队的日常运转。", "en": "Status reports, meetings, projects and admin: the daily running of a team." }
+  },
+  {
+    "id": "trade",
+    "name": { "zh": "外贸", "en": "Foreign Trade" },
+    "blurb": { "zh": "询盘、报价和出货单证，一步步核对清楚。", "en": "Inquiries, quotes and shipping documents, checked step by step." }
+  },
+  {
+    "id": "local",
+    "name": { "zh": "本地生活", "en": "Local Business" },
+    "blurb": { "zh": "餐饮、门店和装修，评价、定价和工期。", "en": "Restaurants, shops and renovation: reviews, pricing and schedules." }
+  },
+  {
+    "id": "supply",
+    "name": { "zh": "制造与供应链", "en": "Manufacturing & Supply" },
+    "blurb": { "zh": "比价、跟单和补货，别让货断在路上。", "en": "Compare suppliers, chase orders and restock before you run out." }
+  },
+  {
     "id": "personal",
     "name": { "zh": "个人生活", "en": "Personal" },
     "blurb": { "zh": "旅行、记账和健身，照顾好自己的日子。", "en": "Trips, budgets and fitness for everyday life." }

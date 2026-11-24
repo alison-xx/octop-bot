@@ -11,9 +11,20 @@ export interface MarketCategory {
   count: number;
 }
 
+export interface MarketRole {
+  id: string;
+  name: string;
+  blurb: string;
+  count: number;
+  /** Position in the new-user role picker; null shows it only in the market. */
+  onboarding: number | null;
+}
+
 export interface MarketCard {
   slug: string;
   category: string;
+  /** Job role ids, see MarketRole. */
+  roles: string[];
   featured: boolean;
   name: string;
   tagline: string;
@@ -53,9 +64,11 @@ export function marketAvatarUrl(path: string): string {
 
 export const botMarketApi = {
   list: () =>
-    request<{ categories: MarketCategory[]; templates: MarketCard[] }>(
-      "/octop-bot/market",
-    ),
+    request<{
+      categories: MarketCategory[];
+      roles: MarketRole[];
+      templates: MarketCard[];
+    }>("/octop-bot/market"),
   get: (slug: string) =>
     request<MarketDetail>("/octop-bot/market/" + encodeURIComponent(slug)),
   mine: () =>

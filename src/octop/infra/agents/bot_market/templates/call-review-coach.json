@@ -2,6 +2,7 @@
   "slug": "call-review-coach",
   "version": 1,
   "category": "sales",
+  "roles": ["sales"],
   "featured": false,
   "name": { "zh": "销售通话复盘", "en": "Sales Call Coach" },
   "tagline": {

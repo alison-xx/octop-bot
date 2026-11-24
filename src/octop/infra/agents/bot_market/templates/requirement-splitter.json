@@ -2,6 +2,7 @@
   "slug": "requirement-splitter",
   "version": 1,
   "category": "engineering",
+  "roles": ["product", "developer"],
   "featured": false,
   "name": {
     "zh": "需求拆解师",

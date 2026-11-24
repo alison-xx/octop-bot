@@ -2,6 +2,7 @@
   "slug": "labor-advisor",
   "version": 1,
   "category": "legal",
+  "roles": ["legal", "hr"],
   "featured": false,
   "name": { "zh": "劳动用工顾问", "en": "Employment Advisor" },
   "tagline": {

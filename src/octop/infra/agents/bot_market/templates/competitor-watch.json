@@ -2,6 +2,7 @@
   "slug": "competitor-watch",
   "version": 1,
   "category": "marketing",
+  "roles": ["marketing", "product"],
   "featured": true,
   "name": { "zh": "竞品情报员", "en": "Competitor Watch" },
   "tagline": {
