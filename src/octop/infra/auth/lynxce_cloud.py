@@ -105,6 +105,16 @@ def _save(services: SharedServices, user_id: int, grant: _Grant) -> None:
         raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
 
 
+def cloud_accounts(services: SharedServices) -> dict[int, str]:
+    """Map existing local users to the identities in their encrypted grants."""
+    result: dict[int, str] = {}
+    for user in services.user_repo.list(include_disabled=True):
+        grant = _load(services, user.id)
+        if grant is not None:
+            result[user.id] = grant.account_id
+    return result
+
+
 def cloud_status(services: SharedServices, user_id: int) -> CloudAccountStatus:
     """Read the locally saved identity without contacting the cloud."""
     grant = _load(services, user_id) if _enabled() else None

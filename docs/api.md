@@ -763,3 +763,7 @@ dashboard mirrors every code under `apiErrors.*` in
 | `STORAGE_BACKEND_UNREACHABLE` | 502 | Remote backend connect / list failed |
 | `CONNECTOR_OAUTH_FAILED` | 400 | OAuth flow could not complete |
 | `INTERNAL_ERROR` | 500 | Unhandled exception (logged with traceback) |
+
+## Cloud operations
+
+Cloud deployments provide a separately authenticated operations interface for account and computer administration. It requires a dedicated service credential and supports an optional IP allowlist. See the team operations specification for the private interface contract and deployment requirements.

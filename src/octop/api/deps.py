@@ -39,6 +39,7 @@ _SLIDING_RENEW_REMAINING_FRACTION = 2 / 3
 
 # Paths that bypass JWT middleware (setup wizard, health, login).
 _JWT_EXEMPT_PREFIXES = (
+    "/api/ops/",  # Dedicated operations key and IP checks apply to the entire router.
     "/api/setup/",
     "/api/health/",
     "/api/i18n/",
