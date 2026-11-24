@@ -35,6 +35,18 @@ import java.util.UUID
 /** Pure Lynxce wire mapping (no I/O), shared by [LynxceBackend] and unit tests. */
 object LynxceProtocol {
     const val ORIGIN = "https://api.lynxce.cn"
+
+    /** Headers on every call to Lynxce, sign-in and sign-up included. */
+    fun headers(bearer: String?): Map<String, String> = buildMap {
+        // 'web' is Lynxce's multi-session channel; signing in here never signs other devices out.
+        put("X-Lynxce-Client", "web")
+        // Lynxce serves Octop Bot only the Tencent Cloud TokenHub models and records sign-ups made here.
+        put("X-Lynxce-App", "octopbot")
+        // An account created here shows Octop Bot as its source (Lynxce admin, sign-up notice);
+        // Lynxce reads it only when the account is created.
+        put("X-Lynxce-Signup-Site", "octop-bot")
+        bearer?.let { put("Authorization", "Bearer $it") }
+    }
     /** Lynxce's Octop Bot line: every model it offers Octop Bot is named `tencent/…`. */
     const val MODEL_PREFIX = "tencent/"
     /** Same prefix the desktop client uses, so desktop and phone list each other's conversations. */

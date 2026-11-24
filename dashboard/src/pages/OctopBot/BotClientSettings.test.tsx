@@ -18,7 +18,22 @@ import { providerApi } from "../../api/modules/provider";
 import { octopBotApi } from "../../api/modules/octopBot";
 import BotClientSettings from "./BotClientSettings";
 
-const mocks = vi.hoisted(() => ({ role: "admin", config: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  role: "admin",
+  config: vi.fn(),
+  edition: null as string | null,
+  web: null as boolean | null,
+}));
+vi.mock("./useBotServerInfo", () => ({
+  useBotServerInfo: () => (mocks.edition ? { edition: mocks.edition } : null),
+}));
+vi.mock("../../utils/desktopBridge", async (original) => {
+  const real = await original<typeof import("../../utils/desktopBridge")>();
+  return {
+    ...real,
+    isBotWebClient: () => mocks.web ?? real.isBotWebClient(),
+  };
+});
 vi.mock("react-i18next", () => {
   const t = (key: string) => key;
   return { useTranslation: () => ({ t }) };
@@ -80,6 +95,7 @@ vi.mock("../../api/modules/ownModelKeys", () => ({
     add: vi.fn(),
     remove: vi.fn(),
     useModel: vi.fn(),
+    leave: vi.fn(),
   },
 }));
 
@@ -139,6 +155,8 @@ beforeEach(() => {
   vi.mocked(lynxceBotApi.models).mockResolvedValue({ models: [] });
   vi.mocked(lynxceBotApi.clearModel).mockResolvedValue(undefined);
   mocks.role = "admin";
+  mocks.edition = null;
+  mocks.web = null;
   vi.mocked(providerApi.listResolvedModels).mockResolvedValue([model]);
   mocks.config.mockReturnValue({
     presets: [{ id: "ollama", name: "Ollama" }],
@@ -642,5 +660,45 @@ describe("standalone chat model settings", () => {
       screen.getByRole("button", { name: "botClient.startChat" }),
     ).toBeEnabled();
     expect(lynxceBotApi.clearModel).not.toHaveBeenCalled();
+  });
+});
+
+describe("Octop Bot cloud", () => {
+  it("goes back to Lynxce models from my own key and keeps the key", async () => {
+    mocks.edition = "cloud";
+    mocks.web = true;
+    mocks.role = "user";
+    const key = {
+      id: "k1",
+      vendor: "deepseek",
+      name: "DeepSeek",
+      base_url: "https://api.deepseek.com/v1",
+      key_hint: "****7f3a",
+      models: [{ id: "deepseek-flash", name: "deepseek-flash" }],
+      created_at: 1,
+    };
+    vi.mocked(ownModelKeysApi.list)
+      .mockResolvedValueOnce({
+        keys: [key],
+        in_use: "k1",
+        selected_model: "deepseek-flash",
+      })
+      .mockResolvedValue({ keys: [key], in_use: null, selected_model: null });
+    vi.mocked(ownModelKeysApi.leave).mockResolvedValue({
+      keys: [key],
+      in_use: null,
+      selected_model: null,
+    });
+    openSettings();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "botModels.lynxce.use" }),
+    );
+    await waitFor(() => expect(ownModelKeysApi.leave).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "botModels.lynxce.use" }),
+      ).toBeNull(),
+    );
+    expect(ownModelKeysApi.remove).not.toHaveBeenCalled();
   });
 });

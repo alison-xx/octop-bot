@@ -9144,7 +9144,8 @@
     "current": "In use",
     "lynxce": {
       "title": "Lynxce",
-      "billing": "Credits"
+      "billing": "Credits",
+      "use": "Use Lynxce models"
     },
     "keys": {
       "title": "My API keys",

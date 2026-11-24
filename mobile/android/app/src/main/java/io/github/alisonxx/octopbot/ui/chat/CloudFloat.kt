@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color as AndroidColor
+import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
@@ -466,6 +467,8 @@ private fun ScreenWebView(url: String) {
     AndroidView(
         factory = { context ->
             WebView(context).apply {
+                // A wrap_content WebView reports 100vh as 0, which sizes the screen page's frame to nothing.
+                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 setBackgroundColor(AndroidColor.BLACK)
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true

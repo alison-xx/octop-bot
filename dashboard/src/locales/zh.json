@@ -9144,7 +9144,8 @@
     "current": "正在使用",
     "lynxce": {
       "title": "灵策智算",
-      "billing": "积分"
+      "billing": "积分",
+      "use": "改用灵策模型"
     },
     "keys": {
       "title": "我的 API Key",

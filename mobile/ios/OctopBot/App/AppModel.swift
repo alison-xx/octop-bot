@@ -72,6 +72,10 @@ final class AppModel {
     }
 
     var isLynxce: Bool { backend is LynxceBackend }
+    /// Used without signing in: the phone calls the user's own model itself.
+    var isDevice: Bool { backend is DeviceBackend }
+    /// Bots defined on this phone (Lynxce account or no account), rather than a server's.
+    var usesPhoneBots: Bool { isLynxce || isDevice }
     /// The Lynxce wallet: direct with Lynxce, or kept by Octop Bot cloud.
     var creditAccount: CreditAccount? {
         if let lynxce = backend as? LynxceBackend { return lynxce }
@@ -81,15 +85,42 @@ final class AppModel {
     var server: ServerBackend? { backend as? ServerBackend }
     var isCloud: Bool { server?.isCloud == true }
 
+    /// Where "My API keys" live: the Octop server signed in to (cloud or self-hosted), or this phone.
+    var modelKeys: ModelKeyStore? {
+        if let server { return ServerModelKeys(server: server) }
+        return backend == nil ? nil : PhoneModels.shared
+    }
+
+    /// The server account's own keys and the one in use, for the Settings row.
+    var serverKeys: OwnKeyList?
+
+    /// The model Bots reply with, as Settings → Models shows it: ("deepseek-flash", "DeepSeek").
+    var currentModel: (model: String, source: String)? {
+        if let server {
+            guard let keys = serverKeys, let id = keys.inUse, let model = keys.selectedModel else {
+                return server.isCloud
+                    ? (L("models.lynxce.auto"), L("models.lynxce.title"))
+                    : (L("models.server.default"), server.host)
+            }
+            return (model, keys.keys.first { $0.id == id }?.displayName ?? "")
+        }
+        if let phone = PhoneModels.shared.current, usesPhoneBots { return phone }
+        guard isLynxce else { return nil }
+        let name = models.first { $0.id == selectedModel }?.name ?? L("settings.model.auto")
+        return (name, L("models.lynxce.title"))
+    }
+
     /// Where the account lives: 灵策云端 (cloud), 灵策智算账号 (direct Lynxce), or a self-hosted server's host.
     var modeLabel: String {
         if isLynxce { return L("account.mode.lynxce") }
+        if isDevice { return L("account.mode.device") }
         guard let server else { return "" }
         return server.isCloud ? L("settings.lynxce") : server.host
     }
 
     var modeSymbol: String {
         if isLynxce { return "person.crop.circle.fill" }
+        if isDevice { return "iphone" }
         return isCloud ? "cloud.fill" : "server.rack"
     }
 
@@ -120,7 +151,7 @@ final class AppModel {
     }
 
     func start() async {
-        if let restored: ChatBackend = LynxceBackend.restore() ?? ServerBackend.restore() {
+        if let restored: ChatBackend = LynxceBackend.restore() ?? ServerBackend.restore() ?? DeviceBackend.restore() {
             await use(restored)
         } else {
             phase = .signedOut
@@ -155,6 +186,15 @@ final class AppModel {
             )
             await CreditStore.shared.flush()
         }
+    }
+
+    func refreshServerKeys() async {
+        guard server != nil, let store = modelKeys else {
+            serverKeys = nil
+            return
+        }
+        // An older server without own keys just keeps showing its own models.
+        serverKeys = try? await store.list()
     }
 
     func refreshBalance() async {
@@ -209,6 +249,7 @@ final class AppModel {
             accountName = server.accountName
         }
         models = (try? await backend.models()) ?? []
+        await refreshServerKeys()
         await refreshBalance()
     }
 
@@ -221,7 +262,7 @@ final class AppModel {
     }
 
     /// Phone-local Bots can be edited fully; server Bots can change their look.
-    func canEdit(_ bot: BotProfile) -> Bool { isLynxce ? bot.isLocal : true }
+    func canEdit(_ bot: BotProfile) -> Bool { usesPhoneBots ? bot.isLocal : true }
 
     func motion(of bot: BotProfile) -> BotMotion { sessions[bot.id]?.motion ?? .idle }
 
@@ -324,6 +365,7 @@ final class AppModel {
         backend = nil
         bots = []
         groups = []
+        serverKeys = nil
         balance = nil
         walletAccount = nil
         lowBalanceDismissed = false

@@ -3,7 +3,9 @@ package io.github.alisonxx.octopbot.app
 import android.app.Application
 import androidx.appcompat.app.AppCompatDelegate
 import io.github.alisonxx.octopbot.device.DeviceConnectors
+import io.github.alisonxx.octopbot.net.DeviceConversations
 import io.github.alisonxx.octopbot.net.Http
+import io.github.alisonxx.octopbot.net.PhoneModels
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import io.github.alisonxx.octopbot.notify.ReplyNotifier
@@ -23,6 +25,12 @@ class OctopApplication : Application() {
         private set
     lateinit var device: DeviceConnectors
         private set
+    /** Model keys and local model servers kept on this phone. */
+    lateinit var phoneModels: PhoneModels
+        private set
+    /** Conversations of phone-only use (no account). */
+    lateinit var deviceConversations: DeviceConversations
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -30,6 +38,8 @@ class OctopApplication : Application() {
         localBots = LocalBots(this, store)
         notifier = ReplyNotifier(this)
         device = DeviceConnectors(this, store)
+        phoneModels = PhoneModels(this)
+        deviceConversations = DeviceConversations(java.io.File(filesDir, "device-conversations.json"))
         updater = Updater(this, store, MainScope()).also { it.watchForeground() }
         Http.locale = AppLocale::current
         // Apply the saved appearance before the first activity draws (a tiny DataStore read).

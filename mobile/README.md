@@ -3,15 +3,47 @@
 Native phone clients for Octop Bot: SwiftUI (`ios/`) and Jetpack Compose (`android/`).
 They share no code, only this design and the wire contract in [PROTOCOL.md](PROTOCOL.md).
 
-## Two ways to connect
+## Ways to connect
 
-1. **Lynxce account (default).** Sign in with a 灵策智算 phone/email and a code or password and start chatting —
-   no server needed. Replies stream from the Lynxce model gateway; conversations sync to the account
-   and show up in the desktop Bot's cloud conversations too. Bots are defined on the phone (Chief plus
-   built-in roles, and your own with a persona, shape and color).
-2. **Your own server.** In Settings → Connection, enter the URL of an Octop Bot web/NAS build and sign
-   in with the Lynxce account that owns it (or the local password). You then get that server's Bots,
-   their tools, skills, memory and MCP connectors, and Bot groups.
+The start page puts the Lynxce account first (a card with 验证码 / 密码 tabs, as on the web), then
+"Use without signing in", with "Connect my own server" as a quiet link at the bottom.
+
+1. **Lynxce account (default).** Sign in with a 灵策智算 phone/email and a code or password. When Octop Bot
+   cloud (`https://bot.lynxce.cn`) answers, the phone signs in there and gets the cloud's Bots, groups and
+   schedules; otherwise it talks to the Lynxce model gateway directly, with Bots defined on the phone and
+   conversations synced to the account.
+2. **Without signing in.** The user picks a model first (their own vendor API key, or Ollama / LM Studio
+   on a computer on the same Wi-Fi), then gets the phone's Bots. The phone calls that OpenAI-compatible
+   endpoint itself: nothing goes through Lynxce or the cloud, and conversations stay on the phone
+   (`DeviceBackend`). The vendor list ships with the app (`own-key-vendors.json`, made from the server's
+   catalog by `scripts/vendor-catalog.py`, OpenAI-protocol vendors only). Keys are sealed on the phone
+   (iOS Keychain, Android Keystore) and checked with the vendor's `/models` before they are kept.
+3. **Your own server.** Enter the URL of an Octop Bot web/NAS build and sign in with the Lynxce account
+   that owns it (or the local password). You then get that server's Bots, their tools, skills, memory and
+   MCP connectors, and Bot groups.
+
+### Settings → Models
+
+Three groups, like the desktop:
+
+- **灵策智算 · 积分.** Direct Lynxce: "Auto" and the Lynxce models, plus 积分与充值 (App Store purchase on
+  iOS, the recharge Custom Tab on Android). Octop Bot cloud: a line saying chats are paid with credits.
+  Not signed in: "Sign in to Lynxce" (back to the start page; keys and chats stay). While a cloud
+  user chats on their own key, "Use Lynxce models" goes back to credits (`DELETE
+  /api/octop-bot/model-keys/in-use`; the key is kept).
+  On a self-hosted server this group is **这台服务器 · 管理员配置** instead: the models the server's admin
+  set up, with "Use the server's models" to leave one's own key the same way.
+- **我的 API Key · 厂商直接收费.** On Octop Bot cloud and on a self-hosted server the keys live on the
+  server (`/api/octop-bot/model-keys`, docs/octop-bot-cloud-plan.md §12.9; errors come back localized;
+  only a self-hosted server's admins may add a custom URL); otherwise they stay on the phone. Each row:
+  vendor logo, name, `****` + last four and the model count, then the model in use (green dot) or "Use" with the key's models; swipe or the trash button removes it.
+  "Add" opens the add sheet: vendors grouped by company (Tencent Cloud, Bailian, Ark, DeepSeek, Zhipu,
+  Kimi, MiniMax, SiliconFlow first, "More vendors" for the rest, a custom OpenAI-compatible URL where
+  allowed), then the plan and key with the endpoint and a "Get a key" link, then the models found.
+  A key the vendor refuses (401/403) shows "The vendor rejected this key"; a vendor's quota error during
+  a chat is an ordinary error, never the Lynxce top-up card, and never signs the user out.
+- **本地模型 · 免费** (phone only). Ollama or LM Studio by address (`192.168.1.8` → `:11434/v1`); the
+  phone talks to it directly. Not shown when signed in to a server, which runs the chat itself.
 
 The desktop app's built-in server listens on `127.0.0.1` only, so phones connect to a NAS/Docker
 deployment (`deploy/docker`, `fnos/`), not to the desktop app.
@@ -70,7 +102,7 @@ Grok-style: dark-first, chat-first, one big character.
   - *General*: language (follow system / 简体中文 / English — switches live, also drives
     `Accept-Language` and speech recognition), appearance (follow system / dark / light), chat text
     size (small / standard / large = 0.9 / 1.0 / 1.15 × body), haptics (on by default).
-  - *Chat*: model (Lynxce only; a pushed list with "Auto" first and a checkmark on the current one,
+  - *Chat*: model (Settings → Models above, with the model in use as the row's value;
     each model's name), expand reasoning by default (off), read replies aloud (off), speaking speed
     (slow / normal / fast = 0.85 / 1.0 / 1.2; applies to the backend voice and the system voice).
   - *Device connectors*: Health (read only), Calendar and Reminders (iOS; Android has Health and

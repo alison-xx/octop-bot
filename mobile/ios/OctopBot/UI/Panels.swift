@@ -98,7 +98,7 @@ struct BotEditor: View {
     @State private var confirmDelete = false
 
     /// Lynxce Bots live on the phone; on a server the persona is set once, at creation.
-    private var editsPersona: Bool { model.isLynxce || isNew }
+    private var editsPersona: Bool { model.usesPhoneBots || isNew }
 
     var body: some View {
         NavigationStack {
@@ -230,7 +230,7 @@ struct BotEditor: View {
             }
             return
         }
-        if model.isLynxce {
+        if model.usesPhoneBots {
             bot.name = bot.name.trimmingCharacters(in: .whitespaces)
             model.saveLocalBot(bot)
             dismiss()
@@ -303,14 +303,16 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    if model.isLynxce {
+                    if model.backend != nil {
                         NavigationLink {
-                            ModelPicker()
+                            ModelSourcesView()
                         } label: {
                             LabeledContent {
-                                Text(model.models.first { $0.id == model.selectedModel }?.name ?? L("settings.model.auto"))
+                                Text(model.currentModel?.model ?? L("models.none"))
+                                    .lineLimit(1)
                             } label: { row("settings.model", "cpu", .purple) }
                         }
+                        .accessibilityIdentifier("models")
                     }
                     Toggle(isOn: $preferences.expandThinking) { row("settings.expandThinking", "sparkles", .orange) }
                         .tint(.green)
@@ -324,7 +326,7 @@ struct SettingsView: View {
                 } header: {
                     Text("settings.chat")
                 } footer: {
-                    if model.isLynxce { Text("settings.model.footer") }
+                    Text(LocalizedStringKey(model.server.map { !$0.isCloud } == true ? "models.footerServer" : "models.footer"))
                 }
 
                 DeviceConnectorsSection()
@@ -396,6 +398,8 @@ struct SettingsView: View {
                             } label: { row("settings.connection", "server.rack", .cyan) }
                         }
                         .foregroundStyle(Palette.text)
+                    } else if model.isDevice {
+                        LabeledContent { Text("account.connection.device") } label: { row("settings.connection", "iphone", .cyan) }
                     } else {
                         LabeledContent { Text("account.connection.lynxce") } label: { row("settings.connection", "cloud", .cyan) }
                     }
@@ -430,9 +434,19 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Button("settings.signOut", role: .destructive) { confirmSignOut = true }
+                    if model.isDevice {
+                        // Phone-only use has no account to leave; the keys and chats stay for next time.
+                        Button("models.lynxce.signIn") {
+                            dismiss()
+                            Task { await model.signOut() }
+                        }
                         .frame(maxWidth: .infinity)
-                        .accessibilityIdentifier("signOut")
+                        .accessibilityIdentifier("signInLynxce")
+                    } else {
+                        Button("settings.signOut", role: .destructive) { confirmSignOut = true }
+                            .frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("signOut")
+                    }
                 }
 
                 if model.creditAccount != nil {
@@ -614,44 +628,6 @@ struct SettingsIcon: View {
             .foregroundStyle(.white)
             .frame(width: 28, height: 28)
             .background(color.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-    }
-}
-
-/// Lynxce models: "Auto" first, a checkmark on the current one.
-private struct ModelPicker: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        List {
-            Section {
-                option(nil, L("settings.model.auto"), detail: L("settings.model.footer"))
-            }
-            Section {
-                ForEach(model.models) { choice in
-                    option(choice.id, choice.name, detail: choice.supportsImage ? L("settings.model.vision") : nil)
-                }
-            }
-        }
-        .navigationTitle("settings.model")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func option(_ id: String?, _ name: String, detail: String?) -> some View {
-        Button {
-            Haptics.tap()
-            model.selectedModel = id
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(name).foregroundStyle(Palette.text)
-                    if let detail { Text(detail).font(.caption).foregroundStyle(Palette.secondary) }
-                }
-                Spacer()
-                if model.selectedModel == id {
-                    Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Palette.text)
-                }
-            }
-        }
     }
 }
 
