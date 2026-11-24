@@ -15,7 +15,7 @@
 |------|------|------|
 | 新增后端文件 | 70 个，约 1.3 万行（`bot_*` 路由、`infra/bot_groups`、`infra/cloud`、`infra/auth/lynxce*`、`agents/bot_*` 等） | 原样搬进 `octop_bot` |
 | 改过的上游后端文件 | 64 个，约 30 处挂钩点；`infra/agents/manager.py` 一个文件就 +478 行 | 每处挂钩要么提成上游通用修复，要么换成扩展点调用 |
-| 迁移 `026_bot_groups` | 6 张表，占用了上游下一个迁移号 026 | **最急**：上游自己出 026 时会撞号，要先挪进扩展的独立命名空间 |
+| 迁移 `026_bot_groups` | 6 张表，占用了上游下一个迁移号 026 | **最急**：上游自己出 026 时会撞号。#3130 合并后改成 `octop_bot` 命名空间下的 `001_bot_groups`，已有数据库的表靠 `IF NOT EXISTS` 原样接管 |
 | 新增前端文件 | 183 个（其中 `pages/OctopBot` 135 个） | 独立 Bot SPA |
 | 改过的上游前端文件 | 54 个（Chat、Experts、Settings/Models、locales） | 拷进 Bot SPA 维护，上游那份还原 |
 | desktop / mobile / website / fnos | 各自独立 | 不变 |
@@ -35,7 +35,7 @@ octop_bot = "octop_bot.extension:extension"
 | 批次 | 扩展点 | 上游调用位置 | 覆盖的 Bot 代码 |
 |------|--------|--------------|-----------------|
 | E1 地基 | `load_extensions()`；`on_startup(server)` / `on_shutdown(server)`；`configure_app(app, server)`；`public_paths()` | `OctopServer` 启停、`build_app` 末尾、`deps._JWT_EXEMPT_*`、`setup_lockdown` | 全部 `bot_*` 路由和 `auth_lynxce`、AGS 电脑管理器、群聊恢复任务、免登录路径 |
-| E2 存储 | `migrations() -> (namespace, sql_dir)`，独立水位；`repos(db)` → `RepoBundle.ext[ns]` | `run_migrations` 之后、`RepoBundle.build` | 026 的 6 张表、Bot 仓库类 |
+| E2 存储 | `migrations() -> ExtensionMigrations(namespace, dir)`，独立水位表 `_extension_schema`（已提交 [TencentCloud/Octop#3130](https://github.com/TencentCloud/Octop/pull/3130)）；`repos(db)` → `RepoBundle.ext[ns]` 待提 | `run_migrations` 之后、`RepoBundle.build` | 026 的 6 张表、Bot 仓库类 |
 | E5 静态贡献 | `i18n_bundles`、`provider_presets`、`backend_kinds`、`thread_channels`、`error_codes`、`hitl_excluded_tools`、`nav_keys` | 各自的注册表 | 灵策预设、`bot_cloud` 后端、群聊线程渠道、`BOT_*` 错误码、文案 |
 | E6 Agent 策略 | `normalize_agent_config`、`can_share`、`before_delete`、`peer_visible`、`host_files_allowed`、`browser_profile`、删除事件 | `AgentManager` 创建/合并/共享/删除、团队、媒体导入 | 私密 Bot、云租户工作区、每个 Bot 独立浏览器档案 |
 | E7 运行配置 | `harness_config(row, cfg, ctx) -> cfg` | `AgentManager._build_harness_config` 末尾 | Bot 工具、中间件、审批项、Chief 引导 |
@@ -91,7 +91,7 @@ Bot 层后续的“对话里创建 Bot”等能力直接复用这个工具，不
 | 阶段 | 内容 | 依赖 |
 |------|------|------|
 | S0（现在） | 上游 PR：`octop_api` 工具（#3128）、E1 地基（#3129）、通用修复若干；本文档 | 无 |
-| S1 | 上游 PR：E2 存储（优先解决 026 撞号）、E5、E6 | 上游对 E1 的反馈 |
+| S1 | 上游 PR：E2 存储（#3130 已提，解决 026 撞号）、E5、E6 | 上游对 E1 的反馈 |
 | S2 | 在飞分支全部合进 main；fork 同步 `upstream/develop`；用 fork 内的扩展点把 Bot 代码搬进 `octop_bot` | 在飞分支收口 |
 | S3 | E7–E11 上游 PR；Bot SPA 独立 | S2 |
 | S4 | 上游发版带齐扩展点后，删除 vendored 的 `src/octop`，改为依赖 PyPI 的 `octop` | 上游发版 |
