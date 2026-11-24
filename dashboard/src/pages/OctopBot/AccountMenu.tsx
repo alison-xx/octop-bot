@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Dropdown, type MenuProps } from "antd";
+import { Button, Dropdown, type MenuProps } from "antd";
 import {
+  ArrowRight,
   Blocks,
-  BookOpen,
-  Cloud,
   Coins,
-  LogIn,
+  ExternalLink,
+  IdCard,
+  LockKeyhole,
   LogOut,
   Settings2,
 } from "lucide-react";
@@ -22,21 +23,41 @@ import { clearAuthToken } from "../../api/request";
 import { holdDesktopLocalAutoLogin } from "../../api/desktopSession";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { applyGuestLocale, applyUserLocale } from "../../utils/locale";
-import { isBotOnlyDesktop, isBotWebClient } from "../../utils/desktopBridge";
-import {
-  BOT_CAPABILITIES,
-  BOT_CLOUD,
-  BOT_GUIDE,
-  BOT_SETTINGS,
-} from "../../utils/botClientRoute";
+import { isBotOnlyDesktop } from "../../utils/desktopBridge";
+import { BOT_CAPABILITIES, BOT_SETTINGS } from "../../utils/botClientRoute";
 import { accountInitials } from "../Chat/utils/accountDisplayName";
 import { ProfileAvatar } from "../Admin/Users/ProfileAvatar";
 import { botCloudApi } from "../../api/modules/botCloud";
 import lynxceLogo from "../../assets/providers/lynxce.png";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
 import styles from "./accountMenu.module.less";
-import { CreditsAmount } from "./CreditsWidgets";
-import { resetCredits, useLynxceCredits } from "./useLynxceCredits";
+import { CreditsAmount, useRecharge } from "./CreditsWidgets";
+import { accountCenterUrl } from "./botWebsite";
+import {
+  formatCredits,
+  resetCredits,
+  useLynxceCredits,
+} from "./useLynxceCredits";
+
+const AVATAR_CACHE = "octop-bot:lynxce-avatar";
+
+/** The last Lynxce avatar seen on this device, so the sidebar does not flash initials. */
+function cachedAvatar(): string | null {
+  try {
+    return window.localStorage.getItem(AVATAR_CACHE);
+  } catch {
+    return null;
+  }
+}
+
+function cacheAvatar(url: string | null) {
+  try {
+    if (url) window.localStorage.setItem(AVATAR_CACHE, url);
+    else window.localStorage.removeItem(AVATAR_CACHE);
+  } catch {
+    // Private windows and blocked storage just show initials until the account loads.
+  }
+}
 
 export async function signOutBotClient(
   username: string | undefined,
@@ -92,14 +113,16 @@ export default function AccountMenu({
 }: {
   compact?: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const user = useCurrentUser();
   const navigate = useNavigate();
   const location = useLocation();
   // Signed in to Lynxce: that account's name, with the Lynxce mark. Otherwise
   // the local account ("local"), never a team or other borrowed name.
   const [lynxceName, setLynxceName] = useState<string | null>(null);
-  const [lynxceAvatar, setLynxceAvatar] = useState<string | null>(null);
+  const [lynxceAvatar, setLynxceAvatar] = useState<string | null>(() =>
+    isBotOnlyDesktop() ? cachedAvatar() : null,
+  );
   const [lynxceAccount, setLynxceAccount] = useState<string | null>(null);
   const desktop = isBotOnlyDesktop();
   useEffect(() => {
@@ -110,7 +133,9 @@ export default function AccountMenu({
         if (!current) return;
         setLynxceName(a.connected ? a.display_name || a.account_id : null);
         setLynxceAccount(a.connected ? a.account_id : null);
-        setLynxceAvatar((a.connected && a.avatar_url) || null);
+        const avatar = (a.connected && a.avatar_url) || null;
+        setLynxceAvatar(avatar);
+        cacheAvatar(avatar);
       },
       () => current && setLynxceName(null),
     );
@@ -119,6 +144,8 @@ export default function AccountMenu({
     };
   }, [desktop]);
   const lynxce = desktop ? Boolean(lynxceName) : true;
+  const [open, setOpen] = useState(false);
+  const { recharge, opening } = useRecharge();
   const name = desktop
     ? lynxceName || user?.username || ""
     : botAccountName(user, t("botClient.account.lynxceUser"));
@@ -126,7 +153,6 @@ export default function AccountMenu({
     lynxce ? "botClient.account.lynxce" : "botClient.account.local",
   );
   const from = { state: { from: location.pathname } };
-  const web = isBotWebClient();
   const credits = useLynxceCredits();
   const billed = credits.status !== "none" && credits.status !== "idle";
   const entry = (label: string, hint: string) => (
@@ -169,55 +195,45 @@ export default function AccountMenu({
           },
         ]
       : []),
-    ...(isBotOnlyDesktop()
+    // Orders, plans and invoices live on the website, opened in the system browser.
+    ...(lynxce
       ? [
           {
-            key: "cloud",
-            icon: <Cloud size={16} />,
-            label: entry(t("botCloud.title"), t("botClient.menu.cloudHint")),
-            onClick: () => navigate(BOT_CLOUD, from),
-          },
-        ]
-      : []),
-    { type: "divider" as const },
-    ...(!web
-      ? [
-          {
-            key: "guide",
-            icon: <BookOpen size={16} />,
-            label: t("botGuide.title"),
+            key: "account",
+            icon: <IdCard size={16} />,
+            label: entry(
+              t("botClient.menu.accountCenter"),
+              t("botClient.menu.accountCenterHint"),
+            ),
+            extra: <ExternalLink size={13} aria-hidden="true" />,
             onClick: () =>
-              navigate(BOT_GUIDE, { state: { returnTo: location.pathname } }),
+              void window.open(accountCenterUrl(), "_blank", "noopener"),
           },
         ]
       : []),
-    // Desktop has two ways in, Lynxce or this computer; both leave through the start page.
-    desktop && !lynxce
-      ? {
-          key: "lynxce",
-          icon: <LogIn size={16} />,
-          label: entry(
-            t("botClient.menu.lynxceSignIn"),
-            t("botClient.menu.lynxceSignInHint"),
-          ),
-          onClick: () => void signOutBotClient(user?.username, navigate),
-        }
-      : {
-          key: "logout",
-          icon: <LogOut size={16} />,
-          label: t(desktop ? "botClient.menu.lynxceSignOut" : "auth.logout"),
-          onClick: async () => {
-            if (desktop && lynxceAccount) {
-              try {
-                await botCloudApi.logout(lynxceAccount);
-              } catch {
-                message.error(t("octopBot.failed"));
-                return;
+    // Desktop without Lynxce signs in from the card above; there is nothing to sign out of.
+    ...(desktop && !lynxce
+      ? []
+      : [
+          { type: "divider" as const },
+          {
+            key: "logout",
+            danger: true,
+            icon: <LogOut size={16} />,
+            label: t(desktop ? "botClient.menu.lynxceSignOut" : "auth.logout"),
+            onClick: async () => {
+              if (desktop && lynxceAccount) {
+                try {
+                  await botCloudApi.logout(lynxceAccount);
+                } catch {
+                  message.error(t("octopBot.failed"));
+                  return;
+                }
               }
-            }
-            await signOutBotClient(user?.username, navigate);
+              await signOutBotClient(user?.username, navigate);
+            },
           },
-        },
+        ]),
   ];
   const avatar =
     desktop && lynxce && lynxceAvatar ? (
@@ -241,38 +257,121 @@ export default function AccountMenu({
         />
       </span>
     );
-  return (
-    <>
-      <Dropdown
-        trigger={["click"]}
-        placement="topLeft"
-        menu={{
-          items,
-          className: styles.menu,
+  const badge = lynxce && (
+    <img className={styles.badge} src={lynxceLogo} alt="" />
+  );
+  // Top of the menu: who is signed in and what the account can spend.
+  const card = lynxce ? (
+    <div className={styles.card}>
+      <div className={styles.cardWho}>
+        <span className={styles.avatarWrap} data-size="large">
+          {avatar}
+          {badge}
+        </span>
+        <span className={styles.who}>
+          <strong className={styles.name}>{name}</strong>
+          <small>{source}</small>
+        </span>
+      </div>
+      {credits.wallet && (
+        <div className={styles.balance}>
+          <strong>
+            {formatCredits(credits.wallet.credits, i18n.language)}
+            <small>{t("botClient.menu.credits")}</small>
+          </strong>
+        </div>
+      )}
+      {credits.wallet && (
+        <div className={styles.cardActions}>
+          <Button
+            type="primary"
+            loading={opening}
+            onClick={() => {
+              setOpen(false);
+              void recharge();
+            }}
+          >
+            {t("botCredits.recharge")}
+          </Button>
+          <Button
+            onClick={() => {
+              setOpen(false);
+              navigate(BOT_SETTINGS, {
+                state: { from: location.pathname, tab: "account" },
+              });
+            }}
+          >
+            {t("botClient.menu.usage")}
+          </Button>
+        </div>
+      )}
+    </div>
+  ) : (
+    <div className={styles.card} data-local>
+      <div className={styles.cardWho}>
+        <span className={styles.avatarWrap} data-size="large">
+          {avatar}
+        </span>
+        <span className={styles.who}>
+          <strong className={styles.name}>{name}</strong>
+          <small>
+            <LockKeyhole size={11} aria-hidden="true" />
+            {source}
+          </small>
+        </span>
+      </div>
+      <p>{t("botClient.menu.localHint")}</p>
+      <Button
+        type="primary"
+        onClick={() => {
+          setOpen(false);
+          void signOutBotClient(user?.username, navigate);
         }}
-        overlayClassName={styles.overlay}
       >
-        <button
-          type="button"
-          className={styles.trigger}
-          data-compact={compact || undefined}
-          aria-label={name + " · " + t("botClient.menu.settings")}
-          title={compact ? name + " · " + source : undefined}
-        >
-          <span className={styles.avatarWrap}>
-            {avatar}
-            {lynxce && <img className={styles.badge} src={lynxceLogo} alt="" />}
+        {t("botClient.menu.lynxceSignIn")}
+        <ArrowRight size={15} aria-hidden="true" />
+      </Button>
+    </div>
+  );
+  return (
+    <Dropdown
+      trigger={["click"]}
+      placement="topLeft"
+      open={open}
+      onOpenChange={setOpen}
+      menu={{
+        items,
+        className: styles.menu,
+        onClick: () => setOpen(false),
+      }}
+      popupRender={(menu) => (
+        <div className={styles.panel}>
+          {card}
+          {menu}
+        </div>
+      )}
+      overlayClassName={styles.overlay}
+    >
+      <button
+        type="button"
+        className={styles.trigger}
+        data-compact={compact || undefined}
+        aria-label={name + " · " + t("botClient.menu.settings")}
+        title={compact ? name + " · " + source : undefined}
+      >
+        <span className={styles.avatarWrap}>
+          {avatar}
+          {badge}
+        </span>
+        {!compact && (
+          <span className={styles.who}>
+            <span className={styles.name}>{name}</span>
+            <small>
+              {credits.wallet ? <CreditsAmount credits={credits} /> : source}
+            </small>
           </span>
-          {!compact && (
-            <span className={styles.who}>
-              <span className={styles.name}>{name}</span>
-              <small>
-                {credits.wallet ? <CreditsAmount credits={credits} /> : source}
-              </small>
-            </span>
-          )}
-        </button>
-      </Dropdown>
-    </>
+        )}
+      </button>
+    </Dropdown>
   );
 }

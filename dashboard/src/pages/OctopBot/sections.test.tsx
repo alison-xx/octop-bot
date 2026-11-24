@@ -634,13 +634,12 @@ describe("directory sections", () => {
     );
   });
 
-  it("opens the cloud workspace from the standalone footer with a return path", async () => {
+  it("has no cloud workspace entry in the standalone footer", async () => {
+    // Plan C: Bots run here and sync, so there is no separate cloud page to switch to.
     openDirectory();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "botCloud.title" }),
-    );
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "/octop-bot/bots/chief",
-    );
+    await screen.findByRole("button", { name: /botClient\.menu\.settings/ });
+    expect(
+      screen.queryByRole("button", { name: "botCloud.title" }),
+    ).not.toBeInTheDocument();
   });
 });
