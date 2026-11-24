@@ -284,6 +284,13 @@ def display_name(profile: dict[str, Any]) -> str | None:
     return None
 
 
+def _valid_credits(value: object) -> bool:
+    """A non-negative number no larger than 10**12 (floats must also be finite)."""
+    if type(value) is int:
+        return 0 <= value <= 10**12
+    return type(value) is float and math.isfinite(value) and 0 <= value <= 10**12
+
+
 def _login_fields(data: dict[str, Any]) -> dict[str, Any]:
     fields: dict[str, Any] = {}
     if isinstance(data.get("isNewUser"), bool):
@@ -294,9 +301,7 @@ def _login_fields(data: dict[str, Any]) -> dict[str, Any]:
             fields["signupGrant"] = None
         elif (
             isinstance(grant, dict)
-            and type(grant.get("credits")) in (int, float)
-            and math.isfinite(grant["credits"])
-            and grant["credits"] >= 0
+            and _valid_credits(grant.get("credits"))
             and (
                 grant.get("expiresAt") is None
                 or (isinstance(grant.get("expiresAt"), str) and len(grant["expiresAt"]) <= 64)

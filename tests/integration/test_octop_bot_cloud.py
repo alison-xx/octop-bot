@@ -1049,7 +1049,9 @@ async def test_tenant_workspace_replace_keeps_local_files(
         assert (store / "new.txt").read_text() == "new"
 
 
-@pytest.mark.parametrize("credits", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize(
+    "credits", [float("nan"), float("inf"), float("-inf"), 10**400, 10**12 + 1]
+)
 def test_signup_grant_credits_must_be_finite(credits: float) -> None:
     from octop.infra.auth import lynxce_cloud
 
