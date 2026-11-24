@@ -2,6 +2,7 @@
   "slug": "customer-follow-up",
   "version": 1,
   "category": "sales",
+  "roles": ["sales"],
   "featured": false,
   "name": { "zh": "客户跟进管家", "en": "Customer Follow-up Keeper" },
   "tagline": {

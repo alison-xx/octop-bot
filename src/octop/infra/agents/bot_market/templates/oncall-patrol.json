@@ -2,6 +2,7 @@
   "slug": "oncall-patrol",
   "version": 1,
   "category": "engineering",
+  "roles": ["developer"],
   "featured": false,
   "name": {
     "zh": "线上巡检值班",

@@ -2,6 +2,7 @@
   "slug": "xhs-note-planner",
   "version": 1,
   "category": "content",
+  "roles": ["creator", "operations"],
   "featured": false,
   "name": { "zh": "小红书笔记策划", "en": "Xiaohongshu Note Planner" },
   "tagline": {

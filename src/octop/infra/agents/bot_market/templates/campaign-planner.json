@@ -2,6 +2,7 @@
   "slug": "campaign-planner",
   "version": 1,
   "category": "marketing",
+  "roles": ["marketing", "operations"],
   "featured": false,
   "name": { "zh": "活动策划师", "en": "Campaign Planner" },
   "tagline": {

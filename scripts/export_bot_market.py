@@ -42,6 +42,7 @@ def main() -> None:
         templates.append(data)
     payload = {
         "categories": [c.model_dump() for c in catalog.categories],
+        "roles": [r.model_dump() for r in catalog.roles],
         "templates": templates,
     }
     (OUT / "catalog.json").write_text(

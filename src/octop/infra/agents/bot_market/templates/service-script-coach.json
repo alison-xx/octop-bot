@@ -2,6 +2,7 @@
   "slug": "service-script-coach",
   "version": 1,
   "category": "ecommerce",
+  "roles": ["support"],
   "featured": false,
   "name": { "zh": "客服话术教练", "en": "Customer Service Coach" },
   "tagline": {

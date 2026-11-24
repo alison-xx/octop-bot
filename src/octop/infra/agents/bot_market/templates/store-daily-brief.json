@@ -2,6 +2,7 @@
   "slug": "store-daily-brief",
   "version": 1,
   "category": "ecommerce",
+  "roles": ["operations", "founder"],
   "featured": true,
   "name": { "zh": "店铺经营日报", "en": "Store Daily Brief" },
   "tagline": {

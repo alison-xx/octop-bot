@@ -2,6 +2,7 @@
   "slug": "code-reviewer",
   "version": 1,
   "category": "engineering",
+  "roles": ["developer"],
   "featured": true,
   "name": {
     "zh": "代码审查员",

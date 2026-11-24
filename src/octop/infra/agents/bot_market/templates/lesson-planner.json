@@ -2,6 +2,7 @@
   "slug": "lesson-planner",
   "version": 1,
   "category": "education",
+  "roles": ["teacher"],
   "featured": false,
   "name": { "zh": "备课助手", "en": "Lesson Planner" },
   "tagline": {

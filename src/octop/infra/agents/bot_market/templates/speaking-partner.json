@@ -2,6 +2,7 @@
   "slug": "speaking-partner",
   "version": 1,
   "category": "education",
+  "roles": ["student"],
   "featured": false,
   "name": { "zh": "英语口语陪练", "en": "English Speaking Partner" },
   "tagline": {
