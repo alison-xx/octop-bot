@@ -51,17 +51,17 @@ async def validate_public_url_values(value: typing.Any) -> None:
         for item in value:
             await validate_public_url_values(item)
     elif isinstance(value, str) and re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", value):
-        parsed = urlparse(value)
-        host = (parsed.hostname or "").lower().rstrip(".")
-        if parsed.scheme != "https" or not host or is_private_or_local_host(host):
-            raise UnsafeOutboundUrl("public https URL required")
         try:
+            parsed = urlparse(value)
+            host = (parsed.hostname or "").lower().rstrip(".")
+            if parsed.scheme != "https" or not host or is_private_or_local_host(host):
+                raise UnsafeOutboundUrl("public https URL required")
             infos = await asyncio.get_running_loop().getaddrinfo(
                 host, parsed.port or 443, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP
             )
-        except (socket.gaierror, ValueError) as exc:
+        except (socket.gaierror, UnicodeError, ValueError) as exc:
             raise UnsafeOutboundUrl("cannot resolve hostname") from exc
-        if not infos or any(not ipaddress.ip_address(info[4][0]).is_global for info in infos):
+        if not infos or any(not is_public_ip(info[4][0]) for info in infos):
             raise UnsafeOutboundUrl("public https URL required")
 
 
@@ -322,9 +322,12 @@ async def safe_request(
             if max_response_bytes is not None and size > max_response_bytes:
                 raise UnsafeOutboundUrl("response size limit exceeded")
             chunks.append(chunk)
+        response_headers = httpx.Headers(response.headers)
+        response_headers.pop("content-encoding", None)
+        response_headers.pop("content-length", None)
         return httpx.Response(
             response.status_code,
-            headers=response.headers,
+            headers=response_headers,
             content=b"".join(chunks),
             request=response.request,
             extensions=response.extensions,

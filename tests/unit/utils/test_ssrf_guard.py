@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import socket
 import threading
 from collections.abc import Iterator
@@ -179,12 +180,45 @@ async def test_allowlisted_http_request_is_pinned_to_the_validated_ip(
 
 
 async def test_public_url_values_check_nested_strings(monkeypatch: pytest.MonkeyPatch) -> None:
-    _resolve_to(monkeypatch, {"example.com": "8.8.8.8", "private.example.com": "127.0.0.1"})
+    _resolve_to(
+        monkeypatch,
+        {
+            "example.com": "8.8.8.8",
+            "private.example.com": "127.0.0.1",
+            "mapped.example.com": "::ffff:100.64.0.1",
+        },
+    )
     await validate_public_url_values({"unrelated": ["ordinary text", "https://example.com"]})
     with pytest.raises(UnsafeOutboundUrl):
         await validate_public_url_values({"unrelated": "https://private.example.com"})
     with pytest.raises(UnsafeOutboundUrl):
         await validate_public_url_values({"unrelated": "http://example.com"})
+    with pytest.raises(UnsafeOutboundUrl):
+        await validate_public_url_values({"unrelated": "https://mapped.example.com"})
+
+
+async def test_safe_request_decodes_gzip_and_limits_decoded_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.utils import ssrf_guard
+
+    body = b"hello" * 100
+    encoded = gzip.compress(body)
+    monkeypatch.setattr(
+        ssrf_guard,
+        "PinnedIPTransport",
+        lambda *_: httpx.MockTransport(
+            lambda request: httpx.Response(
+                200, headers={"content-encoding": "gzip"}, content=encoded
+            )
+        ),
+    )
+    _resolve_to(monkeypatch, {"example.com": "8.8.8.8"})
+    response = await safe_request("GET", "https://example.com", max_response_bytes=len(body))
+    assert response.content == body
+    assert "content-encoding" not in response.headers
+    with pytest.raises(UnsafeOutboundUrl, match="size limit"):
+        await safe_request("GET", "https://example.com", max_response_bytes=len(body) - 1)
 
 
 async def test_safe_request_stops_after_response_limit(monkeypatch: pytest.MonkeyPatch) -> None:
