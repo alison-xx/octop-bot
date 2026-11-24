@@ -64,6 +64,8 @@ export async function signOutBotClient(
   navigate: NavigateFunction,
 ) {
   if (username === "local") holdDesktopLocalAutoLogin();
+  // A shared computer must not show the last person's avatar after sign-out.
+  cacheAvatar(null);
   resetCredits();
   await authApi.logout();
   clearAuthToken();
