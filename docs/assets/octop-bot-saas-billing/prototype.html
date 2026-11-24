@@ -142,6 +142,10 @@
   .small { font-size: 12.5px; }
   .plan { padding: 20px 16px; }
   .plan .renew { font-size: 12px; color: var(--ink-3); margin-top: -6px; }
+  /* The five plans break out of the page column so each card has room for its benefits. */
+  #v-plans .plans { width: min(calc(100vw - 48px), 1440px); position: relative; left: 50%; transform: translateX(-50%); gap: 16px; }
+  #v-plans .plan { padding: 24px 22px; }
+  #v-plans .plan ul.perks li { grid-template-columns: 64px 1fr; }
   .plan .credits { min-height: 102px; }
   .plan .btn { margin-top: 0; }
   .plan .credits .row { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
