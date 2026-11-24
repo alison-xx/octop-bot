@@ -181,10 +181,7 @@
 | 下载流量 | 「积分/GB」，走 CDN 计价 | 每日结算 | 套餐内含额度 |
 | 高配电脑 | 同运行时长，规格单独定价（含 Windows 桌面 `waa`） | 同上 | |
 
-灵策需新增两个内部接口，供云 Octop 使用服务密钥调用：
-
-- `POST /internal/octop/usage/reserve`：入参 `userId`、`kind`、`units`、`idempotencyKey`，返回 `reservationId`；余额不足返回 402。
-- `POST /internal/octop/usage/settle`：入参 `reservationId`、实际 `units`，多退少不补，差额由平台吸收并记为 `platformAbsorbed`。
+计费方式是「先预扣、再按实际用量结算，多退少不补」，余额不足时拒绝开始。云电脑的实现见 §12.5，灵策侧的接口见团队目录《交接-部署与发版》。
 
 ### 7.3 单价示例
 
