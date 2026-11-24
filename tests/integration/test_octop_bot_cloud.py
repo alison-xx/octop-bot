@@ -847,3 +847,117 @@ async def test_only_the_bots_work_or_its_screen_start_a_cloud_computer(
         screen = await client.post(f"/api/octop-bot/computers/{aid}/screen", headers=auth)
         assert screen.status_code == 200, screen.text
         assert started == [aid]
+
+
+async def test_tenant_config_allowlist(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A tenant's agent config keeps only what a tenant may set, whether sent when creating or
+    editing a Bot or already stored; the agent is built on its object-store backend."""
+    import json as _json
+
+    import octop_harness.middleware.bootstrap as bootstrap
+
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.agents.workspace.dir import default_workspace_for_chat_agent
+
+    monkeypatch.setattr(bootstrap, "bootstrap_marker_exists", lambda *a, **k: True)
+    target = tmp_path / "victim"
+    extra = {
+        "acp": {"tool_enabled": True, "runners": {"sh": {"command": "/bin/sh", "enabled": True}}},
+        "workspace_dir": str(target),
+        "memory": {"backend": {"type": "sqlite", "db_path": str(tmp_path / "x.db")}, "x": 1},
+        "security": {"enabled": False},
+        "skills": [str(tmp_path)],
+        "persona": "INTJ",
+    }
+    async with octop_client(tmp_octop_home) as (client, srv):
+        signed = await _sign_in(client, "13800000060")
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        uid = signed["user"]["id"]
+        registry = srv.app_runtime.agent_registry
+        rows = srv.services.agent_repo
+
+        made = await client.post("/api/agents", headers=auth, json={"name": "A", "config": extra})
+        assert made.status_code == 201, made.text
+        aid = made.json()["agent_id"]
+        stored = _json.loads(rows.get(aid).config_json)
+        assert {"acp", "security", "skills"}.isdisjoint(stored)
+        assert stored["workspace_dir"] == default_workspace_for_chat_agent(aid)
+        assert "backend" not in stored.get("memory", {})
+        assert stored["backend"]["type"] == "bot_cloud"
+        assert not target.exists()
+
+        edited = await client.patch(f"/api/agents/{aid}", headers=auth, json={"config": extra})
+        assert edited.status_code == 200, edited.text
+        stored = _json.loads(rows.get(aid).config_json)
+        assert "acp" not in stored and stored["workspace_dir"] == default_workspace_for_chat_agent(
+            aid
+        )
+
+        # A stored row with extra keys, and runners saved for the account: built the same way.
+        rows.update_config(
+            aid, config_json=_json.dumps({**extra, "backend": {"type": "local_shell"}})
+        )
+        registry._acp_settings.save_runners(uid, {"sh": {"command": "/bin/sh", "enabled": True}})
+        cfg = registry._build_harness_config(rows.get(aid))
+        assert cfg.acp_delegate_enabled is False
+        assert "sh" not in cfg.acp_runners
+        assert {"acp_runner", "web_fetch", "browser_use"} <= set(cfg.tools_disabled)
+        assert not target.exists()
+        healed = _json.loads(rows.get(aid).config_json)
+        assert "acp" not in healed and healed["backend"]["type"] == "bot_cloud"
+
+        # A tenant row without its object-store backend does not build.
+        from octop.infra.errors import ErrorCode as _Code
+        from octop.infra.errors import OctopError as _Error
+
+        with pytest.raises(_Error) as refused:
+            registry._backend_spec_for_row(rows.get(aid), cfg={"workspace_dir": str(tmp_path)})
+        assert refused.value.code == _Code.FORBIDDEN
+
+        # Managed agents are not for tenants.
+        with pytest.raises(_Error):
+            await registry.create(AgentCreateSpec(user_id=uid, name="M", kind="managed"))
+
+
+async def test_tenant_workspace_replace_keeps_local_files(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import io
+    import zipfile
+
+    from deepagents.backends.filesystem import FilesystemBackend
+    from octop_harness.backends.workspace import BackendWorkspace
+
+    from octop.api.routers import workspace as workspace_routes
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    store = tmp_path / "store"
+    store.mkdir()
+
+    async def running(*args: Any, **kwargs: Any) -> Any:
+        return BackendWorkspace(FilesystemBackend(root_dir=str(store), virtual_mode=True), store)
+
+    monkeypatch.setattr(workspace_routes, "require_running_workspace", running)
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("new.txt", "new")
+    async with octop_client(tmp_octop_home) as (client, srv):
+        signed = await _sign_in(client, "13800000061")
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        registry = srv.app_runtime.agent_registry
+        row = await registry.create(
+            AgentCreateSpec(user_id=signed["user"]["id"], name="R"), defer_bootstrap=True
+        )
+        local = registry.resolve_workspace_dir(row.agent_id)
+        (local / "keep.txt").write_text("local file")
+        sent = await client.post(
+            f"/api/agents/{row.agent_id}/workspace/archive",
+            params={"mode": "replace"},
+            headers=auth,
+            files={"file": ("w.zip", archive.getvalue(), "application/zip")},
+        )
+        assert sent.status_code == 200, sent.text
+        assert (local / "keep.txt").read_text() == "local file"
+        assert (store / "new.txt").read_text() == "new"

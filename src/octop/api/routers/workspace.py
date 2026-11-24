@@ -761,7 +761,10 @@ async def import_workspace_archive(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
     _keep_computer_off(ws, ".", search=True)
-    local_ws = resolve_agent_workspace_dir(server, agent_id)
+    # Replace clears the agent's local folder first, for agents whose files live there.
+    local_ws = (
+        resolve_agent_workspace_dir(server, agent_id) if _host_files(server, agent_id) else None
+    )
     result = await import_workspace_zip(
         ws,
         raw,
