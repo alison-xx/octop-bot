@@ -48,11 +48,11 @@
         {
           "platform": "android",
           "kind": "apk",
-          "name": "octop-bot-1.0.0-3.apk",
-          "appVersion": "1.0.0",
-          "url": "https://dl.lynxce.cn/releases/octop-bot/1.0.4/octop-bot-1.0.0-3.apk",
-          "size": 15986117,
-          "sha256": "040406c23cee03062cf74895301fdc266d38792d677dbda991ecb7a3bb2906e2"
+          "name": "octop-bot-1.0.1-4.apk",
+          "appVersion": "1.0.1",
+          "url": "https://dl.lynxce.cn/releases/octop-bot/mobile/1.0.1/octop-bot-1.0.1-4.apk",
+          "size": 17947623,
+          "sha256": "929e312cbc43cdaf454c430faefd4864f25a3253b6729104d72b2e1d9278c08b"
         }
       ]
     },
