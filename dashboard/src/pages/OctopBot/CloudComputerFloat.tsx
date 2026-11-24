@@ -523,6 +523,11 @@ export default function CloudComputerFloat({
                   ` · ${t("cloudComputer.diskBillingOff")}`}
               </div>
             )}
+            {status?.reclaim_notified && (
+              <div className={styles.overdue}>
+                {t("cloudComputer.reclaimWarning")}
+              </div>
+            )}
             {!!status?.disk_overdue_days && (
               <div className={styles.overdue}>
                 {t("cloudComputer.diskOverdue", {
@@ -578,6 +583,11 @@ export default function CloudComputerFloat({
               credits: status.disk_daily_credits,
             })}
             {!status.disk_billing && ` · ${t("cloudComputer.diskBillingOff")}`}
+          </div>
+        )}
+        {status?.reclaim_notified && (
+          <div className={styles.overdue}>
+            {t("cloudComputer.reclaimWarning")}
           </div>
         )}
         {!!status?.disk_overdue_days && (

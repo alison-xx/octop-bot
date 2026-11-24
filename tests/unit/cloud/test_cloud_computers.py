@@ -1083,3 +1083,114 @@ def test_a_disk_the_provider_already_deleted_is_not_billed(setup: Any) -> None:
     driver.broken.add("ins-1")  # provider error: skipped, tried on the next pass
     manager.tick()
     assert billing.disks == []
+
+
+def test_idle_reclaim_switch_and_use_cancel(setup: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    manager, driver, billing, clock = setup
+    sent: list[tuple[str, float]] = []
+    manager.remind = lambda record, deadline: sent.append((record.agent_id, deadline)) or True
+    manager.ensure_running("idle", 1)
+    manager.pause("idle", 1)
+    manager.ensure_running("other", 2)
+    manager.pause("other", 2)
+    clock.now += 30 * 86400
+    manager.touch("other", 2)
+    monkeypatch.delenv("OCTOP_COMPUTER_RECLAIM", raising=False)
+    manager.tick()
+    assert manager.reclaim_status(manager.record("idle", 1))[1] == "reminded"
+    assert not sent
+    assert manager.record("idle", 1).instance_id
+    clock.now += 7 * 86400
+    manager.touch("other", 2)
+    manager.tick()
+    assert manager.reclaim_status(manager.record("idle", 1))[1] == "pending_reclaim"
+    assert not sent and manager.record("idle", 1).instance_id
+    monkeypatch.setenv("OCTOP_COMPUTER_RECLAIM", "on")
+    manager.tick()
+    manager.tick()
+    assert len(sent) == 1
+    manager.touch("idle", 1)
+    assert manager.record("idle", 1).reminded_at is None
+    clock.now += 30 * 86400
+    manager.touch("other", 2)
+    manager.tick()
+    assert len(sent) == 2
+    clock.now += 7 * 86400
+    manager.tick()
+    assert manager.record("idle", 1).instance_id is None
+    assert ("stop", "ins-1") in driver.calls
+    assert billing.settled
+    assert manager.record("other", 2).instance_id is not None
+
+
+def test_unpaid_reclaim_and_payment_cancel(setup: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    manager, driver, billing, clock = setup
+    monkeypatch.setenv("OCTOP_COMPUTER_RECLAIM", "on")
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "on")
+    sent: list[str] = []
+    manager.remind = lambda record, deadline: sent.append(record.agent_id) or True
+    driver.disk_size = 40
+    billing.disk_down = True
+    manager.ensure_running("unpaid", 1)
+    manager.pause("unpaid", 1)
+    manager.tick()
+    clock.now += 22 * 86400
+    manager.tick()
+    assert sent == ["unpaid"]
+    billing.disk_down = False
+    clock.now += computers.DISK_RETRY_SECONDS
+    manager.tick()
+    assert manager.record("unpaid", 1).reminded_at is None
+    assert manager.record("unpaid", 1).disk_failed_day == ""
+    billing.disk_down = True
+    clock.now += 86400
+    manager.tick()
+    clock.now += 22 * 86400
+    manager.tick()
+    assert sent == ["unpaid", "unpaid"]
+    clock.now += 7 * 86400
+    manager.tick()
+    assert manager.record("unpaid", 1).instance_id is None
+    assert ("stop", "ins-1") in driver.calls
+
+
+def test_old_computer_without_times_starts_idle_clock_on_first_scan(
+    setup: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager, driver, _, clock = setup
+    monkeypatch.setenv("OCTOP_COMPUTER_RECLAIM", "on")
+    driver.states["old"] = "paused"
+    manager._save(computers.ComputerRecord(agent_id="old", user_id=1, instance_id="old"))
+    clock.now += 100 * 86400
+    manager.tick()
+    record = manager.record("old", 1)
+    assert record.reclaim_seen_at == clock.now
+    assert manager.reclaim_status(record) == (0, None, None)
+    assert driver.states["old"] == "paused"
+
+
+def test_unpaid_use_cancels_and_starts_a_new_warning_cycle(
+    setup: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager, driver, billing, clock = setup
+    monkeypatch.setenv("OCTOP_COMPUTER_RECLAIM", "on")
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "on")
+    driver.disk_size = 40
+    billing.disk_down = True
+    sent: list[str] = []
+    manager.remind = lambda record, deadline: sent.append(record.agent_id) or True
+    manager.ensure_running("bot", 1)
+    manager.pause("bot", 1)
+    manager.tick()
+    clock.now += 22 * 86400
+    manager.tick()
+    assert sent == ["bot"]
+    manager.touch("bot", 1)
+    assert manager.record("bot", 1).reminded_at is None
+    clock.now += 7 * 86400
+    manager.tick()
+    assert sent == ["bot"]
+    assert manager.record("bot", 1).instance_id is not None
+    clock.now += 15 * 86400
+    manager.tick()
+    assert sent == ["bot", "bot"]

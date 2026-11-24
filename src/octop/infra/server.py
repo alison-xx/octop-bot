@@ -627,6 +627,39 @@ class OctopServer:
             thread_message_repo=self.services.repos.thread_message_repo,
             timezone=config.default_timezone,
         )
+        if bot_cloud_enabled():
+            from octop.i18n import tr  # noqa: PLC0415
+            from octop.infra.cloud.computers.manager import (  # noqa: PLC0415
+                beijing_day,
+                computer_manager,
+            )
+            from octop.infra.proactive.scheduler import select_care_target_session  # noqa: PLC0415
+
+            computer = computer_manager(self.services)
+            loop = asyncio.get_running_loop()
+            services = self.services
+            if computer is not None:
+
+                def remind_computer(record: Any, deadline: float) -> bool:
+                    sessions = services.repos.session_repo.list_by_agent(record.agent_id, limit=50)
+                    target = select_care_target_session(
+                        [session for session in sessions if session.user_id == record.user_id]
+                    )
+                    if target is None:
+                        return False
+                    user = services.repos.user_repo.get(record.user_id)
+                    locale = user.locale if user else "en"
+                    message = tr(
+                        "computer_reclaim." + record.reclaim_reason,
+                        locale,
+                        date=beijing_day(deadline),
+                    )
+                    future = asyncio.run_coroutine_threadsafe(
+                        care_service._deliver(record.agent_id, target.session_key, message), loop
+                    )
+                    return future.result() is not None
+
+                computer.remind = remind_computer
         proactive_scheduler = ProactiveCareScheduler(
             care_service=care_service,
             config_repo=self.services.repos.proactive_care_config_repo,

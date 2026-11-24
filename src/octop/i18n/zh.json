@@ -1413,5 +1413,9 @@
     "summary_dry_run": "将迁移 {migrated} 项，跳过 {skipped} 项，失败 {failed} 项。",
     "dry_run_hint": "预演模式：没有写入任何内容。去掉 --dry-run 后再运行即可执行迁移。",
     "restart_hint": "如果 `octop run` 正在运行，请重启以加载迁移的模型供应商和通道。"
+  },
+  "computer_reclaim": {
+    "idle": "您的云电脑长时间未使用，将在 7 天后（{date}）回收，电脑磁盘上的文件也会删除。Bot、聊天记录和云存储中的文件（generated/、outbound/ 及上下文）会保留。使用电脑可取消回收。",
+    "unpaid": "您的云电脑磁盘费尚未支付，将在 7 天后（{date}）回收电脑，磁盘上的文件也会删除。Bot、聊天记录和云存储中的文件（generated/、outbound/ 及上下文）会保留。使用电脑或支付费用可取消回收。"
   }
 }

@@ -73,6 +73,14 @@ class ComputerStatus(BaseModel):
         default=0, description="Days since the first failed charge, inclusive."
     )
 
+    reclaim_notified: bool = Field(default=False, description="A reclaim reminder was delivered.")
+    idle_days: int = Field(default=0, description="Complete days since last use.")
+    reclaim_state: Literal["reminded", "pending_reclaim"] | None = Field(
+        default=None,
+        description="Reclaim eligibility; a reminder may be disabled by configuration.",
+    )
+    reclaim_at: float | None = Field(default=None, description="Reclaim deadline as Unix time.")
+
 
 class ComputerGlance(BaseModel):
     window: str | None = Field(default=None, description="Title of the front window, if any.")
@@ -94,7 +102,12 @@ def _owned(server: Any, user: User, agent_id: str) -> Any:
 def _status(manager: Any, agent_id: str, user_id: int) -> ComputerStatus:
     record = manager.record(agent_id, user_id)
     size, overdue = manager.disk_status(record)
+    idle_days, reclaim_state, reclaim_at = manager.reclaim_status(record)
     disk: dict[str, Any] = {
+        "reclaim_notified": record.reminded_at is not None,
+        "idle_days": idle_days,
+        "reclaim_state": reclaim_state,
+        "reclaim_at": reclaim_at,
         "disk_gb": size,
         "disk_daily_credits": round(size * DISK_DAILY_CREDITS_PER_GB, 2),
         "disk_billing": disk_billing_enabled(),

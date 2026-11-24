@@ -106,6 +106,11 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
             {!status.disk_billing && ` · ${t("cloudComputer.diskBillingOff")}`}
           </small>
         )}
+        {status?.reclaim_notified && (
+          <small className={styles.overdue}>
+            {t("cloudComputer.reclaimWarning")}
+          </small>
+        )}
         {!!status?.disk_overdue_days && (
           <small className={styles.overdue}>
             {t("cloudComputer.diskOverdue", { days: status.disk_overdue_days })}

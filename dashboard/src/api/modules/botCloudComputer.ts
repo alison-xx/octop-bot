@@ -28,6 +28,10 @@ export interface CloudComputerStatus {
   /** Its latest action: click, type, key, scroll, screenshot, command, … */
   activity?: string | null;
   activity_at?: number | null;
+  reclaim_notified?: boolean;
+  idle_days?: number;
+  reclaim_state?: "reminded" | "pending_reclaim" | null;
+  reclaim_at?: number | null;
   disk_gb?: number;
   disk_daily_credits?: number;
   disk_billing?: boolean;
