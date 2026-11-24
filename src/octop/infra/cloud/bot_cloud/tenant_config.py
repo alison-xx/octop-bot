@@ -37,7 +37,6 @@ TENANT_KEYS = frozenset(
         "skill_package_ids",
         "plugins",
         "knowledge_base_ids",
-        "mcp_servers",
         "web_search_tools",
         # Model and turn settings.
         "default_model",
@@ -77,6 +76,34 @@ MEMORY_HOST_KEYS = frozenset(
 )
 
 
+# Inside ``octop_bot`` (written by the server, e.g. a private Bot): the keys it may hold.
+OCTOP_BOT_KEYS = frozenset({"private"})
+
+
+def _switches(value: Any) -> dict[str, bool]:
+    return (
+        {str(k): v for k, v in value.items() if isinstance(v, bool)}
+        if isinstance(value, dict)
+        else {}
+    )
+
+
+def _plugins(value: Any) -> dict[str, Any]:
+    """Per plugin: only on/off switches (the plugin and its tools), no tool settings."""
+    out: dict[str, Any] = {}
+    for plugin_id, entry in value.items() if isinstance(value, dict) else ():
+        if isinstance(entry, bool):
+            out[str(plugin_id)] = entry
+        elif isinstance(entry, dict):
+            kept: dict[str, Any] = {}
+            if isinstance(entry.get("enabled"), bool):
+                kept["enabled"] = entry["enabled"]
+            if isinstance(entry.get("tools"), dict):
+                kept["tools"] = _switches(entry["tools"])
+            out[str(plugin_id)] = kept
+    return out
+
+
 def strip_tenant_input(config: dict[str, Any]) -> dict[str, Any]:
     """``config`` with only what a tenant may set (a new dict)."""
     out = {key: value for key, value in config.items() if key in TENANT_KEYS}
@@ -85,6 +112,15 @@ def strip_tenant_input(config: dict[str, Any]) -> dict[str, Any]:
         out["memory"] = {k: v for k, v in memory.items() if k not in MEMORY_HOST_KEYS}
     elif "memory" in out:
         out.pop("memory")
+    if "octop_bot" in out:
+        section = out["octop_bot"]
+        out["octop_bot"] = (
+            {k: v for k, v in section.items() if k in OCTOP_BOT_KEYS}
+            if isinstance(section, dict)
+            else {}
+        )
+    if "plugins" in out:
+        out["plugins"] = _plugins(out["plugins"])
     return out
 
 

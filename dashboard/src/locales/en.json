@@ -785,6 +785,7 @@
     "BOT_MODEL_KEY_LIMIT": "You can keep up to {{limit}} API keys. Remove one first.",
     "BOT_COMPUTER_NOT_TAKEN_OVER": "Take over the cloud computer before typing into it or reading its clipboard.",
     "BOT_COMPUTER_BUSY": "No cloud computer is free right now, so this one could not start. Try again in a few minutes.",
+    "ENDPOINT_NOT_ALLOWED": "This address cannot be used. Enter a public HTTPS address or domain.",
     "BOT_COMPUTER_OFF": "This file is on the cloud computer, which is off right now. Open the computer with its icon, then try again.",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "Authorize Lynxce checkout to recharge this account. Your existing chat connection stays active.",
     "BOT_LAYOUT_CHANGED": "The sidebar changed. Refresh it and try again.",

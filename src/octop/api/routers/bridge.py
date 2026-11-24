@@ -13,6 +13,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from starlette.websockets import WebSocketState
 
+from octop.api.common.bot_cloud import is_cloud_tenant, no_cloud_tenant_http
 from octop.api.deps import get_server, require_permission, resolve_user_from_token
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.groups import RESOURCE_BRIDGE, GroupAccess
@@ -26,7 +27,8 @@ from octop.infra.users.profile_avatar import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+# Host-level operator features: not for cloud tenants.
+router = APIRouter(dependencies=[Depends(no_cloud_tenant_http)])
 
 
 def _bridge_avatar_api_path(connection_id: str) -> str:
@@ -663,7 +665,7 @@ async def bridge_browser_stream_ws(
     except OctopError as exc:
         await websocket.close(code=4001, reason=f"auth: {exc.code.value}")
         return
-    if not user_has_permission(user, "bridge"):
+    if not user_has_permission(user, "bridge") or is_cloud_tenant(user):
         await websocket.close(code=4003, reason="permission required")
         return
 
@@ -759,7 +761,7 @@ async def bridge_inbound_ws(
     except OctopError as exc:
         await websocket.close(code=4001, reason=f"auth: {exc.code.value}")
         return
-    if not user_has_permission(user, "bridge"):
+    if not user_has_permission(user, "bridge") or is_cloud_tenant(user):
         await websocket.close(code=4003, reason="permission required")
         return
     mgr = getattr(getattr(server, "app_runtime", None), "bridge_manager", None)
