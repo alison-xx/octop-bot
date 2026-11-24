@@ -21,7 +21,36 @@ struct BotProfile: Identifiable, Hashable, Codable {
     var systemPrompt: String?
     /// True for Bots defined on this phone (Lynxce mode); they can be edited and deleted.
     var isLocal: Bool = false
+    var state: String? = nil
+    var preparing: Bool = false
+    var lastError: String? = nil
+
+    var canSend: Bool { isLocal || (!preparing && state != "failed") }
+
+    init(id: String, name: String, subtitle: String? = nil, look: Look, isChief: Bool,
+         systemPrompt: String? = nil, isLocal: Bool = false, state: String? = nil,
+         preparing: Bool = false, lastError: String? = nil) {
+        self.id = id; self.name = name; self.subtitle = subtitle; self.look = look
+        self.isChief = isChief; self.systemPrompt = systemPrompt; self.isLocal = isLocal
+        self.state = state; self.preparing = preparing; self.lastError = lastError
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        subtitle = try values.decodeIfPresent(String.self, forKey: .subtitle)
+        look = try values.decode(Look.self, forKey: .look)
+        isChief = try values.decode(Bool.self, forKey: .isChief)
+        systemPrompt = try values.decodeIfPresent(String.self, forKey: .systemPrompt)
+        isLocal = try values.decodeIfPresent(Bool.self, forKey: .isLocal) ?? false
+        state = try values.decodeIfPresent(String.self, forKey: .state)
+        preparing = try values.decodeIfPresent(Bool.self, forKey: .preparing) ?? false
+        lastError = try values.decodeIfPresent(String.self, forKey: .lastError)
+    }
 }
+
+func shouldPollBots(_ bots: [BotProfile]) -> Bool { bots.contains { !$0.isLocal && $0.preparing } }
 
 struct ConversationSummary: Identifiable, Hashable {
     var id: String
@@ -56,6 +85,7 @@ struct ChatMessage: Identifiable, Hashable {
     var role: MessageRole
     var text: String
     var thinking: String = ""
+    var creditScenario: CreditScenario? = nil
     var images: [Data] = []
     var tools: [ToolStep] = []
     /// Files the Bot sent (server mode); links in `text` become cards too, see `fileCards`.

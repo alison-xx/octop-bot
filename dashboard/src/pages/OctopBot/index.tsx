@@ -14,7 +14,6 @@ import {
   Search,
   ArrowDown,
   Bot,
-  Cloud,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -39,7 +38,7 @@ import {
   type WorkspaceBot,
 } from "../../api/modules/octopBot";
 import { octopThreadsApi } from "../../api/modules/octopThreads";
-import { BOT_CLOUD, BOT_HOME, BOT_MARKET } from "../../utils/botClientRoute";
+import { BOT_HOME, BOT_MARKET } from "../../utils/botClientRoute";
 import { pickPreferredSession, toSession } from "../Chat/hooks/useSessions";
 import { useAgent } from "../../context/AgentContext";
 import { useBotActivity } from "../../hooks/useBotActivity";
@@ -1214,20 +1213,6 @@ export default function OctopBotPage() {
         >
           <AccountMenu compact={compactDirectory} />
           <CloudMove />
-          {isBotOnlyDesktop() && (
-            <Button
-              type="text"
-              icon={<Cloud size={16} />}
-              aria-label={t("botCloud.title")}
-              title={t("botCloud.title")}
-              className={sectionStyles.cloud}
-              onClick={() =>
-                navigate(BOT_CLOUD, {
-                  state: { from: location.pathname },
-                })
-              }
-            />
-          )}
         </div>
       ) : (
         <>

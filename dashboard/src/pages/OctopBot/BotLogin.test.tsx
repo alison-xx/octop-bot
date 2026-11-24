@@ -76,7 +76,7 @@ describe("Bot web sign-in", () => {
       .mockResolvedValue(session as never);
     open();
     await userEvent.click(
-      await screen.findByRole("button", { name: "lynxceSignIn.tabPassword" }),
+      await screen.findByRole("button", { name: "lynxceSignIn.usePassword" }),
     );
     await userEvent.type(
       screen.getByLabelText("lynxceSignIn.account"),
@@ -171,7 +171,9 @@ describe("Bot web sign-in", () => {
       screen.getByLabelText("lynxceSignIn.newPassword"),
       "short",
     );
-    expect(submit).toBeDisabled();
+    // Too short: the form points at the password instead of signing in.
+    await userEvent.click(submit);
+    expect(login).toHaveBeenCalledTimes(1);
     await userEvent.type(
       screen.getByLabelText("lynxceSignIn.newPassword"),
       "-enough{Enter}",
@@ -204,7 +206,7 @@ describe("Bot web sign-in", () => {
       "old-pass",
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "lynxceSignIn.tabPassword" }),
+      screen.getByRole("button", { name: "lynxceSignIn.usePassword" }),
     );
     await userEvent.type(
       screen.getByLabelText("lynxceSignIn.account"),

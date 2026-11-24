@@ -282,3 +282,40 @@ async def test_a_pinned_model_skips_lynxces_list() -> None:
     await provider.submit_image(ImageGenerationRequest(prompt="猫"))
     assert gateway.posts[0][1]["model"] == "wan2.7-image"
     assert gateway.model_reads == 0
+
+
+async def test_media_calls_say_octop_bot_and_which_bot() -> None:
+    seen: list[httpx.Headers] = []
+    gateway = Gateway()
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.host != "cdn.example.com":
+            seen.append(req.headers)
+        return gateway(req)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = LynxceMediaProvider(_auth, client=client, bot_id="0W9CAX")
+    await provider.submit_image(ImageGenerationRequest(prompt="猫"))
+    assert len(seen) == 2  # the model list and the submit
+    for headers in seen:
+        assert headers["X-Lynxce-App"] == "octopbot"
+        assert headers["X-Lynxce-Bot-Id"] == "0W9CAX"
+
+    plain = Gateway()
+    plain_client = httpx.AsyncClient(transport=httpx.MockTransport(plain))
+    await LynxceMediaProvider(_auth, client=plain_client).submit_image(
+        ImageGenerationRequest(prompt="猫")
+    )
+    assert "X-Lynxce-Bot-Id" not in plain.posts[0][2]
+    assert plain.posts[0][2]["X-Lynxce-App"] == "octopbot"
+
+
+def test_chat_model_calls_carry_the_bot_id() -> None:
+    from octop.infra.agents.providers.lynxce import AccountModel, CloudAccountModel
+
+    for model in (AccountModel(1, "conn", "deepseek"), CloudAccountModel(1, "conn", "deepseek")):
+        assert model.provider(None, "0W9CAX").headers == {
+            "X-Lynxce-App": "octopbot",
+            "X-Lynxce-Bot-Id": "0W9CAX",
+        }
+        assert model.provider(None).headers == {"X-Lynxce-App": "octopbot"}

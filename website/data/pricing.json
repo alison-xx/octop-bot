@@ -1,0 +1,115 @@
+{
+  "source": "会员权益与定价定稿 2026-11-25",
+  "membershipOpen": false,
+  "packsOpen": false,
+  "plans": [
+    {
+      "id": "trial",
+      "name": { "zh": "体验", "en": "Trial" },
+      "monthly": 0,
+      "yearly": null,
+      "credits": 300,
+      "creditsNote": { "zh": "注册送 300 积分，14 天有效", "en": "300 credits on sign-up, valid 14 days" },
+      "bonus": null,
+      "image": { "zh": "标准画质", "en": "Standard quality" },
+      "video": { "zh": "768p", "en": "768p" },
+      "perks": [
+        ["cloudBots", "3"],
+        ["groups", "1"],
+        ["devices", "2"],
+        ["computers", { "zh": "标准，同时 1 台", "en": "Standard, 1 at a time" }],
+        ["storage", "1 GB"],
+        ["schedules", "3"],
+        ["support", { "zh": "社群", "en": "Community" }]
+      ]
+    },
+    {
+      "id": "standard",
+      "name": { "zh": "标准", "en": "Standard" },
+      "monthly": 69,
+      "yearly": 745,
+      "credits": 7000,
+      "bonus": { "zh": "每月加赠 700 积分", "en": "700 bonus credits every month" },
+      "image": { "zh": "标准画质", "en": "Standard quality" },
+      "video": { "zh": "768p", "en": "768p" },
+      "perks": [
+        ["cloudBots", "20"],
+        ["groups", "10"],
+        ["devices", "3"],
+        ["computers", { "zh": "标准，同时 1 台", "en": "Standard, 1 at a time" }],
+        ["storage", "10 GB"],
+        ["schedules", "20"],
+        ["support", { "zh": "社群", "en": "Community" }]
+      ]
+    },
+    {
+      "id": "plus",
+      "name": { "zh": "进阶", "en": "Plus" },
+      "tag": { "zh": "稳定使用推荐", "en": "For steady use" },
+      "monthly": 99,
+      "yearly": 1069,
+      "credits": 10000,
+      "bonus": { "zh": "每月加赠 1,000 积分", "en": "1,000 bonus credits every month" },
+      "image": { "zh": "标准画质", "en": "Standard quality" },
+      "video": { "zh": "768p", "en": "768p" },
+      "perks": [
+        ["cloudBots", "50"],
+        ["groups", "30"],
+        ["devices", "5"],
+        ["computers", { "zh": "标准，同时 2 台", "en": "Standard, 2 at a time" }],
+        ["storage", "20 GB"],
+        ["schedules", "50"],
+        ["support", { "zh": "社群", "en": "Community" }]
+      ]
+    },
+    {
+      "id": "pro",
+      "name": { "zh": "专业", "en": "Pro" },
+      "monthly": 199,
+      "yearly": 2149,
+      "credits": 20000,
+      "bonus": { "zh": "首月加赠 4,000 积分", "en": "4,000 bonus credits in the first month" },
+      "image": { "zh": "可选高清，单次最多 4 张", "en": "HD available, up to 4 at once" },
+      "video": { "zh": "可选 1080p", "en": "1080p available" },
+      "perks": [
+        ["cloudBots", { "zh": "不限", "en": "Unlimited" }],
+        ["groups", { "zh": "不限", "en": "Unlimited" }],
+        ["devices", "10"],
+        ["computers", { "zh": "标准 + 专业，同时 3 台", "en": "Standard + Pro, 3 at a time" }],
+        ["storage", "50 GB"],
+        ["schedules", "200"],
+        ["priority", { "zh": "模型和云电脑", "en": "Models and cloud computers" }],
+        ["support", { "zh": "工单优先", "en": "Priority tickets" }]
+      ]
+    },
+    {
+      "id": "max",
+      "name": { "zh": "卓越", "en": "Max" },
+      "monthly": 699,
+      "yearly": 7549,
+      "credits": 70000,
+      "bonus": { "zh": "首月加赠 14,000 积分", "en": "14,000 bonus credits in the first month" },
+      "image": { "zh": "可选高清，单次最多 4 张", "en": "HD available, up to 4 at once" },
+      "video": { "zh": "可选 1080p", "en": "1080p available" },
+      "perks": [
+        ["cloudBots", { "zh": "不限", "en": "Unlimited" }],
+        ["groups", { "zh": "不限", "en": "Unlimited" }],
+        ["devices", "20"],
+        ["computers", { "zh": "标准 + 专业，同时 10 台", "en": "Standard + Pro, 10 at a time" }],
+        ["storage", "200 GB"],
+        ["schedules", { "zh": "不限", "en": "Unlimited" }],
+        ["priority", { "zh": "模型和云电脑", "en": "Models and cloud computers" }],
+        ["support", { "zh": "专属顾问", "en": "Dedicated adviser" }]
+      ]
+    }
+  ],
+  "packs": [20, 50, 100, 200, 500],
+  "customPack": { "min": 10, "max": 5000 },
+  "creditsPerYuan": 100,
+  "packValidDays": 365,
+  "rates": {
+    "computerStandardPerMinute": 1.7,
+    "computerProPerMinute": 3.4,
+    "diskPerGbDay": 4.8
+  }
+}

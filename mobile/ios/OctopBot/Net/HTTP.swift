@@ -8,8 +8,10 @@ struct APIError: LocalizedError, Equatable {
     var message: String?
     /// The server's machine-readable error code (`{error: {code}}`), when it sent one.
     var code: String? = nil
+    var details: CreditDetails? = nil
 
     var errorDescription: String? {
+        if kind == .credits, let scenario = creditScenario(code: code, details: details) { return scenario.message }
         if code == Self.computerOff { return L("error.computerOff") }
         if code == Self.computerBusy { return L("error.computerBusy") }
         // The server's credits text links to Lynxce's web checkout, which App Store builds don't show.
@@ -33,6 +35,12 @@ struct APIError: LocalizedError, Equatable {
     /// Octop's error code when a turn billed to the Lynxce wallet runs out of credits.
     static let creditsRequired = "BOT_CLOUD_CREDITS_REQUIRED"
 
+    static let computerCreditsRequired = "BOT_COMPUTER_CREDITS_REQUIRED"
+    static let computerPausedNoCredits = "BOT_COMPUTER_PAUSED_NO_CREDITS"
+    static func isCreditsRequired(_ code: String?) -> Bool {
+        code == creditsRequired || code == computerCreditsRequired || code == computerPausedNoCredits
+    }
+
     /// Octop's error code when the wallet still has credits but Lynxce's per-key daily cap is used up.
     static let dailyLimit = "BOT_LYNXCE_DAILY_LIMIT"
 
@@ -42,10 +50,10 @@ struct APIError: LocalizedError, Equatable {
         return code == dailyLimit || code.lowercased().contains("credit_limit_reached")
     }
 
-    static func from(status: Int, message: String?, code: String? = nil) -> APIError {
+    static func from(status: Int, message: String?, code: String? = nil, details: CreditDetails? = nil) -> APIError {
         // Checked first: Lynxce can send the daily cap as a 402 too.
         if isDailyLimit(code) { return APIError(kind: .dailyLimit, status: 429, message: message, code: code) }
-        if code == creditsRequired { return APIError(kind: .credits, status: 402, message: message, code: code) }
+        if isCreditsRequired(code) { return APIError(kind: .credits, status: 402, message: message, code: code, details: details) }
         return switch status {
         case 401: APIError(kind: .unauthorized, status: status, message: message, code: code)
         case 402: APIError(kind: .credits, status: status, message: message, code: code)
@@ -55,6 +63,56 @@ struct APIError: LocalizedError, Equatable {
     }
 
     static let network = APIError(kind: .network, status: 0, message: nil)
+}
+
+nonisolated struct CreditDetails: Equatable, Hashable {
+    var need: Double?
+    var balance: Double?
+    var kind: String?
+
+    init?(_ object: [String: Any]?) {
+        guard let object else { return nil }
+        need = (object["need"] as? NSNumber)?.doubleValue
+        balance = (object["balance"] as? NSNumber)?.doubleValue
+        kind = object["kind"] as? String
+    }
+}
+
+nonisolated struct CreditScenario: Equatable, Hashable {
+    enum Kind: String { case text, image, video, computer, paused }
+    var kind: Kind
+    var need: Double
+    var balance: Double
+    var message: String {
+        let key: String
+        switch kind {
+        case .text: key = "credits.scenario.text %@ %@"
+        case .image: key = "credits.scenario.image %@ %@"
+        case .video: key = "credits.scenario.video %@ %@"
+        case .computer: key = "credits.scenario.computer %@ %@"
+        case .paused: key = "credits.scenario.paused %@ %@"
+        }
+        return L(key, LynxceBackend.formatCredits(need), LynxceBackend.formatCredits(balance))
+    }
+}
+
+/// Which out-of-credits message to show. A paused computer needs no figures; starting one needs `need`;
+/// chat, images and video need both `need` and `balance`. Anything missing falls back to the generic text.
+nonisolated func creditScenario(code: String?, details: CreditDetails?) -> CreditScenario? {
+    let need = details?.need.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+    let balance = details?.balance.flatMap { $0.isFinite ? $0 : nil }
+    switch code {
+    case APIError.computerPausedNoCredits:
+        return CreditScenario(kind: .paused, need: 0, balance: balance ?? 0)
+    case APIError.computerCreditsRequired:
+        return need.map { CreditScenario(kind: .computer, need: $0, balance: balance ?? 0) }
+    case APIError.creditsRequired:
+        guard let value = details?.kind, let kind = CreditScenario.Kind(rawValue: value),
+              [.text, .image, .video].contains(kind), let need, let balance else { return nil }
+        return CreditScenario(kind: kind, need: need, balance: balance)
+    default:
+        return nil
+    }
 }
 
 enum HTTPMethod: String { case get = "GET", head = "HEAD", post = "POST", put = "PUT", patch = "PATCH", delete = "DELETE" }
@@ -151,6 +209,11 @@ enum HTTP {
         if let error = object["error"] as? String { return error }
         if let detail = object["detail"] as? String { return detail }
         return object["message"] as? String
+    }
+
+    static func errorDetails(_ data: Data) -> CreditDetails? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return CreditDetails((object["error"] as? [String: Any])?["details"] as? [String: Any] ?? object["details"] as? [String: Any])
     }
 
     /// The error code in either envelope: Octop `{error:{code}}` / `{error_code}`, or Lynxce's string code.

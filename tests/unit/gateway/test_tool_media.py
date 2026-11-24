@@ -837,6 +837,7 @@ async def test_block_to_content_part_drops_unsafe_paths_and_keeps_http() -> None
                 },
             },
             workspace=workspace,
+            host_files=True,
         )
         assert isinstance(remote, ImageContent)
         assert remote.url == "https://example.com/a.jpg"
@@ -1038,3 +1039,49 @@ def test_history_attachments_keep_the_live_delivery_path() -> None:
         }
     ]
     assert merge_history_attachments(live, live) == live
+
+
+async def test_tenant_media_urls_are_fetched_by_the_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop_gateway.models import ImageContent
+
+    from octop.infra.gateway.media import tool_media
+
+    fetched: list[str] = []
+
+    async def fetch(url: str) -> bytes | None:
+        fetched.append(url)
+        return b"img" if url.startswith("https://example.com/") else None
+
+    monkeypatch.setattr(tool_media, "_fetch_public", fetch)
+    with tempfile.TemporaryDirectory() as ws:
+        workspace = _workspace(ws)
+
+        def block(url: str) -> dict[str, object]:
+            return {"type": "image", "source": {"type": "url", "url": url}}
+
+        got = await tool_media.block_to_content_part(
+            block("https://example.com/a.png"), workspace=workspace
+        )
+        assert isinstance(got, ImageContent) and got.data and not got.url
+        assert (
+            await tool_media.block_to_content_part(
+                block("http://10.0.0.1/a.png"), workspace=workspace
+            )
+            is None
+        )
+        assert fetched == ["https://example.com/a.png", "http://10.0.0.1/a.png"]
+
+
+def test_tenant_results_deliver_by_tool_name_only() -> None:
+    from octop.infra.gateway.media.tool_media import _delivers_media
+
+    marked = {
+        "name": "some_mcp_tool",
+        "content": [
+            {"type": "image", "octop_delivery": "send_file_to_user", "url": "https://e.com/a"}
+        ],
+    }
+    assert _delivers_media(marked, chunk_name=None)
+    assert not _delivers_media(marked, chunk_name=None, marker_ok=False)

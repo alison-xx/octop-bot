@@ -26,6 +26,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -77,7 +78,11 @@ object LynxceProtocol {
             if (ApiException.isDailyLimit(error.toString())) {
                 throw ApiException(ApiException.Kind.DailyLimit, 429, message, ApiException.DAILY_LIMIT)
             }
-            if (outOfCredits(error as? JsonObject, message)) throw ApiException(ApiException.Kind.Credits, 402, message)
+            if (outOfCredits(error as? JsonObject, message)) {
+                val tags = error as? JsonObject
+                val code = listOf(tags?.str("code"), tags?.str("type")).firstOrNull { it == "insufficient_balance" } ?: tags?.str("code")
+                throw ApiException(ApiException.Kind.Credits, 402, message, code)
+            }
             throw ApiException(ApiException.Kind.Server, 500, message)
         }
         val delta = obj.arr("choices")?.firstOrNull().asObject()?.obj("delta") ?: return emptyList()
@@ -307,7 +312,7 @@ object LynxceProtocol {
     }
 
     /** Below this the balance shows in the warning colour and chat offers a recharge banner. */
-    const val LOW_BALANCE = 100.0
+    const val LOW_BALANCE = 1000.0
 
     /** Lynxce's recharge site, for signing in there by hand (the out-of-credits card links it). */
     const val RECHARGE_SITE = "https://admin.lynxce.cn/recharge"
@@ -324,11 +329,18 @@ object LynxceProtocol {
         val obj = data.asObject() ?: return null
         val url = obj.str("url") ?: return null
         if (!url.startsWith(CHECKOUT_PORTAL)) return null
-        val ticket = url.removePrefix(CHECKOUT_PORTAL)
+        val ticket = url.removePrefix(CHECKOUT_PORTAL).removeSuffix("&tab=boost")
         if (!CHECKOUT_TICKET.matches(ticket) || (obj.str("token") ?: ticket) != ticket) return null
         val expires = obj.str("expiresAt")?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() } ?: return null
         val left = java.time.Duration.between(now, expires)
         return url.takeIf { !left.isNegative && !left.isZero && left <= java.time.Duration.ofMinutes(16) }
+    }
+
+    /** Add the top-up tab only after validating the checkout URL. */
+    fun boostTab(url: String): String {
+        val parsed = url.toHttpUrlOrNull() ?: return url
+        if (parsed.queryParameterNames.contains("tab")) return url
+        return "$url${if (parsed.querySize > 0) "&" else "?"}tab=boost"
     }
 
     /** App Store-style self-service deletion; Lynxce asks for this exact confirmation text. */

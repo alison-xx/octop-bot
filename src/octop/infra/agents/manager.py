@@ -931,6 +931,8 @@ class AgentManager:
                     assert_bot_capacity(self._repos.user_repo, self._repos.agent_repo, spec.user_id)
                 # Only what a tenant may set; the server picks the folder, backend and layout.
                 config = strip_tenant_input(config)
+                # On a cloud server a tenant's agents stay its own.
+                spec = replace(spec, is_shared=False)
             if kind == "managed":
                 from octop.infra.agents.managed import (  # noqa: PLC0415
                     apply_managed_backend,
@@ -1350,6 +1352,9 @@ class AgentManager:
 
         if shared and is_private_bot(existing):
             raise OctopError(ErrorCode.FORBIDDEN, "private bot cannot be shared")
+        if shared and self._cloud_tenant(existing.user_id):
+            # On a cloud server a tenant's agents stay its own.
+            raise OctopError.localized(ErrorCode.FORBIDDEN)
         self._repos.agent_repo.set_shared(agent_id, shared)
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
@@ -2386,7 +2391,7 @@ class AgentManager:
             assert self._harness_manager is not None
             factory = self._harness_manager.shared_factory
             if account is not None:
-                config = account.harness_config(config, self._account_services())
+                config = account.harness_config(config, self._account_services(), agent_id)
                 request = account.request(request)
                 factory = None
             agent = await asyncio.to_thread(
@@ -4417,6 +4422,7 @@ class AgentManager:
         *,
         cfg: dict[str, Any] | None = None,
         workspace_dir: Path | None = None,
+        room: Path | None = None,
     ) -> Any:
         if cfg is None:
             cfg = self._agent_config_dict(row)
@@ -4424,8 +4430,18 @@ class AgentManager:
         if row.user_id is not None and self._cloud_tenant(row.user_id):
             from octop.infra.cloud.bot_cloud.files import BACKEND_TYPE  # noqa: PLC0415
 
-            # A tenant's agent always runs on its object-store backend.
-            if not (isinstance(backend_spec, dict) and backend_spec.get("type") == BACKEND_TYPE):
+            # A tenant's agent always runs on its object-store backend, or (as a group member)
+            # on the group room's own folder that the server set up.
+            in_room = (
+                room is not None
+                and isinstance(backend_spec, dict)
+                and backend_spec.get("type") == "filesystem"
+                and backend_spec.get("root_dir") == str(room)
+                and backend_spec.get("virtual_mode") is True
+            )
+            if not in_room and not (
+                isinstance(backend_spec, dict) and backend_spec.get("type") == BACKEND_TYPE
+            ):
                 raise OctopError.localized(ErrorCode.FORBIDDEN)
         if workspace_dir is None:
             workspace_dir = self.resolve_workspace_dir(row.agent_id)
@@ -4499,6 +4515,7 @@ class AgentManager:
         cfg: dict[str, Any] | None = None,
         workspace_dir: Path | None = None,
         allow_ephemeral_remote: bool = False,
+        room: Path | None = None,
     ) -> Any:
         """Resolve :class:`BackendWorkspace` for *row* without a running harness agent."""
         from octop_harness.backends.workspace import BackendWorkspace  # noqa: PLC0415
@@ -4512,7 +4529,7 @@ class AgentManager:
         if workspace_dir is None:
             workspace_dir = self.resolve_workspace_dir(row.agent_id)
         backend = self._prepare_docker_backend(
-            self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir),
+            self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir, room=room),
             row,
         )
         if self._spec_is_opensandbox(backend) and not allow_ephemeral_remote:
@@ -4990,7 +5007,9 @@ class AgentManager:
             if persisted:
                 cfg = persisted
 
-        backend = self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir)
+        backend = self._backend_spec_for_row(
+            row, cfg=cfg, workspace_dir=workspace_dir, room=room_workspace
+        )
         if getattr(row, "kind", None) == "managed":
             # The ACP runner is the agent. Reuse the workspace and runner
             # binding; do not assemble the expert tool or bootstrap stack.
@@ -5006,6 +5025,7 @@ class AgentManager:
             cfg=cfg,
             workspace_dir=workspace_dir,
             allow_ephemeral_remote=self._spec_is_opensandbox(backend),
+            room=room_workspace,
         )
 
         from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
@@ -5262,7 +5282,9 @@ class AgentManager:
                 owner = row.user_id
                 agent_middleware.append(
                     LynxceMediaTools(
-                        lynxce_media_tools(ws, lambda: media_auth(account_services, owner))
+                        lynxce_media_tools(
+                            ws, lambda: media_auth(account_services, owner), bot_id=row.agent_id
+                        )
                     )
                 )
         # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.
