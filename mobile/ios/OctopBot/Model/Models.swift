@@ -56,6 +56,7 @@ struct ChatMessage: Identifiable, Hashable {
     var role: MessageRole
     var text: String
     var thinking: String = ""
+    var creditScenario: CreditScenario? = nil
     var images: [Data] = []
     var tools: [ToolStep] = []
     /// Files the Bot sent (server mode); links in `text` become cards too, see `fileCards`.

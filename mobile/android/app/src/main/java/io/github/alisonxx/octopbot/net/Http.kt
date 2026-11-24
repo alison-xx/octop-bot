@@ -30,13 +30,16 @@ import kotlin.coroutines.resumeWithException
  * A user-facing failure from Lynxce or an Octop server. [message] is null when the UI should use generic text;
  * [code] is the server's error code, when it sent one.
  */
-class ApiException(val kind: Kind, val status: Int, message: String? = null, val code: String? = null) : IOException(message) {
+class ApiException(val kind: Kind, val status: Int, message: String? = null, val code: String? = null, val details: CreditDetails? = null) : IOException(message) {
     /** [DailyLimit]: credits remain but Lynxce's per-key daily cap for Octop Bot is used up; recharging won't help. */
     enum class Kind { Unauthorized, Credits, DailyLimit, Rejected, Network, Server }
 
     companion object {
         /** A turn or call billed to the Lynxce wallet ran out of credits (Octop Bot cloud). */
         const val CREDITS_REQUIRED = "BOT_CLOUD_CREDITS_REQUIRED"
+        const val COMPUTER_CREDITS_REQUIRED = "BOT_COMPUTER_CREDITS_REQUIRED"
+        const val COMPUTER_PAUSED_NO_CREDITS = "BOT_COMPUTER_PAUSED_NO_CREDITS"
+        fun isCreditsRequired(code: String?): Boolean = code in setOf(CREDITS_REQUIRED, COMPUTER_CREDITS_REQUIRED, COMPUTER_PAUSED_NO_CREDITS)
         /** Octop Bot cloud: the account's daily Lynxce cap is used up (HTTP 429). */
         const val DAILY_LIMIT = "BOT_LYNXCE_DAILY_LIMIT"
         /** Octop Bot cloud: the file is on the Bot's cloud computer, which is off (HTTP 409). */
@@ -47,9 +50,9 @@ class ApiException(val kind: Kind, val status: Int, message: String? = null, val
         /** Lynxce's own code for the cap (`api_key_credit_limit_reached`), which direct mode may send as a 402. */
         fun isDailyLimit(text: String?): Boolean = text != null && ("credit_limit_reached" in text || DAILY_LIMIT in text)
 
-        fun from(status: Int, message: String?, code: String? = null): ApiException = when {
+        fun from(status: Int, message: String?, code: String? = null, details: CreditDetails? = null): ApiException = when {
             isDailyLimit(code) -> ApiException(Kind.DailyLimit, 429, message, code)
-            code == CREDITS_REQUIRED || status == 402 -> ApiException(Kind.Credits, 402, message, code)
+            isCreditsRequired(code) || status == 402 -> ApiException(Kind.Credits, 402, message, code, details)
             else -> fromStatus(status, message, code)
         }
 
@@ -64,11 +67,38 @@ class ApiException(val kind: Kind, val status: Int, message: String? = null, val
             val code = Http.errorCode(body)
             // The cap check comes first: in direct mode it can arrive as a 402 that is not "out of credits".
             if (isDailyLimit(code) || isDailyLimit(body)) return ApiException(Kind.DailyLimit, 429, Http.errorMessage(body), code ?: DAILY_LIMIT)
-            return from(status, Http.errorMessage(body), code)
+            return from(status, Http.errorMessage(body), code, creditDetails((Http.parse(body) as? JsonObject)?.let { it.obj("error")?.obj("details") ?: it.obj("details") }))
         }
 
         fun network() = ApiException(Kind.Network, 0)
         fun badResponse() = ApiException(Kind.Server, 502)
+    }
+}
+
+data class CreditDetails(val need: Double?, val balance: Double?, val kind: String?)
+data class CreditScenario(val type: String, val need: Double, val balance: Double) {
+    val reason: String get() = if (type == "computer" || type == "paused") "computer" else type
+}
+
+fun creditDetails(details: JsonObject?): CreditDetails? = details?.let {
+    CreditDetails(it.double("need"), it.double("balance"), it.str("kind"))
+}
+
+/**
+ * Which out-of-credits message to show. A paused computer needs no figures; starting one needs `need`;
+ * chat, images and video need both `need` and `balance`. Anything missing falls back to the generic text.
+ */
+fun creditScenario(code: String?, details: CreditDetails?): CreditScenario? {
+    val need = details?.need?.takeIf { it.isFinite() && it > 0 }
+    val balance = details?.balance?.takeIf { it.isFinite() }
+    return when (code) {
+        ApiException.COMPUTER_PAUSED_NO_CREDITS -> CreditScenario("paused", 0.0, balance ?: 0.0)
+        ApiException.COMPUTER_CREDITS_REQUIRED -> need?.let { CreditScenario("computer", it, balance ?: 0.0) }
+        ApiException.CREDITS_REQUIRED -> {
+            val type = details?.kind?.takeIf { it in setOf("text", "image", "video") }
+            if (type != null && need != null && balance != null) CreditScenario(type, need, balance) else null
+        }
+        else -> null
     }
 }
 

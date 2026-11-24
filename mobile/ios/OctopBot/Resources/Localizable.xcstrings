@@ -2,9 +2,106 @@
   "sourceLanguage": "en",
   "version": "1.0",
   "strings": {
-    "Octop Bot": {
-      "shouldTranslate": false
+    "credits.scenario.text %@ %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not enough credits: this step needs about %1$@, you have %2$@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "积分不足，这一步需要约 %1$@ 积分，当前 %2$@。"
+          }
+        }
+      }
     },
+    "credits.scenario.image %@ %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This image needs about %1$@ credits; you have %2$@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "作图需要约 %1$@ 积分，余额 %2$@。"
+          }
+        }
+      }
+    },
+    "credits.scenario.video %@ %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This video needs about %1$@ credits; you have %2$@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这段视频需要约 %1$@ 积分，余额 %2$@。"
+          }
+        }
+      }
+    },
+    "credits.scenario.computer %@ %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starting the computer needs at least %1$@ credits."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开机至少需要 %1$@ 积分。"
+          }
+        }
+      }
+    },
+    "credits.scenario.paused %@ %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Out of credits, so the computer is paused. Your files are kept."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "积分不足，云电脑已暂停，文件都还在。"
+          }
+        }
+      }
+    },
+    "error.providerBalance": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your API key's balance is too low. Top it up with the provider."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的 API Key 余额不足，请到服务商充值"
+          }
+        }
+      }
+    }
+,
+  "Octop Bot": {
+    "shouldTranslate": false
+  },
     "bot.chief.prompt": {
       "localizations": {
         "en": {
@@ -5440,7 +5537,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "积分快用完了，余额 %@ 积分"
+            "value": "积分快用完了，剩 %@"
           }
         }
       }

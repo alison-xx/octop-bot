@@ -293,7 +293,9 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
                 val kind = (error as? ApiException)?.kind
                 val credits = kind == ApiException.Kind.Credits
                 val limit = kind == ApiException.Kind.DailyLimit
-                status = MessageStatus.Failed((error as? ApiException)?.message?.takeUnless { credits || limit }, credits, limit)
+                val apiError = error as? ApiException
+                val message = if (apiError?.code == "insufficient_balance") "insufficient_balance" else apiError?.message?.takeUnless { credits || limit }
+                status = MessageStatus.Failed(message, credits, limit, io.github.alisonxx.octopbot.net.creditScenario(apiError?.code, apiError?.details))
                 if (token == run) onFailure()
                 // Out of credits or over the daily cap: the reply itself shows the card, no snackbar.
                 if (!credits && !limit) report(error)

@@ -42,6 +42,7 @@ import io.github.alisonxx.octopbot.voice.VoiceInput
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -112,7 +113,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     /** The low balance the chat banner warns about, or null (enough credits, or the banner was closed). */
     val lowBalance: StateFlow<Double?> =
         combine(_balance, _walletKey, store.lowBalanceDismissed) { balance, wallet, dismissed ->
-            (balance as? BalanceState.Value)?.takeIf { it.low && wallet != null && wallet !in dismissed }?.credits
+            (balance as? BalanceState.Value)?.takeIf { it.low && wallet != null && !lowBalanceIsDismissed(dismissed[wallet], System.currentTimeMillis()) }?.credits
         }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val _usage = MutableStateFlow<UsageState?>(null)
     /** Usage on an Octop server; null in direct-Lynxce mode, which has no Octop server to ask. */
@@ -376,8 +377,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
             _balance.value = BalanceState.Value(credits)
             val wallet = account.walletKey
             _walletKey.value = wallet
-            // Back to 100 or more: the next low balance warns again.
-            if (wallet != null && credits >= LynxceProtocol.LOW_BALANCE) store.setLowBalanceDismissed(wallet, false)
+            if (wallet != null) scheduleLowBalanceReset(wallet)
         }.onFailure { error ->
             // Signed out elsewhere: the session ends (and the wallet with it).
             if (error is ApiException && error.kind == ApiException.Kind.Unauthorized) failed(error) else _balance.value = BalanceState.Failed
@@ -415,10 +415,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         }
     }
 
-    /** The chat banner's close: hidden for this wallet until the balance is back to 100 or more. */
+    /** The chat banner stays hidden for 24 hours after closing. */
     fun dismissLowBalance() {
         val wallet = _walletKey.value ?: return
-        viewModelScope.launch { store.setLowBalanceDismissed(wallet, true) }
+        store.dismissLowBalance(wallet)
+        scheduleLowBalanceReset(wallet)
+    }
+
+    private fun scheduleLowBalanceReset(wallet: String) {
+        val dismissedAt = store.lowBalanceDismissed.value[wallet] ?: return
+        val remaining = dismissedAt + LOW_BALANCE_DISMISSAL_MS - System.currentTimeMillis()
+        if (remaining <= 0) return
+        viewModelScope.launch {
+            delay(remaining)
+            if (store.lowBalanceDismissed.value[wallet] == dismissedAt) {
+                store.lowBalanceDismissed.value = store.lowBalanceDismissed.value - wallet
+            }
+        }
     }
 
     /** The activity resumed; back from the recharge page, the new balance shows. */
@@ -487,12 +500,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
      * Open Lynxce's recharge page signed in as this account (a 15-minute ticket, as on the desktop). Taps while
      * the link is being fetched are ignored.
      */
-    fun recharge(open: (String) -> Unit) {
+    fun recharge(scenario: io.github.alisonxx.octopbot.net.CreditScenario? = null, open: (String) -> Unit) {
         val account = creditAccount ?: return
         if (_recharging.value) return
         _recharging.value = true
         viewModelScope.launch {
-            runCatching { account.checkoutUrl() }
+            runCatching { account.checkoutUrl(scenario) }
                 .onSuccess {
                     rechargeOpened = true
                     open(it)
@@ -719,3 +732,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         voiceInput.cancel()
     }
 }
+
+internal const val LOW_BALANCE_DISMISSAL_MS = 24 * 60 * 60 * 1000L
+internal fun lowBalanceIsDismissed(at: Long?, now: Long): Boolean =
+    at != null && at > 0 && now - at < LOW_BALANCE_DISMISSAL_MS

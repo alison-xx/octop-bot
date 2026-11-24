@@ -371,7 +371,7 @@
     <string name="chat_credits_body">这次没能跑完。到灵策充值积分后，点「继续」就接着做。</string>
     <string name="chat_credits_balance">当前余额 %1$s 积分</string>
     <string name="chat_continue">继续</string>
-    <string name="chat_low_balance">积分快用完了，余额 %1$s 积分</string>
+    <string name="chat_low_balance">积分快用完了，剩 %1$s</string>
     <string name="recharge_link_refused">充值链接校验没通过，已拦截。请稍后再试，或到灵策官网充值。</string>
     <string name="recharge_unavailable">暂时打不开充值页面，请稍后再试。</string>
     <string name="server_sign_in_lynxce_cloud">使用灵策智算账号登录</string>
@@ -519,4 +519,11 @@
     <string name="account_credits_usage_detail">余额、到期和最近 30 天用量</string>
     <string name="account_centre">个人中心</string>
     <string name="account_centre_detail">会员、订单和发票（官网）</string>
+    <string name="chat_credits_first_hint">加油包一次性买，会员每月送积分</string>
+    <string name="chat_credits_text">积分不足，这一步需要约 %1$s 积分，当前 %2$s。</string>
+    <string name="chat_credits_image">作图需要约 %1$s 积分，余额 %2$s。</string>
+    <string name="chat_credits_video">这段视频需要约 %1$s 积分，余额 %2$s。</string>
+    <string name="chat_credits_computer">开机至少需要 %1$s 积分。</string>
+    <string name="chat_credits_paused">积分不足，云电脑已暂停，文件都还在。</string>
+    <string name="error_provider_balance">你的 API Key 余额不足，请到服务商充值</string>
 </resources>

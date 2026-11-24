@@ -280,7 +280,7 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
                     retry = if (isLastReply && message.role == MessageRole.Assistant) chat::retry else null,
                     speaking = speakingMessage == message.id,
                     files = fileActions,
-                    recharge = recharge,
+                    recharge = if (balance != null) ({ scenario -> model.recharge(scenario) { openCheckout(context, it) } }) else null,
                     balance = balance,
                     recharging = recharging,
                 )
@@ -377,7 +377,7 @@ fun ChatContent(
     hitlActions: HitlCardActions? = null,
     onCancelQueued: (String) -> Unit = {},
     cloudFloat: CloudFloatState? = null,
-    /** Under 100 credits and not dismissed: a banner under the top bar. */
+    /** Under 1,000 credits and not dismissed: a banner under the top bar. */
     lowBalance: Double? = null,
     onRecharge: (() -> Unit)? = null,
     onDismissLowBalance: () -> Unit = {},
@@ -493,7 +493,7 @@ private fun ChatTopBar(
     }
 }
 
-/** "Credits running low: N left" with Top up and a close that holds until the balance is back to 100. */
+/** "Credits running low: N left" with Top up and a close that lasts 24 hours. */
 @Composable
 private fun LowBalanceBanner(amount: Double, onRecharge: () -> Unit, onDismiss: () -> Unit) {
     val palette = LocalPalette.current

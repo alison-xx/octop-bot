@@ -538,4 +538,11 @@
     <string name="account_credits_usage_detail">Balance, expiry and the last 30 days</string>
     <string name="account_centre">Account centre</string>
     <string name="account_centre_detail">Membership, orders and invoices (website)</string>
+    <string name="chat_credits_first_hint">Top-ups are one-off; members get credits every month</string>
+    <string name="chat_credits_text">Not enough credits: this step needs about %1$s, you have %2$s.</string>
+    <string name="chat_credits_image">This image needs about %1$s credits; you have %2$s.</string>
+    <string name="chat_credits_video">This video needs about %1$s credits; you have %2$s.</string>
+    <string name="chat_credits_computer">Starting the computer needs at least %1$s credits.</string>
+    <string name="chat_credits_paused">Out of credits, so the computer is paused. Your files are kept.</string>
+    <string name="error_provider_balance">Your API key\'s balance is too low. Top it up with the provider.</string>
 </resources>
