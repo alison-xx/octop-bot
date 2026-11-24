@@ -1,0 +1,744 @@
+{
+ "data": {
+  "textModels": [
+   {
+    "modelName": "DeepSeek V4.1 Flash",
+    "providerLabel": "DeepSeek",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.384,
+    "creditsPerKOutputTokens": 1.536
+   },
+   {
+    "modelName": "Qwen3.8 Flash",
+    "providerLabel": "Qwen",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.4,
+    "creditsPerKOutputTokens": 1.35
+   },
+   {
+    "modelName": "GLM-5.3 Flash",
+    "providerLabel": "智谱 GLM",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.24,
+    "creditsPerKOutputTokens": 0.84
+   },
+   {
+    "modelName": "DeepSeek V4.1 Flash",
+    "providerLabel": "DeepSeek",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.3,
+    "creditsPerKOutputTokens": 1.2
+   },
+   {
+    "modelName": "DeepSeek V4.1 Flash",
+    "providerLabel": "DeepSeek",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.3,
+    "creditsPerKOutputTokens": 1.2
+   },
+   {
+    "modelName": "DeepSeek V4.1 Flash",
+    "providerLabel": "DeepSeek",
+    "supportsImage": true,
+    "supportsThinking": false,
+    "creditsPerKInputTokens": 0.3,
+    "creditsPerKOutputTokens": 1.2
+   },
+   {
+    "modelName": "DeepSeek V4.1 Flash",
+    "providerLabel": "DeepSeek",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.3,
+    "creditsPerKOutputTokens": 1.2
+   },
+   {
+    "modelName": "DeepSeek V4 Pro",
+    "providerLabel": "DeepSeek",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.3,
+    "creditsPerKOutputTokens": 1.2
+   },
+   {
+    "modelName": "Qwen3.7 Plus",
+    "providerLabel": "Qwen",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.8,
+    "creditsPerKOutputTokens": 3.2
+   },
+   {
+    "modelName": "Doubao Seed Character",
+    "providerLabel": "字节豆包",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1.2,
+    "creditsPerKOutputTokens": 6
+   },
+   {
+    "modelName": "Doubao Seed 2.0 Pro",
+    "providerLabel": "字节豆包",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 3.2,
+    "creditsPerKOutputTokens": 16
+   },
+   {
+    "modelName": "Doubao Seed 2.1 Pro",
+    "providerLabel": "字节豆包",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1.5,
+    "creditsPerKOutputTokens": 4
+   },
+   {
+    "modelName": "DeepSeek V4.1 Flash",
+    "providerLabel": "DeepSeek",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.3,
+    "creditsPerKOutputTokens": 1.2
+   },
+   {
+    "modelName": "DeepSeek V4.1 Flash",
+    "providerLabel": "DeepSeek",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.3,
+    "creditsPerKOutputTokens": 1.2
+   },
+   {
+    "modelName": "DeepSeek V4 Flash",
+    "providerLabel": "DeepSeek",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.45,
+    "creditsPerKOutputTokens": 1.35
+   },
+   {
+    "modelName": "DeepSeek V4 Pro",
+    "providerLabel": "DeepSeek",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1.35,
+    "creditsPerKOutputTokens": 4.05
+   },
+   {
+    "modelName": "DeepSeek V4 Pro",
+    "providerLabel": "DeepSeek",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1.8,
+    "creditsPerKOutputTokens": 3.6
+   },
+   {
+    "modelName": "Qwen3.6 Flash",
+    "providerLabel": "Qwen",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.18,
+    "creditsPerKOutputTokens": 1.08
+   },
+   {
+    "modelName": "Qwen3.7 Max",
+    "providerLabel": "Qwen",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1.8,
+    "creditsPerKOutputTokens": 5.4
+   },
+   {
+    "modelName": "Qwen3.8 Max",
+    "providerLabel": "Qwen",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1.8,
+    "creditsPerKOutputTokens": 5.4
+   },
+   {
+    "modelName": "Qwen4 Max Preview",
+    "providerLabel": "Qwen",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1.8,
+    "creditsPerKOutputTokens": 5.4
+   },
+   {
+    "modelName": "Qwen Auto",
+    "providerLabel": "Qwen",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1.8,
+    "creditsPerKOutputTokens": 5.4
+   },
+   {
+    "modelName": "GLM-5.2",
+    "providerLabel": "智谱 GLM",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1.2,
+    "creditsPerKOutputTokens": 4.2
+   },
+   {
+    "modelName": "GLM-5.3",
+    "providerLabel": "智谱 GLM",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1.2,
+    "creditsPerKOutputTokens": 4.2
+   },
+   {
+    "modelName": "GLM-5.3",
+    "providerLabel": "智谱 GLM",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 5.44,
+    "creditsPerKOutputTokens": 19.04
+   },
+   {
+    "modelName": "GLM-5.2",
+    "providerLabel": "智谱 GLM",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 5.44,
+    "creditsPerKOutputTokens": 19.04
+   },
+   {
+    "modelName": "GLM-5.1",
+    "providerLabel": "智谱 GLM",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 4.08,
+    "creditsPerKOutputTokens": 16.32
+   },
+   {
+    "modelName": "GLM-5 Turbo",
+    "providerLabel": "智谱 GLM",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 3.4,
+    "creditsPerKOutputTokens": 14.96
+   },
+   {
+    "modelName": "GLM-5",
+    "providerLabel": "智谱 GLM",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 2.72,
+    "creditsPerKOutputTokens": 12.24
+   },
+   {
+    "modelName": "Kimi K3",
+    "providerLabel": "月之暗面 Kimi",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 14.08,
+    "creditsPerKOutputTokens": 70.4
+   },
+   {
+    "modelName": "Kimi K2.7 Code",
+    "providerLabel": "月之暗面 Kimi",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 4.576,
+    "creditsPerKOutputTokens": 19.008
+   },
+   {
+    "modelName": "Kimi K2.6",
+    "providerLabel": "月之暗面 Kimi",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 4.576,
+    "creditsPerKOutputTokens": 19.008
+   },
+   {
+    "modelName": "Qwen3.8 Max",
+    "providerLabel": "Qwen",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 7.2,
+    "creditsPerKOutputTokens": 21.6
+   },
+   {
+    "modelName": "Qwen3.7 Plus",
+    "providerLabel": "Qwen",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.96,
+    "creditsPerKOutputTokens": 3.84
+   },
+   {
+    "modelName": "Qwen3.5 Flash",
+    "providerLabel": "Qwen",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.12,
+    "creditsPerKOutputTokens": 1.2
+   },
+   {
+    "modelName": "Doubao Seed 2.1 Turbo",
+    "providerLabel": "字节豆包",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 2.04,
+    "creditsPerKOutputTokens": 10.2
+   },
+   {
+    "modelName": "Doubao Seed 2.0 Pro",
+    "providerLabel": "字节豆包",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 2.176,
+    "creditsPerKOutputTokens": 10.88
+   },
+   {
+    "modelName": "MiniMax M2.5",
+    "providerLabel": "MiniMax",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1.428,
+    "creditsPerKOutputTokens": 5.712
+   },
+   {
+    "modelName": "MiniMax M3",
+    "providerLabel": "MiniMax",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.84,
+    "creditsPerKOutputTokens": 3.36
+   },
+   {
+    "modelName": "MiniMax M3.1 Flash",
+    "providerLabel": "MiniMax",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.225,
+    "creditsPerKOutputTokens": 0.9
+   },
+   {
+    "modelName": "Doubao Seed 2.0 Lite",
+    "providerLabel": "字节豆包",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.135,
+    "creditsPerKOutputTokens": 0.81
+   },
+   {
+    "modelName": "Doubao Seed 2.0 Mini",
+    "providerLabel": "字节豆包",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.045,
+    "creditsPerKOutputTokens": 0.45
+   },
+   {
+    "modelName": "Doubao Seed 2.1 Lite",
+    "providerLabel": "字节豆包",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.18,
+    "creditsPerKOutputTokens": 0.6075
+   },
+   {
+    "modelName": "Doubao Seed 2.1 Pro",
+    "providerLabel": "字节豆包",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1.5,
+    "creditsPerKOutputTokens": 4
+   },
+   {
+    "modelName": "Doubao Seed Character",
+    "providerLabel": "字节豆包",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1.2,
+    "creditsPerKOutputTokens": 6
+   },
+   {
+    "modelName": "GLM-4.6v",
+    "providerLabel": "智谱 GLM",
+    "supportsImage": false,
+    "supportsThinking": false,
+    "creditsPerKInputTokens": 0.225,
+    "creditsPerKOutputTokens": 0.675
+   },
+   {
+    "modelName": "GLM-4.7",
+    "providerLabel": "智谱 GLM",
+    "supportsImage": false,
+    "supportsThinking": false,
+    "creditsPerKInputTokens": 0.51,
+    "creditsPerKOutputTokens": 2.04
+   },
+   {
+    "modelName": "GLM-5.3 Flash",
+    "providerLabel": "智谱 GLM",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.18,
+    "creditsPerKOutputTokens": 0.63
+   },
+   {
+    "modelName": "GLM-5.3 Flashx",
+    "providerLabel": "智谱 GLM",
+    "supportsImage": false,
+    "supportsThinking": false,
+    "creditsPerKInputTokens": 0.45,
+    "creditsPerKOutputTokens": 1.575
+   },
+   {
+    "modelName": "Kimi K2.5",
+    "providerLabel": "月之暗面 Kimi",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 2,
+    "creditsPerKOutputTokens": 10.5
+   },
+   {
+    "modelName": "Kimi K3.1 Pro",
+    "providerLabel": "月之暗面 Kimi",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 2.925,
+    "creditsPerKOutputTokens": 15.3
+   },
+   {
+    "modelName": "Qwen3.5 Plus",
+    "providerLabel": "Qwen",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.18,
+    "creditsPerKOutputTokens": 1.08
+   },
+   {
+    "modelName": "Qwen3.6 Flash",
+    "providerLabel": "Qwen",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.27,
+    "creditsPerKOutputTokens": 1.62
+   },
+   {
+    "modelName": "Qwen3.6 Plus",
+    "providerLabel": "Qwen",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 1,
+    "creditsPerKOutputTokens": 6
+   },
+   {
+    "modelName": "Qwen3.7 Flash",
+    "providerLabel": "Qwen",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.045,
+    "creditsPerKOutputTokens": 0.18
+   },
+   {
+    "modelName": "Qwen3.7 Max",
+    "providerLabel": "Qwen",
+    "supportsImage": false,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 2.7,
+    "creditsPerKOutputTokens": 8.1
+   },
+   {
+    "modelName": "Qwen3.8 Flash",
+    "providerLabel": "Qwen",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 0.18,
+    "creditsPerKOutputTokens": 0.6075
+   },
+   {
+    "modelName": "Qwen3.8 Max",
+    "providerLabel": "Qwen",
+    "supportsImage": true,
+    "supportsThinking": true,
+    "creditsPerKInputTokens": 2.7,
+    "creditsPerKOutputTokens": 8.1
+   }
+  ],
+  "imageModels": [
+   {
+    "displayName": "image2.6",
+    "provider": "OpenAI",
+    "pricing": {
+     "creditsPerImage": 70,
+     "unitCredits": 70
+    }
+   },
+   {
+    "displayName": "image2.5",
+    "provider": "OpenAI",
+    "pricing": {
+     "creditsPerImage": 60,
+     "unitCredits": 60
+    }
+   },
+   {
+    "displayName": "image2.5 Sunburst",
+    "provider": "OpenAI",
+    "pricing": {
+     "creditsPerImage": 60,
+     "unitCredits": 60
+    }
+   },
+   {
+    "displayName": "image2.0",
+    "provider": "OpenAI",
+    "pricing": {
+     "creditsPerImage": 40,
+     "unitCredits": 40
+    }
+   },
+   {
+    "displayName": "Qwen Image 2.0 Pro",
+    "provider": "Qwen",
+    "pricing": {
+     "creditsPerImage": 500,
+     "unitCredits": 500
+    }
+   },
+   {
+    "displayName": "Doubao Seedream 5.0",
+    "provider": "字节豆包",
+    "pricing": {
+     "creditsPerImage": 220,
+     "unitCredits": 220
+    }
+   },
+   {
+    "displayName": "Qwen Image 3.0 Pro",
+    "provider": "Qwen",
+    "pricing": {
+     "creditsPerImage": 75,
+     "unitCredits": 75
+    }
+   },
+   {
+    "displayName": "万相 2.7 图像",
+    "provider": "Qwen",
+    "pricing": {
+     "creditsPerImage": 100,
+     "unitCredits": 100
+    }
+   },
+   {
+    "displayName": "万相 2.6 文生图",
+    "provider": "Qwen",
+    "pricing": {
+     "creditsPerImage": 200,
+     "unitCredits": 200
+    }
+   },
+   {
+    "displayName": "万相 2.7 图像 Pro",
+    "provider": "Qwen",
+    "pricing": {
+     "creditsPerImage": 250,
+     "unitCredits": 250
+    }
+   },
+   {
+    "displayName": "Z-Image Turbo",
+    "provider": "Qwen",
+    "pricing": {
+     "creditsPerImage": 200,
+     "unitCredits": 200
+    }
+   },
+   {
+    "displayName": "可灵 Kling V3 图像",
+    "provider": "快手可灵",
+    "pricing": {
+     "creditsPerImage": 200,
+     "unitCredits": 200
+    }
+   },
+   {
+    "displayName": "可灵 Kling V3 Omni 图像",
+    "provider": "快手可灵",
+    "pricing": {
+     "creditsPerImage": 200,
+     "unitCredits": 200
+    }
+   }
+  ],
+  "videoModels": [
+   {
+    "displayName": "MiniMax H3",
+    "provider": "MiniMax",
+    "pricing": {
+     "videoPricingTiers": {
+      "480p": 5.2,
+      "720p": 10.4,
+      "1080p": 19.76
+     },
+     "defaultResolution": "720p",
+     "unitCredits": 10.4
+    }
+   },
+   {
+    "displayName": "可灵 Kling V3 视频",
+    "provider": "快手可灵",
+    "pricing": {
+     "videoPricingTiers": {
+      "720p": 60,
+      "1080p": 80
+     },
+     "defaultResolution": "720p",
+     "unitCredits": 60
+    }
+   },
+   {
+    "displayName": "Vidu Q3 Turbo 文生视频",
+    "provider": "生数 Vidu",
+    "pricing": {
+     "videoPricingTiers": {
+      "540p": 25,
+      "720p": 37.5,
+      "1080p": 43.75
+     },
+     "defaultResolution": "720p",
+     "unitCredits": 37.5
+    }
+   },
+   {
+    "displayName": "Seedance 2.0",
+    "provider": "字节豆包",
+    "pricing": {
+     "videoPricingTiers": {
+      "480p": 46.2,
+      "720p": 99.4,
+      "1080p": 247.8
+     },
+     "defaultResolution": "720p",
+     "unitCredits": 99.4
+    }
+   },
+   {
+    "displayName": "Vidu Q3 Turbo 首帧生视频",
+    "provider": "生数 Vidu",
+    "pricing": {
+     "videoPricingTiers": {
+      "540p": 25,
+      "720p": 37.5,
+      "1080p": 43.75
+     },
+     "defaultResolution": "720p",
+     "unitCredits": 37.5
+    }
+   },
+   {
+    "displayName": "Vidu Q3 Turbo 首尾帧视频",
+    "provider": "生数 Vidu",
+    "pricing": {
+     "videoPricingTiers": {
+      "540p": 25,
+      "720p": 37.5,
+      "1080p": 43.75
+     },
+     "defaultResolution": "720p",
+     "unitCredits": 37.5
+    }
+   },
+   {
+    "displayName": "Vidu Q3 Turbo 参考生视频",
+    "provider": "生数 Vidu",
+    "pricing": {
+     "videoPricingTiers": {
+      "540p": 15.625,
+      "720p": 31.25,
+      "1080p": 40.625
+     },
+     "defaultResolution": "720p",
+     "unitCredits": 31.25
+    }
+   },
+   {
+    "displayName": "Seedance 2.5",
+    "provider": "字节豆包",
+    "pricing": {}
+   },
+   {
+    "displayName": "Seedance 2.0 Mini",
+    "provider": "字节豆包",
+    "pricing": {
+     "videoPricingTiers": {
+      "480p": 16,
+      "720p": 50
+     },
+     "defaultResolution": "720p",
+     "unitCredits": 50
+    }
+   },
+   {
+    "displayName": "HappyHorse 文生视频",
+    "provider": "HappyHorse",
+    "pricing": {
+     "videoPricingTiers": {
+      "480p": 27,
+      "720p": 54,
+      "1080p": 72
+     },
+     "defaultResolution": "720p",
+     "unitCredits": 54
+    }
+   },
+   {
+    "displayName": "HappyHorse 图生视频",
+    "provider": "HappyHorse",
+    "pricing": {
+     "videoPricingTiers": {
+      "480p": 27,
+      "720p": 54,
+      "1080p": 72
+     },
+     "defaultResolution": "720p",
+     "unitCredits": 54
+    }
+   },
+   {
+    "displayName": "HappyHorse 参考生视频",
+    "provider": "HappyHorse",
+    "pricing": {
+     "videoPricingTiers": {
+      "480p": 27,
+      "720p": 54,
+      "1080p": 72
+     },
+     "defaultResolution": "720p",
+     "unitCredits": 54
+    }
+   },
+   {
+    "displayName": "万相 3.0 视频",
+    "provider": "Qwen",
+    "pricing": {
+     "videoPricingTiers": {
+      "480p": 15,
+      "720p": 30,
+      "1080p": 60
+     },
+     "defaultResolution": "720p",
+     "unitCredits": 30
+    }
+   },
+   {
+    "displayName": "可灵 Kling（5 秒）",
+    "provider": "快手可灵",
+    "pricing": {
+     "unitCredits": 800
+    }
+   }
+  ]
+ }
+}
