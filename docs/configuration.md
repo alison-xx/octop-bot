@@ -314,6 +314,12 @@ For unattended installs, use `octop init --yes` with
 `OCTOP_REQUIRE_SETUP_PASSWORD=false` if the env-var path is used). This
 runs the same migrations + admin creation without the HTTP wizard.
 
+## Cloud computer disk billing
+
+`OCTOP_DISK_BILLING` defaults to off. Set it to `on`, `true`, `yes`, or `1` to
+enable daily disk charges through Lynxce. With the switch off, the reaper sends
+no disk charge requests. Compute billing is controlled separately.
+
 ## Secrets
 
 The JWT secret is generated on first start and stored in

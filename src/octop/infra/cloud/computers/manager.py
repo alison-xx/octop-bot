@@ -19,6 +19,7 @@ import time
 import uuid
 from collections.abc import Callable, Coroutine
 from dataclasses import asdict, dataclass, field
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from octop.infra.cloud.computers.driver import AgsConfig, AgsDriver, ComputerDriver, Spec
@@ -69,7 +70,13 @@ MAKE_ROOM_IDLE_SECONDS = 2 * 60
 # A disk charge Lynxce did not take (out of credits, Lynxce down, disk not priced) is tried
 # again this much later, not on every 30 s pass.
 DISK_RETRY_SECONDS = 10 * 60
+# Display fallback; Lynxce's admin price is the source of truth for charges.
+DISK_DAILY_CREDITS_PER_GB = 4.80
 _BEIJING_OFFSET_SECONDS = 8 * 3600
+
+
+def disk_billing_enabled() -> bool:
+    return os.environ.get("OCTOP_DISK_BILLING", "").strip().lower() in {"1", "true", "on", "yes"}
 
 
 def beijing_day(timestamp: float) -> str:
@@ -154,6 +161,7 @@ class ComputerRecord:
     seeded: bool = False
     # The Beijing day the disk is paid for, and when to retry a disk charge that failed.
     disk_paid_day: str = ""
+    disk_failed_day: str = ""
     disk_retry_at: float = 0.0
 
     def controlled(self, now: float) -> bool:
@@ -367,6 +375,22 @@ class ComputerManager:
 
     def is_running(self, agent_id: str, user_id: int) -> bool:
         return self.record(agent_id, user_id).running
+
+    def disk_status(self, record: ComputerRecord) -> tuple[int, int]:
+        """Billed disk size and days since the first unpaid Beijing day (inclusive)."""
+        disk_gb = getattr(self._driver, "disk_gb", None)
+        size = max(0, int(disk_gb(record.instance_id))) if record.instance_id and disk_gb else 0
+        overdue = 0
+        if record.disk_failed_day:
+            overdue = max(
+                0,
+                (
+                    date.fromisoformat(beijing_day(self._clock()))
+                    - date.fromisoformat(record.disk_failed_day)
+                ).days
+                + 1,
+            )
+        return size, overdue
 
     def server_id(self) -> str:
         """Stable id of this Octop server, labelled on its instances (several servers may share
@@ -662,6 +686,8 @@ class ComputerManager:
         A failed charge (out of credits, Lynxce down, disk not priced yet) is retried every
         ``DISK_RETRY_SECONDS``; the disk is never deleted for it, the user's files stay.
         """
+        if not disk_billing_enabled():
+            return
         disk_gb = getattr(self._driver, "disk_gb", None)
         if disk_gb is None:
             return
@@ -684,10 +710,12 @@ class ComputerManager:
                 self._billing.charge_disk(record, day, size)
             except Exception:  # noqa: BLE001 - out of credits (402), unpriced (503) or Lynxce down
                 logger.info("disk of computer %s not paid for %s; retrying later", agent_id, day)
+                record.disk_failed_day = record.disk_failed_day or day
                 record.disk_retry_at = now + DISK_RETRY_SECONDS
                 self._save(record)
                 return
             record.disk_paid_day = day
+            record.disk_failed_day = ""
             record.disk_retry_at = 0.0
             self._save(record)
 

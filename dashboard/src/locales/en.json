@@ -9020,6 +9020,9 @@
     "soundHint": "Play a short chime when a new message arrives"
   },
   "cloudComputer": {
+    "diskFee": "Disk {{gb}} GB · {{credits}} credits per day",
+    "diskBillingOff": "Billing currently off",
+    "diskOverdue": "Disk fees are {{days}} days overdue.",
     "section": "Cloud computer",
     "state": {
       "none": "Not started",

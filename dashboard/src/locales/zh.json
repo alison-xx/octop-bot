@@ -9020,6 +9020,9 @@
     "soundHint": "收到新消息时播放一声短提示音"
   },
   "cloudComputer": {
+    "diskFee": "盘 {{gb}} GB · 每天 {{credits}} 积分",
+    "diskBillingOff": "暂未收费",
+    "diskOverdue": "磁盘费欠费 {{days}} 天。",
     "section": "云电脑",
     "state": {
       "none": "未开机",

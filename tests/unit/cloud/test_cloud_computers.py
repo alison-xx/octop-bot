@@ -931,7 +931,10 @@ def test_beijing_day_turns_at_beijing_midnight() -> None:
     assert computers.beijing_day(BEIJING_MIDNIGHT) == "1970-01-02"
 
 
-def test_a_cvm_disk_is_prepaid_once_per_beijing_day_even_while_stopped(setup: Any) -> None:
+def test_a_cvm_disk_is_prepaid_once_per_beijing_day_even_while_stopped(
+    setup: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "on")
     manager, driver, billing, clock = setup
     driver.disk_size = 40
     clock.now = BEIJING_MIDNIGHT - 3600
@@ -946,13 +949,18 @@ def test_a_cvm_disk_is_prepaid_once_per_beijing_day_even_while_stopped(setup: An
     assert billing.disks == [("bot1", "1970-01-01", 40), ("bot1", "1970-01-02", 40)]
 
 
-def test_an_unpaid_disk_is_retried_later_and_never_deleted(setup: Any) -> None:
+def test_an_unpaid_disk_is_retried_later_and_never_deleted(
+    setup: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "on")
     manager, driver, billing, clock = setup
     driver.disk_size = 40
     CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
     manager.pause("bot1", 7)
     billing.disk_down = True
     manager.tick()
+    assert manager.record("bot1", 7).disk_failed_day == "1970-01-01"
+    assert manager.disk_status(manager.record("bot1", 7)) == (40, 1)
     clock.now += computers.REAP_INTERVAL_SECONDS
     manager.tick()  # not retried on every pass
     assert billing.disks == []
@@ -960,11 +968,15 @@ def test_an_unpaid_disk_is_retried_later_and_never_deleted(setup: Any) -> None:
     clock.now += computers.DISK_RETRY_SECONDS
     manager.tick()
     assert billing.disks == [("bot1", "1970-01-01", 40)]
+    assert manager.record("bot1", 7).disk_failed_day == ""
     # The computer was only paused, never stopped for the missed charge.
     assert ("stop", "ins-1") not in driver.calls
 
 
-def test_ags_computers_and_deleted_bots_pay_no_disk(setup: Any) -> None:
+def test_ags_computers_and_deleted_bots_pay_no_disk(
+    setup: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "on")
     manager, driver, billing, clock = setup
     CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
     manager.tick()
@@ -976,7 +988,21 @@ def test_ags_computers_and_deleted_bots_pay_no_disk(setup: Any) -> None:
     assert ("stop", "ins-1") in driver.calls
 
 
+def test_disk_billing_defaults_off_and_skips_charges(
+    setup: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("OCTOP_DISK_BILLING", raising=False)
+    manager, driver, billing, _ = setup
+    driver.disk_size = 40
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    manager.tick()
+    assert billing.disks == []
+    assert manager.record("bot1", 7).disk_paid_day == ""
+    assert not computers.disk_billing_enabled()
+
+
 def test_a_driver_without_disks_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "on")
     monkeypatch.setattr(computers.ComputerManager, "_start_reaper", lambda self: None)
 
     class NoDisk(Driver):
@@ -987,6 +1013,29 @@ def test_a_driver_without_disks_is_left_alone(monkeypatch: pytest.MonkeyPatch) -
     CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
     manager.tick()
     assert billing.disks == []
+
+
+def test_disk_status_reports_paid_and_overdue_beijing_days(
+    setup: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.api.routers.bot_computers import _status
+
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "on")
+    manager, driver, billing, clock = setup
+    driver.disk_size = 40
+    clock.now = BEIJING_MIDNIGHT - 1
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    manager.pause("bot1", 7)
+    manager.tick()
+    billing.disk_down = True
+    clock.now = BEIJING_MIDNIGHT
+    manager.tick()
+    clock.now += 86400
+    status = _status(manager, "bot1", 7)
+    assert (status.disk_gb, status.disk_daily_credits, status.disk_billing) == (40, 192, True)
+    assert status.disk_paid_through == "1970-01-01"
+    assert status.disk_overdue_days == 2
+    assert computers.ComputerRecord.load('{"agent_id":"old","user_id":7}').disk_failed_day == ""
 
 
 def test_disk_charges_carry_the_cloud_server_key(monkeypatch: pytest.MonkeyPatch) -> None:
