@@ -171,6 +171,11 @@ class LynxceProtocolTest {
             Http.parse("""{"url":"$url","token":"$token","expiresAt":"$expires"}""")
         val good = LynxceProtocol.CHECKOUT_PORTAL + ticket
         assertEquals(good, LynxceProtocol.checkoutUrl(link(good), now))
+        val boost = LynxceProtocol.boostTab(good)
+        assertEquals("$good&tab=boost", boost)
+        assertEquals(boost, LynxceProtocol.checkoutUrl(link(boost), now))
+        assertEquals(boost, LynxceProtocol.boostTab(boost))
+        assertNull(LynxceProtocol.checkoutUrl(link("https://evil.example/recharge?token=$ticket&tab=boost"), now))
         assertNull(LynxceProtocol.checkoutUrl(link("https://evil.example/recharge?token=$ticket"), now))
         assertNull(LynxceProtocol.checkoutUrl(link(LynxceProtocol.CHECKOUT_PORTAL + "mcrt1." + "a".repeat(43)), now))
         assertNull(LynxceProtocol.checkoutUrl(link(good, token = "x." + "b".repeat(43)), now))

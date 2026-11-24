@@ -11,14 +11,17 @@ commands, files, screenshots, the accessibility tree, the clipboard and the scre
 - Each instance's nginx (port 443, the only port its security group opens, and only to this
   server) checks an access token and serves TLS with a certificate issued for that instance.
   Both come in the first-boot user data. The token is an HMAC of a random per-instance
-  reference kept in a tag, and the certificate is signed by a CA derived from the CAM secret,
-  so a server needs no state beyond its configuration to reach every computer it started.
+  reference kept in a tag, and the certificate is signed by a CA derived from the instance
+  secret (``INSTANCE_SECRET``, or the CAM secret when that is unset), so a server needs no
+  state beyond its configuration to reach every computer it started.
 
 Configured from the environment (``OCTOP_CVM_*``): ``SECRET_ID`` / ``SECRET_KEY`` (a CAM
 sub-account with CVM, VPC, TAT and ``finance:trade``), ``REGION`` (default ``ap-guangzhou``),
 ``IMAGE_ID``, ``VPC_ID``, ``SUBNETS`` (``zone:subnet,...``; tried in order when a zone has no
 stock), ``SECURITY_GROUP``, ``TYPE`` / ``TYPE_PRO`` (default ``SA9.LARGE8`` /
-``SA9.2XLARGE16``), ``DISK_GB`` (default 40), ``BANDWIDTH`` (Mbps, default 50).
+``SA9.2XLARGE16``), ``DISK_GB`` (default 40), ``BANDWIDTH`` (Mbps, default 50),
+``INSTANCE_SECRET`` (optional: the seed for instance tokens and certificates; set it to the
+old ``SECRET_KEY`` before rotating the CAM key, so existing computers stay reachable).
 """
 
 from __future__ import annotations
@@ -27,6 +30,7 @@ import base64
 import datetime as dt
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 import ssl
@@ -39,11 +43,21 @@ from typing import Any
 
 from octop.infra.cloud.computers.driver import AgsDriver, Instance, Spec, State
 
+logger = logging.getLogger(__name__)
+
 MANAGED_TAG = "octop-computer"
 REF_TAG = "octop-ref"
 # Where the image's nginx sends each local port.
 _GATEWAY = "/p/{port}"
-_STOCK_ERRORS = ("ResourceInsufficient", "ResourcesSoldOut", "InstancesSoldOut", "NoAvailableZone")
+# Errors that mean "not in this zone": no stock there, or the account's instance quota for that
+# zone is used up. Either way the next zone may still take the computer.
+_ZONE_ERRORS = (
+    "ResourceInsufficient",
+    "ResourcesSoldOut",
+    "InstancesSoldOut",
+    "NoAvailableZone",
+    "LimitExceeded.InstanceQuota",
+)
 
 
 @dataclass(frozen=True)
@@ -58,6 +72,7 @@ class CvmConfig:
     types: Mapping[Spec, str]
     disk_gb: int
     bandwidth: int
+    instance_secret: str = ""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> CvmConfig | None:
@@ -88,13 +103,14 @@ class CvmConfig:
             types={"standard": standard, "pro": read("TYPE_PRO") or "SA9.2XLARGE16"},
             disk_gb=int(read("DISK_GB") or 40),
             bandwidth=int(read("BANDWIDTH") or 50),
+            instance_secret=read("INSTANCE_SECRET"),
         )
 
     def derive(self, purpose: str) -> bytes:
-        """A stable secret for ``purpose``, derived from the CAM secret this server holds."""
-        return hmac.new(
-            self.secret_key.encode(), f"octop-cvm:{purpose}".encode(), hashlib.sha256
-        ).digest()
+        """A stable secret for ``purpose``, derived from the instance secret (the CAM secret when
+        none is set), so rotating the CAM key alone leaves every computer reachable."""
+        seed = self.instance_secret or self.secret_key
+        return hmac.new(seed.encode(), f"octop-cvm:{purpose}".encode(), hashlib.sha256).digest()
 
 
 _ACTIVE = {"RUNNING"}
@@ -273,9 +289,10 @@ class CvmDriver(AgsDriver):
             run.TagSpecification = [spec_tags]
             try:
                 instance_id = str(self._api().RunInstances(run).InstanceIdSet[0])
-            except Exception as exc:  # noqa: BLE001 - try the next zone when this one has no stock
-                if not any(code in str(exc) for code in _STOCK_ERRORS):
+            except Exception as exc:  # noqa: BLE001 - try the next zone when this one can't
+                if not any(code in str(exc) for code in _ZONE_ERRORS):
                     raise
+                logger.warning("zone %s refused a %s: %s", zone, run.InstanceType, exc)
                 last = exc
                 continue
             with self._addr_lock:

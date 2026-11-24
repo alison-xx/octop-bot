@@ -9,6 +9,7 @@ import { BOT_HOME } from "../../utils/botClientRoute";
 import { apiErrorMessage } from "../../utils/apiError";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
 import BotStartHero from "./BotStartHero";
+import lynxceLogo from "../../assets/providers/lynxce.png";
 import LynxceSignInForm from "./LynxceSignInForm";
 import intro from "./BotClientSetup.module.less";
 
@@ -98,6 +99,13 @@ export default function BotLogin() {
               {error && <Alert type="error" message={error} showIcon />}
               {mode === "lynxce" && (
                 <div className={`${intro.webForms} ${intro.lynxceCard}`}>
+                  <div className={intro.cardHead}>
+                    <img src={lynxceLogo} alt="" />
+                    <span>{t("botStart.lynxceAccount")}</span>
+                    <span className={intro.recommend}>
+                      {t("botStart.recommended")}
+                    </span>
+                  </div>
                   {legacy && (
                     <div className={intro.form}>
                       <label htmlFor="bot-login-legacy">

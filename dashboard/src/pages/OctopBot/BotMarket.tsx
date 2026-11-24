@@ -273,7 +273,14 @@ export default function BotMarket() {
 
   const onImported = (result: MarketImport) => {
     void loadMine();
-    void message.success(t("botMarket.imported", { name: result.name }));
+    void message.success(
+      t(
+        result.preparing ? "botMarket.importedPreparing" : "botMarket.imported",
+        {
+          name: result.name,
+        },
+      ),
+    );
     navigate(botPath(result.agent_id), {
       state: { marketImported: result },
     });

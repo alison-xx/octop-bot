@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Pre-commit gate: make precommit (format BE+FE + lint + typecheck + testmon-scoped
-# tests) + dashboard build. The full suite still runs in CI (`make all`); this is a
-# fast, change-aware local gate so commits don't wait on the whole test matrix.
+# Pre-commit gate: format BE+FE + lint + typecheck, testmon-scoped tests when Python
+# is staged and the worktree has .testmondata, + dashboard build. The full suite
+# still runs in CI (`make all`); this is a fast, change-aware local gate so commits
+# don't wait on the whole test matrix.
 # Enable once per clone:  make install-hooks
 # Bypass (emergency only): SKIP_PRECOMMIT=1 git commit ...
 # Or: git commit --no-verify
@@ -38,8 +39,26 @@ while IFS= read -r line; do
   [[ -n "$line" ]] && STAGED_FILES+=("$line")
 done < <(git diff --cached --name-only --diff-filter=ACMR || true)
 
-echo "[pre-commit] make precommit  (format-all + lint + typecheck + testmon-scoped test)"
-make precommit
+# Python tests run only when Python is staged, and only the tests testmon selects.
+# A fresh worktree has no .testmondata, where testmon would fall back to the whole
+# suite (10-24 minutes); there we run ruff + mypy only and leave pytest to the PR's CI.
+HAS_PY=0
+while IFS= read -r -d '' path; do
+  case "$path" in
+    *.py|pyproject.toml|uv.lock|conftest.py) HAS_PY=1 ;;
+  esac
+done < <(git diff --cached --name-only --no-renames -z)
+
+if [[ "$HAS_PY" == "0" ]]; then
+  echo "[pre-commit] no Python staged — make format-all lint typecheck (no pytest)"
+  make format-all lint typecheck
+elif [[ -f "$ROOT/.testmondata" ]]; then
+  echo "[pre-commit] make precommit  (format-all + lint + typecheck + testmon-scoped test)"
+  make precommit
+else
+  echo "[pre-commit] no .testmondata in this worktree — make format-all lint typecheck; the full suite runs in CI"
+  make format-all lint typecheck
+fi
 
 # If format rewrote files that were already staged, refresh the index so the
 # commit includes the formatted content (worktree vs index drift).

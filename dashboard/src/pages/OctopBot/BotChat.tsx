@@ -428,9 +428,13 @@ export default function BotChat({
           )}
           <LowCreditsBanner />
           <div className={styles.chat}>
-            <ChatRouteContext.Provider value={host}>
-              <ChatPage />
-            </ChatRouteContext.Provider>
+            {bot.preparing ? (
+              <Spin tip={t("botDirectory.preparingHint")} />
+            ) : (
+              <ChatRouteContext.Provider value={host}>
+                <ChatPage />
+              </ChatRouteContext.Provider>
+            )}
           </div>
           {serverInfo?.capabilities.cloud_computer &&
             agent &&

@@ -18,7 +18,11 @@ from octop.infra.auth import lynxce_cloud
 from octop.infra.auth.lynxce_owner import OWNER_USERNAME, bind_owner, owner_binding
 from octop.infra.auth.mfa.service import MfaService
 from octop.infra.cloud.bot_cloud import accounts as cloud_accounts
-from octop.infra.desktop import bot_cloud_enabled, bot_web_enabled
+from octop.infra.desktop import (
+    bot_cloud_enabled,
+    bot_cloud_session_login_enabled,
+    bot_web_enabled,
+)
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role
 from octop.infra.utils.locale import normalize_locale, resolve_request_locale
@@ -278,13 +282,14 @@ class LynxceSessionLoginBody(BaseModel):
     description=(
         "Octop Bot cloud only. The desktop app moves its Lynxce sign-in here when it starts "
         "keeping its data in the cloud, so the user does not sign in twice. The session is "
-        "renewed with Lynxce first, which proves it, and then kept like any cloud sign-in."
+        "renewed with Lynxce first, which proves it, and then kept like any cloud sign-in. "
+        "Off unless the cloud sets OCTOP_BOT_SESSION_LOGIN=1."
     ),
 )
 async def lynxce_session_login(
     body: LynxceSessionLoginBody, request: Request, server: Any = Depends(get_server)
 ) -> dict[str, Any]:
-    if not bot_cloud_enabled():
+    if not bot_cloud_session_login_enabled():
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     return await _cloud_sign_in(
         server,

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <script>(function(){var d=document.documentElement,t,l;d.classList.remove('no-js');try{t=localStorage.getItem('ob-theme');l=localStorage.getItem('ob-lang')}catch(e){}if(t==='light'||t==='dark')d.dataset.theme=t;if(l!=='zh'&&l!=='en')l=/^zh/i.test((navigator.languages&&navigator.languages[0])||navigator.language||'')?'zh':'en';d.dataset.lang=l;if(l==='en'){d.classList.add('i18n-wait');setTimeout(function(){d.classList.remove('i18n-wait')},1500)}setTimeout(function(){if(!d.dataset.ready)d.classList.add('no-js')},3000)})();</script>
+  <script src="assets/boot.js?v=1"></script>
   <title data-en="Features · Octop Bot">功能 · Octop Bot</title>
   <meta name="description" content="Chief 组队、群聊接力、Goal 验收、云端工作区、本机工作区和自由选择模型。看看 Octop Bot 的每个细节。" data-en-content="Chief builds the team, the group hands work along, Goals make it checkable, and cloud and local workspaces keep it moving.">
   <meta name="theme-color" content="#f7f6f2" media="(prefers-color-scheme: light)">
@@ -17,8 +17,9 @@
   <link rel="canonical" href="https://octop-bot.lynxce.cn/features.html">
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="stylesheet" href="assets/site.css?v=12">
-  <script src="assets/site.js?v=13" defer></script>
+  <link rel="stylesheet" href="assets/site.css?v=19">
+  <script src="assets/auth.js?v=2" defer></script>
+  <script src="assets/site.js?v=17" defer></script>
 </head>
 <body>
   <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
@@ -27,16 +28,22 @@
     <div class="wrap">
       <a class="brand" href="index.html"><img src="assets/app-icon.webp" alt="" width="30" height="30">Octop Bot</a>
       <nav class="nav" aria-label="主导航" data-en-aria-label="Main">
-        <a href="index.html" data-en="Home">首页</a>
         <a href="features.html" aria-current="page" data-en="Features">功能</a>
         <a href="market.html" data-en="Bot Market">Bot 市场</a>
-        <a href="download.html" data-en="Download">下载</a>
-        <a href="https://bot.lynxce.cn" data-en="Web app">网页版</a>
-        <a href="guide.html" data-en="Guide">使用指南</a>
-        <a href="download.html#changelog" data-en="Changelog">更新日志</a>
+        <a href="pricing.html" data-en="Pricing">定价</a>
+        <div class="nav-more">
+          <button type="button" aria-expanded="false" aria-controls="help-menu"><span data-en="Help">帮助</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+          <div class="nav-menu" id="help-menu">
+            <a href="guide.html"><b data-en="Guide">使用指南</b><small data-en="From install to your first Bot">从安装到第一个 Bot</small></a>
+            <a href="changelog.html"><b data-en="Changelog">更新日志</b><small data-en="What changed in each release">每个版本改了什么</small></a>
+            <a href="guide.html#faq"><b data-en="FAQ">常见问题</b><small data-en="Install, accounts and everyday use">安装、账号和日常使用</small></a>
+            <a href="#community" data-community><b data-en="Join the community">加入社群</b><small data-en="The Octop Bot community on WeChat">扫码进 Octop Bot 用户群</small></a>
+          </div>
+        </div>
       </nav>
       <div class="header-tools">
         <div class="gh-stars"><a class="gh-star" href="https://github.com/alison-xx/octop-bot" title="github.com/alison-xx/octop-bot"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop Bot">Octop Bot</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="alison-xx/octop-bot">6</b></span></a><a class="gh-star upstream" href="https://github.com/TencentCloud/Octop" title="github.com/TencentCloud/Octop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop">Octop</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="TencentCloud/Octop">12.4k</b></span></a></div>
+        <a class="web-link" href="https://bot.lynxce.cn" data-en="Web app">网页版</a>
         <button class="icon-btn lang-btn" type="button">EN</button>
         <button class="icon-btn theme-btn" type="button" aria-label="外观"></button>
         <a class="btn btn-primary btn-sm" href="download.html" data-en="Download">下载</a>
@@ -44,13 +51,14 @@
       </div>
     </div>
     <nav class="mobile-nav" id="mobile-nav" aria-label="主导航" data-en-aria-label="Main">
-      <a href="index.html" data-en="Home">首页</a>
       <a href="features.html" aria-current="page" data-en="Features">功能</a>
-        <a href="market.html" data-en="Bot Market">Bot 市场</a>
-      <a href="download.html" data-en="Download">下载</a>
-      <a href="https://bot.lynxce.cn" data-en="Web app">网页版</a>
+      <a href="market.html" data-en="Bot Market">Bot 市场</a>
+      <a href="pricing.html" data-en="Pricing">定价</a>
       <a href="guide.html" data-en="Guide">使用指南</a>
-      <a href="download.html#changelog" data-en="Changelog">更新日志</a>
+      <a href="changelog.html" data-en="Changelog">更新日志</a>
+      <a href="guide.html#faq" data-en="FAQ">常见问题</a>
+      <a href="#community" data-community data-en="Join the community">加入社群</a>
+      <a href="https://bot.lynxce.cn" data-en="Web app">网页版</a>
       <div class="gh-stars"><a class="gh-star" href="https://github.com/alison-xx/octop-bot" title="github.com/alison-xx/octop-bot"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop Bot">Octop Bot</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="alison-xx/octop-bot">6</b></span></a><a class="gh-star upstream" href="https://github.com/TencentCloud/Octop" title="github.com/TencentCloud/Octop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop">Octop</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="TencentCloud/Octop">12.4k</b></span></a></div>
       <a class="btn btn-primary" href="download.html" data-en="Download Octop Bot">下载 Octop Bot</a>
     </nav>
@@ -237,9 +245,10 @@
           <ul>
             <li><a href="features.html" data-en="Features">功能</a>
         <a href="market.html" data-en="Bot Market">Bot 市场</a></li>
+            <li><a href="pricing.html" data-en="Pricing">定价</a></li>
             <li><a href="download.html" data-en="Download">下载</a></li>
             <li><a href="https://bot.lynxce.cn" data-en="Web app ↗">网页版 ↗</a></li>
-            <li><a href="download.html#changelog" data-en="Changelog">更新日志</a></li>
+            <li><a href="changelog.html" data-en="Changelog">更新日志</a></li>
           </ul>
         </div>
         <div>
@@ -255,6 +264,7 @@
         <div>
           <h4 data-en="Community">社区</h4>
           <ul>
+            <li><button type="button" class="link-btn" data-community data-en="Join the community">加入社群</button></li>
             <li><a href="https://github.com/alison-xx/octop-bot">GitHub ↗</a></li>
             <li><a href="https://github.com/alison-xx/octop-bot/issues" data-en="Report an issue ↗">问题反馈 ↗</a></li>
             <li><a href="https://lynxce.cn" data-en="Lynxce ↗">灵策智算 ↗</a></li>
@@ -277,6 +287,15 @@
   <dialog class="modal light" id="lightbox" aria-label="查看大图" data-en-aria-label="Enlarged screenshot">
     <button class="modal-close" type="button" aria-label="关闭" data-en-aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     <img alt="">
+  </dialog>
+  <dialog class="modal community" id="community" aria-label="加入社群" data-en-aria-label="Join the community">
+    <button class="modal-close" type="button" aria-label="关闭" data-en-aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <div class="community-card">
+      <img src="assets/community-qr.png" width="240" height="242" alt="Octop Bot 用户群的微信二维码" data-en-alt="WeChat QR code for the Octop Bot community">
+      <p class="for-community" data-en="Scan with WeChat to join the Octop Bot community">扫码加好友，拉你进 Octop Bot 用户群</p>
+      <p class="for-business" data-en="Scan with WeChat and mention “Enterprise”. We will get back to you soon.">扫码加好友，备注「企业定制」，我们会尽快联系你</p>
+      <small class="touch-hint" data-en="On a phone, press and hold the code to scan it.">手机上长按二维码识别</small>
+    </div>
   </dialog>
 </body>
 </html>

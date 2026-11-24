@@ -20,7 +20,9 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import AfterValidator, BaseModel, ValidationError
 
 from octop.api.common.agent import require_agent_owner_row
+from octop.api.common.bot_cloud import is_cloud_tenant
 from octop.api.deps import current_user, get_server, require_permission
+from octop.infra.cloud.bot_cloud.endpoints import check_public_endpoints
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.bot_creators.feishu_runner import extract_feishu_credentials
 from octop.infra.gateway.channels import dingtalk_registration, qr_bind
@@ -208,6 +210,8 @@ async def create_channel(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
+    if is_cloud_tenant(user):
+        await check_public_endpoints(body.config)
     from octop.infra.gateway.gateway import ChannelCreateSpec  # noqa: PLC0415
     from octop.infra.utils.ulid import new_ulid as _new_ulid  # noqa: PLC0415
 
@@ -254,6 +258,8 @@ async def patch_channel(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
+    if is_cloud_tenant(user) and body.config is not None:
+        await check_public_endpoints(body.config)
     existing = server.app_runtime.gateway.get_channel(channel_id)
     if existing is None or existing.agent_id != agent_id:
         raise OctopError(ErrorCode.NOT_FOUND, "channel not found")
@@ -328,6 +334,8 @@ async def probe_channel_config(
     A blank secret reuses the value stored on ``channel_id``. Stored secrets
     are not included in the response.
     """
+    if is_cloud_tenant(user):
+        await check_public_endpoints(body.config)
     _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
     config = dict(body.config)
     if body.channel_id:

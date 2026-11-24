@@ -59,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -128,6 +129,8 @@ data class SettingsState(
     /** Settings → Models is offered (phone Bots or Octop Bot cloud); [modelSummary] is the model in use. */
     val showModels: Boolean = lynxce,
     val modelSummary: String? = null,
+    /** The card-style Lynxce account (tier, balance split) when there is a Lynxce wallet. */
+    val account: AccountSummary? = null,
     /** Used without signing in: no account to sign out of, a way to sign in instead. */
     val phoneOnly: Boolean = false,
 )
@@ -231,6 +234,9 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
         state = SettingsState(
             accountName = accountName(backend),
             balance = balance,
+            account = AccountSummary.demo(context) ?: if (model.creditAccount != null) {
+                AccountSummary(accountName(backend), credits = (balance as? BalanceState.Value)?.credits)
+            } else null,
             lynxce = backend.definesBotsLocally,
             wallet = model.creditAccount != null,
             host = modeLabel(backend),
@@ -364,13 +370,15 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
                 .padding(horizontal = 16.dp)
                 .navigationBarsPadding(),
         ) {
-            AccountCard(
-                state.accountName,
-                connection,
-                state.balance.takeIf { state.wallet },
-                onBalance = actions.onCredits,
-                onRetry = actions.onRetryBalance,
-            )
+            val uri = LocalUriHandler.current
+            state.account?.let { MemberCard(it, onCredits = actions.onCredits, onOpen = { url -> uri.openUri(url) }) }
+                ?: AccountCard(
+                    state.accountName,
+                    connection,
+                    state.balance.takeIf { state.wallet },
+                    onBalance = actions.onCredits,
+                    onRetry = actions.onRetryBalance,
+                )
 
             Group(stringResource(R.string.settings_general)) {
                 row {

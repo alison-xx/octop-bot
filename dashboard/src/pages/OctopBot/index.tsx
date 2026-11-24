@@ -12,7 +12,6 @@ import {
   Search,
   ArrowDown,
   Bot,
-  Cloud,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -38,7 +37,6 @@ import {
 } from "../../api/modules/octopBot";
 import { octopThreadsApi } from "../../api/modules/octopThreads";
 import {
-  BOT_CLOUD,
   BOT_GUIDE,
   BOT_HOME,
   BOT_MARKET,
@@ -243,6 +241,16 @@ export default function OctopBotPage() {
       document.removeEventListener("visibilitychange", focus);
     };
   }, [refresh]);
+  const hasPreparingBot = workspace?.bots.some((bot) => bot.preparing) ?? false;
+  useEffect(() => {
+    if (!hasPreparingBot) return;
+    const timer = window.setInterval(() => {
+      void refresh();
+      void refreshAgents({ silent: true, force: true });
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [hasPreparingBot, refresh, refreshAgents]);
+
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
   const activityNameOf = useCallback((kind: "bot" | "group", id: string) => {
@@ -589,6 +597,7 @@ export default function OctopBotPage() {
         recent(b) - recent(a),
     );
   const previewFor = (item: Item) => {
+    if (item.bot?.preparing) return t("botDirectory.preparing");
     if (previews[item.key]) return previews[item.key];
     if (item.bot?.is_main) return t("botDirectory.coordinator");
     if (item.bot)
@@ -1102,20 +1111,6 @@ export default function OctopBotPage() {
         >
           <AccountMenu compact={compactDirectory} />
           <CloudMove />
-          {isBotOnlyDesktop() && (
-            <Button
-              type="text"
-              icon={<Cloud size={16} />}
-              aria-label={t("botCloud.title")}
-              title={t("botCloud.title")}
-              className={sectionStyles.cloud}
-              onClick={() =>
-                navigate(BOT_CLOUD, {
-                  state: { from: location.pathname },
-                })
-              }
-            />
-          )}
         </div>
       ) : (
         <>

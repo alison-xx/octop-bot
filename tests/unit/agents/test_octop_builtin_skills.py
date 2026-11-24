@@ -107,6 +107,35 @@ async def test_sync_uses_system_files_path(tmp_path: Path) -> None:
     assert json.loads(inferred.stdout) == []
 
 
+@pytest.mark.asyncio
+async def test_sync_version_hit_skips_uploads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = FakeHarnessAgent(workspace_dir=tmp_path, virtual_mode=False)
+    await sync_octop_builtin_skills(agent.workspace)
+
+    async def unexpected_upload(_files: object) -> None:
+        pytest.fail("unchanged built-in skills must not be uploaded")
+
+    monkeypatch.setattr(agent.workspace, "aupload_many", unexpected_upload)
+    assert await sync_octop_builtin_skills(agent.workspace) == ["office-documents", "skill-manager"]
+
+
+@pytest.mark.asyncio
+async def test_sync_failure_does_not_write_version_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = FakeHarnessAgent(workspace_dir=tmp_path, virtual_mode=False)
+
+    async def failed_upload(_files: object) -> None:
+        raise RuntimeError("upload failed")
+
+    monkeypatch.setattr(agent.workspace, "aupload_many", failed_upload)
+    with pytest.raises(RuntimeError, match="upload failed"):
+        await sync_octop_builtin_skills(agent.workspace)
+    assert await agent.workspace.aread_text("_builtin_skills/.octop-version") is None
+
+
 def test_manager_script_compiles() -> None:
     script = _manager_script()
     assert script.is_file()
