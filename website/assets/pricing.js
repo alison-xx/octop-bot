@@ -287,7 +287,7 @@
     const yuan = customAmount ? (customOk ? custom : null) : pack;
     $("#pack-price").textContent = yuan === null ? "—" : money(yuan);
     $("#pack-credits").textContent = yuan === null ? "—" : t(`${num(yuan * pricing.creditsPerYuan)} 积分`, `${num(yuan * pricing.creditsPerYuan)} credits`);
-    $("#pack-days").textContent = t(`${pricing.packValidDays} 天`, `${pricing.packValidDays} days`);
+    $("#pack-days").textContent = t("到账即用，可与会员叠加", "Ready right away; stacks with a membership");
     $("#custom-hint").textContent =
       customAmount && !customOk
         ? t(`请输入 ${min}–${num(max)} 之间的整数`, `Enter a whole number from ${min} to ${num(max)}`)
@@ -453,7 +453,7 @@
   };
   // Plans render as soon as the finalized prices arrive; image and video counts fill in when the
   // model prices do (live, or the bundled copy if Lynxce is slow or unreachable).
-  getJson("data/pricing.json?v=1").then((plans) => {
+  getJson("data/pricing.json?v=2").then((plans) => {
     pricing = plans;
     renderAll();
   });
