@@ -22,6 +22,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -418,7 +419,15 @@ fun ChatContent(
             }
             if (!bot.canSend) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (bot.state == "failed") bot.lastError?.takeIf { it.isNotBlank() } ?: stringResource(R.string.bot_preparation_failed) else stringResource(R.string.bot_preparing_chat), modifier = Modifier.weight(1f))
+                    if (bot.state == "failed") {
+                        // "failed" also covers a missing or broken model, so the title stays generic.
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.bot_start_failed), fontWeight = FontWeight.SemiBold)
+                            bot.lastError?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        }
+                    } else {
+                        Text(stringResource(R.string.bot_preparing_chat), modifier = Modifier.weight(1f))
+                    }
                     if (bot.state == "failed") TextButton(onClick = onRetryBot) { Text(stringResource(R.string.chat_retry)) }
                 }
             }

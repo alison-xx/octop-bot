@@ -479,7 +479,7 @@ private fun BotRow(
                 Text(
                     // Previews saved by older versions may still hold Markdown marks.
                     when {
-                        !bot.isLocal && bot.state == "failed" -> bot.lastError?.takeIf { it.isNotBlank() } ?: stringResource(R.string.bot_preparation_failed)
+                        !bot.isLocal && bot.state == "failed" -> stringResource(R.string.bot_start_failed)
                         !bot.isLocal && bot.preparing -> stringResource(R.string.bot_preparing)
                         replying -> stringResource(R.string.chat_replying)
                         else -> preview?.text?.let(Previews::snippet) ?: bot.subtitle.orEmpty()

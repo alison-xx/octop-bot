@@ -547,5 +547,5 @@
     <string name="error_provider_balance">Your API key\'s balance is too low. Top it up with the provider.</string>
     <string name="bot_preparing">Getting ready…</string>
     <string name="bot_preparing_chat">This Bot is getting ready…</string>
-    <string name="bot_preparation_failed">Couldn\'t get ready</string>
+    <string name="bot_start_failed">Couldn\'t start</string>
 </resources>

@@ -374,18 +374,18 @@
         }
       }
     },
-    "bot.preparationFailed": {
+    "bot.startFailed": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Couldn't get ready"
+            "value": "Couldn't start"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "准备失败"
+            "value": "启动失败"
           }
         }
       }

@@ -277,7 +277,7 @@ private struct BotRow: View {
                 Group {
                     if !bot.isLocal && bot.state == "failed" {
                         HStack {
-                            Text(bot.lastError?.isEmpty == false ? bot.lastError! : L("bot.preparationFailed"))
+                            Text("bot.startFailed")
                             Button("common.retry") { Task { await model.retryBot(bot) } }.buttonStyle(.borderless)
                         }.foregroundStyle(Palette.secondary)
                     } else if !bot.isLocal && bot.preparing {

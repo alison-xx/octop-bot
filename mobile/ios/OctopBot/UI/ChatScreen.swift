@@ -642,9 +642,16 @@ struct Composer: View {
         VStack(spacing: 8) {
             if !chat.bot.canSend {
                 HStack {
-                    Text(chat.bot.state == "failed" ? (chat.bot.lastError?.isEmpty == false ? chat.bot.lastError! : L("bot.preparationFailed")) : L("bot.preparingChat"))
                     if chat.bot.state == "failed" {
+                        // "failed" also covers a missing or broken model, so the title stays generic.
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("bot.startFailed").fontWeight(.semibold).foregroundStyle(Palette.text)
+                            if let error = chat.bot.lastError, !error.isEmpty { Text(verbatim: error) }
+                        }
+                        Spacer(minLength: 8)
                         Button("common.retry") { Task { await model.retryBot(chat.bot) } }
+                    } else {
+                        Text("bot.preparingChat")
                     }
                 }.font(.subheadline).foregroundStyle(Palette.secondary).padding(.horizontal)
             }
