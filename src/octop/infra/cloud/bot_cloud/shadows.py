@@ -4,9 +4,7 @@ The desktop app (signed in with Lynxce) keeps its Bots, chats and workspaces on 
 runs on. Only the Bot's *computer* is in the cloud: for each desktop Bot that uses one, the
 account's tenant here gets a shadow Bot, an ordinary ``agents`` row of kind ``shadow``:
 
-- ``config_json.octop_bot.origin`` = ``<desktop install id>:<desktop agent_id>``, one per origin;
-- ``config_json.octop_bot.hidden`` = true; the repo leaves shadows out of every list, so the web,
-  the phones and group pickers never show them;
+- The origin and visibility are stored in server settings, scoped to the owner;
 - no agent runtime is ever started for it; it only owns a cloud computer, which the usual
   ``ComputerManager`` starts on use, bills, idles and reaps.
 
@@ -34,7 +32,7 @@ ORIGIN = re.compile(r"[0-9A-Za-z]{10,40}:[A-Za-z0-9_-]{1,64}")
 IDLE_DAYS = 30
 # Shadows one account may have: well above any real desktop, so a client stuck in a loop (or
 # abuse) cannot fill the table.
-MAX_SHADOWS = 200
+MAX_SHADOWS = 50
 MAX_NAME = 64
 MAX_AVATAR = 2048
 
@@ -46,23 +44,30 @@ def valid_origin(origin: str) -> bool:
     return ORIGIN.fullmatch(origin) is not None
 
 
-def _octop_bot(row: AgentRow) -> dict[str, Any]:
+def metadata_key(agent_id: str) -> str:
+    return f"octop_bot:shadow:{agent_id}"
+
+
+def origin_of(services: SharedServices, row: AgentRow) -> str | None:
+    raw = services.settings_repo.get(metadata_key(row.agent_id))
+    if raw is None and row.kind == SHADOW and row.user_id is not None:
+        old_origin = row.name.removeprefix("shadow:")
+        if row.name.startswith("shadow:") and valid_origin(old_origin):
+            raw = json.dumps({"origin": old_origin, "hidden": True, "user_id": row.user_id})
+            services.settings_repo.set(metadata_key(row.agent_id), raw)
     try:
-        data = json.loads(row.config_json or "{}")
+        data = json.loads(raw or "{}")
     except ValueError:
-        return {}
-    section = data.get("octop_bot") if isinstance(data, dict) else None
-    return section if isinstance(section, dict) else {}
-
-
-def origin_of(row: AgentRow) -> str | None:
-    value = _octop_bot(row).get("origin")
-    return value if row.kind == SHADOW and isinstance(value, str) else None
+        return None
+    if row.kind != SHADOW or not isinstance(data, dict) or data.get("user_id") != row.user_id:
+        return None
+    origin = data.get("origin")
+    return origin if isinstance(origin, str) else None
 
 
 def find_shadow(services: SharedServices, user_id: int, origin: str) -> AgentRow | None:
     for row in services.agent_repo.list_shadows(user_id):
-        if origin_of(row) == origin:
+        if origin_of(services, row) == origin:
             return row
     return None
 
@@ -84,8 +89,6 @@ def put_shadow(
     config = json.dumps(
         {
             "octop_bot": {
-                "origin": origin,
-                "hidden": True,
                 "name": name[:MAX_NAME],
                 "avatar": (avatar or "")[:MAX_AVATAR] or None,
             }
@@ -114,6 +117,10 @@ def put_shadow(
             config_json=config,
             kind=SHADOW,
         )
+        services.settings_repo.set(
+            metadata_key(agent_id),
+            json.dumps({"origin": origin, "hidden": True, "user_id": user_id}),
+        )
         repo.set_enabled(agent_id, False)
         row = repo.get(agent_id)
         assert row is not None
@@ -127,6 +134,7 @@ def delete_shadow(services: SharedServices, user_id: int, origin: str) -> bool:
         if row is None:
             return False
         services.agent_repo.delete(row.agent_id)
+        services.settings_repo.delete(metadata_key(row.agent_id))
         return True
 
 

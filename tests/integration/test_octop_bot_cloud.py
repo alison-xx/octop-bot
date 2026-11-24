@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import jwt
 import pytest
 
 from octop.api.routers import auth_lynxce
@@ -19,6 +20,10 @@ from tests.support.app import octop_client
 CODE_LOGIN = "/api/auth/lynxce/code-login"
 STATUS = "/api/auth/lynxce/status"
 INFO = "/api/octop-bot/server-info"
+
+
+def _lynxce_jwt(**claims: Any) -> str:
+    return jwt.encode({"typ": "access", **claims}, "test-secret", algorithm="HS256")
 
 
 class Upstream:
@@ -102,6 +107,8 @@ class Upstream:
             return httpx.Response(200, json={"code": 0, "data": {}})
         if path == "/api/user/profile":  # who an access token belongs to (token-login)
             bearer = req.headers.get("Authorization", "").removeprefix("Bearer ")
+            if bearer.count(".") == 2:
+                return httpx.Response(200, json={"code": 0, "data": {"id": "lx-13800000050"}})
             if not bearer.startswith("access-"):
                 return httpx.Response(401, json={"error": {"message": "invalid token"}})
             uid = bearer.removeprefix("access-")
@@ -1117,6 +1124,8 @@ async def test_tenant_group_member_builds_in_its_room(
                 room=room,
             )
         assert unbounded.value.code == _Code.FORBIDDEN
+
+
 class _Computer:
     """A cloud-computer provider that answers instantly (no Tencent Cloud)."""
 
@@ -1153,6 +1162,11 @@ class _Computer:
 
     def run(self, instance_id: str, command: str, timeout: int) -> tuple[int, str]:
         self.ran.append(command)
+        if command.startswith("stat -Lc %s -- "):
+            import shlex
+
+            path = shlex.split(command)[-1]
+            return (0, str(len(self.files[path]))) if path in self.files else (1, "")
         return 0, f"ran {command}"
 
     def run_python(self, instance_id: str, code: str) -> str:
@@ -1185,14 +1199,14 @@ async def test_desktop_bots_get_cloud_computers_through_hidden_shadow_bots(
 
     async with octop_client(tmp_octop_home) as (client, srv):
         # An account that never signed in here: the desktop asks the user to verify once.
-        first = await client.post(token_login, json={"access_token": "access-13800000050"})
+        first = await client.post(token_login, json={"access_token": _lynxce_jwt()})
         assert first.status_code == 409
         assert first.json()["error"]["code"] == "BOT_CLOUD_SESSION_REQUIRED"
         bad = await client.post(token_login, json={"access_token": "forged"})
         assert bad.status_code == 403
         signed = await _sign_in(client, "13800000050")
         sessions_before = upstream.counts["/api/auth/refresh"]
-        got = await client.post(token_login, json={"access_token": "access-13800000050"})
+        got = await client.post(token_login, json={"access_token": _lynxce_jwt()})
         assert got.status_code == 200, got.text
         assert got.json()["user"]["id"] == signed["user"]["id"] and got.json()["cloud"]
         # Only read: the desktop's session is neither renewed nor taken.
@@ -1215,16 +1229,54 @@ async def test_desktop_bots_get_cloud_computers_through_hidden_shadow_bots(
             )
         ).status_code == 422
 
+        full_auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        srv.services.agent_repo.create(
+            agent_id="regular-bot", user_id=signed["user"]["id"], name="Regular"
+        )
+        regular_run = "/api/octop-bot/computers/regular-bot/run"
+        assert (
+            await client.post(regular_run, headers=auth, json={"command": "echo hi"})
+        ).status_code == 404
+        assert (
+            await client.post(regular_run, headers=full_auth, json={"command": "echo hi"})
+        ).status_code == 200
+        for endpoint in ("/api/auth/me", "/api/octop-bot/wallet"):
+            assert (await client.get(endpoint, headers=auth)).status_code in (401, 403)
+        assert "X-Octop-Access-Token" not in made.headers
+        for method, endpoint in (
+            ("POST", f"/api/agents/{shadow}/start"),
+            ("GET", f"/api/agents/{shadow}"),
+            ("PATCH", f"/api/agents/{shadow}"),
+            ("GET", f"/api/agents/{shadow}/workspace/tree"),
+            ("GET", f"/api/agents/{shadow}/chat/welcome"),
+        ):
+            assert (
+                await client.request(
+                    method, endpoint, headers=full_auth, json={} if method == "PATCH" else None
+                )
+            ).status_code == 404
+
+        # The tenant cannot remove server-owned origin metadata by changing the config.
+        from octop.infra.cloud.bot_cloud import shadows as shadow_helpers
+
+        srv.services.agent_repo.update_config(shadow, config_json="{}")
+        assert (
+            shadow_helpers.find_shadow(srv.services, signed["user"]["id"], origin).agent_id
+            == shadow
+        )
+
         # Never listed: web, phones, groups; and no Bot pages for it.
         for listing in ("/api/agents", "/api/octop-bot/workspace", "/api/octop-bot/groups"):
-            seen = await client.get(listing, headers=auth)
+            seen = await client.get(listing, headers=full_auth)
             assert seen.status_code == 200, (listing, seen.text)
             assert shadow not in seen.text, listing
         assert (
-            await client.get(f"/api/octop-bot/bots/{shadow}/upcoming", headers=auth)
+            await client.get(f"/api/octop-bot/bots/{shadow}/upcoming", headers=full_auth)
         ).status_code == 404
         group = await client.post(
-            "/api/octop-bot/groups", headers=auth, json={"name": "Team", "member_ids": [shadow]}
+            "/api/octop-bot/groups",
+            headers=full_auth,
+            json={"name": "Team", "member_ids": [shadow]},
         )
         assert group.status_code >= 400
 
@@ -1232,9 +1284,20 @@ async def test_desktop_bots_get_cloud_computers_through_hidden_shadow_bots(
         base = f"/api/octop-bot/computers/{shadow}"
         assert (await client.get(base, headers=auth)).json()["state"] == "none"
         ran = await client.post(base + "/run", headers=auth, json={"command": "echo hi"})
-        assert ran.json() == {"exit_code": 0, "output": "ran echo hi", "taken_over": False}
+        assert ran.json() == {
+            "exit_code": 0,
+            "output": "ran echo hi",
+            "taken_over": False,
+            "truncated": False,
+        }
         py = await client.post(base + "/python", headers=auth, json={"code": "print(1)"})
         assert py.json()["output"] == "python print(1)"
+        entries = srv.services.audit_repo.query(action="computer.run")
+        assert entries[0].target == shadow and "echo hi" in entries[0].payload
+        monkeypatch.setattr(provider, "run_python", lambda instance, code: "x" * (1024 * 1024 + 1))
+        large = await client.post(base + "/python", headers=auth, json={"code": "long"})
+        assert large.json()["truncated"] is True
+        assert len(large.json()["output"]) == 1024 * 1024
         shot = await client.get(base + "/screenshot", headers=auth)
         assert shot.headers["content-type"] == "image/png" and shot.content.startswith(b"\x89PNG")
         assert (await client.get(base + "/accessibility", headers=auth)).json() == {
@@ -1248,6 +1311,15 @@ async def test_desktop_bots_get_cloud_computers_through_hidden_shadow_bots(
         assert read.content == b"hello"
         missing = await client.get(base + "/files", params={"path": "/tmp/none"}, headers=auth)
         assert missing.status_code == 404
+        monkeypatch.setattr("octop.api.routers.bot_computers.MAX_FILE_BYTES", 4)
+        too_large_upload = await client.put(
+            base + "/files", params={"path": "large"}, headers=auth, content=b"12345"
+        )
+        assert too_large_upload.status_code == 413
+        too_large_download = await client.get(
+            base + "/files", params={"path": "notes/a.txt"}, headers=auth
+        )
+        assert too_large_download.status_code == 413
         outside = await client.get(base + "/files", params={"path": "/etc/passwd"}, headers=auth)
         assert outside.status_code == 403
         await client.post(base + "/takeover", headers=auth, json={"active": True})
@@ -1271,7 +1343,7 @@ async def test_desktop_bots_get_cloud_computers_through_hidden_shadow_bots(
                 f"/api/octop-bot/remote-bots/{origin}", headers=auth, json={"name": "W"}
             )
         ).status_code == 200
-        monkeypatch.setattr(shadows, "MAX_SHADOWS", 200)
+        monkeypatch.setattr(shadows, "MAX_SHADOWS", 50)
 
         # Someone else's: invisible; their own desktop Bot of the same origin is theirs alone.
         bob = await _sign_in(client, "13800000051")
@@ -1291,3 +1363,130 @@ async def test_desktop_bots_get_cloud_computers_through_hidden_shadow_bots(
         assert (
             await client.delete(f"/api/octop-bot/remote-bots/{origin}", headers=auth)
         ).status_code == 204
+
+
+async def test_desktop_token_login_limits_ip_and_account(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.api.routers import auth_lynxce
+
+    monkeypatch.setattr(auth_lynxce, "_token_login_ips", {})
+    monkeypatch.setattr(auth_lynxce, "_token_login_accounts", {})
+    async with octop_client(tmp_octop_home) as (client, _):
+        await _sign_in(client, "13800000050")
+        current_ip = ["ip-0"]
+        monkeypatch.setattr(auth_lynxce, "_client_ip", lambda request: current_ip[0])
+        for i in range(11):
+            current_ip[0] = f"ip-{i}"
+            response = await client.post(
+                "/api/auth/lynxce/token-login", json={"access_token": _lynxce_jwt()}
+            )
+            assert response.status_code == (200 if i < 10 else 429)
+        auth_lynxce._token_login_accounts.clear()
+        current_ip[0] = "fixed-ip"
+        for i in range(31):
+            auth_lynxce._token_login_accounts.clear()
+            response = await client.post(
+                "/api/auth/lynxce/token-login", json={"access_token": _lynxce_jwt()}
+            )
+            assert response.status_code == (200 if i < 30 else 429)
+
+
+async def test_token_login_prechecks_and_src_switch(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.metrics import METRICS
+
+    monkeypatch.setattr(auth_lynxce, "_token_login_ips", {})
+    monkeypatch.setattr(auth_lynxce, "_token_login_accounts", {})
+    monkeypatch.delenv("OCTOP_TOKEN_LOGIN_REQUIRE_SRC", raising=False)
+    async with octop_client(tmp_octop_home) as (client, _):
+        await _sign_in(client, "13800000050")
+        path = "/api/auth/lynxce/token-login"
+        profile_calls = upstream.counts["/api/user/profile"]
+        for token in ("sk-secret", "first.second"):
+            result = await client.post(path, json={"access_token": token})
+            assert result.status_code == 403 and result.json()["error"]["code"] == "AUTH_FAILED"
+        assert upstream.counts["/api/user/profile"] == profile_calls
+        before = METRICS.snapshot()["token_login_without_src_total"]
+        assert (await client.post(path, json={"access_token": _lynxce_jwt()})).status_code == 200
+        assert METRICS.snapshot()["token_login_without_src_total"] == before + 1
+        assert (
+            await client.post(path, json={"access_token": _lynxce_jwt(client="web")})
+        ).status_code == 200
+        monkeypatch.setenv("OCTOP_TOKEN_LOGIN_REQUIRE_SRC", "1")
+        assert (await client.post(path, json={"access_token": _lynxce_jwt()})).status_code == 403
+        assert (
+            await client.post(path, json={"access_token": _lynxce_jwt(src="octopbot")})
+        ).status_code == 200
+        assert METRICS.snapshot()["token_login_without_src_total"] == before + 2
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        _lynxce_jwt(typ="refresh"),
+        _lynxce_jwt(client="desktop"),
+        _lynxce_jwt(client="mobile"),
+        *[_lynxce_jwt(**{field: ""}) for field in ("appId", "appVer", "desktopVer", "mobileVer")],
+        "a.a.c",
+    ],
+)
+async def test_token_login_rejects_verified_non_web_claims(
+    token: str, tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(auth_lynxce, "_token_login_ips", {})
+    async with octop_client(tmp_octop_home) as (client, _):
+        before = upstream.counts["/api/user/profile"]
+        response = await client.post("/api/auth/lynxce/token-login", json={"access_token": token})
+        assert response.status_code == 403 and response.json()["error"]["code"] == "AUTH_FAILED"
+        assert upstream.counts["/api/user/profile"] == before + 1
+
+
+async def test_fifty_shadow_limit(tmp_octop_home: Path, upstream: Upstream) -> None:
+    async with octop_client(tmp_octop_home) as (client, _):
+        signed = await _sign_in(client, "13800000050")
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        for i in range(51):
+            response = await client.put(
+                f"/api/octop-bot/remote-bots/0123456789:bot{i}",
+                headers=auth,
+                json={"name": "Bot"},
+            )
+            assert response.status_code == (200 if i < 50 else 429)
+
+
+async def test_upload_stops_reading_at_limit_and_transfer_slots_are_per_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from octop.api.routers import bot_computers
+    from octop.infra.errors import OctopError
+
+    monkeypatch.setattr(bot_computers, "MAX_FILE_BYTES", 4)
+    monkeypatch.setattr(bot_computers, "_owned", lambda *args: object())
+    consumed: list[int] = []
+
+    class Request:
+        async def stream(self) -> Any:
+            for i, chunk in enumerate((b"123", b"45", b"never read")):
+                consumed.append(i)
+                yield chunk
+
+    with pytest.raises(OctopError) as exc:
+        await bot_computers.write_file(
+            "bot",
+            Request(),
+            path="file",
+            user=SimpleNamespace(id=1),
+            server=None,  # type: ignore[arg-type]
+        )
+    assert exc.value.status == 413 and consumed == [0, 1]
+    for counts in (bot_computers._transfer_counts, bot_computers._command_counts):
+        with bot_computers._slot(counts, 1), bot_computers._slot(counts, 1):
+            with pytest.raises(OctopError) as limited, bot_computers._slot(counts, 1):
+                pass
+            assert limited.value.status == 429
+            with bot_computers._slot(counts, 2):
+                pass

@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
+import json
 import logging
+import os
+import re
 import secrets
 import time
 from collections.abc import Awaitable, Callable
@@ -17,6 +22,7 @@ from octop.api.routers.setup import LOCAL_DESKTOP_USERNAME as LEGACY_OWNER_USERN
 from octop.infra.auth import lynxce_cloud
 from octop.infra.auth.lynxce_owner import OWNER_USERNAME, bind_owner, owner_binding
 from octop.infra.auth.mfa.service import MfaService
+from octop.infra.auth.tokens import PURPOSE_DESKTOP_REMOTE, sign_token
 from octop.infra.cloud.bot_cloud import accounts as cloud_accounts
 from octop.infra.desktop import bot_cloud_enabled, bot_web_enabled
 from octop.infra.errors import ErrorCode, OctopError
@@ -36,6 +42,44 @@ _SEND_WINDOW_SECONDS = 600
 _sends: dict[str, list[float]] = {}
 # One process serves an instance; serialize the "first sign-in claims it" step.
 _claim_lock = asyncio.Lock()
+_token_login_ips: dict[str, list[float]] = {}
+_token_login_accounts: dict[str, list[float]] = {}
+
+
+def _limit_token_login(bucket: dict[str, list[float]], key: str, limit: int) -> None:
+    now = time.monotonic()
+    recent = [t for t in bucket.get(key, []) if now - t < 60]
+    bucket[key] = recent
+    if len(recent) >= limit:
+        raise OctopError.localized(ErrorCode.LOGIN_LOCKED)
+    recent.append(now)
+
+
+def _is_session_token(token: str) -> bool:
+    """Reject API keys and non-JWT shapes before contacting Lynxce."""
+    return (
+        not token.startswith("sk-")
+        and re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", token) is not None
+    )
+
+
+def _session_payload(token: str) -> dict[str, Any] | None:
+    try:
+        segment = token.split(".")[1]
+        payload = json.loads(base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4)))
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _valid_session_payload(payload: dict[str, Any] | None, *, require_src: bool) -> bool:
+    return bool(
+        payload is not None
+        and payload.get("typ") == "access"
+        and ("client" not in payload or payload["client"] == "web")
+        and not any(key in payload for key in ("appId", "appVer", "desktopVer", "mobileVer"))
+        and (not require_src or payload.get("src") == "octopbot")
+    )
 
 
 class LynxceLoginBody(BaseModel):
@@ -289,9 +333,26 @@ async def lynxce_token_login(
     if not bot_cloud_enabled():
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     require_database(server)
+    _limit_token_login(_token_login_ips, _client_ip(request), 30)
+    if not _is_session_token(body.access_token):
+        raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403)
     account = await _opened(
         request, lambda: lynxce_cloud.account_of_access_token(body.access_token)
     )
+    payload = _session_payload(body.access_token)
+    require_src = os.environ.get("OCTOP_TOKEN_LOGIN_REQUIRE_SRC", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not _valid_session_payload(payload, require_src=require_src):
+        raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403)
+    if not require_src and payload is not None and "src" not in payload:
+        from octop.infra.metrics import METRICS  # noqa: PLC0415
+
+        METRICS.inc("token_login_without_src_total")
+    _limit_token_login(_token_login_accounts, str(account), 10)
     services = server.services
     row = await asyncio.to_thread(cloud_accounts.tenant_for_account, services, account)
     if row is not None and row.disabled:
@@ -303,7 +364,30 @@ async def lynxce_token_login(
     user = server.user_manager.get_by_id(row.id) if connected and row is not None else None
     if user is None:
         raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED)
-    return {**_issue(server, user, "auth.lynxce_token_login"), "cloud": True}
+    from octop.api.routers.auth import _user_json  # noqa: PLC0415
+
+    secret = services.secret_repo.get("jwt")
+    if secret is None:
+        raise OctopError.localized(ErrorCode.INTERNAL_ERROR)
+    user_row = services.user_repo.get(user.id)
+    token = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_DESKTOP_REMOTE,
+        ttl_seconds=3600,
+        mfa_version=int(user_row.mfa_version),
+        password_version=int(user_row.password_version),
+    )
+    services.audit_repo.write(actor=user.username, action="auth.lynxce_token_login")
+    return {
+        "access_token": token,
+        "token_type": "Bearer",
+        "expires_in": 3600,
+        "user": _user_json(user, locale=user.locale),
+        "cloud": True,
+    }
 
 
 async def _opened[T](request: Request, opener: Callable[[], Awaitable[T]]) -> T:

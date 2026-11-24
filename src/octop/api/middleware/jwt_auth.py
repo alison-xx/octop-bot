@@ -22,6 +22,7 @@ from octop.api.deps import (
     extract_raw_token,
     is_jwt_exempt_request,
     maybe_sliding_renew_token,
+    resolve_user_from_token,
 )
 from octop.infra.errors import OctopError
 from octop.infra.utils.locale import resolve_request_locale
@@ -49,7 +50,14 @@ def install(app: Any, server: Any) -> None:
             access_token=request.query_params.get("access_token"),
         )
         try:
-            request.state.octop_user = authenticate_request(request, server)
+            remote_path = (
+                path.startswith(("/api/octop-bot/remote-bots/", "/api/octop-bot/computers/"))
+                or path == "/api/octop-bot/remote-bots"
+            )
+            if remote_path and raw is not None:
+                request.state.octop_user = resolve_user_from_token(server, raw, desktop_remote=True)
+            else:
+                request.state.octop_user = authenticate_request(request, server)
         except OctopError as exc:
             # Middleware returns directly (skips FastAPI exception handlers).
             if exc.status >= 500:

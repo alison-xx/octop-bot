@@ -13,7 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Response
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_user, get_server
+from octop.api.deps import desktop_remote_user, get_server
 from octop.infra.cloud.bot_cloud import shadows
 from octop.infra.db.services import SharedServices
 from octop.infra.desktop import bot_cloud_enabled
@@ -30,7 +30,7 @@ def _services(server: Annotated[OctopServer, Depends(get_server)]) -> SharedServ
 
 
 Services = Annotated[SharedServices, Depends(_services)]
-Owner = Annotated[User, Depends(current_user)]
+Owner = Annotated[User, Depends(desktop_remote_user)]
 Origin = Annotated[
     str,
     Path(

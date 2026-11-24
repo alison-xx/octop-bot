@@ -1202,7 +1202,12 @@ class AgentManager:
             out.pop("system_files_path", None)
         if pin_workspace_dir and "workspace_dir" in current_raw:
             out["workspace_dir"] = current_raw["workspace_dir"]
-        if row is not None and row.user_id is not None and self._cloud_tenant(row.user_id):
+        if (
+            row is not None
+            and row.kind != "shadow"
+            and row.user_id is not None
+            and self._cloud_tenant(row.user_id)
+        ):
             from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
                 DEFAULT_SYSTEM_FILES_PATH,
                 default_workspace_for_chat_agent,
@@ -1440,7 +1445,7 @@ class AgentManager:
         """Load agent into harness runtime (no-op config merge)."""
         async with self._lock:
             row = self._repos.agent_repo.get(agent_id)
-            if row is None:
+            if row is None or row.kind == "shadow":
                 raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
             await self._start_agent(row, init_workspace=False)
 
@@ -1610,7 +1615,8 @@ class AgentManager:
 
     def get_row(self, agent_id: str) -> AgentRow | None:
         """Look up an agent row by its public agent_id (ULID). Returns None if absent."""
-        return self._repos.agent_repo.get(agent_id)
+        row = self._repos.agent_repo.get(agent_id)
+        return None if row is not None and row.kind == "shadow" else row
 
     def workspace_for_agent(self, agent_id: str) -> Any | None:
         """Return the agent's :class:`BackendWorkspace`.
@@ -1856,6 +1862,8 @@ class AgentManager:
             AGENT_FAILED — agent exists but last start failed
             AGENT_NOT_RUNNING — agent exists but is not loaded in harness
         """
+        if self.get_row(agent_id) is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
         try:
@@ -4374,6 +4382,8 @@ class AgentManager:
         A stored config that differs (an older row, another write path) is rewritten first, so
         everything below (folder resolution, reloads) reads the same one.
         """
+        if row.kind == "shadow":
+            return cfg
         from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
             DEFAULT_SYSTEM_FILES_PATH,
             default_workspace_for_chat_agent,
@@ -4921,6 +4931,8 @@ class AgentManager:
         self, row: AgentRow, *, room_workspace: Path | None = None
     ) -> HarnessAgentConfig:
         """Convert an AgentRow into a HarnessAgentConfig."""
+        if row.kind == "shadow":
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {row.agent_id!r} not found")
         from octop_harness.middleware.bootstrap import bootstrap_marker_exists  # noqa: PLC0415
 
         from octop.infra.agents.workspace.dir import (  # noqa: PLC0415

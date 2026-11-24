@@ -471,6 +471,7 @@
     "BOT_MODEL_VENDOR_UNSUPPORTED": "这里不能用这个厂商或地址，请从列表里选择。",
     "BOT_MODEL_KEY_LIMIT": "最多保存 {limit} 个 API Key，请先删掉一个。",
     "BOT_COMPUTER_NOT_TAKEN_OVER": "请先接管云电脑，再输入文字或读取它的剪贴板。",
+    "BOT_COMPUTER_LIMIT": "最多只能同时运行两台云电脑。",
     "BOT_COMPUTER_BUSY": "云电脑暂时都被占满了，没能启动。请过几分钟再试。",
     "ENDPOINT_NOT_ALLOWED": "这个地址不能用：请填写公网的 HTTPS 地址或域名。",
     "BOT_COMPUTER_OFF": "这个文件在云电脑上，云电脑现在没开。点电脑图标打开电脑后再看。",

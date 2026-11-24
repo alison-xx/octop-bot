@@ -8,13 +8,14 @@ from typing import Any, Literal, cast
 
 import jwt
 
-TokenPurpose = Literal["access", "mfa", "reauth"]
+TokenPurpose = Literal["access", "mfa", "reauth", "desktop_remote"]
 
 PURPOSE_ACCESS: TokenPurpose = "access"
+PURPOSE_DESKTOP_REMOTE: TokenPurpose = "desktop_remote"
 PURPOSE_MFA: TokenPurpose = "mfa"
 PURPOSE_REAUTH: TokenPurpose = "reauth"
 
-_VALID_PURPOSES = frozenset({"access", "mfa", "reauth"})
+_VALID_PURPOSES = frozenset({"access", "mfa", "reauth", "desktop_remote"})
 
 # Short-lived challenge tokens (MFA verify / reauth grant).
 MFA_TOKEN_TTL_SECONDS = 300
@@ -52,7 +53,7 @@ def sign_token(
         "iat": now,
         "exp": now + ttl_seconds,
     }
-    if purpose == PURPOSE_ACCESS:
+    if purpose in (PURPOSE_ACCESS, PURPOSE_DESKTOP_REMOTE):
         payload["mfa_version"] = int(mfa_version)
         payload["password_version"] = int(password_version)
     elif purpose == PURPOSE_MFA:

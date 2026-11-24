@@ -4,16 +4,21 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import posixpath
 import secrets
+import shlex
 import time
+from collections.abc import Iterator
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response, WebSocket
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_user, get_server
+from octop.api.deps import _decode, extract_raw_token, get_server
+from octop.api.deps import desktop_remote_user as resolve_desktop_remote_user
+from octop.infra.auth.tokens import PURPOSE_DESKTOP_REMOTE
 from octop.infra.cloud.computers.backend import TAKEN_OVER
 from octop.infra.cloud.computers.driver import WORKSPACE
 from octop.infra.cloud.computers.manager import computer_manager
@@ -27,6 +32,18 @@ router = APIRouter(prefix="/computers")
 # Typing and the clipboard of an open screen: the session token in the path is the credential
 # (the phone apps' screen page has no sign-in), so this prefix skips the JWT middleware.
 session_router = APIRouter(prefix="/screen-sessions")
+
+
+async def desktop_remote_user(request: Request, server: Any = Depends(get_server)) -> User:
+    user = await resolve_desktop_remote_user(request, server)
+    raw = extract_raw_token(authorization=request.headers.get("authorization"))
+    assert raw is not None
+    if _decode(server, raw).get("purpose") == PURPOSE_DESKTOP_REMOTE:
+        row = server.services.agent_repo.get(request.path_params["agent_id"])
+        if row is None or row.user_id != user.id or row.kind != "shadow":
+            raise OctopError.localized(ErrorCode.NOT_FOUND)
+    return user
+
 
 SCREEN_TICKET_SECONDS = 60
 # An open screen keeps its computer awake for this long after it opened or after the user's
@@ -102,7 +119,7 @@ def _status(manager: Any, agent_id: str, user_id: int) -> ComputerStatus:
 
 @router.get("/{agent_id}", summary="Read a Bot's cloud computer", response_model=ComputerStatus)
 async def computer_status(
-    agent_id: str, user: User = Depends(current_user), server: Any = Depends(get_server)
+    agent_id: str, user: User = Depends(desktop_remote_user), server: Any = Depends(get_server)
 ) -> ComputerStatus:
     manager = _owned(server, user, agent_id)
     return await asyncio.to_thread(_status, manager, agent_id, user.id)
@@ -116,7 +133,7 @@ async def computer_status(
     response_model=ComputerGlance,
 )
 async def computer_glance(
-    agent_id: str, user: User = Depends(current_user), server: Any = Depends(get_server)
+    agent_id: str, user: User = Depends(desktop_remote_user), server: Any = Depends(get_server)
 ) -> ComputerGlance:
     manager = _owned(server, user, agent_id)
     glance = await asyncio.to_thread(manager.glance, agent_id, user.id)
@@ -132,7 +149,7 @@ async def computer_glance(
     response_model=ComputerStatus,
 )
 async def pause_computer(
-    agent_id: str, user: User = Depends(current_user), server: Any = Depends(get_server)
+    agent_id: str, user: User = Depends(desktop_remote_user), server: Any = Depends(get_server)
 ) -> ComputerStatus:
     manager = _owned(server, user, agent_id)
     await asyncio.to_thread(manager.pause, agent_id, user.id)
@@ -153,7 +170,7 @@ class TakeoverRequest(BaseModel):
 async def takeover(
     agent_id: str,
     body: TakeoverRequest,
-    user: User = Depends(current_user),
+    user: User = Depends(desktop_remote_user),
     server: Any = Depends(get_server),
 ) -> ComputerStatus:
     manager = _owned(server, user, agent_id)
@@ -174,7 +191,39 @@ class ScreenTicket(BaseModel):
 # Each of these counts as using the computer: it starts or resumes it if needed.
 
 MAX_COMMAND_SECONDS = 30 * 60
-MAX_FILE_BYTES = 100 * 1024 * 1024
+MAX_FILE_BYTES = 50 * 1024 * 1024
+MAX_OUTPUT_BYTES = 1024 * 1024
+_transfer_counts: dict[int, int] = {}
+_command_counts: dict[int, int] = {}
+
+
+@contextlib.contextmanager
+def _slot(counts: dict[int, int], user_id: int) -> Iterator[None]:
+    if counts.get(user_id, 0) >= 2:
+        raise OctopError.localized(ErrorCode.LOGIN_LOCKED)
+    counts[user_id] = counts.get(user_id, 0) + 1
+    try:
+        yield
+    finally:
+        counts[user_id] -= 1
+        if not counts[user_id]:
+            del counts[user_id]
+
+
+def _output(text: str) -> tuple[str, bool]:
+    data = text.encode("utf-8")
+    return data[:MAX_OUTPUT_BYTES].decode("utf-8", errors="ignore"), len(data) > MAX_OUTPUT_BYTES
+
+
+def _audit(server: Any, user: User, agent_id: str, action: str, command: str, code: int) -> None:
+    server.services.audit_repo.write(
+        actor=user.username,
+        action=action,
+        target=agent_id,
+        payload=json.dumps({"command": command[:200], "exit_code": code}),
+    )
+
+
 # Where files may be read and written: the user's home on the computer, and its temp folder.
 _FILE_ROOTS = ("/home/user", "/tmp")
 
@@ -187,6 +236,7 @@ class RunCommand(BaseModel):
 
 
 class CommandResult(BaseModel):
+    truncated: bool = False
     exit_code: int
     output: str = Field(description="Standard output and error, interleaved.")
     taken_over: bool = Field(
@@ -205,6 +255,7 @@ class RunPython(BaseModel):
 
 
 class PythonResult(BaseModel):
+    truncated: bool = False
     output: str
     taken_over: bool = Field(
         default=False,
@@ -241,16 +292,22 @@ def _computer_path(path: str) -> str:
 async def run_command(
     agent_id: str,
     body: RunCommand,
-    user: User = Depends(current_user),
+    user: User = Depends(desktop_remote_user),
     server: Any = Depends(get_server),
 ) -> CommandResult:
     manager = _owned(server, user, agent_id)
-    if await asyncio.to_thread(manager.taken_over, agent_id, user.id):
-        return CommandResult(exit_code=1, output=TAKEN_OVER, taken_over=True)
-    code, output = await asyncio.to_thread(
-        manager.run, agent_id, user.id, body.command, body.timeout
-    )
-    return CommandResult(exit_code=code, output=output)
+    with _slot(_command_counts, user.id):
+        code = 1
+        try:
+            if await asyncio.to_thread(manager.taken_over, agent_id, user.id):
+                return CommandResult(exit_code=code, output=TAKEN_OVER, taken_over=True)
+            code, output = await asyncio.to_thread(
+                manager.run, agent_id, user.id, body.command, body.timeout
+            )
+            output, truncated = _output(output)
+            return CommandResult(exit_code=code, output=output, truncated=truncated)
+        finally:
+            _audit(server, user, agent_id, "computer.run", body.command, code)
 
 
 @router.post(
@@ -263,19 +320,26 @@ async def run_command(
 async def run_python(
     agent_id: str,
     body: RunPython,
-    user: User = Depends(current_user),
+    user: User = Depends(desktop_remote_user),
     server: Any = Depends(get_server),
 ) -> PythonResult:
     manager = _owned(server, user, agent_id)
-    if await asyncio.to_thread(manager.taken_over, agent_id, user.id):
-        return PythonResult(output=TAKEN_OVER, taken_over=True)
-    output = await asyncio.to_thread(
-        manager.use,
-        agent_id,
-        user.id,
-        lambda driver, instance: driver.run_python(instance, body.code),
-    )
-    return PythonResult(output=str(output))
+    with _slot(_command_counts, user.id):
+        code = 1
+        try:
+            if await asyncio.to_thread(manager.taken_over, agent_id, user.id):
+                return PythonResult(output=TAKEN_OVER, taken_over=True)
+            result = await asyncio.to_thread(
+                manager.use,
+                agent_id,
+                user.id,
+                lambda driver, instance: driver.run_python(instance, body.code),
+            )
+            code = 0
+            output, truncated = _output(str(result))
+            return PythonResult(output=output, truncated=truncated)
+        finally:
+            _audit(server, user, agent_id, "computer.python", body.code, code)
 
 
 @router.get(
@@ -286,7 +350,7 @@ async def run_python(
     responses={200: {"content": {"image/png": {}}}},
 )
 async def screenshot(
-    agent_id: str, user: User = Depends(current_user), server: Any = Depends(get_server)
+    agent_id: str, user: User = Depends(desktop_remote_user), server: Any = Depends(get_server)
 ) -> Response:
     manager = _owned(server, user, agent_id)
     data = await asyncio.to_thread(
@@ -303,7 +367,7 @@ async def screenshot(
     response_model=Accessibility,
 )
 async def accessibility(
-    agent_id: str, user: User = Depends(current_user), server: Any = Depends(get_server)
+    agent_id: str, user: User = Depends(desktop_remote_user), server: Any = Depends(get_server)
 ) -> Accessibility:
     manager = _owned(server, user, agent_id)
     xml = await asyncio.to_thread(
@@ -324,20 +388,35 @@ async def accessibility(
 async def read_file(
     agent_id: str,
     path: str = Query(min_length=1, max_length=4096),
-    user: User = Depends(current_user),
+    user: User = Depends(desktop_remote_user),
     server: Any = Depends(get_server),
 ) -> Response:
     manager = _owned(server, user, agent_id)
-    data = await asyncio.to_thread(manager.read, agent_id, user.id, _computer_path(path))
-    if data is None:
-        raise OctopError.localized(ErrorCode.NOT_FOUND)
-    return Response(content=data, media_type="application/octet-stream")
+    target = _computer_path(path)
+    with _slot(_transfer_counts, user.id):
+        code, size = await asyncio.to_thread(
+            manager.run,
+            agent_id,
+            user.id,
+            f"stat -Lc %s -- {shlex.quote(target)}",
+            30,
+        )
+        if code != 0:
+            raise OctopError.localized(ErrorCode.NOT_FOUND)
+        if int(size.strip()) > MAX_FILE_BYTES:
+            raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=413)
+        data = await asyncio.to_thread(manager.read, agent_id, user.id, target)
+        if data is None:
+            raise OctopError.localized(ErrorCode.NOT_FOUND)
+        if len(data) > MAX_FILE_BYTES:
+            raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=413)
+        return Response(content=data, media_type="application/octet-stream")
 
 
 @router.put(
     "/{agent_id}/files",
     summary="Write a file on a Bot's cloud computer",
-    description="The request body is the file's bytes (at most 100 MB); folders are made as "
+    description="The request body is the file's bytes (at most 50 MB); folders are made as "
     "needed. `path` as for reading. Starts the computer if needed.",
     response_model=FileWritten,
 )
@@ -345,16 +424,19 @@ async def write_file(
     agent_id: str,
     request: Request,
     path: str = Query(min_length=1, max_length=4096),
-    user: User = Depends(current_user),
+    user: User = Depends(desktop_remote_user),
     server: Any = Depends(get_server),
 ) -> FileWritten:
     manager = _owned(server, user, agent_id)
     target = _computer_path(path)
-    data = await request.body()
-    if len(data) > MAX_FILE_BYTES:
-        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=413)
-    await asyncio.to_thread(manager.write, agent_id, user.id, target, data)
-    return FileWritten(path=target, size=len(data))
+    with _slot(_transfer_counts, user.id):
+        data = bytearray()
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > MAX_FILE_BYTES:
+                raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=413)
+            data.extend(chunk)
+        await asyncio.to_thread(manager.write, agent_id, user.id, target, bytes(data))
+        return FileWritten(path=target, size=len(data))
 
 
 @router.post(
@@ -365,7 +447,7 @@ async def write_file(
     response_model=ScreenTicket,
 )
 async def open_screen(
-    agent_id: str, user: User = Depends(current_user), server: Any = Depends(get_server)
+    agent_id: str, user: User = Depends(desktop_remote_user), server: Any = Depends(get_server)
 ) -> ScreenTicket:
     manager = _owned(server, user, agent_id)
     await asyncio.to_thread(manager.ensure_running, agent_id, user.id)

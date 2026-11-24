@@ -321,10 +321,10 @@ def test_out_of_capacity_pauses_the_longest_idle_computer_and_retries(setup: Any
     clock.now += 60
     CloudComputer(manager, user_id=8, agent_id="recent").execute("ls")
     clock.now += computers.MAKE_ROOM_IDLE_SECONDS
-    assert CloudComputer(manager, user_id=9, agent_id="new").execute("ls").output == "ran ls"
+    assert CloudComputer(manager, user_id=7, agent_id="new").execute("ls").output == "ran ls"
     # The longest-idle computer made room; the other keeps running.
     assert ("pause", "ins-1") in driver.calls
-    assert manager.is_running("recent", 8) and manager.is_running("new", 9)
+    assert manager.is_running("recent", 8) and manager.is_running("new", 7)
     assert not manager.is_running("old", 7)
 
 
@@ -914,6 +914,8 @@ def test_on_cvm_beside_old_ags_computers_nothing_but_work_starts_one(
     older.execute("ls")
     assert ("resume", "ags-old") in ags.calls and len(cvm.calls) == 1
     assert store.download_files(["/generated/old.md"])[0].content == b"from AGS"
+
+
 def test_shadow_bots_nobody_used_for_30_days_are_deleted_with_their_computers(setup: Any) -> None:
     from types import SimpleNamespace
 
@@ -946,3 +948,16 @@ def test_shadow_bots_nobody_used_for_30_days_are_deleted_with_their_computers(se
     clock.now += computers.SHADOW_SCAN_SECONDS
     manager.tick()
     assert "later" in agents.deleted
+
+
+def test_running_limit_and_other_users_are_not_paused(setup: Any) -> None:
+    manager, driver, _, clock = setup
+    manager.ensure_running("a", 7)
+    manager.ensure_running("b", 7)
+    with pytest.raises(OctopError) as exc:
+        manager.ensure_running("c", 7)
+    assert exc.value.code == ErrorCode.BOT_COMPUTER_LIMIT
+    clock.now += computers.MAKE_ROOM_IDLE_SECONDS + 1
+    assert not manager._make_room("other", 8)
+    assert driver.states["ins-1"] == "running"
+    assert driver.states["ins-2"] == "running"

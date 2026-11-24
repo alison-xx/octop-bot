@@ -289,6 +289,9 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return box["value"]  # type: ignore[no-any-return]
 
 
+MAX_RUNNING_COMPUTERS_PER_USER = 2
+
+
 class ComputerManager:
     def __init__(
         self,
@@ -306,6 +309,7 @@ class ComputerManager:
         # Commands running right now, per agent: a computer mid-command is never idle.
         self._busy: dict[str, int] = {}
         self._guard = threading.Lock()
+        self._start_guard = threading.RLock()
         self._reaper: threading.Thread | None = None
         self._stopping = threading.Event()
         # What the Bot last did on each computer, for the chat's floating screen: (kind, time).
@@ -362,20 +366,28 @@ class ComputerManager:
         ``seed`` fills a brand-new computer the first time this Bot gets one.
         """
         self._start_reaper()
-        with self._lock(agent_id):
+        with self._start_guard, self._lock(agent_id):
             record = self.record(agent_id, user_id)
             now = self._clock()
             record.active_at = now
             if record.running and record.instance_id:
                 self._save(record)
                 return record.instance_id
+            records = self._services.settings_repo.with_prefix("octop_bot:computer:").values()
+            running = sum(
+                1
+                for raw in records
+                if (other := ComputerRecord.load(raw)).user_id == user_id and other.running
+            )
+            if running >= MAX_RUNNING_COMPUTERS_PER_USER:
+                raise OctopError.localized(ErrorCode.BOT_COMPUTER_LIMIT)
             reservation = self._billing.reserve(record, CHUNK_MINUTES)
             try:
                 try:
                     fresh = self._wake(record)
                 except Exception as exc:
-                    # Out of AGS capacity: pause someone's idle computer and try once more.
-                    if not (capacity_full(exc) and self._make_room(agent_id)):
+                    # Out of AGS capacity: pause this user's idle computer and retry.
+                    if not (capacity_full(exc) and self._make_room(agent_id, user_id)):
                         raise
                     fresh = self._wake(record)
             except Exception as exc:
@@ -450,8 +462,8 @@ class ComputerManager:
         )
         return True
 
-    def _make_room(self, agent_id: str) -> bool:
-        """Pause this server's longest-idle running computer to free AGS capacity.
+    def _make_room(self, agent_id: str, user_id: int) -> bool:
+        """Pause the user's longest-idle running computer to free AGS capacity.
 
         Never one in use: mid-command, acted on lately, or with its screen open.
         """
@@ -465,7 +477,8 @@ class ComputerManager:
             except Exception:  # noqa: BLE001 - a broken record is the reaper's to report
                 continue
             if (
-                other.agent_id == agent_id
+                other.user_id != user_id
+                or other.agent_id == agent_id
                 or not other.running
                 or self._busy.get(other.agent_id, 0) > 0
                 or now - other.viewed_at < VIEWER_GRACE_SECONDS
@@ -606,6 +619,7 @@ class ComputerManager:
                 continue
             logger.info("deleting shadow Bot %s, unused for %s days", row.agent_id, IDLE_DAYS)
             self._services.agent_repo.delete(row.agent_id)
+            self._services.settings_repo.delete(f"octop_bot:shadow:{row.agent_id}")
 
     def _stop_orphans(self, records: list[ComputerRecord], now: float) -> None:
         """Stop this server's instances that no record knows (lost starts, crashes)."""
