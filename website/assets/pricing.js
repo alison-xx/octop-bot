@@ -479,7 +479,7 @@
     renderPacks();
   });
   document.addEventListener("langchange", renderAll);
-  window.OctopAuth.ready.then(async () => { await window.OctopAuth.redeemHash(); renderPacks(); });
+  window.OctopAuth.ready.then(async () => { await window.OctopAuth.redeemHash("recharge"); renderPacks(); });
   showView(location.hash === "#credits" ? "packs" : location.hash === "#enterprise" ? "enterprise" : "plans");
 
   const getJson = (url, timeoutMs = 8000) => {

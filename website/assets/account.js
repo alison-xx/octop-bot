@@ -120,7 +120,7 @@
     if (!data || requestId !== ledgerRequestId) return; ledger = items(data).map(mapLedger);
     function showRows() { rowsBox.replaceChildren(el("h3", "用量流水")); const rows = ledger.filter((x) => category === "全部" || x.kind === category); rowsBox.append(table(["时间", "类别", "模型 / 内容", "积分"], rows.map((x) => [dateTime(x.date), tr(x.kind), x.model, value(x.credits)]))); if (!rows.length) rowsBox.append(el("p", "当前页没有记录。", "account-muted")); }
     showRows();
-    controls.append(button("导出 CSV", () => { const dataRows = [["时间", "类别", "模型 / 内容", "积分"].map(tr), ...ledger.filter((x) => category === "全部" || x.kind === category).map((x) => [dateTime(x.date), tr(x.kind), x.model, value(x.credits)])]; const csv = dataRows.map((row) => row.map((cell) => { let s = String(cell ?? ""); if (/^[=+\-@]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; }).join(",")).join("\r\n"); const url = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" })); const a = link("下载", url); a.download = `usage-${monthText}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }));
+    controls.append(button("导出 CSV", () => { const dataRows = [["时间", "类别", "模型 / 内容", "积分"].map(tr), ...ledger.filter((x) => category === "全部" || x.kind === category).map((x) => [dateTime(x.date), tr(x.kind), x.model, value(x.credits)])]; const csv = dataRows.map((row) => row.map((cell) => { let s = String(cell ?? ""); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; }).join(",")).join("\r\n"); const url = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" })); const a = link("下载", url); a.download = `usage-${monthText}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }));
     const pagination = el("div", null, "account-controls"); const prev = button("上一页", () => { page--; route(); }), next = button("下一页", () => { page++; route(); }); prev.disabled = currentPage <= 1; next.disabled = currentPage >= (data.pagination?.totalPages || 1); add(pagination, prev, el("span", document.documentElement.dataset.lang === "en" ? `Page ${value(currentPage)}` : `第 ${value(currentPage)} 页`), next); root.append(pagination, el("p", "类别筛选和导出仅包含当前已加载页。", "account-muted"));
   }
   async function orders(root) {
@@ -177,7 +177,7 @@
   async function init() {
     await auth.ready;
     const hasCode = /^#(?:code|ticket)=/.test(location.hash);
-    if (hasCode) { let redeemed = false; try { redeemed = await auth.redeemHash(); } catch (_) { history.replaceState(null, "", location.pathname + location.search); } if (auth.config.oneTimeCodeEnabled && !redeemed) auth.logout(); }
+    if (hasCode) { let redeemed = false; try { redeemed = await auth.redeemHash("account"); } catch (_) { history.replaceState(null, "", location.pathname + location.search); } if (auth.config.oneTimeCodeEnabled && !redeemed) auth.logout(); }
     if (!auth.config.loginEnabled) { notice.textContent = tr("个人中心即将开放"); return; }
     if (!auth.requireLogin('/account.html' + location.hash)) return;
     notice.hidden = true; shell.hidden = false; window.addEventListener("hashchange", route); route();
