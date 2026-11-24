@@ -217,6 +217,41 @@ describe("mergeHistoryWithLocalTail", () => {
     ).toEqual(["old", "user", "preamble", "final"]);
   });
 
+  it("shows a finished long turn once when the latest page no longer holds its question", () => {
+    // 25 stored rows of tool steps push the question off the latest page.
+    const loaded = [
+      msg("srv-a1", "assistant", "我先看看", 5_100),
+      msg("srv-t1", "tool", "ok", 5_200),
+      msg("srv-a2", "assistant", "搞定了", 5_300),
+    ];
+    const current: ChatMessage[] = [
+      msg("old-u", "user", "之前", 1_000),
+      msg("old-a", "assistant", "之前的回复", 1_100),
+      pending("user", "user", "做个任务", 5_000),
+      { ...msg("live-a1", "assistant", "我先看看", 5_100), status: "done" },
+      { ...msg("live-t1", "tool", "ok", 5_200), status: "done" },
+      { ...msg("live-a2", "assistant", "搞定了", 5_300), status: "done" },
+    ];
+    expect(
+      mergeHistoryWithLocalTail(loaded, current, false).map((m) => m.id),
+    ).toEqual(["user", "srv-a1", "srv-t1", "srv-a2"]);
+  });
+
+  it("drops the finished live reply when the stored one follows the question", () => {
+    const loaded = [
+      msg("old", "assistant", "之前", 1_000),
+      msg("final", "assistant", "最终结论", 5_200),
+    ];
+    const current: ChatMessage[] = [
+      msg("old", "assistant", "之前", 1_000),
+      pending("user", "user", "问题", 5_000),
+      { ...msg("preamble", "assistant", "先看一下", 5_100), status: "done" },
+    ];
+    expect(
+      mergeHistoryWithLocalTail(loaded, current, false).map((m) => m.id),
+    ).toEqual(["old", "user", "final"]);
+  });
+
   it("keeps an older unseen row in place and only moves the newer answer", () => {
     const loaded = [
       msg("old", "assistant", "之前", 1_000),

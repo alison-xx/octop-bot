@@ -166,6 +166,18 @@ class ThreadMessageRepo:
             ).fetchall()
         return [ThreadMessageRow.from_row(row) for row in rows]
 
+    def turn_rows_before(self, thread_id: str, seq: int) -> list[ThreadMessageRow]:
+        """Rows of the turn holding ``seq`` stored before it, from its user message on."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT seq,message_id,role,message_json,created_at FROM thread_messages "
+                "WHERE thread_id=? AND seq<? AND seq>=COALESCE((SELECT MAX(seq) "
+                "FROM thread_messages WHERE thread_id=? AND seq<? AND role IN ('human','user')),0) "
+                "ORDER BY seq",
+                (thread_id, seq, thread_id, seq),
+            ).fetchall()
+        return [ThreadMessageRow.from_row(row) for row in rows]
+
     def timestamp_base(self, thread_id: str, through: int, fallback: int) -> int:
         """Anchor ordered millisecond timestamps across overlapping pages of second-resolution history."""
         with self._db.connect() as conn:
