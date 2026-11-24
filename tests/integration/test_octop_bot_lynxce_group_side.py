@@ -52,13 +52,13 @@ async def test_group_and_side_chat_use_current_personal_bearer_instead_of_shared
         return web.Response(text=data + "data: [DONE]\n\n", content_type="text/event-stream")
 
     async def catalog(_):
-        return web.json_response({"data": [{"id": "personal-only"}]})
+        return web.json_response({"data": [{"id": "tencent/personal-only"}]})
 
     upstream = web.Application()
     upstream.add_routes([web.get("/models", catalog), web.post("/chat/completions", chat)])
     async with TestServer(upstream) as http:
         monkeypatch.setattr(lynxce, "BASE_URL", str(http.make_url("/")).rstrip("/"))
-        await lynxce.select_account_model(services, owner, "personal-only")
+        await lynxce.select_account_model(services, owner, "tencent/personal-only")
         room = await client.post(
             "/api/octop-bot/groups",
             headers=auth,
@@ -83,7 +83,7 @@ async def test_group_and_side_chat_use_current_personal_bearer_instead_of_shared
         assert any(
             item["role"] == "assistant" and "personal reply" in item["text"] for item in post.json()
         ), post.text
-        assert seen and set(seen) == {("Bearer first-test-access", "personal-only")}
+        assert seen and set(seen) == {("Bearer first-test-access", "tencent/personal-only")}
         token.return_value = "refreshed-test-access"
         thread = "personal-side"
         services.thread_repo.insert(
@@ -108,7 +108,7 @@ async def test_group_and_side_chat_use_current_personal_bearer_instead_of_shared
         )
         side.raise_for_status()
         assert side.json()["answer"] == "personal reply"
-        assert seen[-1] == ("Bearer refreshed-test-access", "personal-only")
+        assert seen[-1] == ("Bearer refreshed-test-access", "tencent/personal-only")
         monkeypatch.setattr(oauth, "connection_id", lambda *_: None)
         refused = await client.post(
             f"/api/octop-bot/bots/{member}/side",
