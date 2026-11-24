@@ -285,7 +285,11 @@ class CvmDriver(AgsDriver):
 
     def _describe(self, instance_ids: list[str] | None = None, offset: int = 0) -> list[Any]:
         request = self._models().DescribeInstancesRequest()
-        if instance_ids:
+        if instance_ids is not None:
+            # An id from another provider (an AGS computer made before the switch) is not ours.
+            instance_ids = [i for i in instance_ids if i.startswith("ins-")]
+            if not instance_ids:
+                return []
             request.InstanceIds = instance_ids
         else:
             tag = self._models().Filter()
@@ -385,6 +389,9 @@ class CvmDriver(AgsDriver):
 
     def ssl_context(self) -> ssl.SSLContext:
         """For the screen relay's WebSocket: trust only this server's instance CA."""
+        return self._ca.context()
+
+    def ssl_context_for(self, instance_id: str) -> ssl.SSLContext:
         return self._ca.context()
 
     def _request(

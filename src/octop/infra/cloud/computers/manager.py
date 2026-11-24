@@ -592,10 +592,12 @@ class ComputerManager:
 
     # Screen and takeover
 
-    def screen_ssl(self) -> Any:
-        """TLS settings for the screen's WebSocket, when the provider pins its own CA (CVM)."""
-        context = getattr(self._driver, "ssl_context", None)
-        return context() if callable(context) else None
+    def screen_ssl(self, agent_id: str, user_id: int) -> Any:
+        """TLS settings for this computer's screen WebSocket when its provider pins its own CA
+        (CVM); ``None`` for public certificates (AGS)."""
+        instance = self.record(agent_id, user_id).instance_id
+        context = getattr(self._driver, "ssl_context_for", None)
+        return context(instance) if callable(context) and instance else None
 
     def screen(self, agent_id: str, user_id: int) -> tuple[str, dict[str, str]]:
         """Where to reach the running computer's desktop (VNC over WebSocket)."""
@@ -758,20 +760,21 @@ def shutdown_manager() -> None:
 def computer_driver() -> ComputerDriver | None:
     """The configured cloud-computer provider: Tencent Cloud CVM or AGS.
 
-    ``OCTOP_COMPUTER_PROVIDER`` picks one (``cvm`` / ``ags``); unset, CVM is used when it is
-    configured, else AGS. ``None`` when the chosen provider is not configured.
+    ``OCTOP_COMPUTER_PROVIDER`` picks one (``cvm`` / ``ags``). Unset, new computers start on
+    CVM when it is configured, and when AGS is configured too, computers made on AGS before the
+    switch keep running there. ``None`` when nothing usable is configured.
     """
     from octop.infra.cloud.computers.cvm import CvmConfig, CvmDriver  # noqa: PLC0415
+    from octop.infra.cloud.computers.mixed import MixedDriver  # noqa: PLC0415
 
     choice = (os.environ.get("OCTOP_COMPUTER_PROVIDER") or "").strip().lower()
-    if choice in ("", "cvm"):
-        cvm = CvmConfig.from_env()
-        if cvm is not None:
-            return CvmDriver(cvm)
-        if choice == "cvm":
-            return None
-    ags = AgsConfig.from_env()
-    return AgsDriver(ags) if ags is not None else None
+    cvm_config = CvmConfig.from_env() if choice in ("", "cvm") else None
+    ags_config = AgsConfig.from_env() if choice in ("", "ags") else None
+    if cvm_config is not None and ags_config is not None:
+        return MixedDriver(CvmDriver(cvm_config), AgsDriver(ags_config))
+    if cvm_config is not None:
+        return CvmDriver(cvm_config)
+    return AgsDriver(ags_config) if ags_config is not None else None
 
 
 def computer_manager(services: SharedServices) -> ComputerManager | None:

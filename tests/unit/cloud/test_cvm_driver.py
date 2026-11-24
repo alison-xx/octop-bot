@@ -22,6 +22,7 @@ from octop.infra.cloud.computers.cvm import (
     cvm_state,
 )
 from octop.infra.cloud.computers.driver import AgsDriver
+from octop.infra.cloud.computers.mixed import MixedDriver
 
 ENV = {
     "OCTOP_CVM_SECRET_ID": "AKID-test",
@@ -203,6 +204,9 @@ def test_provider_choice(monkeypatch: pytest.MonkeyPatch) -> None:
     assert type(computers.computer_driver()) is AgsDriver
     for key, value in ENV.items():
         monkeypatch.setenv(key, value)
+    # Both configured: new computers on CVM, earlier AGS computers stay on AGS.
+    assert isinstance(computers.computer_driver(), MixedDriver)
+    monkeypatch.setenv("OCTOP_COMPUTER_PROVIDER", "cvm")
     assert isinstance(computers.computer_driver(), CvmDriver)
     monkeypatch.setenv("OCTOP_COMPUTER_PROVIDER", "ags")
     assert type(computers.computer_driver()) is AgsDriver
@@ -210,3 +214,35 @@ def test_provider_choice(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in ENV:
         monkeypatch.delenv(key)
     assert computers.computer_driver() is None
+
+
+class Recorder:
+    """Stands in for one provider; records the calls it gets."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    def __getattr__(self, attr: str) -> Any:
+        def call(*args: Any, **kwargs: Any) -> Any:
+            self.calls.append((attr, args))
+            return f"{self.name}:{attr}"
+
+        return call
+
+
+def test_mixed_routes_each_computer_to_the_provider_that_made_it(cvm: Any) -> None:
+    cvm_driver, _fake = cvm
+    ags = Recorder("ags")
+    mixed = MixedDriver(cvm_driver, ags)  # type: ignore[arg-type]
+    new = mixed.start(spec="standard", labels={})
+    assert new.startswith("ins-")
+    mixed.run("old-ags-instance", "ls", 30)
+    mixed.pause("old-ags-instance")
+    assert [c[0] for c in ags.calls] == ["run", "pause"]
+    assert mixed.state(new) == "running"
+    assert mixed.state("old-ags-instance") == "ags:state"
+    assert mixed.ssl_context_for("old-ags-instance") is None
+    assert mixed.ssl_context_for(new) is not None
+    # The CVM side never asks Tencent Cloud about another provider's id.
+    assert cvm_driver.state("old-ags-instance") == "gone"

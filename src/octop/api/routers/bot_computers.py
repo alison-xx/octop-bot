@@ -288,7 +288,11 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
 
     try:
         url, headers = await asyncio.to_thread(manager.screen, agent_id, user_id)
-        pinned = manager.screen_ssl() if url.startswith("wss://") else None
+        pinned = (
+            await asyncio.to_thread(manager.screen_ssl, agent_id, user_id)
+            if url.startswith("wss://")
+            else None
+        )
         async with websockets.connect(
             url,
             additional_headers=headers,
@@ -338,8 +342,15 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
         logger.warning("screen relay for %s ended with an error", agent_id, exc_info=True)
     finally:
         # Leaving the screen in control (closed tab, lost network, crash) hands the computer back.
-        with contextlib.suppress(Exception):
-            if holds["control"] and await asyncio.to_thread(manager.taken_over, agent_id, user_id):
-                await asyncio.to_thread(manager.set_takeover, agent_id, user_id, False)
+        # Shielded: the relay task may be cancelled right as the viewer goes away, and a
+        # hand-back skipped then would leave the computer taken over with nobody at the screen.
+        if holds["control"]:
+
+            def hand_back() -> None:
+                if manager.taken_over(agent_id, user_id):
+                    manager.set_takeover(agent_id, user_id, False)
+
+            with contextlib.suppress(Exception, asyncio.CancelledError):
+                await asyncio.shield(asyncio.to_thread(hand_back))
         with contextlib.suppress(Exception):
             await websocket.close()
