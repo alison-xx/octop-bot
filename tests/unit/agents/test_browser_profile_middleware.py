@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -120,3 +121,51 @@ async def test_browser_profile_blocks_placeholder_user_zero(monkeypatch) -> None
 
     handler.assert_not_awaited()
     assert getattr(result, "status", None) == "error"
+
+
+@pytest.mark.asyncio
+async def test_screenshots_land_in_the_agents_workspace(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        browser_profile,
+        "get_config",
+        lambda: {"configurable": {"user": "42"}},
+    )
+    handler = AsyncMock(return_value=object())
+    middleware = browser_profile.BrowserProfileMiddleware("A", tmp_path)
+
+    async def forwarded_args(args: dict[str, object]) -> dict[str, object]:
+        await middleware.awrap_tool_call(_request("browser_use", args), handler)
+        return handler.await_args.args[0].tool_call["args"]
+
+    shot = await forwarded_args({"action": "screenshot"})
+    path = Path(str(shot["path"]))
+    assert path.parent == tmp_path
+    assert path.name.startswith("octop-") and path.suffix == ".png"
+    # A chosen name is kept, never its directory.
+    outside = tmp_path.parent / "elsewhere" / "login.png"
+    assert (await forwarded_args({"action": "snapshot", "path": str(outside)}))["path"] == str(
+        tmp_path / "login.png"
+    )
+    assert (
+        Path(
+            str((await forwarded_args({"action": "screenshot", "path": "notes.txt"}))["path"])
+        ).parent
+        == tmp_path
+    )
+    # Other actions keep their arguments.
+    assert "path" not in await forwarded_args({"action": "navigate", "url": "https://x.test"})
+
+
+@pytest.mark.asyncio
+async def test_screenshot_path_is_left_alone_without_a_host_workspace(monkeypatch) -> None:
+    monkeypatch.setattr(
+        browser_profile,
+        "get_config",
+        lambda: {"configurable": {"user": "42"}},
+    )
+    handler = AsyncMock(return_value=object())
+    request = _request("browser_use", {"action": "screenshot"})
+
+    await browser_profile.BrowserProfileMiddleware("A").awrap_tool_call(request, handler)
+
+    assert "path" not in handler.await_args.args[0].tool_call["args"]

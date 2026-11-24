@@ -375,10 +375,11 @@
       "appearance": "Appearance",
       "floatingButton": "Floating button",
       "floatingButtonHint": "A small Octop on your desktop for quick chats.",
-      "privacy": "Privacy",
-      "signedInAs": "Signed in as",
       "manage": "Manage",
-      "language": "Language"
+      "language": "Language",
+      "lookAndLanguage": "Appearance and language",
+      "desktopAndPrivacy": "Desktop and privacy",
+      "retainedFoldersHint": "Work folders kept when a Bot was deleted; open or clear them here"
     },
     "account": {
       "local": "Local account",
@@ -386,7 +387,15 @@
       "lynxceUser": "Lynxce user",
       "signInHint": "Sign in to Lynxce to chat on credits and give every Bot its own cloud computer.",
       "signIn": "Sign in to Lynxce",
-      "cloudModels": "Chats run on the models in your Lynxce account and are paid with Lynxce credits."
+      "cloudModels": "Chats run on the models in your Lynxce account and are paid with Lynxce credits.",
+      "localHint": "On this computer, not signed in",
+      "centre": "Account centre",
+      "promoTitle": "Sign in to Lynxce for more",
+      "promoComputer": "Every Bot gets a cloud computer and keeps working while you're away",
+      "promoModels": "Use Qwen, DeepSeek, GLM, Kimi and every Lynxce model with credits, no keys to set up",
+      "promoDevices": "See the same team on your phone, the web and this computer",
+      "promoMove": "The Bots and chats on this computer stay here; switch back to local use any time.",
+      "promoRegister": "No account? Signing in with a code creates one"
     },
     "update": {
       "title": "About & updates",
@@ -9034,7 +9043,6 @@
     "title": "Credits",
     "menu": "Credits",
     "menuHint": "Balance, top-up and usage",
-    "balance": "Balance",
     "unit": "credits",
     "amount": "{{value}} credits",
     "recharge": "Top up",
@@ -9047,7 +9055,6 @@
     "shared": "Your balance is shared with the Lynxce website and Octop Bot on your other devices. It refreshes when you come back after topping up.",
     "openFailed": "Couldn't open the top-up page. Try again in a moment.",
     "usageTitle": "Last 30 days",
-    "usageTotal": "{{tokens}} tokens across {{calls}} model calls",
     "byBot": "By Bot",
     "byModel": "By model",
     "noUsage": "No usage yet",
@@ -9063,7 +9070,14 @@
     "siteLabel": "Or open in your browser:",
     "limitTitle": "Daily limit reached",
     "limitBody": "Lynxce caps Octop Bot's daily usage to prevent runaway spending, and today's cap is used up. It resets at 00:00 UTC; press Continue then to pick up where it stopped.",
-    "limitLink": "Need it now? Raise the limit in your Lynxce account centre:"
+    "limitLink": "Need it now? Raise the limit in your Lynxce account centre:",
+    "walletTitle": "Lynxce credits",
+    "rate": "1 yuan = 100 credits. Lynxce models, cloud computers and storage are paid from here.",
+    "accountCentre": "Account centre",
+    "usageGroup": "Group usage by",
+    "tokens": "tokens",
+    "calls": "model calls",
+    "readyTitle": "Your credits are in"
   },
   "botStart": {
     "heroTitle": "An AI team on call",
@@ -9146,5 +9160,18 @@
       "later": "Choose later",
       "useModel": "Use this model"
     }
+  },
+  "botAbout": {
+    "title": "About and updates",
+    "version": "Version {{version}}",
+    "server": "Server",
+    "serverLocal": "This computer",
+    "serverCloud": "Lynxce Cloud",
+    "serverLocalHint": "Bots and chats are kept on this computer",
+    "serverRemoteHint": "Bots and chats are kept on this server",
+    "switchServer": "Switch server",
+    "switchFromMenu": "Switch from the menu bar: Octop Bot → Server",
+    "links": "More",
+    "site": "Website"
   }
 }
