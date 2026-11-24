@@ -8,7 +8,7 @@ import sys
 from contextlib import suppress
 from typing import Any
 
-from octop.infra.desktop import desktop_shell_enabled
+from octop.infra.desktop import bot_cloud_enabled, desktop_shell_enabled
 from octop.infra.server import OctopServer
 from octop.infra.utils.accept_errors import coalesce_accept_errors
 
@@ -108,6 +108,10 @@ async def run_foreground(
     )
     level = (log_level or cfg.log_level).lower()
     worker_count = 1 if plan.dual_listeners or reload else workers
+    if bot_cloud_enabled() and worker_count > 1:
+        logger.warning(
+            "Octop Bot cloud requires one worker: rate limits and computer slots are in-process"
+        )
     if plan.dual_listeners and (reload or workers > 1):
         logger.warning(
             "TLS dual-port mode forces workers=1 and disables reload",

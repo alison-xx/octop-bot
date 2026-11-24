@@ -131,6 +131,8 @@ class ComputerRecord:
     spec: Spec = "standard"
     instance_id: str | None = None
     running: bool = False
+    starting: bool = False
+    starting_at: float | None = None
     # Billing cursor: the start of the oldest reservation still open.
     running_since: float | None = None
     # When the computer last started or resumed, for "running for N minutes".
@@ -290,6 +292,7 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
 
 
 MAX_RUNNING_COMPUTERS_PER_USER = 2
+STARTING_STALE_SECONDS = 10 * 60
 
 
 class ComputerManager:
@@ -309,7 +312,7 @@ class ComputerManager:
         # Commands running right now, per agent: a computer mid-command is never idle.
         self._busy: dict[str, int] = {}
         self._guard = threading.Lock()
-        self._start_guard = threading.RLock()
+        self._user_locks: dict[int, threading.Lock] = {}
         self._reaper: threading.Thread | None = None
         self._stopping = threading.Event()
         # What the Bot last did on each computer, for the chat's floating screen: (kind, time).
@@ -332,6 +335,10 @@ class ComputerManager:
     def _lock(self, agent_id: str) -> threading.Lock:
         with self._guard:
             return self._locks.setdefault(agent_id, threading.Lock())
+
+    def _user_lock(self, user_id: int) -> threading.Lock:
+        with self._guard:
+            return self._user_locks.setdefault(user_id, threading.Lock())
 
     def record(self, agent_id: str, user_id: int) -> ComputerRecord:
         raw = self._services.settings_repo.get(self._key(agent_id))
@@ -366,22 +373,41 @@ class ComputerManager:
         ``seed`` fills a brand-new computer the first time this Bot gets one.
         """
         self._start_reaper()
-        with self._start_guard, self._lock(agent_id):
+        with self._lock(agent_id):
             record = self.record(agent_id, user_id)
             now = self._clock()
             record.active_at = now
             if record.running and record.instance_id:
                 self._save(record)
                 return record.instance_id
-            records = self._services.settings_repo.with_prefix("octop_bot:computer:").values()
-            running = sum(
-                1
-                for raw in records
-                if (other := ComputerRecord.load(raw)).user_id == user_id and other.running
-            )
-            if running >= MAX_RUNNING_COMPUTERS_PER_USER:
-                raise OctopError.localized(ErrorCode.BOT_COMPUTER_LIMIT)
-            reservation = self._billing.reserve(record, CHUNK_MINUTES)
+            with self._user_lock(user_id):
+                records = self._services.settings_repo.with_prefix("octop_bot:computer:").values()
+                running = sum(
+                    1
+                    for raw in records
+                    if (other := ComputerRecord.load(raw)).user_id == user_id
+                    and other.agent_id != agent_id
+                    and (
+                        other.running
+                        or (
+                            other.starting
+                            and other.starting_at is not None
+                            and now - other.starting_at < STARTING_STALE_SECONDS
+                        )
+                    )
+                )
+                if running >= MAX_RUNNING_COMPUTERS_PER_USER:
+                    raise OctopError.localized(ErrorCode.BOT_COMPUTER_LIMIT)
+                record.starting = True
+                record.starting_at = now
+                self._save(record)
+            try:
+                reservation = self._billing.reserve(record, CHUNK_MINUTES)
+            except BaseException:
+                record.starting = False
+                record.starting_at = None
+                self._save(record)
+                raise
             try:
                 try:
                     fresh = self._wake(record)
@@ -393,6 +419,8 @@ class ComputerManager:
             except Exception as exc:
                 # Settle first: a settle that fails is kept in ``unsettled``, saved here.
                 self._settle_one(record, reservation, 0)
+                record.starting = False
+                record.starting_at = None
                 self._save(record)
                 if capacity_full(exc):
                     logger.warning("no AGS capacity for the computer of %s: %s", agent_id, exc)
@@ -404,6 +432,8 @@ class ComputerManager:
             except Exception:  # noqa: BLE001 - commands will report the failure themselves
                 logger.warning("computer %s is slow to come up", agent_id)
             record.running = True
+            record.starting = False
+            record.starting_at = None
             record.running_since = now
             record.started_at = now
             record.paid_until = now + CHUNK_MINUTES * 60
@@ -907,9 +937,18 @@ class ComputerManager:
         self._driver.write(self.ensure_running(agent_id, user_id, seed), path, data)
 
     def read(
-        self, agent_id: str, user_id: int, path: str, *, seed: Seeder | None = None
+        self,
+        agent_id: str,
+        user_id: int,
+        path: str,
+        *,
+        seed: Seeder | None = None,
+        max_bytes: int | None = None,
     ) -> bytes | None:
-        return self._driver.read(self.ensure_running(agent_id, user_id, seed), path)
+        instance = self.ensure_running(agent_id, user_id, seed)
+        if max_bytes is None:
+            return self._driver.read(instance, path)
+        return self._driver.read(instance, path, max_bytes=max_bytes)
 
 
 _manager: ComputerManager | None = None

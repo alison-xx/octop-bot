@@ -8,7 +8,6 @@ import binascii
 import json
 import logging
 import os
-import re
 import secrets
 import time
 from collections.abc import Awaitable, Callable
@@ -55,12 +54,16 @@ def _limit_token_login(bucket: dict[str, list[float]], key: str, limit: int) -> 
     recent.append(now)
 
 
+_BASE64URL = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+_MAX_TOKEN_LENGTH = 8192
+
+
 def _is_session_token(token: str) -> bool:
     """Reject API keys and non-JWT shapes before contacting Lynxce."""
-    return (
-        not token.startswith("sk-")
-        and re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", token) is not None
-    )
+    if token.startswith("sk-") or len(token) > _MAX_TOKEN_LENGTH:
+        return False
+    parts = token.split(".")
+    return len(parts) == 3 and all(part and set(part) <= _BASE64URL for part in parts)
 
 
 def _session_payload(token: str) -> dict[str, Any] | None:

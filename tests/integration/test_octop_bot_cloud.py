@@ -1181,8 +1181,9 @@ class _Computer:
     def write(self, instance_id: str, path: str, data: bytes) -> None:
         self.files[path] = data
 
-    def read(self, instance_id: str, path: str) -> bytes | None:
-        return self.files.get(path)
+    def read(self, instance_id: str, path: str, *, max_bytes: int | None = None) -> bytes | None:
+        data = self.files.get(path)
+        return data[:max_bytes] if data is not None and max_bytes is not None else data
 
 
 async def test_desktop_bots_get_cloud_computers_through_hidden_shadow_bots(
@@ -1490,3 +1491,62 @@ async def test_upload_stops_reading_at_limit_and_transfer_slots_are_per_user(
             assert limited.value.status == 429
             with bot_computers._slot(counts, 2):
                 pass
+
+
+def test_computer_and_remote_bot_routes_require_desktop_remote_user() -> None:
+    from types import SimpleNamespace
+
+    from fastapi.routing import APIRoute, APIWebSocketRoute
+
+    from octop.api.app import build_app
+    from octop.api.deps import current_user, desktop_remote_user
+    from octop.api.routers.bot_computers import desktop_remote_user as computer_user
+    from octop.api.routers.bot_computers import screen_ws
+
+    app = build_app(SimpleNamespace(services=None, app_runtime=None))  # type: ignore[arg-type]
+
+    def all_routes(routes: Any, prefix: str = "") -> Any:
+        for route in routes:
+            if hasattr(route, "original_router"):
+                yield from all_routes(
+                    route.original_router.routes, prefix + route.include_context.prefix
+                )
+            else:
+                yield prefix + route.path, route
+
+    routes = [
+        (path, route)
+        for path, route in all_routes(app.routes)
+        if path.startswith(("/api/octop-bot/computers/", "/api/octop-bot/remote-bots/"))
+    ]
+    assert routes
+    for path, route in routes:
+        if isinstance(route, APIWebSocketRoute):
+            # This browser WebSocket authenticates with a single-use screen ticket.
+            assert route.endpoint is screen_ws
+            continue
+        assert isinstance(route, APIRoute)
+        dependencies = {dependency.call for dependency in route.dependant.dependencies}
+        assert current_user not in dependencies, path
+        assert dependencies & {desktop_remote_user, computer_user}, path
+
+
+async def test_download_limits_read_when_file_grows(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from octop.api.routers import bot_computers
+    from octop.infra.errors import OctopError
+
+    class GrowingFile:
+        def run(self, *args: Any) -> tuple[int, str]:
+            return 0, "4"
+
+        def read(self, *args: Any, max_bytes: int) -> bytes:
+            assert max_bytes == 5
+            return b"12345"
+
+    monkeypatch.setattr(bot_computers, "MAX_FILE_BYTES", 4)
+    monkeypatch.setattr(bot_computers, "_owned", lambda *args: GrowingFile())
+    with pytest.raises(OctopError) as exc:
+        await bot_computers.read_file("bot", "/tmp/file", SimpleNamespace(id=1), object())
+    assert exc.value.status == 413

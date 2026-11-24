@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import threading
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pytest
@@ -961,3 +963,108 @@ def test_running_limit_and_other_users_are_not_paused(setup: Any) -> None:
     assert not manager._make_room("other", 8)
     assert driver.states["ins-1"] == "running"
     assert driver.states["ins-2"] == "running"
+
+
+def test_start_does_not_block_another_users_running_computer(setup: Any, monkeypatch: Any) -> None:
+    manager, driver, _, _ = setup
+    manager.ensure_running("ready", 8)
+    entered, release = threading.Event(), threading.Event()
+    original = driver.start
+
+    def blocked_start(*, spec: str, labels: Mapping[str, str]) -> str:
+        entered.set()
+        assert release.wait(5)
+        return original(spec=spec, labels=labels)
+
+    monkeypatch.setattr(driver, "start", blocked_start)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        start = pool.submit(manager.ensure_running, "slow", 7)
+        try:
+            assert entered.wait(2)
+            run = pool.submit(manager.run, "ready", 8, "pwd", 30)
+            assert run.result(timeout=2) == (0, "ran pwd")
+        finally:
+            release.set()
+        start.result(timeout=2)
+
+
+def test_concurrent_starts_reserve_user_slots(setup: Any, monkeypatch: Any) -> None:
+    manager, driver, _, _ = setup
+    manager.ensure_running("existing", 7)
+    entered, release = threading.Event(), threading.Event()
+    original = driver.start
+
+    def blocked_start(*, spec: str, labels: Mapping[str, str]) -> str:
+        entered.set()
+        assert release.wait(5)
+        return original(spec=spec, labels=labels)
+
+    monkeypatch.setattr(driver, "start", blocked_start)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        start = pool.submit(manager.ensure_running, "first", 7)
+        try:
+            assert entered.wait(2)
+            assert manager.record("first", 7).starting
+            competing = pool.submit(manager.ensure_running, "second", 7)
+            with pytest.raises(OctopError) as exc:
+                competing.result(timeout=2)
+            assert exc.value.code == ErrorCode.BOT_COMPUTER_LIMIT
+        finally:
+            release.set()
+        start.result(timeout=2)
+    assert not manager.record("first", 7).starting
+
+
+def test_stale_start_does_not_consume_slot_and_failure_clears_it(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    manager.ensure_running("existing", 7)
+    manager._save(
+        computers.ComputerRecord(
+            agent_id="stale",
+            user_id=7,
+            starting=True,
+            starting_at=clock.now - computers.STARTING_STALE_SECONDS,
+        )
+    )
+    billing.broke = True
+    with pytest.raises(OctopError):
+        manager.ensure_running("new", 7)
+    assert not manager.record("new", 7).starting
+    billing.broke = False
+    driver.fail_start = True
+    with pytest.raises(RuntimeError):
+        manager.ensure_running("new", 7)
+    assert not manager.record("new", 7).starting
+    driver.fail_start = False
+    manager.ensure_running("new", 7)
+
+
+def test_driver_stops_streaming_at_read_limit() -> None:
+    import httpx
+
+    class Stream(httpx.SyncByteStream):
+        def __init__(self) -> None:
+            self.chunks_read = 0
+            self.closed = False
+
+        def __iter__(self) -> Any:
+            for chunk in (b"abc", b"def", b"must not be read"):
+                self.chunks_read += 1
+                yield chunk
+
+        def close(self) -> None:
+            self.closed = True
+
+    stream = Stream()
+    config = AgsConfig.from_env(
+        {"OCTOP_AGS_SECRET_ID": "id", "OCTOP_AGS_SECRET_KEY": "key", "OCTOP_AGS_TOOL": "t"}
+    )
+    assert config is not None
+    driver = ags.AgsDriver(config)
+    driver._http = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, stream=stream))
+    )
+    driver.token = lambda instance_id, fresh=False: "token"  # type: ignore[method-assign]
+    assert driver.read("instance", "/tmp/file", max_bytes=5) == b"abcde"
+    assert stream.chunks_read == 2
+    assert stream.closed

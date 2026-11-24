@@ -405,7 +405,9 @@ async def read_file(
             raise OctopError.localized(ErrorCode.NOT_FOUND)
         if int(size.strip()) > MAX_FILE_BYTES:
             raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=413)
-        data = await asyncio.to_thread(manager.read, agent_id, user.id, target)
+        data = await asyncio.to_thread(
+            manager.read, agent_id, user.id, target, max_bytes=MAX_FILE_BYTES + 1
+        )
         if data is None:
             raise OctopError.localized(ErrorCode.NOT_FOUND)
         if len(data) > MAX_FILE_BYTES:

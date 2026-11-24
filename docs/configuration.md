@@ -3,6 +3,11 @@
 Octop stores all of its state under `~/.octop/`. The directory is created
 on first server start (or by `octop init` / `octop run`).
 
+## Cloud server workers
+
+When `OCTOP_BOT_CLOUD=1`, run the cloud server with one worker. Rate limits
+and computer slots are maintained in process and are not shared across workers.
+
 ## Filesystem layout
 
 ```
