@@ -5,8 +5,11 @@ They share no code, only this design and the wire contract in [PROTOCOL.md](PROT
 
 ## Ways to connect
 
-The start page puts the Lynxce account first (a card with 验证码 / 密码 tabs, as on the web), then
-"Use without signing in", with "Connect my own server" as a quiet link at the bottom.
+The start page follows the desktop sign-in (brand banner with Chief, then the Lynxce account): one
+"phone or email" field whose icon follows what is typed, a code field with "Get code" inside it, and
+a "Sign in with password" link to switch. A new phone or email is registered on first sign-in. There
+is no third-party sign-in on the phones. Below a divider: "Use without signing in", and "Connect my own
+server" as a quiet link at the bottom. Signing in with a field missing shakes that field and focuses it.
 
 1. **Lynxce account (default).** Sign in with a 灵策智算 phone/email and a code or password. When Octop Bot
    cloud (`https://bot.lynxce.cn`) answers, the phone signs in there and gets the cloud's Bots, groups and
@@ -97,8 +100,11 @@ Grok-style: dark-first, chat-first, one big character.
   (sent as `mention_ids`). Header shows member characters; info sheet shows goal and shared memory.
   New group: name + pick members; Chief (or the first member) is the admin.
 - **Settings.** A grouped list, top to bottom:
-  - *Account card* (not a row): Chief character 56 pt, account name (headline), connection line
-    ("Lynxce cloud" or the server's host:port), and on Lynxce a balance chip.
+  - *Account card* (not a row). Signed in to Lynxce: avatar, account name, membership tier and
+    Lynxce id, the balance in large type with the part that expires (and when) and the permanent part,
+    and "Credits and usage". Until Lynxce's member profile arrives only the name and total show. Android
+    then adds renew/join and top-up buttons and a 个人中心 link that open the website; iOS has no 个人中心 entry and never mentions the website (App Store 3.1.1). Otherwise: Chief
+    character 56 pt, account name and connection line ("this phone" or the server's host:port).
   - *General*: language (follow system / 简体中文 / English — switches live, also drives
     `Accept-Language` and speech recognition), appearance (follow system / dark / light), chat text
     size (small / standard / large = 0.9 / 1.0 / 1.15 × body), haptics (on by default).

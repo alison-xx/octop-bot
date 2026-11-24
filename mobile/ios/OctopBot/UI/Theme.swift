@@ -10,6 +10,14 @@ enum Palette {
     static let text = dynamic(light: 0x111113, dark: 0xF4F4F5)
     static let secondary = dynamic(light: 0x6B6B73, dark: 0x9A9AA3)
 
+    // Octop Bot's rose, as on the desktop and web sign-in (Chief's colour).
+    static let brand = dynamic(light: 0xE85D75, dark: 0xF07C90)
+    /// Rose text on the page background (links, "Get code"): at least 4.5:1 in both themes.
+    static let brandText = dynamic(light: 0xC7314D, dark: 0xF59AAA)
+    /// The primary button, top to bottom.
+    static let brandButtonTop = dynamic(light: 0xEA5A73, dark: 0xE9566F)
+    static let brandButtonBottom = dynamic(light: 0xCF3753, dark: 0xC93652)
+
     /// The provider is `@Sendable` (not main-actor): SwiftUI resolves colors off the main thread,
     /// e.g. a live `Text(date, style: .relative)` while a sheet covers it, which crashed the app.
     private static func dynamic(light: UInt32, dark: UInt32) -> Color {

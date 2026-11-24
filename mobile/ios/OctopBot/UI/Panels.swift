@@ -263,6 +263,7 @@ struct SettingsView: View {
     @State private var copied = false
     @State private var notifications: UNAuthorizationStatus = .notDetermined
     @State private var stars = GitHubStars.shared
+    @State private var showCredits = false
 
     private var version: String {
         let info = Bundle.main.infoDictionary ?? [:]
@@ -276,7 +277,15 @@ struct SettingsView: View {
         @Bindable var preferences = preferences
         NavigationStack {
             Form {
-                Section { accountCard }
+                if model.creditAccount != nil || UserDefaults.standard.bool(forKey: "demoAccount") {
+                    Section {
+                        AccountCard(summary: model.accountSummary) { showCredits = true }
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                    }
+                } else {
+                    Section { accountCard }
+                }
 
                 Section("settings.general") {
                     Picker(selection: $preferences.language) {
@@ -474,6 +483,7 @@ struct SettingsView: View {
             // The navigation bar caches its title; rebuild it when the language changes.
             .id(preferences.language)
             .navigationTitle("settings.title")
+            .navigationDestination(isPresented: $showCredits) { CreditsView() }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("common.done") { dismiss() } } }
             .confirmationDialog("settings.signOut.confirm", isPresented: $confirmSignOut, titleVisibility: .visible) {
@@ -681,5 +691,176 @@ final class GitHubStars {
               let count = body["stargazers_count"] as? Int else { return }
         counts[repo.path] = count
         UserDefaults.standard.set(["n": count, "at": Date().timeIntervalSince1970], forKey: key(repo))
+    }
+}
+
+
+/// What the account card shows. Only the name is always known; the rest arrives with Lynxce's member
+/// profile (avatar, tier, masked id, renewal date, and the balance split into expiring and permanent
+/// credits) and is left out until then.
+struct AccountSummary: Equatable {
+    var name: String
+    var avatarURL: URL?
+    var tier: String?
+    /// Masked Lynxce id, e.g. "138****6021".
+    var accountHint: String?
+    var memberUntil: Date?
+    var credits: Double?
+    var expiring: Double?
+    var expiringOn: Date?
+    var permanent: Double?
+
+    /// Sample data for design screenshots (`-demoAccount YES`, debug builds only).
+    static let demo = AccountSummary(
+        name: "Alison", tier: L("account.demoTier"), accountHint: "138****6021",
+        memberUntil: Calendar.current.date(from: DateComponents(year: 2026, month: 12, day: 31)),
+        credits: 4_440_164, expiring: 2_300,
+        expiringOn: Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 30)),
+        permanent: 4_437_864
+    )
+}
+
+/// The Lynxce account at the top of Settings, like the desktop's card-style account menu: avatar with
+/// the Lynxce mark, tier, masked id and renewal date, then the balance with what expires and what stays.
+/// iOS has no 个人中心 entry and never points to the website (App Store 3.1.1); the card opens 积分 in the app.
+struct AccountCard: View {
+    let summary: AccountSummary
+    var openCredits: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                LynxceAvatar(name: summary.name, url: summary.avatarURL, size: 52)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(verbatim: summary.name).font(.headline).lineLimit(1)
+                        if let tier = summary.tier { TierBadge(title: tier) }
+                    }
+                    if let line = idLine {
+                        Text(verbatim: line).font(.caption).foregroundStyle(Palette.secondary).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            if let credits = summary.credits {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(verbatim: LynxceBackend.formatCredits(credits))
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                        Text("credits.unit").font(.subheadline).foregroundStyle(Palette.secondary)
+                    }
+                    HStack(spacing: 14) {
+                        if let expiring = summary.expiring, expiring > 0 {
+                            Text(verbatim: expiringLine(expiring)).foregroundStyle(.orange)
+                        }
+                        if let permanent = summary.permanent {
+                            Text(verbatim: L("account.permanent %@", LynxceBackend.formatCredits(permanent)))
+                                .foregroundStyle(Palette.secondary)
+                        }
+                    }
+                    .font(.caption)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                }
+            }
+            if let openCredits {
+                Button(action: openCredits) {
+                    HStack {
+                        Text("account.creditsAndUsage").font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .background(Palette.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .foregroundStyle(Palette.text)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("accountCredits")
+            }
+        }
+        .padding(16)
+        .background(
+            LinearGradient(
+                colors: [Palette.brand.opacity(0.16), Color.purple.opacity(0.06)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Palette.brand.opacity(0.22), lineWidth: 1))
+    }
+
+    private var idLine: String? {
+        let until = summary.memberUntil.map { L("account.until %@", Self.day.string(from: $0)) }
+        let id = summary.accountHint.map { L("account.lynxceId %@", $0) }
+        let parts = [id, until].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private func expiringLine(_ credits: Double) -> String {
+        let amount = LynxceBackend.formatCredits(credits)
+        guard let on = summary.expiringOn else { return L("account.expiring %@", amount) }
+        return L("account.expiringOn %@ %@", amount, Self.day.string(from: on))
+    }
+
+    private static let day: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("MMdd")
+        return formatter
+    }()
+}
+
+/// The Lynxce avatar (or the name's first letter on rose) with the small Lynxce mark.
+struct LynxceAvatar: View {
+    let name: String
+    let url: URL?
+    var size: CGFloat = 52
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Group {
+                if let url {
+                    AsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        initial
+                    }
+                } else {
+                    initial
+                }
+            }
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+            VendorLogo(company: "lynxce", size: size * 0.36)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Palette.background, lineWidth: 2))
+                .offset(x: 3, y: 3)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var initial: some View {
+        ZStack {
+            LinearGradient(colors: [Palette.brandButtonTop, Palette.brandButtonBottom], startPoint: .top, endPoint: .bottom)
+            Text(verbatim: String(name.prefix(1)).uppercased())
+                .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+        }
+    }
+}
+
+/// The member tier, gold like the desktop's badge.
+struct TierBadge: View {
+    let title: String
+
+    var body: some View {
+        Text(verbatim: title)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(Color(red: 0.55, green: 0.35, blue: 0.02))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Color(red: 1, green: 0.86, blue: 0.5), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .lineLimit(1)
     }
 }

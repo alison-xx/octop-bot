@@ -124,6 +124,15 @@ final class AppModel {
         return isCloud ? "cloud.fill" : "server.rack"
     }
 
+    /// The account card in Settings. Tier, avatar and the expiring/permanent split come with Lynxce's
+    /// member profile; until then only the name and balance are known.
+    var accountSummary: AccountSummary {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "demoAccount") { return .demo }
+        #endif
+        return AccountSummary(name: accountName, credits: credits)
+    }
+
     var credits: Double? {
         if case .value(let credits) = balance { return credits }
         return nil

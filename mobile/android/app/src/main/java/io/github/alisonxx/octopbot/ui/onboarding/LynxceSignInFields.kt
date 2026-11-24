@@ -61,6 +61,9 @@ class LynxceSignInState(
     /** Read at call time, so the code field can auto-submit from inside onValueChange. */
     val canSubmit get() = if (useCode) target != null && LynxceProtocol.isValidCode(code) else account.isNotBlank() && password.isNotEmpty()
 
+    /** Signing in with something missing points at the account field first, then the code or password. */
+    val accountMissing get() = if (useCode) target == null else account.isBlank()
+
     /** A rejected code is cleared so typing the next one auto-submits again. */
     fun signInFailed(error: Throwable) {
         info = null

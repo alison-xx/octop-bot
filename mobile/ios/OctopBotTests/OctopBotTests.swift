@@ -118,6 +118,23 @@ final class LynxceCodeLoginTests: XCTestCase {
         XCTAssertFalse(LynxceBackend.CodeTarget("13800138000")!.isEmail)
     }
 
+    func testSignInPointsAtTheAccountFirstThenTheCodeOrPassword() {
+        XCTAssertEqual(OnboardingView.missingField(account: "  ", usePassword: false), .account)
+        XCTAssertEqual(OnboardingView.missingField(account: "138 0013 8000", usePassword: false), .code)
+        XCTAssertEqual(OnboardingView.missingField(account: "a@b.cn", usePassword: false), .code)
+        XCTAssertEqual(OnboardingView.missingField(account: " ", usePassword: true), .account)
+        XCTAssertEqual(OnboardingView.missingField(account: "alice", usePassword: true), .password)
+    }
+
+    func testARealAccountCardShowsOnlyTheTotalUntilTheMemberProfileComes() {
+        let card = AccountSummary(name: "alice", credits: 120)
+        XCTAssertNil(card.tier)
+        XCTAssertNil(card.accountHint)
+        XCTAssertNil(card.expiring)
+        XCTAssertNil(card.permanent)
+        XCTAssertEqual(card.credits, 120)
+    }
+
     func testCodeMustBeSixDigits() {
         XCTAssertTrue(LynxceBackend.isCode("012345"))
         XCTAssertFalse(LynxceBackend.isCode("12345"))
