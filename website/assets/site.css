@@ -327,6 +327,7 @@ p {
   font-weight: 700;
   font-size: 17px;
   letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 .brand img {
   width: 30px;
@@ -339,6 +340,7 @@ p {
 }
 .nav a {
   padding: 8px 14px;
+  white-space: nowrap;
   border-radius: 999px;
   font-size: 14px;
   font-weight: 500;
@@ -439,6 +441,7 @@ p {
   font-size: 13px;
   font-weight: 650;
   letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 .menu-btn {
   display: none;
@@ -1602,10 +1605,8 @@ dialog.modal.light {
     grid-column: 1 / -1;
   }
 }
-@media (max-width: 860px) {
-  :root {
-    --gutter: 16px;
-  }
+/* Header switches to the menu button before the nav runs out of room (English needs ~1150px). */
+@media (max-width: 1180px) {
   .nav,
   .header .btn {
     display: none;
@@ -1658,6 +1659,11 @@ dialog.modal.light {
   .mobile-nav .btn {
     display: inline-flex;
     margin-top: 12px;
+  }
+}
+@media (max-width: 860px) {
+  :root {
+    --gutter: 16px;
   }
   .steps,
   .platforms,
