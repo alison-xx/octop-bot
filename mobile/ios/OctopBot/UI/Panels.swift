@@ -265,6 +265,15 @@ struct SettingsView: View {
     @State private var stars = GitHubStars.shared
     @State private var showCredits = false
 
+    /// Design screenshots only (`-demoAccount YES`); release builds never show the sample card.
+    private static var demoAccount: Bool {
+        #if DEBUG
+        UserDefaults.standard.bool(forKey: "demoAccount")
+        #else
+        false
+        #endif
+    }
+
     private var version: String {
         let info = Bundle.main.infoDictionary ?? [:]
         let short = info["CFBundleShortVersionString"] as? String ?? "0"
@@ -277,7 +286,7 @@ struct SettingsView: View {
         @Bindable var preferences = preferences
         NavigationStack {
             Form {
-                if model.creditAccount != nil || UserDefaults.standard.bool(forKey: "demoAccount") {
+                if model.creditAccount != nil || Self.demoAccount {
                     Section {
                         AccountCard(summary: model.accountSummary) { showCredits = true }
                             .listRowInsets(EdgeInsets())
@@ -702,7 +711,7 @@ struct AccountSummary: Equatable {
     var name: String
     var avatarURL: URL?
     var tier: String?
-    /// Masked Lynxce id, e.g. "138****6021".
+    /// Masked Lynxce id, e.g. "138****0000".
     var accountHint: String?
     var memberUntil: Date?
     var credits: Double?
@@ -712,7 +721,7 @@ struct AccountSummary: Equatable {
 
     /// Sample data for design screenshots (`-demoAccount YES`, debug builds only).
     static let demo = AccountSummary(
-        name: "Alison", tier: L("account.demoTier"), accountHint: "138****6021",
+        name: "Octo", tier: L("account.demoTier"), accountHint: "138****0000",
         memberUntil: Calendar.current.date(from: DateComponents(year: 2026, month: 12, day: 31)),
         credits: 4_440_164, expiring: 2_300,
         expiringOn: Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 30)),

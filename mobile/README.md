@@ -102,9 +102,12 @@ Grok-style: dark-first, chat-first, one big character.
 - **Settings.** A grouped list, top to bottom:
   - *Account card* (not a row). Signed in to Lynxce: avatar, account name, membership tier and
     Lynxce id, the balance in large type with the part that expires (and when) and the permanent part,
-    and "Credits and usage". Until Lynxce's member profile arrives only the name and total show. Android
-    then adds renew/join and top-up buttons and a 个人中心 link that open the website; iOS has no 个人中心 entry and never mentions the website (App Store 3.1.1). Otherwise: Chief
-    character 56 pt, account name and connection line ("this phone" or the server's host:port).
+    and "Credits and usage". Until Lynxce's member profile arrives only the name and total show.
+    Android adds renew/join and top-up buttons that open the website's pricing page (top-up opens its
+    packs, `#credits`); its 个人中心 link stays hidden until the website's account centre is live
+    (`ACCOUNT_CENTRE_OPEN`). iOS has no 个人中心 entry and never mentions the website (App Store 3.1.1).
+    Otherwise: Chief character 56 pt, account name and connection line ("this phone" or the server's
+    host:port).
   - *General*: language (follow system / 简体中文 / English — switches live, also drives
     `Accept-Language` and speech recognition), appearance (follow system / dark / light), chat text
     size (small / standard / large = 0.9 / 1.0 / 1.15 × body), haptics (on by default).

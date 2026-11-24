@@ -46,6 +46,9 @@ import java.time.format.DateTimeFormatter
 const val PRICING_URL = "https://octop-bot.lynxce.cn/pricing.html"
 const val ACCOUNT_URL = "https://octop-bot.lynxce.cn/account.html"
 
+/** The website's account centre is not live yet; its link stays hidden until it is. */
+const val ACCOUNT_CENTRE_OPEN = false
+
 /**
  * What the account card shows. Only the name is always known; the rest comes with Lynxce's member profile (avatar,
  * tier, masked id, renewal date, and the balance split into expiring and permanent credits) and is left out until then.
@@ -53,7 +56,7 @@ const val ACCOUNT_URL = "https://octop-bot.lynxce.cn/account.html"
 data class AccountSummary(
     val name: String,
     val tier: String? = null,
-    /** Masked Lynxce id, e.g. "138****6021". */
+    /** Masked Lynxce id, e.g. "138****0000". */
     val accountHint: String? = null,
     val memberUntil: LocalDate? = null,
     val credits: Double? = null,
@@ -63,20 +66,14 @@ data class AccountSummary(
 ) {
     val member get() = tier != null
 
-    /**
-     * Lynxce's member profile has loaded (it carries the masked id). Membership, top-up and account-centre links to the
-     * website wait for it; until then the card shows the name and total, and top-ups stay in 积分与用量.
-     */
-    val hasProfile get() = accountHint != null
-
     companion object {
         /** Sample data for design screenshots; debug builds only, set in the `octop.debug` preferences. */
         fun demo(context: Context): AccountSummary? {
             if (!BuildConfig.DEBUG || !context.getSharedPreferences("octop.debug", Context.MODE_PRIVATE).getBoolean("demoAccount", false)) return null
             return AccountSummary(
-                name = "Alison",
+                name = "Octo",
                 tier = context.getString(R.string.account_demo_tier),
-                accountHint = "138****6021",
+                accountHint = "138****0000",
                 memberUntil = LocalDate.of(2026, 12, 31),
                 credits = 4_440_164.0,
                 expiring = 2_300.0,
@@ -163,7 +160,7 @@ fun MemberCard(summary: AccountSummary, onCredits: () -> Unit, onOpen: (String) 
                     }
                 }
             }
-            if (summary.hasProfile) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
                     Modifier
                         .weight(1f)
@@ -194,7 +191,7 @@ fun MemberCard(summary: AccountSummary, onCredits: () -> Unit, onOpen: (String) 
             }
         }
         CardLink(stringResource(R.string.account_credits_usage), stringResource(R.string.account_credits_usage_detail), external = false, onClick = onCredits)
-        if (summary.hasProfile) {
+        if (ACCOUNT_CENTRE_OPEN) {
             CardLink(stringResource(R.string.account_centre), stringResource(R.string.account_centre_detail), external = true) { onOpen(ACCOUNT_URL) }
         }
     }

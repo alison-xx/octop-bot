@@ -36,13 +36,13 @@ class SignInAndAccountTest {
     }
 
     @Test
-    fun aRealAccountShowsTheTotalAndNoWebsiteLinksUntilTheMemberProfileComes() {
+    fun aRealAccountShowsOnlyTheTotalUntilTheMemberProfileComes() {
         val card = AccountSummary("alice", credits = 120.0)
         assertFalse(card.member)
-        assertFalse(card.hasProfile)
+        assertNull(card.accountHint)
         assertNull(card.expiring)
         assertNull(card.permanent)
         assertEquals(120.0, card.credits!!, 0.0)
-        assertTrue(card.copy(accountHint = "138****8000").hasProfile)
+        assertTrue(card.copy(tier = "Plus").member)
     }
 }
