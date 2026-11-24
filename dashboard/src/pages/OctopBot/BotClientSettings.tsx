@@ -1,16 +1,12 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Radio, Select, Spin } from "antd";
+import { Alert, Button, Select, Spin } from "antd";
 import {
   ArrowLeft,
-  ArrowRight,
   Blocks,
   BookOpen,
-  Cloud,
   Cpu,
   FolderLock,
-  Link2,
   LogOut,
-  Plus,
   SlidersHorizontal,
   UserRound,
 } from "lucide-react";
@@ -37,21 +33,9 @@ import {
 } from "../../utils/botClientRoute";
 import { apiErrorMessage } from "../../utils/apiError";
 import ModelsPage from "../Settings/Models";
-import {
-  isEmbeddingProvider,
-  useProviders,
-} from "../Settings/Models/useProviders";
-import {
-  CustomProviderModal,
-  LocalServiceCard,
-  PresetProviderModal,
-  ProviderConfigModal,
-} from "../Settings/Models/components";
-import {
-  findConfiguredProvider,
-  isLocalPreset,
-} from "../Settings/Models/presetUtils";
-import { BotCharacter, octopCharacter } from "./BotCharacter";
+import { useProviders } from "../Settings/Models/useProviders";
+import { LocalServiceCard } from "../Settings/Models/components";
+import { findConfiguredProvider } from "../Settings/Models/presetUtils";
 import {
   botAccountName,
   LANGUAGES,
@@ -65,148 +49,43 @@ import { accountInitials } from "../Chat/utils/accountDisplayName";
 import styles from "./index.module.less";
 import settings from "./BotClientSettings.module.less";
 import ModelName from "./ModelName";
+import OwnKeysSection from "./OwnKeysSection";
+import type { OwnKeyList } from "../../api/modules/ownModelKeys";
+import sourcesUi from "./modelSources.module.less";
 
-type ModelSource = "lynxce" | "cloud" | "custom" | "local";
 type SettingsTab = "models" | "general" | "account";
 
-function ConnectionForm({
-  mode,
-  noModels,
-  onSaved,
-}: {
-  mode: Exclude<ModelSource, "lynxce">;
-  noModels: boolean;
-  onSaved: () => void;
-}) {
+/** This computer's Ollama, through the existing service card (install, start, models). */
+function LocalModels({ onSaved }: { onSaved: () => void }) {
   const { t } = useTranslation();
   const { presets, providers, fetchAll, error, loading } = useProviders();
-  const [choice, setChoice] = useState("");
-  const [edit, setEdit] = useState(false);
   const refresh = async () => {
     await fetchAll();
     onSaved();
   };
-  const options = presets.filter(
-    (p) =>
-      p.purpose !== "embedding" &&
-      p.provider_variant !== "embedding" &&
-      !isLocalPreset(p),
-  );
-  const selected =
-    options.find((p) => p.id === choice) ??
-    options.find((p) => findConfiguredProvider(p, providers));
-  const existing = selected
-    ? findConfiguredProvider(selected, providers)
-    : null;
   const ollama = presets.find((p) => p.id === "ollama");
-  return (
-    <div className={settings.form}>
-      {noModels && providers.some((p) => !isEmbeddingProvider(p)) && !error && (
-        <Alert type="info" showIcon message={t("botClient.noEnabledModels")} />
-      )}
-      {error && (
-        <Alert
-          type="error"
-          message={error}
-          action={
-            <Button onClick={() => void fetchAll()}>
-              {t("octopBot.retry")}
-            </Button>
-          }
-        />
-      )}
-      {loading ? (
-        <Spin />
-      ) : (
-        !error && (
-          <>
-            {mode === "cloud" && options.length === 0 && (
-              <Alert
-                type="info"
-                message={t("botClient.presetsUnavailable")}
-                action={
-                  <Button onClick={() => void fetchAll()}>
-                    {t("octopBot.retry")}
-                  </Button>
-                }
-              />
-            )}
-            {mode === "cloud" && options.length > 0 && (
-              <>
-                <label htmlFor="bot-provider">{t("botClient.provider")}</label>
-                <Select
-                  id="bot-provider"
-                  showSearch
-                  optionFilterProp="label"
-                  placeholder={t("botClient.chooseProvider")}
-                  value={selected?.id}
-                  onChange={setChoice}
-                  options={options.map((p) => ({ label: p.name, value: p.id }))}
-                />
-                <Button
-                  block
-                  type="primary"
-                  disabled={!selected}
-                  onClick={() => setEdit(true)}
-                >
-                  {t("botClient.credentials")}
-                  <ArrowRight size={15} />
-                </Button>
-              </>
-            )}
-            {mode === "custom" && (
-              <>
-                <p>{t("botClient.customHint")}</p>
-                <Button block type="primary" onClick={() => setEdit(true)}>
-                  {t("botClient.customAction")}
-                  <ArrowRight size={15} />
-                </Button>
-              </>
-            )}
-            {mode === "local" &&
-              (ollama ? (
-                <LocalServiceCard
-                  preset={ollama}
-                  provider={findConfiguredProvider(ollama, providers) ?? null}
-                  onSaved={refresh}
-                  isHover={false}
-                  onMouseEnter={() => {}}
-                  onMouseLeave={() => {}}
-                />
-              ) : (
-                <p>{t("botClient.localUnavailable")}</p>
-              ))}
-          </>
-        )
-      )}
-      {edit &&
-        mode === "cloud" &&
-        selected &&
-        (existing ? (
-          <ProviderConfigModal
-            open
-            provider={existing}
-            apiPrefix="/admin/providers"
-            onClose={() => setEdit(false)}
-            onSaved={refresh}
-          />
-        ) : (
-          <PresetProviderModal
-            open
-            preset={selected}
-            onClose={() => setEdit(false)}
-            onSaved={refresh}
-          />
-        ))}
-      {edit && mode === "custom" && (
-        <CustomProviderModal
-          open
-          apiPrefix="/admin/providers"
-          onClose={() => setEdit(false)}
-          onSaved={refresh}
-        />
-      )}
-    </div>
+  if (loading) return <Spin />;
+  if (error)
+    return (
+      <Alert
+        type="error"
+        message={error}
+        action={
+          <Button onClick={() => void fetchAll()}>{t("octopBot.retry")}</Button>
+        }
+      />
+    );
+  return ollama ? (
+    <LocalServiceCard
+      preset={ollama}
+      provider={findConfiguredProvider(ollama, providers) ?? null}
+      onSaved={refresh}
+      isHover={false}
+      onMouseEnter={() => {}}
+      onMouseLeave={() => {}}
+    />
+  ) : (
+    <p className={sourcesUi.note}>{t("botClient.localUnavailable")}</p>
   );
 }
 
@@ -230,16 +109,8 @@ export default function BotClientSettings() {
   const cloudEdition = useBotServerInfo()?.edition === "cloud";
   const displayName = botAccountName(user, t("botClient.account.lynxceUser"));
   const lynxceSignedIn = credits.status !== "none" && credits.status !== "idle";
-  const [source, setSource] = useState<ModelSource>(
-    location.state?.source === "other"
-      ? cloud
-        ? "cloud"
-        : local
-        ? "local"
-        : "lynxce"
-      : "lynxce",
-  );
-  const [adding, setAdding] = useState(Boolean(location.state?.source));
+  const [ownKeys, setOwnKeys] = useState<OwnKeyList | null>(null);
+  const [localOpen, setLocalOpen] = useState(false);
   const [switchError, setSwitchError] = useState("");
   const [switching, setSwitching] = useState(false);
   const refreshSource = () => {
@@ -291,18 +162,13 @@ export default function BotClientSettings() {
   }, [revision, t]);
   const personalModel =
     account.status?.connected && account.status.selected_model;
-  const ready = Boolean(personalModel || models?.length);
-  const showConnections = adding || !ready;
-  const sources = [
-    ["lynxce", "botClient.lynxce.source", UserRound],
-    ...(cloud
-      ? ([
-          ["cloud", "botClient.cloud", Cloud],
-          ["custom", "botClient.custom", Link2],
-        ] as const)
-      : []),
-    ...(local ? ([["local", "botClient.local", Cpu]] as const) : []),
-  ] as const;
+  const ownModel = ownKeys?.in_use ? ownKeys.selected_model : null;
+  // A model chosen on the account (Lynxce or one of my keys) wins over this
+  // computer's configured services until "use local models" clears it.
+  const accountModel = ownModel || personalModel || null;
+  const currentModel =
+    accountModel || (cloudEdition ? null : models?.[0]?.model ?? null);
+  const ready = cloudEdition || Boolean(accountModel || models?.length);
   const returnToChat = () =>
     navigate(back, {
       replace: true,
@@ -465,23 +331,7 @@ export default function BotClientSettings() {
                 </div>
               )}
             </div>
-          ) : cloudEdition ? (
-            <div className={settings.page}>
-              <h2>{t("botClient.availableModels")}</h2>
-              <div className={settings.group}>
-                <div className={settings.row}>
-                  <span>{t("botClient.account.cloudModels")}</span>
-                </div>
-              </div>
-              <Button type="primary" onClick={returnToChat}>
-                {t(
-                  location.state?.from
-                    ? "common.backToChat"
-                    : "botClient.startChat",
-                )}
-              </Button>
-            </div>
-          ) : web && (cloud || local) ? (
+          ) : web && !cloudEdition && (cloud || local) ? (
             <ModelsPage chatOnly onConnectionSaved={refreshBotModels} />
           ) : full ? (
             <>
@@ -512,21 +362,21 @@ export default function BotClientSettings() {
             </>
           ) : (
             <div className={styles.connectScroll}>
-              <section className={styles.connectPanel} data-bot-connect>
-                <BotCharacter
-                  look={{ ...octopCharacter, source: "character" }}
-                  badges={false}
-                  size={48}
-                />
-                <h1>
-                  {t(
-                    models === null && !personalModel
-                      ? "botClient.settings"
-                      : ready
-                      ? "botClient.availableModels"
-                      : "botClient.connectModel",
+              <div className={sourcesUi.page} data-bot-connect>
+                <header className={sourcesUi.head}>
+                  <div>
+                    <h1>
+                      {t(ready ? "botModels.title" : "botModels.setupTitle")}
+                    </h1>
+                    <p>{t(ready ? "botModels.body" : "botModels.setupBody")}</p>
+                  </div>
+                  {currentModel && (
+                    <p className={sourcesUi.current} aria-live="polite">
+                      <span>{t("botModels.current")}</span>
+                      <ModelName id={currentModel} />
+                    </p>
                   )}
-                </h1>
+                </header>
                 {error && (
                   <Alert
                     type="error"
@@ -537,62 +387,8 @@ export default function BotClientSettings() {
                     }
                   />
                 )}
-                {models === null && !error && !personalModel && <Spin />}
-                {ready && (
-                  <>
-                    <ul
-                      className={settings.models}
-                      tabIndex={
-                        !personalModel && (models?.length ?? 0) > 3
-                          ? 0
-                          : undefined
-                      }
-                      aria-label={t("botClient.availableModels")}
-                    >
-                      {personalModel ? (
-                        <li>
-                          <ModelName id={personalModel} />
-                          <small>{t("botClient.lynxce.source")}</small>
-                        </li>
-                      ) : (
-                        models?.map((m) => (
-                          <li key={JSON.stringify([m.provider_id, m.model])}>
-                            <ModelName id={m.model} name={m.name} />
-                          </li>
-                        ))
-                      )}
-                    </ul>
-                    {prefillInput && <p>{t("botClient.draftKept")}</p>}
-                    <Button type="primary" block onClick={returnToChat}>
-                      {t(
-                        back === BOT_GUIDE
-                          ? "botGuide.resume"
-                          : location.state?.from
-                          ? "common.backToChat"
-                          : "botClient.startChat",
-                      )}
-                    </Button>
-                    {!web && (
-                      <Button
-                        block
-                        icon={<Plus size={15} />}
-                        aria-expanded={adding}
-                        aria-controls="bot-connection-form"
-                        onClick={() => setAdding(!adding)}
-                      >
-                        {t(
-                          adding
-                            ? "common.cancel"
-                            : account.status?.connected
-                            ? "botClient.lynxce.manage"
-                            : "botClient.addConnection",
-                        )}
-                      </Button>
-                    )}
-                  </>
-                )}
-                {models && !ready && !error && (
-                  <p>
+                {models && !ready && !error && !cloudEdition && (
+                  <p className={sourcesUi.note}>
                     {t(
                       web
                         ? "modelConfig.promptMessageNoPermission"
@@ -600,22 +396,106 @@ export default function BotClientSettings() {
                     )}
                   </p>
                 )}
-                {!web && showConnections && (
-                  <div className={settings.form} id="bot-connection-form">
-                    {sources.length > 1 && (
-                      <Radio.Group
-                        aria-label={t("botClient.connectModel")}
-                        className={settings.sources}
-                        value={source}
-                        onChange={(e) => setSource(e.target.value)}
-                      >
-                        {sources.map(([value, label, Icon]) => (
-                          <Radio.Button key={value} value={value}>
-                            <Icon size={15} />
-                            {t(label)}
-                          </Radio.Button>
-                        ))}
-                      </Radio.Group>
+                {(cloudEdition || !web) && (
+                  <section
+                    className={sourcesUi.section}
+                    aria-labelledby="lynxce-models-title"
+                  >
+                    <div className={sourcesUi.sectionHead}>
+                      <h2 id="lynxce-models-title">
+                        {t("botModels.lynxce.title")}
+                        <span className={sourcesUi.tag}>
+                          {t("botModels.lynxce.billing")}
+                        </span>
+                      </h2>
+                    </div>
+                    <div className={sourcesUi.card}>
+                      {cloudEdition ? (
+                        <p className={sourcesUi.note}>
+                          {t("botClient.account.cloudModels")}
+                        </p>
+                      ) : (
+                        <LynxceAccount
+                          key={user?.username}
+                          owner={user?.username ?? ""}
+                          status={account.status}
+                          statusError={account.error}
+                          onReload={account.reload}
+                          onSaved={refreshSource}
+                        />
+                      )}
+                    </div>
+                  </section>
+                )}
+                <OwnKeysSection
+                  cloud={cloudEdition}
+                  revision={revision}
+                  onState={setOwnKeys}
+                  onChanged={refreshSource}
+                />
+                {!web && (local || cloud || Boolean(models?.length)) && (
+                  <section
+                    className={sourcesUi.section}
+                    aria-labelledby="local-models-title"
+                  >
+                    <div className={sourcesUi.sectionHead}>
+                      <h2 id="local-models-title">
+                        {t("botModels.local.title")}
+                        <span className={sourcesUi.tag}>
+                          {t("botModels.local.billing")}
+                        </span>
+                      </h2>
+                      {cloud && (
+                        <Button type="link" onClick={() => setFull(true)}>
+                          {t("botClient.manage")}
+                        </Button>
+                      )}
+                    </div>
+                    {local &&
+                      (localOpen ? (
+                        <LocalModels
+                          onSaved={() => void activateOtherSource()}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className={sourcesUi.emptyRow}
+                          onClick={() => setLocalOpen(true)}
+                        >
+                          <strong>{t("botModels.local.ollama")}</strong>
+                          <span>{t("botModels.local.ollamaHint")}</span>
+                        </button>
+                      ))}
+                    {Boolean(models?.length) && (
+                      <div className={sourcesUi.card}>
+                        <ul
+                          className={settings.models}
+                          tabIndex={(models?.length ?? 0) > 3 ? 0 : undefined}
+                          aria-label={t("botClient.availableModels")}
+                        >
+                          {models?.map((m) => (
+                            <li key={JSON.stringify([m.provider_id, m.model])}>
+                              <ModelName id={m.model} name={m.name} />
+                            </li>
+                          ))}
+                        </ul>
+                        {accountModel ? (
+                          <Button
+                            loading={switching}
+                            onClick={() => void activateOtherSource()}
+                          >
+                            {t("botModels.local.use")}
+                          </Button>
+                        ) : (
+                          <span className={sourcesUi.inUse}>
+                            <span
+                              aria-hidden="true"
+                              className={sourcesUi.dot}
+                            />
+                            {t("botModels.local.inUse")}
+                          </span>
+                        )}
+                      </div>
                     )}
                     {switchError && (
                       <Alert
@@ -628,53 +508,28 @@ export default function BotClientSettings() {
                         }
                       />
                     )}
-                    {source !== "lynxce" && (
-                      <>
-                        {Boolean(models?.length) && (
-                          <Button
-                            loading={switching}
-                            onClick={() => void activateOtherSource()}
-                          >
-                            {t("botClient.lynxce.useOther")}
-                          </Button>
-                        )}
-                        <ConnectionForm
-                          key={source}
-                          mode={source}
-                          noModels={!ready}
-                          onSaved={() => void activateOtherSource()}
-                        />
-                      </>
-                    )}
-                  </div>
+                  </section>
                 )}
-                {!web &&
-                  (showConnections
-                    ? source === "lynxce"
-                    : account.status?.connected) && (
-                    <LynxceAccount
-                      key={user?.username}
-                      owner={user?.username ?? ""}
-                      compact={!showConnections}
-                      status={account.status}
-                      statusError={account.error}
-                      onReload={account.reload}
-                      onSaved={refreshSource}
-                      onSwitch={
-                        models?.length ? activateOtherSource : undefined
-                      }
-                    />
+                <footer className={sourcesUi.footer}>
+                  {prefillInput && (
+                    <p className={sourcesUi.note}>{t("botClient.draftKept")}</p>
                   )}
-                {(cloud || local) && (
                   <Button
-                    type="link"
-                    size="small"
-                    onClick={() => setFull(true)}
+                    type="primary"
+                    size="large"
+                    disabled={!ready}
+                    onClick={returnToChat}
                   >
-                    {t("botClient.manage")}
+                    {t(
+                      back === BOT_GUIDE
+                        ? "botGuide.resume"
+                        : location.state?.from
+                        ? "common.backToChat"
+                        : "botClient.startChat",
+                    )}
                   </Button>
-                )}
-              </section>
+                </footer>
+              </div>
             </div>
           )}
         </div>

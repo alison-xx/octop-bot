@@ -222,8 +222,8 @@
     "startBody": "用灵策智算账号登录，每个 Bot 都有一台自己的云电脑，用积分付费；没有账号会自动注册。也可以不登录，直接在这台电脑上用。",
     "lynxceStart": "登录灵策智算",
     "or": "或",
-    "useLocal": "本机使用，不登录",
-    "useLocalHint": "Bot 用这台电脑干活，数据只存在本机。以后随时可以在账户菜单里登录灵策智算。",
+    "useLocal": "本机使用，不登录：自己配置模型",
+    "useLocalHint": "用本地 Ollama，或者腾讯云、阿里云百炼、DeepSeek 等厂商的 API Key。数据只存在这台电脑，以后随时可以登录灵策智算。",
     "localFailed": "没能进入本机账户，请重试。",
     "loginLegacyBody": "这台 Octop Bot 以前用本地密码登录，现在改用灵策智算账号。第一次登录时再输入一次原来的密码，绑定后就只用灵策账号。",
     "legacyPassword": "原来的本地登录密码（只需输入这一次）",
@@ -8909,5 +8909,87 @@
     "limitTitle": "今天的额度用完了",
     "limitBody": "为防止意外消耗，灵策给 Octop Bot 设了每日用量上限，今天已经用完。北京时间早上 8 点自动恢复，到时点「继续」就接着做。",
     "limitLink": "急用的话，可以在灵策账户中心调高上限："
+  },
+  "botStart": {
+    "heroTitle": "一支随叫随到的 AI 团队",
+    "featureComputer": "每个 Bot 一台云电脑，关机后照样干活",
+    "featureDevices": "电脑、手机、网页，同一个团队",
+    "featureModels": "灵策模型、你的 API Key、本地模型，随你选",
+    "lynxceAccount": "灵策智算账号",
+    "recommended": "推荐"
+  },
+  "botModels": {
+    "title": "模型",
+    "body": "Bot 默认用这里选中的模型。灵策模型按积分计费，自己的 API Key 由厂商直接收费，本地模型免费。",
+    "setupTitle": "选择 Bot 用的模型",
+    "setupBody": "登录灵策智算直接用，或者填自己的 API Key、用这台电脑上的本地模型。之后随时可以在这里更换。",
+    "current": "正在使用",
+    "lynxce": {
+      "title": "灵策智算",
+      "billing": "积分"
+    },
+    "keys": {
+      "title": "我的 API Key",
+      "billing": "厂商直接收费",
+      "add": "添加",
+      "emptyTitle": "添加一个 API Key",
+      "emptyBody": "腾讯云、阿里云百炼、火山方舟、DeepSeek、智谱、Kimi 等厂商都可以。",
+      "models": "{{count}} 个模型",
+      "use": "用 {{name}} 的模型",
+      "usePlaceholder": "选择模型使用",
+      "removeConfirm": "删除这个 API Key？正在用它的 Bot 会改回默认模型。",
+      "remove": "删除",
+      "removeNamed": "删除 {{name}}"
+    },
+    "local": {
+      "title": "本地模型",
+      "billing": "免费 · 在这台电脑上运行",
+      "ollama": "Ollama",
+      "ollamaHint": "在这台电脑上运行开源模型，免费，数据不出电脑。",
+      "use": "改用这台电脑上的模型",
+      "inUse": "正在使用"
+    },
+    "company": {
+      "tencent": "腾讯云",
+      "aliyun": "阿里云百炼",
+      "volcengine": "火山方舟",
+      "deepseek": "DeepSeek",
+      "zhipu": "智谱",
+      "kimi": "Kimi",
+      "minimax": "MiniMax",
+      "siliconflow": "硅基流动",
+      "openai": "OpenAI",
+      "anthropic": "Anthropic",
+      "gemini": "Google Gemini",
+      "openrouter": "OpenRouter",
+      "modelscope": "魔搭 ModelScope",
+      "groq": "Groq",
+      "mimo": "小米 MiMo",
+      "iflytek": "讯飞星火",
+      "opencode": "OpenCode"
+    },
+    "add": {
+      "title": "添加 API Key",
+      "doneTitle": "已添加",
+      "customTitle": "其他 OpenAI 兼容接口",
+      "vendorTitle": "添加 {{name}}",
+      "back": "换个厂商",
+      "hintCloud": "选择模型厂商。Key 加密保存在你的 Octop Bot 云端账号里，模型费用由厂商直接收取。",
+      "hintLocal": "选择模型厂商。Key 加密保存在这台电脑上，模型费用由厂商直接收取。",
+      "more": "更多厂商（{{count}}）",
+      "custom": "其他 OpenAI 兼容接口",
+      "plan": "套餐",
+      "baseUrl": "接口地址",
+      "name": "名称（可选）",
+      "keptCloud": "Key 加密保存在你的云端账号里，之后只显示末四位。",
+      "keptLocal": "Key 加密保存在这台电脑上，之后只显示末四位。",
+      "endpoint": "接口地址",
+      "getKey": "去获取 Key",
+      "verify": "验证并保存",
+      "found": "连接成功，找到 {{count}} 个模型",
+      "chooseModel": "选择要用的模型",
+      "later": "稍后再选",
+      "useModel": "使用这个模型"
+    }
   }
 }

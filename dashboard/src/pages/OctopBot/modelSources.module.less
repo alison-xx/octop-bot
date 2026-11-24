@@ -1,0 +1,284 @@
+// Settings → Models: Lynxce, my API keys, local models (design: "Octop Bot 登录与模型设置").
+.page {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 28px 24px 48px;
+  display: grid;
+  gap: 22px;
+}
+.head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  h1 {
+    margin: 0;
+    font-size: 24px;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+  }
+  p {
+    margin: 6px 0 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--fn-text-secondary);
+  }
+}
+.current {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--fn-border);
+  border-radius: 10px;
+  background: var(--fn-bg-container);
+  font-size: 13px;
+  max-width: 100%;
+  > span:first-child {
+    color: var(--fn-text-secondary);
+  }
+}
+.section {
+  display: grid;
+  gap: 10px;
+}
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+.tag {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--fn-text-secondary);
+  background: var(--fn-bg-tertiary);
+}
+.card {
+  padding: 16px 18px;
+  border: 1px solid var(--fn-border);
+  border-radius: 14px;
+  background: var(--fn-bg-container);
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--fn-border);
+  border-radius: 14px;
+  background: var(--fn-bg-container);
+  overflow: hidden;
+  li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px 12px 18px;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  li + li {
+    border-top: 1px solid var(--fn-border);
+  }
+}
+.rowText {
+  flex: 1 1 200px;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  strong {
+    font-size: 14px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  small {
+    font-size: 12px;
+    color: var(--fn-text-secondary);
+    overflow-wrap: anywhere;
+  }
+}
+.inUse {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fn-color-success);
+  min-width: 0;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.useSelect {
+  min-width: 150px;
+}
+.emptyRow {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  text-align: start;
+  border: 1px dashed var(--fn-border-input, var(--fn-border));
+  border-radius: 14px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  strong {
+    font-size: 14px;
+  }
+  span {
+    font-size: 13px;
+    color: var(--fn-text-secondary);
+  }
+  &:hover {
+    background: var(--fn-bg-container);
+  }
+}
+.note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--fn-text-secondary);
+}
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.logo {
+  flex: none;
+  border-radius: 8px;
+  object-fit: contain;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--fn-text-secondary);
+  background: var(--fn-bg-tertiary);
+}
+
+// Add-key dialog
+.dialogTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.muted {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--fn-text-secondary);
+  code {
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+  a {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+}
+.pick {
+  display: grid;
+  gap: 12px;
+}
+.vendorGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (max-width: 560px) {
+  .vendorGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.vendorTile {
+  min-height: 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 6px;
+  border: 1px solid var(--fn-border);
+  border-radius: 12px;
+  background: var(--fn-bg-container);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+  &:hover,
+  &:focus-visible {
+    border-color: var(--fn-text-primary);
+  }
+  span {
+    overflow-wrap: anywhere;
+  }
+}
+.customTile {
+  min-height: 52px;
+  flex-direction: row;
+  border-style: dashed;
+  background: transparent;
+}
+.keyForm {
+  display: grid;
+  gap: 6px;
+  label {
+    margin-top: 6px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+}
+.success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--fn-color-success);
+  background: var(--fn-bg-success-light);
+}
+.modelChoices {
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}

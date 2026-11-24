@@ -8,6 +8,10 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  ownModelKeysApi,
+  type OwnKeyList,
+} from "../../api/modules/ownModelKeys";
 import { lynxceBotApi, type LynxceStatus } from "../../api/modules/lynxceBot";
 import { lynxceWalletApi } from "../../api/modules/lynxceWallet";
 import { providerApi } from "../../api/modules/provider";
@@ -44,7 +48,9 @@ vi.mock("../Settings/Models/components", () => ({
       Save connection
     </button>
   ),
-  LocalServiceCard: () => null,
+  LocalServiceCard: ({ onSaved }: { onSaved: () => Promise<void> }) => (
+    <button onClick={() => void onSaved()}>Save local model</button>
+  ),
   PresetProviderModal: () => null,
   ProviderConfigModal: () => null,
 }));
@@ -66,6 +72,15 @@ vi.mock("../../api/modules/lynxceBot", () => ({
 }));
 vi.mock("../../api/modules/provider", () => ({
   providerApi: { listResolvedModels: vi.fn() },
+}));
+vi.mock("../../api/modules/ownModelKeys", () => ({
+  ownModelKeysApi: {
+    list: vi.fn(),
+    vendors: vi.fn(),
+    add: vi.fn(),
+    remove: vi.fn(),
+    useModel: vi.fn(),
+  },
 }));
 
 const model = {
@@ -103,6 +118,11 @@ function openSettings(from?: string) {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(ownModelKeysApi.list).mockResolvedValue({
+    keys: [],
+    in_use: null,
+    selected_model: null,
+  });
   vi.spyOn(lynxceWalletApi, "balance").mockResolvedValue({
     source: "model",
     connection_id: "grant-a",
@@ -121,7 +141,7 @@ beforeEach(() => {
   mocks.role = "admin";
   vi.mocked(providerApi.listResolvedModels).mockResolvedValue([model]);
   mocks.config.mockReturnValue({
-    presets: [],
+    presets: [{ id: "ollama", name: "Ollama" }],
     providers: [],
     loading: false,
     error: null,
@@ -250,22 +270,16 @@ describe("standalone chat model settings", () => {
     open.mockRestore();
     checkout.mockRestore();
   });
-  it("shows the model by name without the serving channel, expands connection controls on demand, and returns the selected prompt to its original thread", async () => {
+  it("shows the model by name without the serving channel and returns the selected prompt to its original thread", async () => {
     openSettings(thread);
     const list = await screen.findByRole("list", {
       name: "botClient.availableModels",
     });
     expect(within(list).getByText("Draft v2")).toBeInTheDocument();
     expect(within(list).queryByText("Studio")).not.toBeInTheDocument();
+    // This computer's services stay folded until asked for: no admin fetch.
     expect(mocks.config).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole("button", { name: "botClient.addConnection" }),
-    );
-    expect(
-      screen.getByRole("radio", { name: "botClient.custom" }),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "common.cancel" }));
-    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.getByText("botModels.local.inUse")).toBeInTheDocument();
     expect(screen.getByText("botClient.draftKept")).toBeInTheDocument();
     fireEvent.click(
       screen.getAllByRole("button", { name: "common.backToChat" }).at(-1)!,
@@ -287,42 +301,29 @@ describe("standalone chat model settings", () => {
       await screen.findByText("botClient.connectHint"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("radio", { name: "botClient.local" }),
+      screen.getByRole("heading", { name: "botModels.setupTitle" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /botModels.local.ollama/ }),
     ).toBeInTheDocument();
   });
 
-  it("refreshes the available list after the configuration dialog reports a successful save", async () => {
+  it("refreshes the available list after the local model card reports a successful save", async () => {
     vi.mocked(providerApi.listResolvedModels).mockResolvedValueOnce([]);
     openSettings(thread);
     fireEvent.click(
-      await screen.findByRole("radio", { name: "botClient.custom" }),
+      await screen.findByRole("button", { name: /botModels.local.ollama/ }),
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "botClient.customAction" }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save local model" }));
     expect(await screen.findByText("Draft v2")).toBeInTheDocument();
-    expect(screen.queryByRole("radio")).toBeNull();
     expect(screen.getByText("botClient.draftKept")).toBeInTheDocument();
   });
 
-  it("points to the model catalog when a configured service exposes no enabled chat models", async () => {
-    vi.mocked(providerApi.listResolvedModels).mockResolvedValueOnce([]);
-    mocks.config.mockReturnValue({
-      providers: [{ name: "Studio", models: [] }],
-      presets: [],
-      loading: false,
-      error: null,
-      fetchAll: vi.fn(),
-    });
+  it("opens the full model catalog from this computer's models", async () => {
     openSettings();
     fireEvent.click(
-      await screen.findByRole("radio", { name: "botClient.cloud" }),
+      await screen.findByRole("button", { name: "botClient.manage" }),
     );
-    expect(
-      await screen.findByText("botClient.noEnabledModels"),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "botClient.manage" }));
     expect(
       screen.getByRole("heading", { name: "Catalog" }),
     ).toBeInTheDocument();
@@ -338,7 +339,7 @@ describe("standalone chat model settings", () => {
       screen.queryByText("modelConfig.promptMessageNoPermission"),
     ).toBeNull();
   });
-  it("opens the browser once, reuses the pending link after switching tabs, and cancels a late authorization reply", async () => {
+  it("opens the browser once, keeps the pending link, and cancels a late authorization reply", async () => {
     vi.mocked(providerApi.listResolvedModels).mockResolvedValue([]);
     const attempt = {
       attempt_id: "abc",
@@ -374,10 +375,6 @@ describe("standalone chat model settings", () => {
       attempt.authorization_url,
       "_blank",
       "noopener,noreferrer",
-    );
-    fireEvent.click(screen.getByRole("radio", { name: "botClient.custom" }));
-    fireEvent.click(
-      screen.getByRole("radio", { name: "botClient.lynxce.source" }),
     );
     expect(
       await screen.findByRole("link", { name: "botClient.lynxce.reopen" }),
@@ -427,11 +424,8 @@ describe("standalone chat model settings", () => {
     );
     expect(lynxceBotApi.select).toHaveBeenCalledWith("upstream-v2");
     expect(
-      await screen.findByRole("list", { name: "botClient.availableModels" }),
+      (await screen.findByText("botModels.current")).parentElement,
     ).toHaveTextContent("Upstream V2");
-    fireEvent.click(
-      screen.getByRole("button", { name: "botClient.lynxce.manage" }),
-    );
     vi.mocked(lynxceBotApi.models).mockResolvedValue({
       models: [
         { id: "upstream-v2", name: "Writer" },
@@ -448,30 +442,29 @@ describe("standalone chat model settings", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "botClient.lynxce.apply" }),
     );
-    expect(
-      await screen.findByRole("list", { name: "botClient.availableModels" }),
-    ).toHaveTextContent("Rapid");
+    await waitFor(() =>
+      expect(
+        screen.getByText("botModels.current").parentElement,
+      ).toHaveTextContent("Rapid"),
+    );
     fireEvent.click(
       screen.getByRole("button", { name: "botClient.lynxce.logout" }),
     );
     expect(
       await screen.findByRole("button", { name: "botClient.lynxce.login" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.queryByText("botModels.current")).toBeNull();
     expect(mocks.config).not.toHaveBeenCalled();
     opened.mockRestore();
   });
 
-  it("recovers from an empty catalog and only clears the selected source after an explicit switch or successful provider save", async () => {
+  it("recovers from an empty catalog and only clears the account's model after an explicit switch or successful local save", async () => {
     let status: LynxceStatus = { connected: true, selected_model: "personal" };
     vi.mocked(lynxceBotApi.status).mockImplementation(async () => status);
     vi.mocked(lynxceBotApi.clearModel).mockImplementation(async () => {
       status = { ...status, selected_model: null };
     });
     openSettings();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "botClient.lynxce.manage" }),
-    );
     await screen.findByText("botClient.lynxce.empty");
     vi.mocked(lynxceBotApi.models).mockResolvedValue({
       models: [{ name: "Writer", id: "personal" }],
@@ -480,19 +473,18 @@ describe("standalone chat model settings", () => {
       screen.getByRole("button", { name: "botClient.lynxce.refresh" }),
     );
     await screen.findByRole("button", { name: "botClient.lynxce.inUse" });
-    fireEvent.click(screen.getByRole("radio", { name: "botClient.custom" }));
-    expect(lynxceBotApi.clearModel).not.toHaveBeenCalled();
     fireEvent.click(
-      screen.getByRole("button", { name: "botClient.customAction" }),
+      screen.getByRole("button", { name: /botModels.local.ollama/ }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
+    expect(lynxceBotApi.clearModel).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save local model" }));
     await waitFor(() =>
       expect(lynxceBotApi.clearModel).toHaveBeenCalledTimes(1),
     );
     expect(await screen.findByText("Draft v2")).toBeInTheDocument();
     expect(lynxceBotApi.logout).not.toHaveBeenCalled();
   });
-  it("keeps the account connected when switching back to an existing provider", async () => {
+  it("keeps the account connected when switching back to this computer's models", async () => {
     let status: LynxceStatus = { connected: true, selected_model: "personal" };
     vi.mocked(lynxceBotApi.status).mockImplementation(async () => status);
     vi.mocked(lynxceBotApi.clearModel).mockImplementation(async () => {
@@ -500,12 +492,11 @@ describe("standalone chat model settings", () => {
     });
     openSettings();
     fireEvent.click(
-      await screen.findByRole("button", { name: "botClient.lynxce.manage" }),
+      await screen.findByRole("button", { name: "botModels.local.use" }),
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "botClient.lynxce.useOther" }),
-    );
-    expect(await screen.findByText("Draft v2")).toBeInTheDocument();
+    expect(
+      await screen.findByText("botModels.local.inUse"),
+    ).toBeInTheDocument();
     expect(lynxceBotApi.clearModel).toHaveBeenCalledOnce();
     expect(lynxceBotApi.logout).not.toHaveBeenCalled();
     expect(
@@ -614,26 +605,42 @@ describe("standalone chat model settings", () => {
       opened.mockRestore();
     },
   );
-  it("can release an expired account's source lock without signing in", async () => {
-    vi.mocked(lynxceBotApi.status).mockResolvedValue({
-      connected: false,
-      selected_model: null,
-    });
-    openSettings();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "botClient.addConnection" }),
+  it("uses one of my API keys and shows it as the model in use", async () => {
+    vi.mocked(providerApi.listResolvedModels).mockResolvedValue([]);
+    const key = {
+      id: "k1",
+      vendor: "tencent-tokenhub",
+      name: "Tencent Cloud TokenHub",
+      base_url: "https://tokenhub.example",
+      key_hint: "****1234",
+      models: [{ id: "hunyuan-turbos", name: "Hunyuan TurboS" }],
+      created_at: 1,
+    };
+    let keys: OwnKeyList = { keys: [key], in_use: null, selected_model: null };
+    vi.mocked(ownModelKeysApi.list).mockImplementation(async () => keys);
+    vi.mocked(ownModelKeysApi.useModel).mockImplementation(
+      async (id, model) =>
+        (keys = { keys: [key], in_use: id, selected_model: model }),
     );
-    for (const tab of ["cloud", "custom", "local"])
-      fireEvent.click(
-        await screen.findByRole("radio", { name: "botClient." + tab }),
-      );
-    expect(lynxceBotApi.clearModel).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole("button", { name: "botClient.lynxce.useOther" }),
+    openSettings();
+    const list = await screen.findByRole("list", {
+      name: "botModels.keys.title",
+    });
+    expect(within(list).getByText(/\*\*\*\*1234/)).toBeInTheDocument();
+    fireEvent.mouseDown(within(list).getByRole("combobox"));
+    fireEvent.click(await screen.findByText("Hunyuan TurboS"));
+    expect(ownModelKeysApi.useModel).toHaveBeenCalledWith(
+      "k1",
+      "hunyuan-turbos",
     );
     await waitFor(() =>
-      expect(lynxceBotApi.clearModel).toHaveBeenCalledTimes(1),
+      expect(
+        screen.getByText("botModels.current").parentElement,
+      ).toHaveTextContent("Hunyuan"),
     );
-    expect(lynxceBotApi.login).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "botClient.startChat" }),
+    ).toBeEnabled();
+    expect(lynxceBotApi.clearModel).not.toHaveBeenCalled();
   });
 });

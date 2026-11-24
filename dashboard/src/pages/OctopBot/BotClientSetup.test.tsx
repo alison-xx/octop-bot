@@ -147,7 +147,8 @@ describe("standalone onboarding", () => {
     await screen.findByText("Finish unavailable");
     fireEvent.click(later);
     expect(
-      await screen.findByRole("heading", { name: "Team guide" }),
+      // A fresh local owner chooses its models before meeting the team.
+      await screen.findByRole("heading", { name: "Settings" }),
     ).toBeInTheDocument();
     expect(wizardApi.applyDatabase).toHaveBeenCalledTimes(1);
     expect(wizardApi.createAdmin).toHaveBeenCalledTimes(2);
@@ -172,7 +173,8 @@ describe("standalone onboarding", () => {
       await screen.findByRole("button", { name: "botOnboarding.useLocal" }),
     );
     expect(
-      await screen.findByRole("heading", { name: "Team guide" }),
+      // A fresh local owner chooses its models before meeting the team.
+      await screen.findByRole("heading", { name: "Settings" }),
     ).toBeInTheDocument();
     expect(wizardApi.applyDatabase).not.toHaveBeenCalled();
     expect(wizardApi.finish).toHaveBeenCalledWith(

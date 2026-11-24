@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Input, Spin } from "antd";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ChevronRight, SlidersHorizontal } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -26,6 +26,8 @@ import {
 } from "../Setup/wizardClient";
 import PasswordStep from "../Setup/steps/PasswordStep";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
+import BotStartHero from "./BotStartHero";
+import lynxceLogo from "../../assets/providers/lynxce.png";
 import LynxceSignInForm from "./LynxceSignInForm";
 import styles from "./index.module.less";
 import intro from "./BotClientSetup.module.less";
@@ -207,9 +209,10 @@ export default function BotClientSetup() {
     try {
       const fresh = firstRun;
       await enterLocal(status);
-      navigate(fresh ? BOT_GUIDE : BOT_HOME, {
+      // A fresh install picks its models first (local or its own API keys), then meets the team.
+      navigate(fresh ? BOT_SETTINGS : BOT_HOME, {
         replace: true,
-        state: fresh ? { step: "team" } : undefined,
+        state: fresh ? { from: BOT_GUIDE } : undefined,
       });
     } catch (e) {
       setError(apiErrorMessage(e, t("octopBot.failed"), t));
@@ -288,68 +291,88 @@ export default function BotClientSetup() {
   const workbuddyLogin = getDesktopBridge()?.workbuddyLogin;
   const desktopStart = (
     <div className={intro.webForms}>
-      <LynxceSignInForm
-        idPrefix="bot-start"
-        autoFocus
-        busy={busy === "lynxce"}
-        submitLabel={
-          <>
-            {t("botOnboarding.lynxceStart")}
-            <ArrowRight size={16} aria-hidden="true" />
-          </>
-        }
-        passwordHint={t("botOnboarding.lynxceHint")}
-        sendCode={async (target) => {
-          // Lynxce account calls go through the local owner's session.
-          if (status) await enterLocal(status);
-          return (await botCloudApi.sendCode(target, locale)).channel;
-        }}
-        onCode={(target, code) =>
-          signInDesktopLynxce(() => botCloudApi.codeLogin(target, code))
-        }
-        onPassword={(account, secret) =>
-          signInDesktopLynxce(() => botCloudApi.login(account, secret))
-        }
-        onError={(e) => setError(apiErrorMessage(e, t("octopBot.failed"), t))}
-        onClearError={() => setError("")}
-      />
-      {workbuddyLogin && (
-        <Button
-          size="large"
-          disabled={!!busy}
-          onClick={() =>
-            void signInDesktopLynxce(async () => {
-              const result = await workbuddyLogin();
-              if (!result.ok) {
-                throw new Error(
-                  t(
-                    result.reason === "denied"
-                      ? "botCloud.workbuddyDenied"
-                      : "botCloud.workbuddyFailed",
-                  ),
-                );
-              }
-              return botCloudApi.loginWorkbuddy(result.code);
-            })
+      <section className={intro.lynxceCard} aria-labelledby="bot-start-lynxce">
+        <div className={intro.cardHead}>
+          <img src={lynxceLogo} alt="" />
+          <span id="bot-start-lynxce">{t("botStart.lynxceAccount")}</span>
+          <span className={intro.recommend}>{t("botStart.recommended")}</span>
+        </div>
+        <LynxceSignInForm
+          idPrefix="bot-start"
+          autoFocus
+          busy={busy === "lynxce"}
+          submitLabel={
+            <>
+              {t("botOnboarding.lynxceStart")}
+              <ArrowRight size={16} aria-hidden="true" />
+            </>
           }
-        >
-          {t("botCloud.workbuddySignIn")}
-        </Button>
-      )}
+          passwordHint={t("botOnboarding.lynxceHint")}
+          sendCode={async (target) => {
+            // Lynxce account calls go through the local owner's session.
+            if (status) await enterLocal(status);
+            return (await botCloudApi.sendCode(target, locale)).channel;
+          }}
+          onCode={(target, code) =>
+            signInDesktopLynxce(() => botCloudApi.codeLogin(target, code))
+          }
+          onPassword={(account, secret) =>
+            signInDesktopLynxce(() => botCloudApi.login(account, secret))
+          }
+          onError={(e) => setError(apiErrorMessage(e, t("octopBot.failed"), t))}
+          onClearError={() => setError("")}
+        />
+        {workbuddyLogin && (
+          <Button
+            size="large"
+            disabled={!!busy}
+            onClick={() =>
+              void signInDesktopLynxce(async () => {
+                const result = await workbuddyLogin();
+                if (!result.ok) {
+                  throw new Error(
+                    t(
+                      result.reason === "denied"
+                        ? "botCloud.workbuddyDenied"
+                        : "botCloud.workbuddyFailed",
+                    ),
+                  );
+                }
+                return botCloudApi.loginWorkbuddy(result.code);
+              })
+            }
+          >
+            {t("botCloud.workbuddySignIn")}
+          </Button>
+        )}
+      </section>
       <div className={intro.or} role="separator">
         <span>{t("botOnboarding.or")}</span>
       </div>
-      <Button
-        size="large"
-        loading={busy === "local"}
-        disabled={!!busy && busy !== "local"}
+      <button
+        type="button"
+        className={intro.localOption}
+        disabled={!!busy}
+        aria-busy={busy === "local"}
+        aria-labelledby="bot-start-local"
+        aria-describedby="bot-start-local-hint"
         onClick={() => void enterWithoutSignIn()}
       >
-        {t("botOnboarding.useLocal")}
-      </Button>
-      <small className={intro.localHint}>
-        {t("botOnboarding.useLocalHint")}
-      </small>
+        <span className={intro.localIcon} aria-hidden="true">
+          {busy === "local" ? (
+            <Spin size="small" />
+          ) : (
+            <SlidersHorizontal size={20} />
+          )}
+        </span>
+        <span>
+          <strong id="bot-start-local">{t("botOnboarding.useLocal")}</strong>
+          <small id="bot-start-local-hint">
+            {t("botOnboarding.useLocalHint")}
+          </small>
+        </span>
+        <ChevronRight size={18} aria-hidden="true" />
+      </button>
     </div>
   );
 
@@ -393,15 +416,7 @@ export default function BotClientSetup() {
         <span>Octop Bot</span>
       </header>
       <div className={intro.welcome}>
-        <aside className={intro.identity}>
-          <BotCharacter
-            look={{ ...octopCharacter, source: "character" }}
-            size={108}
-            badges={false}
-          />
-          <strong>{t("botOnboarding.chiefName")}</strong>
-          <span>{t("botClient.profile.chief")}</span>
-        </aside>
+        <BotStartHero />
         <section className={intro.copy} aria-live="polite">
           <h1 ref={headingRef} tabIndex={-1}>
             {t(desktop ? "botOnboarding.startTitle" : "botClient.welcome")}

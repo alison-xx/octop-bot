@@ -8,6 +8,7 @@ import { setAuthToken } from "../../api/request";
 import { BOT_HOME } from "../../utils/botClientRoute";
 import { apiErrorMessage } from "../../utils/apiError";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
+import BotStartHero from "./BotStartHero";
 import LynxceSignInForm from "./LynxceSignInForm";
 import intro from "./BotClientSetup.module.less";
 
@@ -74,15 +75,7 @@ export default function BotLogin() {
         <span>Octop Bot</span>
       </header>
       <div className={intro.welcome}>
-        <aside className={intro.identity}>
-          <BotCharacter
-            look={{ ...octopCharacter, source: "character" }}
-            size={108}
-            badges={false}
-          />
-          <strong>Chief</strong>
-          <span>{t("botClient.profile.chief")}</span>
-        </aside>
+        <BotStartHero />
         <section className={intro.copy} aria-live="polite">
           <h1>{t("botOnboarding.loginTitle")}</h1>
           {mode === "loading" ? (
