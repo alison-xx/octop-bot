@@ -189,6 +189,14 @@ async def _sign_in(client: httpx.AsyncClient, phone: str) -> dict[str, Any]:
         ({"isNewUser": 1, "signupGrant": {"credits": 10, "expiresAt": 123}}, {}),
         ({"isNewUser": False, "signupGrant": "invalid"}, {"isNewUser": False}),
         (
+            {"isNewUser": True, "signupGrant": {"credits": -1, "expiresAt": None}},
+            {"isNewUser": True},
+        ),
+        (
+            {"isNewUser": True, "signupGrant": {"credits": 5, "expiresAt": "x" * 65}},
+            {"isNewUser": True},
+        ),
+        (
             {"isNewUser": None, "signupGrant": {"credits": 0, "expiresAt": "x", "other": "hidden"}},
             {"signupGrant": {"credits": 0, "expiresAt": "x"}},
         ),
@@ -1022,3 +1030,13 @@ async def test_tenant_workspace_replace_keeps_local_files(
         assert sent.status_code == 200, sent.text
         assert (local / "keep.txt").read_text() == "local file"
         assert (store / "new.txt").read_text() == "new"
+
+
+@pytest.mark.parametrize("credits", [float("nan"), float("inf"), float("-inf")])
+def test_signup_grant_credits_must_be_finite(credits: float) -> None:
+    from octop.infra.auth import lynxce_cloud
+
+    fields = lynxce_cloud._login_fields(
+        {"isNewUser": True, "signupGrant": {"credits": credits, "expiresAt": None}}
+    )
+    assert fields == {"isNewUser": True}

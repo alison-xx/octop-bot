@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import re
 from collections.abc import Awaitable, Callable, Coroutine, Mapping
@@ -277,7 +278,12 @@ def _login_fields(data: dict[str, Any]) -> dict[str, Any]:
         elif (
             isinstance(grant, dict)
             and type(grant.get("credits")) in (int, float)
-            and (grant.get("expiresAt") is None or isinstance(grant.get("expiresAt"), str))
+            and math.isfinite(grant["credits"])
+            and grant["credits"] >= 0
+            and (
+                grant.get("expiresAt") is None
+                or (isinstance(grant.get("expiresAt"), str) and len(grant["expiresAt"]) <= 64)
+            )
         ):
             # A null expiresAt means the grant does not expire.
             fields["signupGrant"] = {
