@@ -96,7 +96,9 @@ def refused(client: TestClient, url: str) -> int:
 
 
 def wait_for(check: Any) -> None:
-    deadline = time.monotonic() + 3
+    # Generous: the hand-back runs on the relay's own thread, which a loaded CI runner
+    # (Windows especially) can delay for seconds. A passing check returns at once.
+    deadline = time.monotonic() + 15
     while not check() and time.monotonic() < deadline:
         time.sleep(0.02)
     assert check()
