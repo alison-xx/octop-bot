@@ -108,6 +108,10 @@ Grok-style: dark-first, chat-first, one big character.
   - *Device connectors*: Health (read only), Calendar and Reminders (iOS; Android has Health and
     Calendar), each off until switched on, which asks for the system permission. Bots then read these
     on request and write only after a preview card is confirmed ([PROTOCOL.md](PROTOCOL.md) §C).
+    iOS builds leave Health out for now: its code compiles only with the `HEALTH_CONNECTOR` Swift flag,
+    and the entitlement and `NSHealthShareUsageDescription` were removed (the App Store profile has no
+    HealthKit). To bring it back, add the flag, the HealthKit entitlement and purpose string, and a
+    profile with HealthKit, and update the privacy policy.
   - *Notifications*: notify when a reply finishes. If the system permission is denied, the footer
     says so and offers "Open system settings".
   - *Storage*: "Clear local cache" (reply previews, unread marks, temporary voice and image files;

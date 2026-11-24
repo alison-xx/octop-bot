@@ -36,8 +36,6 @@
 	</dict>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Octop Bot checks your calendar and, after you confirm, adds or changes events your Bots plan for you.</string>
-	<key>NSHealthShareUsageDescription</key>
-	<string>Octop Bot reads the health data you choose so your Bots can tailor meal, exercise and sleep advice. It never writes to Health.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Octop Bot connects to your own Octop server on this network.</string>
 	<key>NSMicrophoneUsageDescription</key>

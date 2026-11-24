@@ -21,22 +21,6 @@
         }
       }
     },
-    "NSHealthShareUsageDescription": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Octop Bot reads the health data you choose so your Bots can tailor meal, exercise and sleep advice. It never writes to Health."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Octop Bot 读取你允许的健康数据，让 Bot 结合你的身体状况给出饮食、运动和睡眠建议，不会写入健康数据。"
-          }
-        }
-      }
-    },
     "NSMicrophoneUsageDescription": {
       "localizations": {
         "en": {
