@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import time
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
@@ -24,6 +25,16 @@ if TYPE_CHECKING:
 
 def iso(value: float | int | None) -> str | None:
     return datetime.fromtimestamp(value, UTC).isoformat().replace("+00:00", "Z") if value else None
+
+
+logger = logging.getLogger(__name__)
+
+# Deleting a disk cannot be undone: at most this many per Beijing day, across all operators.
+DELETE_DISK_DAILY_LIMIT = 50
+
+
+class OpsLimitReached(Exception):
+    """The daily disk-deletion limit is used up."""
 
 
 class OpsService:
@@ -189,6 +200,17 @@ class OpsService:
             else:
                 item = self.item(record, self.accounts())
                 if delete:
+                    counter = "octop_bot:ops:deletes:" + beijing_day(time.time())
+                    done = int(self.services.settings_repo.get(counter) or 0)
+                    if done >= DELETE_DISK_DAILY_LIMIT:
+                        logger.warning(
+                            "ops delete-disk limit reached (%s today); refused %s by %s",
+                            done,
+                            computer_id,
+                            operator["operatorId"],
+                        )
+                        raise OpsLimitReached
+                    self.services.settings_repo.set(counter, str(done + 1))
                     manager._release(computer_id, record.user_id)
                     item.update(
                         status="stopped", reclaimState="reclaimed", reclaimAt=iso(time.time())

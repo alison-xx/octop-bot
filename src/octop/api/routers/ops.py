@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.client_ip import resolve_client_ip
 from octop.api.deps import get_server
-from octop.infra.cloud.ops import OpsService
+from octop.infra.cloud.ops import OpsLimitReached, OpsService
 from octop.infra.desktop import bot_cloud_enabled
 
 
@@ -28,20 +28,7 @@ def error(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
 
 
-def authenticate(request: Request) -> None:
-    if not bot_cloud_enabled():
-        raise OpsError(404, "ops_not_found", "Not found")
-    expected = os.environ.get("OCTOP_OPS_KEY_SHA256", "").strip().lower()
-    if not expected:
-        raise OpsError(503, "ops_unconfigured", "Operations API is not configured")
-    key = request.headers.get("X-Octop-Ops-Key", "")
-    if (
-        len(expected) != 64
-        or any(c not in "0123456789abcdef" for c in expected)
-        or not key
-        or not hmac.compare_digest(hashlib.sha256(key.encode()).hexdigest(), expected)
-    ):
-        raise OpsError(401, "ops_key_invalid", "Invalid operations key")
+def _check_source(request: Request) -> None:
     allowed = os.environ.get("OCTOP_OPS_ALLOWED_IPS", "").strip()
     if allowed:
         try:
@@ -54,6 +41,24 @@ def authenticate(request: Request) -> None:
             permitted = False
         if not permitted:
             raise OpsError(403, "ops_ip_forbidden", "Client IP is not allowed")
+
+
+def authenticate(request: Request) -> None:
+    if not bot_cloud_enabled():
+        raise OpsError(404, "ops_not_found", "Not found")
+    # The source address first: callers outside the allowlist never get to try a key.
+    _check_source(request)
+    expected = os.environ.get("OCTOP_OPS_KEY_SHA256", "").strip().lower()
+    if not expected:
+        raise OpsError(503, "ops_unconfigured", "Operations API is not configured")
+    key = request.headers.get("X-Octop-Ops-Key", "")
+    if (
+        len(expected) != 64
+        or any(c not in "0123456789abcdef" for c in expected)
+        or not key
+        or not hmac.compare_digest(hashlib.sha256(key.encode()).hexdigest(), expected)
+    ):
+        raise OpsError(401, "ops_key_invalid", "Invalid operations key")
 
 
 router = APIRouter(dependencies=[Depends(authenticate)])
@@ -143,9 +148,12 @@ async def delete_disk(
 ) -> dict[str, Any]:
     if body.confirm != computer_id:
         raise OpsError(400, "ops_invalid_confirmation", "Confirmation does not match computer ID")
-    result = await asyncio.to_thread(
-        ops.write, computer_id, body.model_dump(exclude={"confirm"}), delete=True
-    )
+    try:
+        result = await asyncio.to_thread(
+            ops.write, computer_id, body.model_dump(exclude={"confirm"}), delete=True
+        )
+    except OpsLimitReached:
+        raise OpsError(429, "ops_delete_limit", "Daily disk deletion limit reached") from None
     if result is None:
         raise OpsError(404, "ops_computer_not_found", "Computer not found")
     return result

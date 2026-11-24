@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from octop.infra.cloud import ops
+from octop.infra.cloud.computers import manager as computers
 from octop.infra.cloud.computers.manager import ComputerManager, ComputerRecord, Reservation
 from tests.integration.test_octop_bot_cloud import (
     Upstream,
@@ -65,6 +66,11 @@ async def test_ops_auth(
         assert (await client.get(BASE + "/summary", headers=HEADERS)).status_code == 200
         monkeypatch.setenv("OCTOP_OPS_ALLOWED_IPS", "192.0.2.0/24")
         assert (await client.get(BASE + "/summary", headers=HEADERS)).status_code == 403
+        # Outside the allowlist, a wrong or missing key gets the same answer.
+        assert (
+            await client.get(BASE + "/summary", headers={"X-Octop-Ops-Key": "wrong"})
+        ).status_code == 403
+        assert (await client.get(BASE + "/summary")).status_code == 403
         monkeypatch.setenv("OCTOP_OPS_ALLOWED_IPS", "127.0.0.0/8")
         assert (await client.get(BASE + "/summary", headers=HEADERS)).status_code == 200
         monkeypatch.setenv("OCTOP_BOT_CLOUD", "0")
@@ -131,3 +137,40 @@ async def test_ops_computers(
         assert driver.pauses == 1 and driver.stops == 1
         assert billing.settled == ["bot-0", "bot-1"]
         assert len(server.services.audit_repo.query(action="ops.delete_disk")) == 2
+        # Disk deletions are capped per Beijing day; replays above did not count twice.
+        counter = "octop_bot:ops:deletes:" + computers.beijing_day(time.time())
+        assert server.services.settings_repo.get(counter) == "1"
+        server.services.settings_repo.set(counter, str(ops.DELETE_DISK_DAILY_LIMIT))
+        limited = await client.post(
+            BASE + "/computers/bot-2/delete-disk",
+            headers=HEADERS,
+            json={**OPERATOR, "confirm": "bot-2"},
+        )
+        assert limited.status_code == 429
+        assert limited.json()["error"]["code"] == "ops_delete_limit"
+        assert driver.stops == 1
+
+
+async def test_every_ops_route_requires_the_ops_key(
+    tmp_octop_home: Path,
+    upstream: Upstream,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """/api/ops/ skips user sessions, so every route there must refuse callers without the key."""
+    monkeypatch.setenv("OCTOP_OPS_KEY_SHA256", hashlib.sha256(KEY.encode()).hexdigest())
+    monkeypatch.delenv("OCTOP_OPS_ALLOWED_IPS", raising=False)
+    async with octop_client(tmp_octop_home) as (client, _):
+        from fastapi.routing import APIRoute
+
+        from octop.api.routers import ops as ops_router
+
+        routes = [
+            (method, ("/api/ops" + route.path).replace("{", "").replace("}", ""))
+            for route in ops_router.router.routes
+            if isinstance(route, APIRoute)
+            for method in route.methods
+        ]
+        assert len(routes) >= 6
+        for method, path in routes:
+            response = await client.request(method, path, json={})
+            assert response.status_code == 401, (method, path, response.status_code)
