@@ -6,6 +6,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 from octop.i18n import tr
+from octop.i18n.domains.agents import agent_error_message
 from octop.infra.agents.bot_appearance import appearance_prefix, bot_appearance
 from octop.infra.agents.experts.avatar import display_agent_icon_url
 from octop.infra.agents.settings.profile import parse_config_json
@@ -61,7 +62,12 @@ def require_own_bot(services: SharedServices, user_id: int, agent_id: str) -> Ag
 
 
 def bot_card(
-    row: AgentRow, chief_id: str, settings: SettingsRepo, cached: dict[str, str] | None = None
+    row: AgentRow,
+    chief_id: str,
+    settings: SettingsRepo,
+    cached: dict[str, str] | None = None,
+    *,
+    locale: str = "en",
 ) -> dict[str, Any]:
     avatar = bot_appearance(settings, row, chief_id, cached)
     return {
@@ -82,6 +88,9 @@ def bot_card(
         "can_join_group": can_join_bot_group(row),
         "enabled": bool(row.enabled),
         "default_model": row.default_model,
+        "state": row.last_state or "unknown",
+        "preparing": row.last_state == "starting",
+        "last_error": agent_error_message(row.last_error, locale) or None,
     }
 
 
@@ -89,8 +98,9 @@ def list_bot_cards(
     services: SharedServices, owner: int, chief_id: str, *, include_private: bool = True
 ) -> list[dict[str, Any]]:
     cached = services.settings_repo.with_prefix(appearance_prefix(owner))
+    locale = resolve_user_locale(user_repo=services.user_repo, user_id=owner)
     return [
-        bot_card(row, chief_id, services.settings_repo, cached)
+        bot_card(row, chief_id, services.settings_repo, cached, locale=locale)
         for row in services.agent_repo.list_by_user(owner)
         if row.kind != "team" and (include_private or not is_private_bot(row))
     ]

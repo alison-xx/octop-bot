@@ -53,6 +53,9 @@ export interface MarketDetail extends MarketCard {
 
 export interface MarketImport {
   agent_id: string;
+  state: string;
+  preparing: boolean;
+  last_error: string | null;
   name: string;
   routines: string[];
   integrations: string[];

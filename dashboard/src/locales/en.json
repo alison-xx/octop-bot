@@ -150,6 +150,8 @@
     "retryMember": "Ask this member again"
   },
   "botDirectory": {
+    "preparing": "Preparing",
+    "preparingHint": "Preparing your Bot, just a moment",
     "newPrivateChat": "Start a new private chat",
     "newGroupWithMembers": "New group with these members",
     "groupHistoryHelp": "Each group keeps one continuous history. A new group can use the same members, administrator and reply mode. Its messages, files, notes and Goal start empty.",
@@ -9312,6 +9314,7 @@
     "routinesPick": "Turn on these routines",
     "integrationsAfter": "After importing, connect {{names}} under Capabilities → Connectors.",
     "listJoin": ", ",
+    "importedPreparing": "Added {{name}}, getting it ready",
     "imported": "Imported {{name}}",
     "entry": "Bot Market",
     "menuEntry": "Add from the Bot Market",

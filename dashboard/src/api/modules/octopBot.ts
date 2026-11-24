@@ -3,6 +3,9 @@ import { request, requestBlob, requestUpload } from "../request";
 export interface WorkspaceBot {
   avatar?: BotAppearance;
   agent_id: string;
+  state: string;
+  preparing: boolean;
+  last_error: string | null;
   name: string;
   description?: string | null;
   icon_url?: string | null;
