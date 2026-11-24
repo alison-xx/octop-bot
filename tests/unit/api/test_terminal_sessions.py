@@ -177,6 +177,7 @@ class _FakeWS:
     def __init__(self, server: object, received: tuple[str, ...] = ()) -> None:
         self.app = SimpleNamespace(state=SimpleNamespace(octop_server=server))
         self.application_state = WebSocketState.CONNECTING
+        self.query_params: dict[str, str] = {}
         self._received = list(received)
         self.sent: list[str] = []
         self.close_code: int | None = None

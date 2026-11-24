@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from starlette.websockets import WebSocketState
 
 from octop.api.common.bot_cloud import is_cloud_tenant, no_cloud_tenant_http
+from octop.api.common.stream_auth import stream_user
 from octop.api.deps import get_server, require_permission, resolve_user_from_token
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.groups import RESOURCE_BRIDGE, GroupAccess
@@ -657,11 +658,8 @@ async def bridge_browser_stream_ws(
     """Dashboard screencast WS relayed to the peer browser harness."""
     server = websocket.app.state.octop_server
     raw_token = websocket.query_params.get("token")
-    if not raw_token:
-        await websocket.close(code=4001, reason="missing token")
-        return
     try:
-        user = resolve_user_from_token(server, raw_token)
+        user = stream_user(server, websocket, "bridge", raw_token)
     except OctopError as exc:
         await websocket.close(code=4001, reason=f"auth: {exc.code.value}")
         return
@@ -749,15 +747,16 @@ async def bridge_inbound_ws(
     # with an empty body, which the dialer misreads as "route missing".
     await websocket.accept()
     raw = websocket.query_params.get("token")
-    if not raw:
-        header = websocket.headers.get("authorization") or ""
-        if header.lower().startswith("bearer "):
-            raw = header[7:].strip()
-    if not raw:
-        await websocket.close(code=4001, reason="missing token")
-        return
+    header = websocket.headers.get("authorization") or ""
     try:
-        user = resolve_user_from_token(server, raw)
+        if (
+            not raw
+            and not websocket.query_params.get("ticket")
+            and header.lower().startswith("bearer ")
+        ):
+            user = resolve_user_from_token(server, header[7:].strip())
+        else:
+            user = stream_user(server, websocket, "bridge", raw)
     except OctopError as exc:
         await websocket.close(code=4001, reason=f"auth: {exc.code.value}")
         return

@@ -12,6 +12,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Query, WebSocket
 from pydantic import BaseModel, Field
 
+from octop.api.common.stream_auth import consume_screen_ticket, issue_screen_ticket
 from octop.api.deps import current_user, get_server
 from octop.infra.cloud.computers.manager import computer_manager
 from octop.infra.cloud.computers.rfb import RfbClientFilter
@@ -180,12 +181,10 @@ async def open_screen(
     manager = _owned(server, user, agent_id)
     await asyncio.to_thread(manager.ensure_running, agent_id, user.id)
     now = time.time()
-    for stale in [t for t, (_, _, until) in _tickets.items() if until < now]:
-        _tickets.pop(stale, None)
     for stale in [s for s, (_, _, until) in _sessions.items() if until < now]:
         _sessions.pop(stale, None)
-    ticket, session = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-    _tickets[ticket] = (agent_id, user.id, now + SCREEN_TICKET_SECONDS)
+    ticket = issue_screen_ticket(_tickets, agent_id, user.id)
+    session = secrets.token_urlsafe(32)
     _sessions[session] = (agent_id, user.id, now + SCREEN_SESSION_IDLE_SECONDS)
     return ScreenTicket(
         ws_path=f"/api/octop-bot/computers/{agent_id}/screen/ws?ticket={ticket}",
@@ -256,11 +255,10 @@ async def read_clipboard(session: str, server: Any = Depends(get_server)) -> Cli
 @router.websocket("/{agent_id}/screen/ws")
 async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(default="")) -> None:
     """Relay the browser's noVNC client to the desktop inside the sandbox."""
-    claim = _tickets.pop(ticket, None)
-    if claim is None or claim[0] != agent_id or claim[2] < time.time():
+    user_id = consume_screen_ticket(_tickets, ticket, agent_id)
+    if user_id is None:
         await websocket.close(code=4001, reason="invalid ticket")
         return
-    _, user_id, _ = claim
     server = websocket.app.state.octop_server
     manager = computer_manager(server.services) if bot_cloud_enabled() else None
     if manager is None:
