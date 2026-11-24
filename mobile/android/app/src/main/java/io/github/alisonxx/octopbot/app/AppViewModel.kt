@@ -19,6 +19,11 @@ import io.github.alisonxx.octopbot.net.ApiException
 import io.github.alisonxx.octopbot.net.ChatBackend
 import io.github.alisonxx.octopbot.net.CheckoutRefused
 import io.github.alisonxx.octopbot.net.CreditAccount
+import io.github.alisonxx.octopbot.net.DeviceBackend
+import io.github.alisonxx.octopbot.net.ModelKeyStore
+import io.github.alisonxx.octopbot.net.OwnKeyList
+import io.github.alisonxx.octopbot.net.PhoneModels
+import io.github.alisonxx.octopbot.net.ServerModelKeys
 import io.github.alisonxx.octopbot.net.LynxceBackend
 import io.github.alisonxx.octopbot.net.LynxceProtocol
 import io.github.alisonxx.octopbot.net.ServerBackend
@@ -165,8 +170,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     init {
         viewModelScope.launch {
-            val backend = store.lynxceGrant()?.let { LynxceBackend(it, store, app.localBots) }
+            val backend = store.lynxceGrant()?.let { LynxceBackend(it, store, app.localBots, app.phoneModels) }
                 ?: store.serverSession()?.let { ServerBackend(it, store) }
+                ?: if (app.phoneModels.phoneOnly) deviceBackend() else null
             if (backend == null) {
                 _session.value = SessionState.SignedOut()
                 _launchReady.value = true
@@ -190,7 +196,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         if (useCloud()) {
             enter(ServerBackend.signInWithLynxce(ServerProtocol.LYNXCE_CLOUD, account, password, store))
         } else {
-            enter(LynxceBackend.signIn(account, password, store, app.localBots))
+            enter(LynxceBackend.signIn(account, password, store, app.localBots, app.phoneModels))
         }
     }
 
@@ -206,8 +212,42 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         if (useCloud()) {
             enter(ServerBackend.signInWithLynxceCode(ServerProtocol.LYNXCE_CLOUD, target.value, code, store))
         } else {
-            enter(LynxceBackend.signIn(target, code, store, app.localBots))
+            enter(LynxceBackend.signIn(target, code, store, app.localBots, app.phoneModels))
         }
+    }
+
+    /** Model keys and local model servers on this phone. */
+    val phoneModels: PhoneModels get() = app.phoneModels
+
+    private fun deviceBackend() = DeviceBackend(
+        app.localBots, app.phoneModels, app.deviceConversations, resources.getString(R.string.account_device),
+    )
+
+    /** "Use without signing in": the phone calls the model set up on it. */
+    fun usePhoneOnly() {
+        app.phoneModels.phoneOnly = true
+        viewModelScope.launch { enter(deviceBackend()) }
+    }
+
+    /** Where "My API keys" live: the cloud account, or this phone; a self-hosted server manages its own models. */
+    val modelKeys: ModelKeyStore?
+        get() = when (val backend = (session.value as? SessionState.Ready)?.backend) {
+            is ServerBackend -> if (backend.isCloud) ServerModelKeys(backend, app.phoneModels.bundled) else null
+            null -> null
+            else -> app.phoneModels
+        }
+
+    private val _cloudKeys = MutableStateFlow<OwnKeyList?>(null)
+    /** The cloud account's own keys and the one in use, for the Settings row. */
+    val cloudKeys: StateFlow<OwnKeyList?> = _cloudKeys
+
+    fun setCloudKeys(list: OwnKeyList?) {
+        _cloudKeys.value = list
+    }
+
+    private fun refreshCloudKeys() {
+        val store = modelKeys?.takeUnless { it.onPhone } ?: return
+        viewModelScope.launch { runCatching { store.list() }.onSuccess { _cloudKeys.value = it } }
     }
 
     /** Signed in to a server (self-hosted or Octop Bot cloud). */
@@ -249,6 +289,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         _session.value = SessionState.Ready(backend)
         refreshDirectory()
         _models.value = if (backend.definesBotsLocally) runCatching { backend.models() }.getOrDefault(emptyList()) else emptyList()
+        _cloudKeys.value = null
+        refreshCloudKeys()
         refreshBalance()
     }
 
@@ -267,6 +309,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         voiceInput.cancel()
         chats.clear()
         clearWallet()
+        // Leaving phone-only use keeps its keys and chats for next time.
+        if (backend is DeviceBackend) app.phoneModels.phoneOnly = false
         // Octop Bot cloud is a Lynxce sign-in, not a server the user typed: it goes back to the sign-in screen.
         val reopen = reopenServer && backend is ServerBackend && !backend.isCloud
         if (!reopen) _session.value = SessionState.SignedOut(notice)

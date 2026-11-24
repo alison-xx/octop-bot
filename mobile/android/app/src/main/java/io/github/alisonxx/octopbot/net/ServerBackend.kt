@@ -207,6 +207,10 @@ class ServerBackend(
         }
     }
 
+    /** A JSON call for features kept outside this class (Settings → Models). */
+    suspend fun call(method: String, path: String, body: JsonObject? = null): JsonElement =
+        json(method, path, body = body?.let { Http.body(it) })
+
     private suspend fun json(
         method: String,
         path: String,

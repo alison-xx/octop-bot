@@ -77,6 +77,7 @@ import io.github.alisonxx.octopbot.app.SessionState
 import io.github.alisonxx.octopbot.character.BotCharacter
 import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.model.ModelOption
+import io.github.alisonxx.octopbot.net.DeviceBackend
 import io.github.alisonxx.octopbot.net.ServerBackend
 import io.github.alisonxx.octopbot.store.Appearance
 import io.github.alisonxx.octopbot.store.SpeechRate
@@ -124,6 +125,11 @@ data class SettingsState(
     val deviceHealth: Boolean = false,
     val deviceCalendar: Boolean = false,
     val deviceNotice: DeviceNotice? = null,
+    /** Settings → Models is offered (phone Bots or Octop Bot cloud); [modelSummary] is the model in use. */
+    val showModels: Boolean = lynxce,
+    val modelSummary: String? = null,
+    /** Used without signing in: no account to sign out of, a way to sign in instead. */
+    val phoneOnly: Boolean = false,
 )
 
 /** Why a device connector switch stayed off. */
@@ -169,6 +175,17 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
     val models by model.models.collectAsStateWithLifecycle()
     val settings by model.settings.collectAsStateWithLifecycle()
     val update by model.update.collectAsStateWithLifecycle()
+    val cloudKeys by model.cloudKeys.collectAsStateWithLifecycle()
+    val phoneSelection by model.phoneModels.selection.collectAsStateWithLifecycle()
+    val phoneKeys by model.phoneModels.ownKeys.collectAsStateWithLifecycle()
+    val phoneLocal by model.phoneModels.local.collectAsStateWithLifecycle()
+    val cloud = (backend as? ServerBackend)?.isCloud == true
+    val phoneModel = remember(phoneSelection, phoneKeys, phoneLocal) { model.phoneModels.current { it.name }?.first }
+    val modelSummary = when {
+        cloud -> cloudKeys?.takeIf { it.inUse != null }?.selectedModel ?: stringResource(R.string.models_lynxce_auto)
+        backend is DeviceBackend -> phoneModel ?: stringResource(R.string.models_none)
+        else -> phoneModel ?: models.firstOrNull { it.id == settings.model }?.name ?: stringResource(R.string.settings_model_auto)
+    }
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
@@ -225,6 +242,9 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
             deviceHealth = settings.deviceHealth && healthPermitted,
             deviceCalendar = settings.deviceCalendar && calendarPermitted,
             deviceNotice = deviceNotice,
+            showModels = backend.definesBotsLocally || cloud,
+            modelSummary = modelSummary,
+            phoneOnly = backend is DeviceBackend,
         ),
         actions = SettingsActions(
             onBack = onBack,
@@ -373,12 +393,11 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
             }
 
             Group(stringResource(R.string.settings_chat)) {
-                if (state.lynxce) {
+                if (state.showModels) {
                     row {
                         Item(
                             stringResource(R.string.settings_model),
-                            value = state.models.firstOrNull { it.id == state.settings.model }?.name
-                                ?: stringResource(R.string.settings_model_auto),
+                            value = state.modelSummary,
                             chevron = true,
                             onClick = actions.onModels,
                         )
@@ -474,8 +493,13 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
                         onClick = address?.let { { actions.onCopyAddress(it) } },
                     )
                 }
-                row { Item(stringResource(R.string.settings_switch_account), chevron = true, onClick = actions.onSwitchAccount) }
-                row { Item(stringResource(R.string.settings_sign_out), danger = true) { confirmSignOut = true } }
+                if (state.phoneOnly) {
+                    // Phone-only use has no account to leave; the keys and chats stay for next time.
+                    row { Item(stringResource(R.string.models_lynxce_sign_in), chevron = true, onClick = actions.onSignOut) }
+                } else {
+                    row { Item(stringResource(R.string.settings_switch_account), chevron = true, onClick = actions.onSwitchAccount) }
+                    row { Item(stringResource(R.string.settings_sign_out), danger = true) { confirmSignOut = true } }
+                }
             }
 
             if (state.wallet) {
