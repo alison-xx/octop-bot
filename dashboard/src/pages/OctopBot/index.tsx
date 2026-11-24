@@ -47,7 +47,7 @@ import { useIsMobile } from "../../hooks/useIsMobile";
 import { useListPanelCollapsed } from "../../hooks/useListPanelCollapsed";
 import { apiErrorMessage, parseApiError } from "../../utils/apiError";
 import { navAllowed } from "../../utils/permissions";
-import { isBotClient, isBotOnlyDesktop } from "../../utils/desktopBridge";
+import { isBotClient } from "../../utils/desktopBridge";
 import { BotCharacter, octopCharacter, GroupCharacter } from "./BotCharacter";
 import { useBotMotion } from "./useBotMotion";
 import { useBotInbox } from "./useBotInbox";
