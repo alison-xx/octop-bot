@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
+from octop.infra.db.migrate import run_migrations
+from octop.infra.db.pool import SqlitePool
+from octop.infra.db.repos.agents import AgentRepo
+from octop.infra.db.repos.thread_messages import ThreadMessageRepo
+from octop.infra.db.repos.threads import ThreadRepo
+from octop.infra.db.repos.users import UserRepo
 from octop.infra.gateway.history_backfill import HistoryBackfillQueue
 from octop.infra.gateway.process.message_keys import (
     CHECKPOINT_TS_KEY,
@@ -262,6 +270,83 @@ def test_images_a_tool_attaches_neither_start_a_turn_nor_show_in_the_chat() -> N
     tracker.observe({"type": "state_snapshot", "data": {"messages": state}})
     # The whole turn stays one turn, from the user's message, without the screenshot.
     assert [item.message_id for item in tracker.inputs] == ["u1", "a1", "a2"]
+
+
+def _multi_step_state() -> list[dict[str, object]]:
+    return [
+        {"role": "user", "content": "make the file", "id": "u1"},
+        {
+            "role": "assistant",
+            "content": "Let me verify the output file:\n\n",
+            "id": "a1",
+            "tool_calls": [{"id": "call_1", "name": "read_file", "args": {}}],
+        },
+        {"role": "tool", "content": "ok", "tool_call_id": "call_1", "id": "t1"},
+        {"role": "assistant", "content": "搞定了！文件已生成。", "id": "a2"},
+    ]
+
+
+def test_multi_step_stream_is_not_stored_again_as_one_reply() -> None:
+    tracker = TurnHistoryTracker.from_request(
+        {"messages": [{"role": "user", "content": "make the file", "id": "u1"}]}
+    )
+    tracker.observe({"type": "token", "content": "Let me verify the output file:"})
+    tracker.observe({"type": "token", "content": "\n\n搞定了！文件已生成。"})
+    tracker.observe({"type": "state_snapshot", "data": {"messages": _multi_step_state()}})
+
+    assert [item.message_id for item in tracker.inputs] == ["u1", "a1", "t1", "a2"]
+
+
+def test_reply_stopped_after_a_step_keeps_only_the_unsaved_text() -> None:
+    tracker = TurnHistoryTracker.from_request(
+        {"messages": [{"role": "user", "content": "make the file", "id": "u1"}]}
+    )
+    tracker.observe({"type": "token", "content": "Let me verify the output file:"})
+    tracker.observe({"type": "token", "content": "搞定了！文件"})
+    tracker.observe({"type": "state_snapshot", "data": {"messages": _multi_step_state()[:3]}})
+
+    items = tracker.inputs
+    assert [item.message_id for item in items][:3] == ["u1", "a1", "t1"]
+    assert items[-1].message_id is None
+    assert _wire_text(items[-1]) == "搞定了！文件"
+
+
+def test_history_hides_a_stored_copy_of_the_whole_stream(tmp_path: Path) -> None:
+    from octop.api.routers.chat.serialize import _load_projected_thread_messages
+
+    db = SqlitePool(tmp_path / "octop.db")
+    run_migrations(db)
+    user_id = UserRepo(db).create(username="u", password_hash="hash", role="user")
+    AgentRepo(db).create(agent_id="agt", user_id=user_id, name="Agent")
+    ThreadRepo(db).insert(
+        thread_id="thr",
+        agent_id="agt",
+        user_id=user_id,
+        channel_type="dashboard",
+        session_key="sk",
+        last_active=0,
+    )
+    repo = ThreadMessageRepo(db)
+    repo.mark_projection("thr", "ready")
+    turn = message_inputs(_multi_step_state())
+    copy = live_message_input(
+        AIMessage(content="Let me verify the output file:\n\n搞定了！文件已生成。")
+    )
+    stopped = live_message_input(AIMessage(content="Partial answer"))
+    assert copy is not None and stopped is not None
+    repo.append_if_ready("thr", [*turn, copy, *message_inputs(_multi_step_state()[:1]), stopped])
+    server = SimpleNamespace(services=SimpleNamespace(thread_message_repo=repo))
+
+    for limit in (25, 1):
+        messages, _ = _load_projected_thread_messages(server, "agt", "thr", limit, user=None)
+        texts = [
+            "".join(block.get("text", "") for block in m["content"] if block["type"] == "text")
+            for m in messages
+            if m["role"] in ("ai", "assistant")
+        ]
+        assert not any("Let me verify the output file:\n\n搞定了" in text for text in texts)
+    messages, _ = _load_projected_thread_messages(server, "agt", "thr", 25, user=None)
+    assert messages[-1]["content"][0]["text"] == "Partial answer"
 
 
 def _read_image_turn() -> list[Any]:

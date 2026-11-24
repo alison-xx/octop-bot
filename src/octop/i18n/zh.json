@@ -10,7 +10,8 @@
     "admin": "你是群管理员。处理 Goal 时先提出验收标准与阶段，等用户激活。通过 @成员 分派已激活的阶段，阅读成员提交的证据。要保存 Goal，在回复末尾附上 octop-goal 围栏 JSON 代码块，格式遵循 {schema}。完成阶段的证据应引用相应的群消息 ID。",
     "wrap": "请对照用户请求与当前 Goal 验收成员的工作，总结结果、登记有证据的进展并说明待办。",
     "approval": "该成员正在等待你的审批。请打开成员会话查看请求。",
-    "no_reply": "该成员已结束本轮，未返回可显示的回复。"
+    "no_reply": "该成员已结束本轮，未返回可显示的回复。",
+    "thread_title": "群聊 · {room}"
   },
   "octop_bot": {
     "lynxce": {
@@ -39,6 +40,27 @@
       "question": "{reason}\n请打开这个 Bot 的云电脑画面，点「接管」完成这一步，完成后选「我完成了」。",
       "done": "我完成了",
       "cannot": "我做不了"
+    },
+    "approval": {
+      "title": "需要你确认",
+      "header": "确认",
+      "question": "Bot 想要{action}：{target}\n{detail}",
+      "irreversible": "这一步无法撤销。",
+      "once": "允许一次",
+      "always": "总是允许",
+      "deny": "拒绝",
+      "category": {
+        "send": "发送",
+        "publish": "发布",
+        "submit": "提交",
+        "delete": "删除或覆盖",
+        "permissions": "修改权限或安全设置",
+        "production": "修改线上系统",
+        "terms": "接受条款",
+        "upload": "上传文件到外部网站",
+        "other": "执行一项操作",
+        "click": "点击按钮"
+      }
     }
   },
   "slash": {
@@ -441,6 +463,7 @@
     "LYNXCE_CODE_INVALID": "验证码错误或已过期，请重新获取。",
     "LYNXCE_CODE_TARGET_INVALID": "请输入正确的手机号或邮箱。",
     "LYNXCE_CODE_THROTTLED": "验证码发送太频繁，请稍后再试。",
+    "LYNXCE_SIGNUP_PASSWORD_REQUIRED": "这个邮箱还没有灵策账号。请设置一个至少 8 位的登录密码来注册，再用同一个验证码登录。",
     "BOT_CLOUD_REQUEST_REJECTED": "灵策云未能执行此操作。",
     "BOT_CLOUD_CREDITS_REQUIRED": "灵策积分不足，到 https://admin.lynxce.cn/recharge 充值后就能继续。",
     "BOT_LYNXCE_DAILY_LIMIT": "今天的灵策用量已到每日上限，北京时间早上 8 点自动恢复。急用的话，可以到灵策账户中心 https://admin.lynxce.cn 调高「Octop Bot」这把 Key 的每日上限。",
@@ -448,6 +471,7 @@
     "BOT_MODEL_VENDOR_UNSUPPORTED": "这里不能用这个厂商或地址，请从列表里选择。",
     "BOT_MODEL_KEY_LIMIT": "最多保存 {limit} 个 API Key，请先删掉一个。",
     "BOT_COMPUTER_NOT_TAKEN_OVER": "请先接管云电脑，再输入文字或读取它的剪贴板。",
+    "BOT_COMPUTER_BUSY": "云电脑暂时都被占满了，没能启动。请过几分钟再试。",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "请补充授权灵策充值。当前聊天连接可继续使用。",
     "BOT_LAYOUT_CHANGED": "侧栏布局已更新，请刷新后再试。",
     "AUTH_FAILED": "认证失败。",
@@ -889,6 +913,10 @@
       "date_year": "{year}年{month}月{day}日 {time}",
       "mail": "收到新邮件时",
       "custom": "自定义"
+    },
+    "waiting": {
+      "needs_you": "定时任务「{name}」需要你处理，打开这个 Bot 的对话继续（24 小时内有效）。",
+      "still": "定时任务「{name}」上一次运行还在等你处理，这次没有执行。"
     }
   },
   "agents": {

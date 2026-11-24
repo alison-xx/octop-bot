@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, Response
@@ -26,6 +26,7 @@ from octop.infra.agents.threads.artifact import thread_artifacts_payload
 from octop.infra.agents.threads.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
 from octop.infra.agents.threads.fork import fork_dashboard_thread
 from octop.infra.agents.workspace.dir import agent_facing_workspace_dir_from_config
+from octop.infra.bot_groups.turns import show_room_requests
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
 from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages, thread_visible_to
@@ -224,6 +225,10 @@ def _require_thread(
 async def list_threads(
     agent_id: str,
     limit: int = 50,
+    include_bot_groups: Annotated[
+        bool,
+        Query(description="Also list this Bot's work threads in Octop Bot groups."),
+    ] = False,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
@@ -237,7 +242,10 @@ async def list_threads(
     thread_registry = server.app_runtime.gateway.thread_registry
     effective_uid = as_user if as_user is not None else user.id
     rows = thread_registry.list_visible_threads(
-        agent_id=agent_id, user_id=effective_uid, limit=limit
+        agent_id=agent_id,
+        user_id=effective_uid,
+        limit=limit,
+        include_bot_groups=include_bot_groups,
     )
     bound = thread_registry.get_bound_thread_id(
         ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=effective_uid)
@@ -509,6 +517,8 @@ async def get_thread_history(
         )
     effective_uid = as_user if as_user is not None else user.id
     _attach_message_authors(server, messages, owner_user_id=row.user_id)
+    if getattr(row, "channel_type", None) == ThreadRegistry.CHANNEL_BOT_GROUP:
+        show_room_requests(messages)
     hitl_pending = pending_hitl_payload(
         server.app_runtime.gateway.processor.hitl_coordinator.store,
         thread_id=thread_id,
@@ -639,9 +649,14 @@ async def rebind_session(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Point the user's dashboard session at an existing thread."""
-    _require_thread(server, agent_id, body.thread_id, user, as_user=None)
+    """Point the user's dashboard session at an existing thread.
+
+    A Bot group work thread keeps its own session: the private chat stays where it was.
+    """
+    row = _require_thread(server, agent_id, body.thread_id, user, as_user=None)
     sk = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user.id)
+    if getattr(row, "channel_type", None) == ThreadRegistry.CHANNEL_BOT_GROUP:
+        return {"session_key": row.session_key, "thread_id": body.thread_id}
     await server.app_runtime.gateway.thread_registry.rebind(
         session_key=sk,
         thread_id=body.thread_id,

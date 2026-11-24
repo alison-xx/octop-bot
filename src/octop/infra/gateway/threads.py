@@ -450,10 +450,15 @@ class ThreadRegistry:
         return self._threads.list_by_agent_user(agent_id=agent_id, user_id=user_id, limit=limit)
 
     def list_visible_threads(
-        self, *, agent_id: str, user_id: int, limit: int = 50
+        self, *, agent_id: str, user_id: int, limit: int = 50, include_bot_groups: bool = False
     ) -> list[ThreadRow]:
         """Threads this user owns, plus ones contributed on the same expert."""
-        return self._threads.list_visible(agent_id=agent_id, user_id=user_id, limit=limit)
+        return self._threads.list_visible(
+            agent_id=agent_id,
+            user_id=user_id,
+            limit=limit,
+            include_bot_groups=include_bot_groups,
+        )
 
     def set_contributed(self, thread_id: str, contributed: bool) -> None:
         self._threads.set_contributed(thread_id, contributed)

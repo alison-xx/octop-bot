@@ -31,6 +31,7 @@ from deepagents.backends.protocol import (
 from deepagents.backends.sandbox import BaseSandbox
 
 from octop.infra.cloud.computers.driver import WORKSPACE
+from octop.infra.errors import ErrorCode, OctopError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -41,6 +42,10 @@ DEFAULT_COMMAND_TIMEOUT = 30 * 60
 TAKEN_OVER = (
     "The user has taken over this computer (for example to sign in or solve a check). "
     "Do not use it now; tell the user what you need and wait until they hand it back."
+)
+NO_CAPACITY = (
+    "The cloud computer could not start: no cloud computer is free right now. "
+    "Do not retry now; tell the user to try again in a few minutes."
 )
 
 # Context the harness reads on every start: kept in the object store, never on the computer.
@@ -60,7 +65,16 @@ STORE_FILES = frozenset(
         "/manifest.json",
     }
 )
-STORE_DIRS = ("/.octop/", "/.octop-auth/", "/memory/", "/memories/", "/skills/", "/inbound/")
+# ``/agents/`` holds the built-in sub-agent definitions, checked whenever a Bot is created.
+STORE_DIRS = (
+    "/.octop/",
+    "/.octop-auth/",
+    "/agents/",
+    "/memory/",
+    "/memories/",
+    "/skills/",
+    "/inbound/",
+)
 
 
 def on_store(path: str | None) -> bool:
@@ -116,13 +130,19 @@ class CloudComputer(BaseSandbox):
         if self._manager.taken_over(self._agent_id, self._user_id):
             # Agent-facing: the user is signing in or solving a check on this computer.
             return ExecuteResponse(output=TAKEN_OVER, exit_code=1, truncated=False)
-        exit_code, output = self._manager.run(
-            self._agent_id,
-            self._user_id,
-            command,
-            timeout or DEFAULT_COMMAND_TIMEOUT,
-            seed=self._seed,
-        )
+        try:
+            exit_code, output = self._manager.run(
+                self._agent_id,
+                self._user_id,
+                command,
+                timeout or DEFAULT_COMMAND_TIMEOUT,
+                seed=self._seed,
+            )
+        except OctopError as exc:
+            if exc.code != ErrorCode.BOT_COMPUTER_BUSY:
+                raise
+            # Agent-facing: AGS is out of capacity even after pausing idle computers.
+            return ExecuteResponse(output=NO_CAPACITY, exit_code=1, truncated=False)
         return ExecuteResponse(output=output, exit_code=exit_code, truncated=False)
 
     # -- path mapping ---------------------------------------------------------

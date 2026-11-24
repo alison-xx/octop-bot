@@ -134,6 +134,7 @@ async def run_cron_script(
             source=source,
             body=body,
             path=path,
+            cloud_computer=_is_cloud_computer(backend_spec),
         )
     if not host:
         raise ScriptRunError("needs_cloud_computer")
@@ -158,6 +159,12 @@ def _host_cwd(workspace: Any, spec: Any) -> Path | None:
     return path if path.is_dir() else None
 
 
+def _is_cloud_computer(spec: Any) -> bool:
+    from octop.infra.cloud.computers.backend import CloudComputer  # noqa: PLC0415
+
+    return isinstance(spec, CloudComputer)
+
+
 async def _run_via_execute(
     workspace: Any,
     execute: Any,
@@ -166,18 +173,32 @@ async def _run_via_execute(
     source: str,
     body: str,
     path: str | None,
+    cloud_computer: bool = False,
 ) -> ScriptRunResult:
+    # A cloud computer keeps .octop/ (and the rest of the Bot's context) in the object
+    # store, out of its shell's reach, so the script goes into a folder on the computer.
+    scripts = ".cron-scripts" if cloud_computer else ".octop/cron-scripts"
     cleanup: str | None = None
+    target = path or ""
     if source == "file":
-        target = path or ""
         exists = getattr(workspace, "aexists", None)
         if callable(exists) and not await exists(target):
             raise ScriptRunError("unreadable", target)
-    else:
-        target = f".octop/cron-scripts/{new_ulid()}{_SUFFIX.get(lang, '.txt')}"
+    if source == "file" and cloud_computer:
+        from octop.infra.cloud.computers.backend import on_store  # noqa: PLC0415
+
+        if on_store(target):
+            # e.g. a skill's script: copy it onto the computer to run it there.
+            text = await workspace.aread_text(target)
+            if text is None:
+                raise ScriptRunError("unreadable", target)
+            body = text
+            source = "inline"
+    if source != "file":
+        target = f"{scripts}/{new_ulid()}{_SUFFIX.get(lang, '.txt')}"
         mkdir = getattr(workspace, "amkdir", None)
         if callable(mkdir):
-            await mkdir(".octop/cron-scripts")
+            await mkdir(scripts)
         await workspace.awrite_text(target, body)
         cleanup = target
     command = _sandbox_command(lang, target)

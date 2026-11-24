@@ -92,6 +92,11 @@ const bridge = {
     if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" });
     return ipcRenderer.invoke(IPC_CHANNELS.botWorkbuddyLogin);
   },
+  /** Restart on the Octop Bot cloud, signed in with ``accessToken`` (from the local move). */
+  useLynxceCloud(accessToken: string): Promise<boolean> {
+    if (!botOnly) return Promise.resolve(false);
+    return ipcRenderer.invoke(IPC_CHANNELS.botUseCloud, accessToken);
+  },
   onOpenBotSettings(callback: () => void): () => void {
     openBotSettings = callback;
     if (settingsRequestPending) {

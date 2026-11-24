@@ -16,6 +16,8 @@ from octop.infra.cron.script_run import ScriptRunError, run_cron_script
 from octop.infra.cron.session_target import pinned_thread_id
 from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.db.repos.threads import ThreadRow
+from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator, HitlStreamContext
+from octop.infra.gateway.hitl.format import normalize_hitl_request
 from octop.infra.gateway.process import build_harness_request
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
@@ -34,6 +36,33 @@ if TYPE_CHECKING:
     from octop.infra.gateway.gateway import Gateway
 
 logger = logging.getLogger(__name__)
+
+# A scheduled run that stopped for the user (a question, an approval, a takeover) waits this
+# long for an answer; a paused cloud computer costs next to nothing meanwhile.
+WAIT_FOR_USER_SECONDS = 24 * 60 * 60
+
+
+class CronWaitingForUser(Exception):
+    """The run is waiting for the user to answer a card; not a failure."""
+
+
+def cron_origin(cron_id: str) -> str:
+    return f"cron:{cron_id}"
+
+
+def pause_summary(request: dict[str, Any]) -> str:
+    """One line on what the paused run needs: the question asked, else the tool's description."""
+    actions = request.get("action_requests")
+    first = actions[0] if isinstance(actions, list) and actions else {}
+    if not isinstance(first, dict):
+        return ""
+    args = first.get("args")
+    questions = args.get("questions") if isinstance(args, dict) else None
+    if isinstance(questions, list) and questions and isinstance(questions[0], dict):
+        text = str(questions[0].get("question") or "").strip()
+        if text:
+            return text[:300]
+    return str(first.get("description") or first.get("name") or "").strip()[:300]
 
 
 @dataclass(frozen=True)
@@ -93,6 +122,9 @@ class CronDeliveryService:
             )
 
         async def _locked() -> None:
+            if command.task_type == "agent" and self._still_waiting(command):
+                # Checked first: a fresh-thread job must not leave an empty conversation behind.
+                raise CronWaitingForUser(self._waiting_text(command, command.user_id, "", "still"))
             session = self._gateway.require_session(command.agent_id, session_key)
             if session.user_id != command.user_id:
                 raise ValueError(
@@ -253,7 +285,7 @@ class CronDeliveryService:
         tracker = TurnHistoryTracker.from_request(request)
         usage = UsageTracker()
         parts: list[str] = []
-        interaction_required = False
+        pause: dict[str, Any] | None = None
         saw_tool_call = False
         emitted_tool_error_ids: set[str] = set()
         try:
@@ -283,9 +315,10 @@ class CronDeliveryService:
                     if kind in ("token", "delta"):
                         parts.append(str(chunk.get("content") or chunk.get("text") or ""))
                     elif kind == "hitl_required":
-                        interaction_required = True
-            if interaction_required:
-                raise RuntimeError("cron agent run requires user interaction")
+                        raw = chunk.get("request")
+                        pause = raw if isinstance(raw, dict) else {}
+            if pause is not None:
+                await self._wait_for_user(command, session, pause)
             outbound = strip_thinking("".join(parts)).strip()
             if not outbound:
                 raise RuntimeError("cron agent run produced no visible response")
@@ -309,6 +342,65 @@ class CronDeliveryService:
             title_source=command.prompt,
         )
         await self._notify_best_effort(session, command.agent_id, outbound)
+
+    def _hitl(self) -> HitlChannelCoordinator | None:
+        processor = getattr(self._gateway, "processor", None)
+        hitl = getattr(processor, "hitl_coordinator", None)
+        return hitl if isinstance(hitl, HitlChannelCoordinator) else None
+
+    def _still_waiting(self, command: CronDeliveryCommand) -> bool:
+        """The previous run of this job still waits for the user: skip this one."""
+        hitl = self._hitl()
+        if hitl is None:
+            return False
+        return hitl.store.pending_with_origin(cron_origin(command.cron_id)) is not None
+
+    def _waiting_text(
+        self, command: CronDeliveryCommand, user_id: int, channel_type: str, key: str
+    ) -> str:
+        locale = resolve_user_locale(
+            user_repo=self._repos.user_repo, user_id=user_id, channel_type=channel_type
+        )
+        return tr(f"cron.waiting.{key}", locale, name=command.cron_name)
+
+    async def _wait_for_user(
+        self,
+        command: CronDeliveryCommand,
+        session: SessionRow,
+        request: dict[str, Any],
+    ) -> None:
+        """Leave the run's card answerable for a day, tell the user, and stop without failing."""
+        hitl = self._hitl()
+        if hitl is not None and request:
+            hitl.register_from_request(
+                normalize_hitl_request(request),
+                ctx=HitlStreamContext(
+                    thread_id=session.thread_id,
+                    agent_id=command.agent_id,
+                    user_id=session.user_id,
+                    session_key=session.session_key,
+                    channel_type=session.channel_type,
+                ),
+                origin=cron_origin(command.cron_id),
+                ttl_seconds=WAIT_FOR_USER_SECONDS,
+            )
+        text = self._waiting_text(command, session.user_id, session.channel_type, "needs_you")
+        detail = pause_summary(request)
+        if detail:
+            text = f"{text}\n{detail}"
+        if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD:
+            # The card itself is already in the conversation; a notification points at it.
+            await self._notify_best_effort(session, command.agent_id, text)
+        else:
+            try:
+                await self._gateway.push_session_text(session, text, title_source=command.prompt)
+            except Exception:
+                logger.warning(
+                    "failed to tell thread=%s a cron run waits for the user",
+                    session.thread_id,
+                    exc_info=True,
+                )
+        raise CronWaitingForUser(text)
 
     async def _build_agent_request(
         self,

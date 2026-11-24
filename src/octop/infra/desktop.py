@@ -75,6 +75,12 @@ def bot_cloud_enabled() -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def bot_cloud_origin() -> str:
+    """Where the desktop app's Lynxce mode keeps its data (``OCTOP_BOT_CLOUD_ORIGIN`` for tests)."""
+    raw = (os.environ.get("OCTOP_BOT_CLOUD_ORIGIN") or "").strip().rstrip("/")
+    return raw or "https://bot.lynxce.cn"
+
+
 def shell_owned_env_key(key: str) -> bool:
     """Return true when ``key`` is pinned by the desktop shell for this process."""
     if key in SHELL_OWNED_ENV_KEYS:

@@ -36,6 +36,8 @@ IDLE_PAUSE_SECONDS = 10 * 60
 # A screen viewer reports in every 30 s; miss a few and the computer can idle again, and a
 # takeover with no one watching is handed back to the Bot.
 VIEWER_GRACE_SECONDS = 90
+# A conversation that stopped using a computer's screen this long ago lets another one use it.
+SCREEN_HOLD_SECONDS = 120
 CHUNK_MINUTES = 5
 # Reaper passes (30 s apart) a failing settle is retried; Lynxce settles a reservation itself
 # 15 minutes after it expires, so an hour is plenty.
@@ -46,6 +48,9 @@ REAP_INTERVAL_SECONDS = 30
 ORPHAN_AGE_SECONDS = 15 * 60
 ORPHAN_SCAN_SECONDS = 10 * 60
 SERVER_ID_KEY = "octop_bot:computers:server_id"
+# When AGS is out of capacity, a running computer whose Bot has not acted for this long is
+# paused to make room (it would pause at IDLE_PAUSE_SECONDS anyway; resuming takes seconds).
+MAKE_ROOM_IDLE_SECONDS = 2 * 60
 
 
 @dataclass
@@ -143,6 +148,31 @@ class ComputerRecord:
 
     def dump(self) -> str:
         return json.dumps(asdict(self))
+
+
+# Tencent Cloud error codes that mean "no room right now": the account quota of AGS or CVM
+# (instances, CPU cores, memory), or a CVM type sold out in every zone tried.
+_CAPACITY_CODES = (
+    "LimitExceeded",
+    "ResourceInsufficient",
+    "ResourcesSoldOut",
+    "InstancesSoldOut",
+    "NoAvailableZone",
+)
+
+
+def capacity_full(exc: BaseException) -> bool:
+    """The provider refused for lack of capacity, not a passing error (anywhere in the chain:
+    the CVM driver wraps the last zone's error)."""
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        code = str(getattr(current, "code", "") or "")
+        if code.startswith(_CAPACITY_CODES) and code != "LimitExceeded.APIKeyQuota":
+            return True
+        current = current.__cause__
+    return False
 
 
 def _settle_refused(exc: Exception) -> bool:
@@ -264,6 +294,8 @@ class ComputerManager:
         self._activity: dict[str, tuple[str, float]] = {}
         # Short-lived glances (window title + thumbnail) so several viewers share one request.
         self._glances: dict[str, tuple[float, Glance]] = {}
+        # Which conversation drives each computer's screen, and when it last did: (thread, time).
+        self._screen_holders: dict[str, tuple[str, float]] = {}
         self._last_orphan_scan = 0.0
 
     # Records
@@ -317,30 +349,21 @@ class ComputerManager:
                 self._save(record)
                 return record.instance_id
             reservation = self._billing.reserve(record, CHUNK_MINUTES)
-            fresh = False
             try:
-                state = self._driver.state(record.instance_id) if record.instance_id else "gone"
-                if state == "paused":
-                    self._driver.resume(record.instance_id or "")
-                elif state == "gone":
-                    # A start that times out after AGS made the instance, or a crash right
-                    # after, leaves an instance no record knows: the orphan scan stops it by its
-                    # octop-server label.
-                    record.instance_id = None
-                    self._save(record)
-                    record.instance_id = self._driver.start(
-                        spec=record.spec,
-                        labels={
-                            "octop-user": str(user_id),
-                            "octop-bot": agent_id,
-                            "octop-server": self.server_id(),
-                        },
-                    )
-                    fresh = True
-            except Exception:
+                try:
+                    fresh = self._wake(record)
+                except Exception as exc:
+                    # Out of AGS capacity: pause someone's idle computer and try once more.
+                    if not (capacity_full(exc) and self._make_room(agent_id)):
+                        raise
+                    fresh = self._wake(record)
+            except Exception as exc:
                 # Settle first: a settle that fails is kept in ``unsettled``, saved here.
                 self._settle_one(record, reservation, 0)
                 self._save(record)
+                if capacity_full(exc):
+                    logger.warning("no AGS capacity for the computer of %s: %s", agent_id, exc)
+                    raise OctopError.localized(ErrorCode.BOT_COMPUTER_BUSY) from exc
                 raise
             # AGS says RUNNING before the desktop listens; wait so the first command works.
             try:
@@ -363,6 +386,61 @@ class ComputerManager:
                 except Exception:  # noqa: BLE001 - the computer works; files are copied next time
                     logger.warning("copying files onto the computer of %s failed", agent_id)
             return record.instance_id
+
+    def _wake(self, record: ComputerRecord) -> bool:
+        """Resume the record's paused instance or start a new one; True when it is brand new."""
+        state = self._driver.state(record.instance_id) if record.instance_id else "gone"
+        if state == "paused":
+            self._driver.resume(record.instance_id or "")
+            return False
+        if state != "gone":
+            return False
+        # A start that times out after AGS made the instance, or a crash right after, leaves an
+        # instance no record knows: the orphan scan stops it by its octop-server label.
+        record.instance_id = None
+        self._save(record)
+        record.instance_id = self._driver.start(
+            spec=record.spec,
+            labels={
+                "octop-user": str(record.user_id),
+                "octop-bot": record.agent_id,
+                "octop-server": self.server_id(),
+            },
+        )
+        return True
+
+    def _make_room(self, agent_id: str) -> bool:
+        """Pause this server's longest-idle running computer to free AGS capacity.
+
+        Never one in use: mid-command, acted on lately, or with its screen open.
+        """
+        now = self._clock()
+        idle: list[ComputerRecord] = []
+        for raw in self._services.settings_repo.with_prefix("octop_bot:computer:").values():
+            if not isinstance(raw, str):
+                continue
+            try:
+                other = ComputerRecord.load(raw)
+            except Exception:  # noqa: BLE001 - a broken record is the reaper's to report
+                continue
+            if (
+                other.agent_id == agent_id
+                or not other.running
+                or self._busy.get(other.agent_id, 0) > 0
+                or now - other.viewed_at < VIEWER_GRACE_SECONDS
+                or now - other.active_at < MAKE_ROOM_IDLE_SECONDS
+            ):
+                continue
+            idle.append(other)
+        for other in sorted(idle, key=lambda r: r.active_at):
+            try:
+                self.pause(other.agent_id, other.user_id)
+            except Exception:  # noqa: BLE001 - try the next one
+                logger.warning("pausing the computer of %s to make room failed", other.agent_id)
+                continue
+            logger.info("paused the idle computer of %s to make room", other.agent_id)
+            return True
+        return False
 
     def touch(self, agent_id: str, user_id: int) -> None:
         with self._lock(agent_id):
@@ -678,6 +756,20 @@ class ComputerManager:
     def note(self, agent_id: str, kind: str) -> None:
         """Remember the Bot's latest action on its computer (click, type, command, …)."""
         self._activity[agent_id] = (kind, self._clock())
+
+    def claim_screen(self, agent_id: str, holder: str) -> bool:
+        """One conversation at a time points and types on a computer's screen.
+
+        A private chat and a group can both reach the same Bot's computer; the other waits
+        until the holder has left the screen alone for SCREEN_HOLD_SECONDS.
+        """
+        now = self._clock()
+        with self._guard:
+            current = self._screen_holders.get(agent_id)
+            if current and current[0] != holder and now - current[1] < SCREEN_HOLD_SECONDS:
+                return False
+            self._screen_holders[agent_id] = (holder, now)
+            return True
 
     def activity(self, agent_id: str) -> tuple[str, float] | None:
         return self._activity.get(agent_id)

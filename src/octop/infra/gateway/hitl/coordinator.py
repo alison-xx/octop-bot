@@ -300,6 +300,8 @@ class HitlChannelCoordinator:
         *,
         ctx: HitlStreamContext,
         resume_agent_id: str | None = None,
+        origin: str | None = None,
+        ttl_seconds: float | None = None,
     ) -> HitlPendingRecord:
         return self._store.register(
             thread_id=ctx.thread_id,
@@ -310,6 +312,8 @@ class HitlChannelCoordinator:
             action_requests=parse_action_requests(raw_request),
             review_configs=parse_review_configs(raw_request),
             resume_agent_id=resume_agent_id,
+            origin=origin,
+            ttl_seconds=ttl_seconds,
         )
 
     @staticmethod

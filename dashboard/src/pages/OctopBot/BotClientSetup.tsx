@@ -222,7 +222,10 @@ export default function BotClientSetup() {
   };
 
   /** Desktop: the Lynxce account rides on the local owner (wallet, models, cloud computers). */
-  const signInDesktopLynxce = async (attempt: () => Promise<unknown>) => {
+  // Both sign-ins resolve with the error when they failed (shown here, inspected by the form).
+  const signInDesktopLynxce = async (
+    attempt: () => Promise<unknown>,
+  ): Promise<unknown> => {
     if (!status || busy) return;
     setBusy("lynxce");
     setError("");
@@ -236,6 +239,7 @@ export default function BotClientSetup() {
       });
     } catch (e) {
       setError(apiErrorMessage(e, t("octopBot.failed"), t));
+      return e;
     } finally {
       setBusy(null);
     }
@@ -243,7 +247,7 @@ export default function BotClientSetup() {
 
   const signInWithLynxce = async (
     attempt: () => Promise<{ access_token: string }>,
-  ) => {
+  ): Promise<unknown> => {
     if (!status || busy) return;
     setBusy("lynxce");
     setError("");
@@ -260,6 +264,7 @@ export default function BotClientSetup() {
       });
     } catch (e) {
       setError(apiErrorMessage(e, t("octopBot.failed"), t));
+      return e;
     } finally {
       setBusy(null);
     }
@@ -313,8 +318,10 @@ export default function BotClientSetup() {
             if (status) await enterLocal(status);
             return (await botCloudApi.sendCode(target, locale)).channel;
           }}
-          onCode={(target, code) =>
-            signInDesktopLynxce(() => botCloudApi.codeLogin(target, code))
+          onCode={(target, code, password) =>
+            signInDesktopLynxce(() =>
+              botCloudApi.codeLogin(target, code, password),
+            )
           }
           onPassword={(account, secret) =>
             signInDesktopLynxce(() => botCloudApi.login(account, secret))
@@ -393,8 +400,10 @@ export default function BotClientSetup() {
           if (status) await bindDatabase(status);
           return (await authApi.lynxceSendCode(target, locale)).channel;
         }}
-        onCode={(target, code) =>
-          signInWithLynxce(() => authApi.lynxceCodeLogin(target, code, locale))
+        onCode={(target, code, password) =>
+          signInWithLynxce(() =>
+            authApi.lynxceCodeLogin(target, code, locale, undefined, password),
+          )
         }
         onPassword={(account, secret) =>
           signInWithLynxce(() => authApi.lynxceLogin(account, secret, locale))

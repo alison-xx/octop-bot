@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 import re
-from collections.abc import Coroutine, Mapping
+from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Literal
@@ -160,8 +160,19 @@ async def _finish[T](operation: Coroutine[Any, Any, T]) -> T:
 
 
 class _UpstreamFailure(Exception):
-    def __init__(self, status: int):
+    def __init__(self, status: int, code: str | None = None):
         self.status = status
+        self.code = code  # Lynxce's ``error.code``, when it sent one
+
+
+def _error_code(response: httpx.Response) -> str | None:
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    error = body.get("error") if isinstance(body, dict) else None
+    code = error.get("code") if isinstance(error, dict) else None
+    return code if isinstance(code, str) else None
 
 
 def _rejected(status: int) -> OctopError:
@@ -202,7 +213,7 @@ async def _send(
     except httpx.HTTPError:
         raise _UpstreamFailure(502) from None
     if not response.is_success:
-        raise _UpstreamFailure(response.status_code)
+        raise _UpstreamFailure(response.status_code, _error_code(response))
     try:
         body = response.json()
     except ValueError:
@@ -257,6 +268,8 @@ async def _session_login(path: str, body: dict[str, str]) -> _Grant:
     try:
         data = await _send("POST", path, json=body)
     except _UpstreamFailure as exc:
+        if exc.code == "signup_password_required":
+            raise OctopError.localized(ErrorCode.LYNXCE_SIGNUP_PASSWORD_REQUIRED) from None
         if exc.status in {401, 403}:
             raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403) from None
         raise _rejected(exc.status) from None
@@ -311,7 +324,8 @@ def code_target(target: str) -> tuple[CodeChannel, str]:
 async def request_login_code(target: str, locale: str | None = None) -> CodeChannel:
     """Ask Lynxce to text or email a one-time sign-in code. Returns ``"phone"`` or ``"email"``.
 
-    New Lynxce users are created on first code sign-in and need no password.
+    New Lynxce users are created on first code sign-in. A new phone number needs no password;
+    a new email does (see :func:`_code_login`).
     """
     kind, value = code_target(target)
     body: dict[str, str] = {kind: value}
@@ -328,13 +342,26 @@ async def request_login_code(target: str, locale: str | None = None) -> CodeChan
     return kind
 
 
-async def _code_login(target: str, code: str) -> _Grant:
+async def _code_login(target: str, code: str, password: str | None = None) -> _Grant:
+    """Sign in with a one-time code.
+
+    Lynxce creates an account for a new email only with a sign-in password, and says so with
+    ``LYNXCE_SIGNUP_PASSWORD_REQUIRED`` before it uses up the code. The client then asks for
+    one and signs in again with the same code and ``password``. Send ``password`` only then:
+    for an existing account Lynxce takes it as that account's new password.
+    """
     kind, value = code_target(target)
     code = code.strip()
     if not _CODE.fullmatch(code):
         raise OctopError.localized(ErrorCode.LYNXCE_CODE_INVALID, status=401)
+    body = {kind: value, "code": code}
+    if password is not None:
+        password = password.strip()
+        if not 8 <= len(password) <= 4096:
+            raise OctopError.localized(ErrorCode.LYNXCE_SIGNUP_PASSWORD_REQUIRED)
+        body["password"] = password
     try:
-        return await _session_login(f"/api/auth/{kind}-login", {kind: value, "code": code})
+        return await _session_login(f"/api/auth/{kind}-login", body)
     except OctopError as exc:
         if exc.code is ErrorCode.AUTH_FAILED:
             raise OctopError.localized(ErrorCode.LYNXCE_CODE_INVALID, status=401) from None
@@ -350,9 +377,11 @@ async def verify_account(account: str, password: str) -> CloudAccountStatus:
     return await _verified(await _password_login(account, password))
 
 
-async def verify_account_code(target: str, code: str) -> CloudAccountStatus:
+async def verify_account_code(
+    target: str, code: str, password: str | None = None
+) -> CloudAccountStatus:
     """Same as :func:`verify_account`, proved with a one-time code instead of a password."""
-    return await _verified(await _code_login(target, code))
+    return await _verified(await _code_login(target, code, password))
 
 
 async def _verified(grant: _Grant) -> CloudAccountStatus:
@@ -373,13 +402,17 @@ async def login_cloud(
 
 
 async def login_cloud_code(
-    services: SharedServices, user_id: int, target: str, code: str
+    services: SharedServices,
+    user_id: int,
+    target: str,
+    code: str,
+    password: str | None = None,
 ) -> CloudAccountStatus:
     """Sign in with a one-time code texted or emailed by Lynxce (works for password-less accounts)."""
     if not _enabled():
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     async with _lock(services, user_id):
-        grant = await _code_login(target, code)
+        grant = await _code_login(target, code, password)
         await _finish(asyncio.to_thread(_save, services, user_id, grant))
         return grant.status()
 
@@ -530,8 +563,55 @@ async def open_password_session(account: str, password: str) -> CloudSession:
     return await _password_login(account, password)
 
 
-async def open_code_session(target: str, code: str) -> CloudSession:
-    return await _code_login(target, code)
+async def open_code_session(target: str, code: str, password: str | None = None) -> CloudSession:
+    return await _code_login(target, code, password)
+
+
+async def open_refresh_session(refresh_token: str) -> CloudSession:
+    """Take over a Lynxce session another Octop Bot app handed over, renewed here.
+
+    The desktop app moves its sign-in to the cloud when it starts keeping its data there.
+    Renewing proves the token and gives this server a session of its own to keep.
+    """
+    if not (1 <= len(refresh_token) <= 32768) or not refresh_token.isascii():
+        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
+    try:
+        data = await _send("POST", "/api/auth/refresh", json={"refreshToken": refresh_token})
+        access = _token(data, "accessToken")
+        profile = await _send("GET", "/api/user/profile", bearer=access)
+    except _UpstreamFailure as exc:
+        if exc.status in {400, 401, 403}:
+            raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403) from None
+        raise _rejected(exc.status) from None
+    if (
+        not isinstance(profile, dict)
+        or not isinstance(profile.get("id"), str)
+        or not profile["id"].strip()
+    ):
+        raise OctopError.localized(ErrorCode.NETWORK_ERROR)
+    renewed = _token(data, "refreshToken") if "refreshToken" in data else refresh_token
+    return _Grant(
+        profile["id"], display_name(profile), uuid4().hex, access, renewed, _avatar(profile)
+    )
+
+
+async def hand_over_session[T](
+    services: SharedServices, user_id: int, accept: Callable[[str], Awaitable[T]]
+) -> T:
+    """Give this desktop's Lynxce sign-in to the cloud, then forget it here.
+
+    ``accept`` sends the refresh token on. Only once it succeeded is the local copy dropped
+    (without signing out upstream, since the cloud now uses that session).
+    """
+    if not _enabled():
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
+    async with _lock(services, user_id):
+        grant = await asyncio.to_thread(_load, services, user_id)
+        if grant is None:
+            raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
+        result = await accept(grant.refresh_token)
+        await _finish(asyncio.to_thread(services.secret_repo.delete, _key(user_id)))
+    return result
 
 
 async def discard_session(session: CloudSession) -> None:
@@ -551,11 +631,24 @@ async def keep_session(services: SharedServices, user_id: int, session: CloudSes
 
 
 _IAP_HEADERS = {"X-Lynxce-Iap-App": "cn.lynxce.octopbot"}
-_MODEL_KEY_CALL = ("POST", "/api/user/personal-api-keys")
+# The desktop mints, lists and revokes its own chat key with the signed-in session.
+_MODEL_KEY_CALLS = frozenset(
+    {
+        ("POST", "/api/user/personal-api-keys"),
+        ("GET", "/api/user/personal-api-keys"),
+        ("DELETE", "/api/user/personal-api-keys/{id}"),
+        # Taking Lynxce's default daily credit cap off it (bot_cloud/accounts.py).
+        ("PATCH", "/api/user/personal-api-keys/{id}"),
+    }
+)
 # What cloud mode may do with a tenant's stored Lynxce session, besides request_cloud.
 _TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
     ("POST", "/api/user/personal-api-keys"): {},
-    # The tenant's own model key only, e.g. adding the media scopes (bot_cloud/accounts.py).
+    # This server's own model keys only: listed and revoked before a replacement is minted.
+    ("GET", "/api/user/personal-api-keys"): {},
+    ("DELETE", "/api/user/personal-api-keys/{id}"): {},
+    # The tenant's own model key only: adding the media scopes, lifting the default credit cap
+    # (bot_cloud/accounts.py).
     ("PATCH", "/api/user/personal-api-keys/{id}"): {},
     ("POST", "/api/user/account/deletion-request"): {},
     ("GET", "/api/billing/app/recharge-packages"): _IAP_HEADERS,
@@ -598,8 +691,8 @@ async def tenant_call(
 ) -> Any:
     """Cloud mode: one of a few account operations, as the tenant's stored Lynxce session."""
     allowed = _TENANT_CALLS.get((method, _route(path)))
-    # The desktop mints its own chat key with the signed-in session; the rest is cloud only.
-    desktop_key = bot_desktop_enabled() and (method, path) == _MODEL_KEY_CALL
+    # The desktop manages its own chat key with the signed-in session; the rest is cloud only.
+    desktop_key = bot_desktop_enabled() and (method, _route(path)) in _MODEL_KEY_CALLS
     if not (bot_cloud_enabled() or desktop_key) or allowed is None:
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     extra = {**allowed, **_service_headers(path)}
@@ -641,6 +734,16 @@ async def model_key_rejected(secret: str) -> bool:
 async def create_model_key(services: SharedServices, user_id: int, body: dict[str, Any]) -> Any:
     """Mint a Lynxce personal API key for this tenant with its stored session."""
     return await tenant_call(services, user_id, "POST", "/api/user/personal-api-keys", body)
+
+
+async def list_model_keys(services: SharedServices, user_id: int) -> Any:
+    """The account's personal API keys (``{"items": [{id, name, lastUsedAt, ...}]}``, no secrets)."""
+    return await tenant_call(services, user_id, "GET", "/api/user/personal-api-keys")
+
+
+async def revoke_model_key(services: SharedServices, user_id: int, key_id: str) -> None:
+    """Revoke (delete) one of the account's personal API keys; Lynxce cannot undo it."""
+    await tenant_call(services, user_id, "DELETE", f"/api/user/personal-api-keys/{key_id}")
 
 
 def forget_session(services: SharedServices, user_id: int) -> None:

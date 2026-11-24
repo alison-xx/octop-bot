@@ -17,6 +17,7 @@ import { lynxceBotApi } from "../../api/modules/lynxceBot";
 import { refreshBotModels, useLynxceStatus } from "../../hooks/useLynxceStatus";
 import LynxceAccount from "./LynxceAccount";
 import BotNotifySettings from "./BotNotifySettings";
+import OctopImport from "./OctopImport";
 import RetainedFolders from "./RetainedFolders";
 import { providerApi } from "../../api/modules/provider";
 import type { ResolvedModel } from "../../api/types";
@@ -288,6 +289,7 @@ export default function BotClientSettings() {
                   </Button>
                 </div>
               </div>
+              <OctopImport />
             </div>
           ) : tab === "about" ? (
             <BotAboutPanel returnTo={back} />

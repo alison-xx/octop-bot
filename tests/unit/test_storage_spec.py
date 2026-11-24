@@ -430,3 +430,11 @@ def test_rewrite_named_storage_backend_refs() -> None:
         old="old",
         new="new",
     ) == {"type": "named", "name": "keep"}
+
+
+def test_a_resolved_backend_object_supports_execution_when_it_executes() -> None:
+    class _Computer:
+        def execute(self, command: str) -> None: ...
+
+    assert backend_spec_supports_execution(_Computer())
+    assert not backend_spec_supports_execution(object())

@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { emitSessionEvent } from "./chatStore";
 import {
+  pickPreferredSession,
   resetSessionStoreForTests,
   sortSessions,
   toSession,
@@ -88,6 +89,24 @@ describe("toSession / sortSessions ordering", () => {
     });
     expect(session.turnActive).toBe(true);
     expect(session.awaitingUser).toBe(true);
+  });
+});
+
+describe("pickPreferredSession", () => {
+  it("never opens a Bot group work thread as the private chat", () => {
+    const group = toSession({
+      thread_id: "thr_group",
+      title: "群聊 · Room",
+      last_active: 200,
+      channel_type: "octop_bot_group",
+    });
+    const own = toSession({
+      thread_id: "thr_own",
+      title: null,
+      last_active: 0,
+    });
+    expect(pickPreferredSession([group, own])?.id).toBe("thr_own");
+    expect(pickPreferredSession([group])).toBeNull();
   });
 });
 

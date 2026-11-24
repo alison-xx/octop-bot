@@ -25,9 +25,11 @@ import tempfile
 import time
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from octop.infra.cloud.computers.driver import WORKSPACE as COMPUTER_WORKSPACE
 from octop.infra.gateway.media.attachment_hints import is_preview_media_type
 from octop.infra.gateway.media.constants import OUTBOUND_DIR
 from octop.infra.utils.browser_media import legacy_harness_screenshots_dir
@@ -339,6 +341,23 @@ def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
     return not win_denied
 
 
+def tenant_workspace_path(path: str, roots: Iterable[str | Path]) -> str:
+    """A cloud tenant has no host files: read a host-looking path inside its own workspace.
+
+    Its Bot sees the workspace as ``/`` (``/generated/a.md``), and tools may report the
+    workspace folder on the server (``roots``) or on its cloud computer. Those prefixes are
+    dropped; what is left is workspace-relative (``"."`` for the workspace itself). ``..``
+    is kept for the caller's guard to reject.
+    """
+    text = path.strip().replace("\\", "/")
+    for root in (*roots, COMPUTER_WORKSPACE):
+        base = str(root).replace("\\", "/").rstrip("/")
+        if base and (text == base or text.startswith(base + "/")):
+            text = text[len(base) :]
+            break
+    return text.lstrip("/") or "."
+
+
 def is_host_absolute_path(path: str) -> bool:
     """True for host filesystem absolute paths (``/…``, ``file://``, drive letter).
 
@@ -404,7 +423,14 @@ async def resolve_preview_payload(
             if is_previewable_mime(mime):
                 return data, mime
 
-    if _is_host_absolute(path):
+    if _is_host_absolute(path) and not host_files:
+        # A cloud tenant: the path is the Bot's view of its own workspace.
+        path = tenant_workspace_path(path, [workspace.workspace_dir])
+        if _has_parent_segment(path):
+            return None
+        data = await _download_via_workspace(workspace, path)
+        used = path
+    elif _is_host_absolute(path):
         if not _abs_path_allowed(path, workspace=workspace.workspace_dir, host_files=host_files):
             return None
         data = await _download_via_workspace(workspace, path)

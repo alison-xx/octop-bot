@@ -412,3 +412,46 @@ async def test_scoped_hitl_keeps_agent_until_approved_and_routes_cancellation(ro
     assert len(instances) == 1 and instances[0].closed
     with pytest.raises(OctopError):
         _ = [x async for x in manager._run_in_bot_room("a", root, req, [{"type": "approve"}])]
+
+
+@pytest.mark.asyncio
+async def test_member_group_thread_is_named_listed_on_request_and_shows_the_room_request(room):
+    from octop.infra.bot_groups.turns import room_request, show_room_requests
+
+    services, user, group = room
+    prompts = []
+
+    async def run(msg):
+        prompts.append(msg.text)
+        yield {"type": "token", "content": "done"}
+
+    runtime = gateway(services, run)
+    replies = await send_message(
+        services,
+        runtime,
+        user,
+        group.group_id,
+        text="@Editor 写提纲",
+        mention_ids=[],
+        request_id="r",
+    )
+    thread_id = replies[1].thread_id
+    row = services.thread_repo.get(thread_id)
+    assert row.title == "群聊 · Room"
+    repo = services.thread_repo
+    assert repo.list_visible(agent_id="a", user_id=user.id) == []
+    listed = repo.list_visible(agent_id="a", user_id=user.id, include_bot_groups=True)
+    assert [r.thread_id for r in listed] == [thread_id]
+    other = services.user_repo.create(username="other", role="user")
+    repo.set_contributed(thread_id, True)
+    assert repo.list_visible(agent_id="a", user_id=other, include_bot_groups=True) == []
+
+    assert room_request(prompts[0]) == "@Editor 写提纲"
+    assert room_request("plain text") is None
+    messages = [
+        {"role": "user", "content": [{"type": "text", "text": prompts[0]}]},
+        {"role": "assistant", "content": [{"type": "text", "text": "done"}]},
+    ]
+    show_room_requests(messages)
+    assert messages[0]["content"] == [{"type": "text", "text": "@Editor 写提纲"}]
+    assert messages[1]["content"] == [{"type": "text", "text": "done"}]

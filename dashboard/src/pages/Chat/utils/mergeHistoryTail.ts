@@ -252,7 +252,7 @@ export function mergeHistoryWithLocalTail(
     // outside the page. Only a send created in this running store can append.
     const pending = newSendIndex(current, loadedIds);
     if (pending < 0) return loaded;
-    return appendPendingTurn(loaded, current.slice(pending));
+    return appendPendingTurn(loaded, current.slice(pending), isStreaming);
   }
 
   let lastOverlap = firstOverlap;
@@ -290,7 +290,11 @@ export function mergeHistoryWithLocalTail(
         beforeSend.push(message);
       }
     }
-    return [...beforeSend, ...localTail.slice(freshSend), ...afterSend];
+    return [
+      ...beforeSend,
+      ...withoutStoredReply(localTail.slice(freshSend), afterSend, isStreaming),
+      ...afterSend,
+    ];
   }
 
   const overlapId = current[lastOverlap].id;
@@ -318,6 +322,7 @@ export function mergeHistoryWithLocalTail(
 function appendPendingTurn(
   before: ChatMessage[],
   pendingTurn: ChatMessage[],
+  isStreaming: boolean,
 ): ChatMessage[] {
   const user = pendingTurn.find((message) => message.role === "user");
   const userTs = user?.timestamp ?? 0;
@@ -337,5 +342,33 @@ function appendPendingTurn(
     if (afterQuestion) newer.push(message);
     else older.push(message);
   }
-  return [...older, ...pendingTurn, ...newer];
+  return [
+    ...older,
+    ...withoutStoredReply(pendingTurn, newer, isStreaming),
+    ...newer,
+  ];
+}
+
+/**
+ * Keep only the question once a finished turn's reply is on the page.
+ *
+ * A turn with many tool steps stores more rows than one history page, so
+ * the latest page holds its reply but not its question. The live bubbles
+ * carry stream ids, never the stored ones; keeping them next to the stored
+ * reply shows the answer twice. While the turn still streams, the page cannot
+ * hold its reply yet, so the live bubbles stay.
+ */
+function withoutStoredReply(
+  pendingTurn: ChatMessage[],
+  newer: ChatMessage[],
+  isStreaming: boolean,
+): ChatMessage[] {
+  const live =
+    isStreaming ||
+    pendingTurn.some((message) => message.status === "streaming");
+  if (live || newer.length === 0) return pendingTurn;
+  const stored = new Set(newer.map((message) => message.id));
+  return pendingTurn.filter(
+    (message) => message.role === "user" && !stored.has(message.id),
+  );
 }

@@ -115,6 +115,8 @@ export const IPC_CHANNELS = {
   botNotificationOpen: "octop:bot:notification-open",
   botUnreadBadge: "octop:bot:unread-badge",
   botWorkbuddyLogin: "octop:bot:workbuddy-login",
+  /** After moving to the Octop Bot cloud: switch there, signed in with this cloud token. */
+  botUseCloud: "octop:bot:use-cloud",
   orbPointer: "octop:orb:pointer",
   /** Linux square caption buttons. No-op on the other platforms. */
   windowMinimize: "octop:window-minimize",

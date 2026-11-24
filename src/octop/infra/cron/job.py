@@ -6,7 +6,7 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from octop.infra.cron.delivery import CronDeliveryCommand
+from octop.infra.cron.delivery import CronDeliveryCommand, CronWaitingForUser
 from octop.infra.cron.task_type import normalize_cron_task_type
 from octop.infra.db.repos.audit import ACTOR_SYSTEM
 from octop.infra.errors import ErrorCode, OctopError
@@ -120,6 +120,25 @@ class CronJob:
                     script_path=self._script_path,
                 )
             )
+        except CronWaitingForUser as exc:
+            # A question, approval or takeover the user has not answered yet: not a failure.
+            recorded = self._record(
+                ts,
+                "waiting",
+                str(exc),
+                lease_token=lease_token,
+                disable_after=disable_after,
+            )
+            if not recorded:
+                self._lost(raise_on_error=raise_on_error)
+                return False
+            self._audit_repo.write(
+                actor=ACTOR_SYSTEM,
+                action="cron.run_waiting",
+                target=self._cron_id,
+                payload=str(exc),
+            )
+            return True
         except Exception as exc:
             METRICS.inc("cron_errors_total")
             logger.exception("cron job %s failed", self._cron_id)

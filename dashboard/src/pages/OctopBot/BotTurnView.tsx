@@ -30,6 +30,9 @@ import BotCreationEvents from "./BotCreationEvents";
 import { separateCreations } from "./creationEvents";
 import BotAskCard, { parseAskAnswers } from "./BotAskCard";
 import CloudComputerHandoff from "./CloudComputerHandoff";
+import BotApprovalCard from "./BotApprovalCard";
+import BotTaskCard, { BotTaskReport } from "./BotTaskCard";
+import { isTaskTool, parseTaskOutput, type BotTaskIndex } from "./botTasks";
 import styles from "./botConversation.module.less";
 
 interface BotTurnViewProps {
@@ -42,6 +45,10 @@ interface BotTurnViewProps {
   forkDisabledHint?: string;
   onAcpPermissionSelect?: (message: string) => void;
   onHitlDecision?: HitlDecisionHandler;
+  /** Every task in the conversation, at its newest state. */
+  tasks?: BotTaskIndex;
+  /** The Bot is replying in this conversation right now. */
+  live?: boolean;
 }
 
 /**
@@ -64,6 +71,8 @@ export default function BotTurnView({
   forkDisabledHint,
   onAcpPermissionSelect,
   onHitlDecision,
+  tasks,
+  live = false,
 }: BotTurnViewProps) {
   const { activeAgentId } = useAgent();
   const agentId = agentIdProp ?? activeAgentId;
@@ -133,6 +142,27 @@ export default function BotTurnView({
       const computer = actions
         .map((a) => parseActionArgs(a.args).cloud_computer)
         .find((v): v is string => typeof v === "string");
+      // `request_approval` (or a guarded click): an approval card while it waits.
+      const approval = actions
+        .map((a) => parseActionArgs(a.args).approval)
+        .find((v) => v && typeof v === "object");
+      const asked = extractAskQuestions(actions)[0];
+      if (pending && approval && asked) {
+        const answer = (label: string) =>
+          onHitlDecision?.(
+            actions.map(() => ({ type: "respond", message: label })),
+            undefined,
+            hitl.pending_id,
+          );
+        return (
+          <BotApprovalCard
+            title={actions[0]?.description ?? ""}
+            question={asked.question}
+            options={(asked.options ?? []).map((o) => o.label)}
+            onAnswer={onHitlDecision ? answer : undefined}
+          />
+        );
+      }
       return (
         <>
           {pending && computer && <CloudComputerHandoff botId={computer} />}
@@ -153,6 +183,20 @@ export default function BotTurnView({
       );
     }
     const tool = message.toolData;
+    if (isTaskTool(tool?.name)) {
+      // The card sits where the task started; the report where it finished.
+      const id = tasks?.byMessage.get(message.id);
+      const entry = id ? tasks?.byId.get(id) : undefined;
+      if (entry && entry.firstMessageId === message.id)
+        return (
+          <BotTaskCard entry={entry} live={live && tasks?.latest === id} />
+        );
+      const finished =
+        tool?.name === "task_finish" ? parseTaskOutput(tool.output) : null;
+      return finished && finished.status !== "running" ? (
+        <BotTaskReport task={finished} />
+      ) : null;
+    }
     if (tool?.name === ASK_USER_TOOL_NAME) {
       const questions = questionsFromUnknown(tool.arguments);
       return (
@@ -202,6 +246,7 @@ export default function BotTurnView({
       (m) =>
         m.hitlData ||
         m.toolData?.name === ASK_USER_TOOL_NAME ||
+        (isTaskTool(m.toolData?.name) && parseTaskOutput(m.toolData?.output)) ||
         (m.toolData && isPinnedToolUiMessage(m)) ||
         m.status === "error" ||
         deriveMessageContent(m).textContent.trim(),

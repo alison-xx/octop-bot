@@ -12,6 +12,7 @@ from octop.api.deps import current_user, get_server
 from octop.infra.agents.bot_library import bot_library
 from octop.infra.agents.bot_workspace import require_own_bot
 from octop.infra.agents.workspace.dir import agent_facing_workspace_dir_from_config
+from octop.infra.cloud.computers.manager import current_manager
 from octop.infra.cron.upcoming import upcoming_jobs
 from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.users.identity import User
@@ -106,6 +107,7 @@ async def library(
         return registry.workspace_for_agent(agent_id), [root for root in (facing, host) if root]
 
     workspace, roots = await asyncio.to_thread(where)
+    cloud = bot_cloud_enabled()
     files = await bot_library(
         thread_repo=server.services.thread_repo,
         workspace=workspace,
@@ -113,6 +115,8 @@ async def library(
         agent_id=agent_id,
         user_id=user.id,
         timezone=server.services.config.default_timezone,
-        cloud=bot_cloud_enabled(),
+        cloud=cloud,
+        # On cloud computers the files live on the Bot's computer: never wake it to list them.
+        check=not (cloud and current_manager() is not None),
     )
     return Library(files=[LibraryFile.model_validate(item) for item in files])

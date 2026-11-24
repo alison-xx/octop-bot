@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Empty, Input, Modal, Select, Spin } from "antd";
-import { Cloud, Plus, RefreshCw } from "lucide-react";
+import {
+  Alert,
+  Button,
+  Empty,
+  Input,
+  Modal,
+  Popconfirm,
+  Select,
+  Spin,
+} from "antd";
+import { Cloud, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { octopCronApi } from "../../api/modules/cronjob";
@@ -69,12 +78,14 @@ function ScheduleForm({
   agentId,
   threadId,
   timezone,
+  local,
   onCancel,
   onCreated,
 }: {
   agentId: string;
   threadId?: string;
   timezone: string;
+  local: boolean;
   onCancel: () => void;
   onCreated: (job: OctopCronRow) => void;
 }) {
@@ -211,7 +222,9 @@ function ScheduleForm({
         {t(
           threadId
             ? "botClient.activity.deliverHere"
-            : "botClient.activity.deliverLatest",
+            : local
+            ? "botClient.activity.deliverLatest"
+            : "botClient.activity.deliverLatestServer",
         )}
       </p>
       {error && <Alert type="error" showIcon message={error} />}
@@ -236,12 +249,15 @@ export default function BotSchedulesDialog({
   agentId,
   name,
   threadId,
+  edition,
   onClose,
   onOpenCloud,
 }: {
   agentId: string;
   name: string;
   threadId?: string;
+  /** Where the server runs: only "desktop" runs tasks on this computer. */
+  edition?: "desktop" | "web" | "cloud" | "server";
   onClose: () => void;
   onOpenCloud?: (job?: OctopCronRow) => void;
 }) {
@@ -295,6 +311,34 @@ export default function BotSchedulesDialog({
       setChanging(null);
     }
   };
+  const remove = async (job: OctopCronRow) => {
+    if (changing) return;
+    setChanging(job.id);
+    setChangeError("");
+    try {
+      await octopCronApi.delete(agentId, job.id);
+      setData(
+        (current) =>
+          current && {
+            ...current,
+            jobs: current.jobs.filter((row) => row.id !== job.id),
+          },
+      );
+    } catch (err) {
+      setChangeError(apiErrorMessage(err, t("cronJobs.operationFailed"), t));
+    } finally {
+      setChanging(null);
+    }
+  };
+  // Until the server says otherwise, keep the local wording for where results go.
+  const local = !edition || edition === "desktop";
+  const where = !edition
+    ? null
+    : edition === "desktop"
+    ? "botClient.activity.localExecution"
+    : edition === "cloud"
+    ? "botClient.activity.cloudExecution"
+    : "botClient.activity.serverExecution";
   return (
     <Modal
       open
@@ -309,7 +353,7 @@ export default function BotSchedulesDialog({
       width={520}
     >
       <div className={styles.body}>
-        <p className={styles.hint}>{t("botClient.activity.localExecution")}</p>
+        {where && <p className={styles.hint}>{t(where)}</p>}
         {loadError ? (
           <Alert
             type="error"
@@ -328,6 +372,7 @@ export default function BotSchedulesDialog({
             agentId={agentId}
             threadId={threadId}
             timezone={data.timezone}
+            local={local}
             onCancel={() => setEditing(false)}
             onCreated={(row) => {
               setData(
@@ -430,9 +475,9 @@ export default function BotSchedulesDialog({
                             {status && " · " + t(status.labelKey)}
                           </small>
                         )}
-                        {job.last_status === "error" && job.last_error && (
-                          <small>{job.last_error}</small>
-                        )}
+                        {(job.last_status === "error" ||
+                          job.last_status === "waiting") &&
+                          job.last_error && <small>{job.last_error}</small>}
                       </div>
                       {onOpenCloud &&
                         !job.enabled &&
@@ -454,6 +499,24 @@ export default function BotSchedulesDialog({
                           {action}
                         </Button>
                       )}
+                      <Popconfirm
+                        title={t("cronJobs.deleteConfirm")}
+                        okText={t("common.delete")}
+                        cancelText={t("common.cancel")}
+                        okButtonProps={{ danger: true }}
+                        onConfirm={() => remove(job)}
+                      >
+                        <Button
+                          size="small"
+                          type="text"
+                          danger
+                          icon={<Trash2 size={14} />}
+                          loading={changing === job.id}
+                          disabled={changing !== null && changing !== job.id}
+                          aria-label={t("common.delete") + " " + job.name}
+                          title={t("common.delete")}
+                        />
+                      </Popconfirm>
                     </li>
                   );
                 })}

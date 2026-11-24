@@ -18,7 +18,7 @@ vi.mock("../../api/modules/botProfile", () => ({
   botProfileApi: { upcoming: vi.fn(), library: vi.fn(), download: vi.fn() },
 }));
 vi.mock("../../api/modules/cronjob", () => ({
-  octopCronApi: { patch: vi.fn() },
+  octopCronApi: { patch: vi.fn(), delete: vi.fn() },
 }));
 vi.mock("../../utils/saveBlobAsFile", () => ({ saveBlobAsFile: vi.fn() }));
 
@@ -69,6 +69,34 @@ describe("Bot profile activity", () => {
     expect(screen.getByText("Task 7")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "botProfile.showMore" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("deletes a task after confirming, and only for someone who may manage it", async () => {
+    vi.mocked(botProfileApi.upcoming).mockResolvedValue({
+      timezone: "UTC",
+      jobs: [job(1), job(2)],
+    });
+    vi.mocked(octopCronApi.delete).mockResolvedValue(undefined);
+    const { unmount } = render(
+      <BotActivityLibrary agentId="writer" canToggle />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "botProfile.delete Task 1" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "common.delete" }),
+    );
+    expect(octopCronApi.delete).toHaveBeenCalledWith("writer", "job-1");
+    await vi.waitFor(() =>
+      expect(screen.queryByText("Task 1")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("Task 2")).toBeInTheDocument();
+    unmount();
+    render(<BotActivityLibrary agentId="writer" canToggle={false} />);
+    expect(await screen.findByText("Task 1")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "botProfile.delete Task 1" }),
     ).not.toBeInTheDocument();
   });
 

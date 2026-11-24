@@ -100,6 +100,42 @@ def _goal_edit(
     return text[: block.start()].strip() or proposed.title, proposed
 
 
+def room_request(prompt: str) -> str | None:
+    """What the user said in the room, from the prompt a member received for it."""
+    for part in reversed(prompt.split("\n\n")):
+        if not part.startswith("{"):
+            continue
+        try:
+            context = json.loads(part)
+        except ValueError:
+            continue
+        if isinstance(context, dict) and isinstance(context.get("user_request"), str):
+            return str(context["user_request"])
+    return None
+
+
+def show_room_requests(messages: list[dict[str, Any]]) -> None:
+    """Show the room request in place of the long prompt in a member's group work thread."""
+    for message in messages:
+        if message.get("role") != "user" or not isinstance(message.get("content"), list):
+            continue
+        text = "".join(
+            str(block.get("text") or "")
+            for block in message["content"]
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+        request = room_request(text)
+        if request is not None:
+            message["content"] = [
+                *(
+                    b
+                    for b in message["content"]
+                    if not (isinstance(b, dict) and b.get("type") == "text")
+                ),
+                {"type": "text", "text": request},
+            ]
+
+
 class RoomTurn:
     def __init__(
         self,
@@ -217,6 +253,12 @@ class RoomTurn:
                 user_id=self.user.id,
                 channel_type=channel_type,
                 channel_channel_id="octop-bot",
+            )
+            # Named after the room, so the member's history lists it and no title is generated.
+            await asyncio.to_thread(
+                registry.update_title,
+                thread_id,
+                tr("bot_rooms.thread_title", self.user.locale, room=group.name),
             )
             inbound = InboundMessage(
                 channel_id="octop-bot",
