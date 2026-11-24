@@ -425,4 +425,16 @@ class ServerProtocolTest {
         )
         assertEquals(MessageStatus.Failed(null, dailyLimit = true), rows[1].status)
     }
+
+    @Test
+    fun cloudComputerOffAndBusyKeepTheirCodes() {
+        val off = ApiException.fromBody(409, """{"error":{"code":"BOT_COMPUTER_OFF","message":"m","details":{}}}""")
+        assertEquals(ApiException.Kind.Rejected, off.kind)
+        assertEquals(ApiException.COMPUTER_OFF, off.code)
+        val busy = ApiException.fromBody(503, """{"error":{"code":"BOT_COMPUTER_BUSY","message":"m","details":{}}}""")
+        assertEquals(ApiException.Kind.Server, busy.kind)
+        assertEquals(ApiException.COMPUTER_BUSY, busy.code)
+        // Longer than the server's 300 s wait for a cold start, so the phone never gives up first.
+        assertTrue(ServerBackend.SCREEN_SECONDS > 300)
+    }
 }

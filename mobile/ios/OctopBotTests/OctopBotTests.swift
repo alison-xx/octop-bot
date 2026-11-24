@@ -541,6 +541,18 @@ private final class SellingAccount: CreditAccount {
 }
 
 @MainActor
+final class CloudComputerTests: XCTestCase {
+    /// A file on a cloud computer that is off, and no computer slot free: the phone's own words, which
+    /// point at the computer icon, rather than whatever the server sent.
+    func testComputerOffAndBusyHaveTheirOwnText() {
+        XCTAssertEqual(APIError.from(status: 409, message: "server text", code: "BOT_COMPUTER_OFF").errorDescription, L("error.computerOff"))
+        XCTAssertEqual(APIError.from(status: 503, message: "server text", code: "BOT_COMPUTER_BUSY").errorDescription, L("error.computerBusy"))
+        XCTAssertEqual(APIError.from(status: 409, message: "server text", code: "OTHER").errorDescription, "server text")
+        XCTAssertNotEqual(L("computer.starting"), "computer.starting")
+    }
+}
+
+@MainActor
 final class CreditTests: XCTestCase {
     /// 1.0.1 ships before the credit packs have been through App Review: the app must not offer them
     /// even when Lynxce says purchases are on, and must not show "top up" copy with no way to do it.

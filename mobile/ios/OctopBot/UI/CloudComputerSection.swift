@@ -8,11 +8,19 @@ struct CloudComputerSection: View {
     @State private var status: ServerBackend.ComputerStatus?
     @State private var busy = false
     @State private var failed = false
+    /// Opening the screen of a computer that is off: it starts first, which can take a minute or more.
+    @State private var starting = false
+    @State private var screenError: String?
 
     var body: some View {
         Section {
             LabeledContent {
-                if let status {
+                if starting {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                        Text("computer.starting").foregroundStyle(Palette.secondary).lineLimit(2)
+                    }
+                } else if let status {
                     Text(status.label).foregroundStyle(status.state == .running ? .green : Palette.secondary)
                 } else if failed {
                     Text("computer.unavailable").foregroundStyle(Palette.secondary)
@@ -36,6 +44,9 @@ struct CloudComputerSection: View {
                 }
                 .disabled(busy)
                 .accessibilityIdentifier("computerView")
+                if let screenError {
+                    Text(screenError).font(.footnote).foregroundStyle(.red)
+                }
                 Button {
                     Task { await takeover(!(status?.takeover ?? false)) }
                 } label: {
@@ -70,10 +81,19 @@ struct CloudComputerSection: View {
     /// flips back, which dismissed a sheet (and the editor under it) as soon as it appeared.
     private func openScreen() async {
         busy = true
-        defer { busy = false }
-        if let url = try? await server.screenURL(botId, control: status?.takeover == true) {
-            FileOpener.present(SFSafariViewController(url: url))
+        screenError = nil
+        starting = status?.state != .running
+        defer {
+            busy = false
+            starting = false
         }
+        do {
+            let url = try await server.screenURL(botId, control: status?.takeover == true)
+            FileOpener.present(SFSafariViewController(url: url))
+        } catch {
+            screenError = error.localizedDescription
+        }
+        await load()
     }
 
     private func takeover(_ active: Bool) async {
@@ -151,8 +171,10 @@ extension ServerBackend {
 
     /// The server's screen page for this computer, with a one-time ticket and the screen session
     /// that lets the page type Chinese and sync the clipboard while the user has taken over.
+    /// Starts or resumes the computer and waits until its desktop is up: a cold start can take minutes, and
+    /// the server stops waiting after 300 s (it still answers then).
     func screenURL(_ agentId: String, control: Bool) async throws -> URL {
-        let body = try await json(.post, computerPath(agentId) + "/screen") as? [String: Any]
+        let body = try await json(.post, computerPath(agentId) + "/screen", timeout: 360) as? [String: Any]
         guard let wsPath = body?["ws_path"] as? String, let ticket = URLComponents(string: wsPath)?
             .queryItems?.first(where: { $0.name == "ticket" })?.value
         else { throw APIError(kind: .server, status: 502, message: nil) }

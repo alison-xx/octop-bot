@@ -22,10 +22,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
 import androidx.compose.ui.unit.dp
 import io.github.alisonxx.octopbot.R
+import io.github.alisonxx.octopbot.app.describe
 import io.github.alisonxx.octopbot.net.ServerBackend
 import io.github.alisonxx.octopbot.net.ServerProtocol.ComputerStatus
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
@@ -40,12 +42,16 @@ fun CloudComputerPanel(server: ServerBackend, botId: String) {
     var status by remember(botId) { mutableStateOf<ComputerStatus?>(null) }
     var failed by remember(botId) { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var starting by remember { mutableStateOf(false) }
+    var screenError by remember { mutableStateOf<String?>(null) }
+    val resources = LocalResources.current
     LaunchedEffect(botId) {
         runCatching { server.computerStatus(botId) }
             .onSuccess { status = it }
             .onFailure { failed = true }
     }
     val label = when {
+        starting -> stringResource(R.string.computer_starting)
         failed -> stringResource(R.string.computer_unavailable)
         status == null -> "…"
         else -> when (status!!.state) {
@@ -75,9 +81,15 @@ fun CloudComputerPanel(server: ServerBackend, botId: String) {
                     enabled = !busy,
                     onClick = {
                         busy = true
+                        screenError = null
+                        // Opening the screen starts or resumes the computer, which can take a minute or more.
+                        starting = status?.state != ComputerStatus.State.Running
                         scope.launch {
                             runCatching { server.screenUrl(botId, control = status?.takeover == true) }
                                 .onSuccess { url -> context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
+                                .onFailure { screenError = resources.describe(it) }
+                            runCatching { server.computerStatus(botId) }.onSuccess { status = it }
+                            starting = false
                             busy = false
                         }
                     },
@@ -105,6 +117,9 @@ fun CloudComputerPanel(server: ServerBackend, botId: String) {
                     },
                 ) { Text(stringResource(R.string.computer_pause)) }
             }
+        }
+        screenError?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp, start = 4.dp, end = 4.dp))
         }
         Text(
             stringResource(R.string.computer_footer),

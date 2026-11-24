@@ -311,7 +311,7 @@
     <string name="computer_state_paused">Paused</string>
     <string name="computer_pause">Pause now</string>
     <string name="computer_unavailable">Unavailable</string>
-    <string name="computer_footer">Starts when the Bot first needs to run something and pauses after 10 idle minutes. Running time is charged by the minute in Lynxce credits; files stay while it\'s paused.</string>
+    <string name="computer_footer">It starts when the Bot needs it or when you tap View screen, and pauses after 10 idle minutes. Running time is charged by the minute in Lynxce credits; files stay while it\'s paused.</string>
     <string name="computer_view">View screen</string>
     <string name="computer_take_over">Take over</string>
     <string name="computer_hand_back">Hand back</string>
@@ -362,7 +362,7 @@
     <string name="computer_float_idle">Idle</string>
     <string name="computer_float_loading">Loading the screen…</string>
     <string name="computer_float_minimise">Minimise</string>
-    <string name="computer_float_off">The computer is off. It starts when the Bot needs it.</string>
+    <string name="computer_float_off">The computer is off. It starts when the Bot needs it, or tap expand to start it now.</string>
     <string name="computer_float_toggle">Cloud computer</string>
     <string name="computer_float_yours">You\'re in control</string>
     <string name="server_unsupported">This server can\'t sign in with a Lynxce account. Ask its admin to update Octop Bot.</string>
@@ -518,4 +518,8 @@
     <string name="models_add_kept_server">Stored encrypted on your server; only the last four characters are shown later.</string>
     <string name="models_body_server">Bots use the model chosen here: the models this server\'s admin set up, or your own API keys, billed by the vendor.</string>
     <string name="models_footer_server">Choose what your Bots run on: the server\'s models or your own API keys.</string>
+    <string name="computer_starting">Starting the computer… The first time can take a minute or two.</string>
+    <string name="computer_file_off">This file is on the cloud computer. Tap the computer icon to start it, then open the file.</string>
+    <string name="computer_busy">All cloud computers are in use right now. Try again in a few minutes.</string>
+    <string name="computer_starting_short">Starting…</string>
 </resources>

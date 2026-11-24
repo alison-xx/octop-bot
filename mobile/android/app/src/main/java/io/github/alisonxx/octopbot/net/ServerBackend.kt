@@ -85,6 +85,9 @@ class ServerBackend(
     }
 
     companion object {
+        /** `POST …/screen` waits for a cold start; the server stops waiting after 300 s and still answers. */
+        const val SCREEN_SECONDS = 360L
+
         /** How this server signs its owner in. Octop Bot signs in with Lynxce accounts only. */
         sealed interface SignInMode {
             /** Bot web build owned (or about to be claimed) by a Lynxce account. */
@@ -273,9 +276,12 @@ class ServerBackend(
         if (e.status == 404) null else throw e
     }
 
-    /** The screen page for a Bot's computer, with a fresh one-time ticket. */
+    /**
+     * The screen page for a Bot's computer, with a fresh one-time ticket. Starts or resumes the computer and
+     * waits until its desktop is up (a cold start can take minutes; the server gives up after 300 s).
+     */
     suspend fun screenUrl(botId: String, control: Boolean): String {
-        val ticket = json("POST", "/api/octop-bot/computers/" + segment(botId) + "/screen").asObject()
+        val ticket = json("POST", "/api/octop-bot/computers/" + segment(botId) + "/screen", http = client.withReadTimeout(SCREEN_SECONDS)).asObject()
         val wsPath = ticket?.str("ws_path")
         return wsPath?.let { ServerProtocol.screenPage(baseUrl, botId, it, ticket?.str("session"), control) }
             ?: throw ApiException.badResponse()
