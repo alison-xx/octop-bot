@@ -592,6 +592,145 @@ final class CloudTests: XCTestCase {
 }
 
 @MainActor
+final class ComputerTests: XCTestCase {
+    func testComputerStatusParses() throws {
+        let running = try ServerBackend.ComputerStatus.parse(["state": "running", "spec": "standard", "running_since": 1_700_000_000.0])
+        XCTAssertEqual(running.state, .running)
+        XCTAssertEqual(running.runningSince, Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(try ServerBackend.ComputerStatus.parse(["state": "none", "spec": "standard"]).state, .none)
+        XCTAssertThrowsError(try ServerBackend.ComputerStatus.parse(["state": "melted"]))
+    }
+}
+
+@MainActor
+final class ScreenTests: XCTestCase {
+    func testScreenPageCarriesTheTicketAndControl() {
+        let url = ServerBackend.screenPage(
+            base: URL(string: "https://bot.lynxce.cn")!, agentId: "AbC123", ticket: "t-1", screenSession: "s-1", control: true)
+        XCTAssertEqual(url.absoluteString, "https://bot.lynxce.cn/octop-bot/screen/AbC123?ticket=t-1&session=s-1&control=1")
+        let older = ServerBackend.screenPage(
+            base: URL(string: "https://bot.lynxce.cn")!, agentId: "AbC123", ticket: "t-1", screenSession: nil, control: false)
+        XCTAssertEqual(older.absoluteString, "https://bot.lynxce.cn/octop-bot/screen/AbC123?ticket=t-1&control=0")
+        let status = try? ServerBackend.ComputerStatus.parse(["state": "running", "takeover": true])
+        XCTAssertEqual(status?.takeover, true)
+    }
+}
+
+@MainActor
+final class FileAttachmentTests: XCTestCase {
+    func testKindByExtensionThenMime() {
+        XCTAssertEqual(FileKind.of(name: "Report.PDF", mime: nil), .pdf)
+        XCTAssertEqual(FileKind.of(name: "a.docx", mime: nil), .word)
+        XCTAssertEqual(FileKind.of(name: "dec2026.csv", mime: nil), .spreadsheet)
+        XCTAssertEqual(FileKind.of(name: "deck.pptx", mime: nil), .presentation)
+        XCTAssertEqual(FileKind.of(name: "logs.tar.gz", mime: nil), .archive)
+        XCTAssertEqual(FileKind.of(name: "shot.png", mime: nil), .image)
+        XCTAssertEqual(FileKind.of(name: "notes.txt", mime: nil), .other)
+        XCTAssertEqual(FileKind.of(name: "download", mime: "application/pdf"), .pdf)
+        XCTAssertEqual(FileKind.of(name: "x", mime: "image/*"), .image)
+        XCTAssertEqual(FileKind.pdf.bandHex, 0xE5484D)
+        XCTAssertEqual(FileKind.other.bandHex, FileKind.image.bandHex)
+        XCTAssertEqual(Set(FileKind.allCases.map(\.bandHex)).count, 6)
+    }
+
+    func testTypeLabel() {
+        XCTAssertEqual(FileCardText.typeLabel("a.pdf"), "PDF")
+        XCTAssertEqual(FileCardText.typeLabel("a.docx"), "DOCX")
+        XCTAssertEqual(FileCardText.typeLabel("README"), L("file.generic"))
+        XCTAssertEqual(FileCardText.typeLabel(".env"), L("file.generic"))
+        XCTAssertEqual(FileCardText.typeLabel("a.numbers"), L("file.generic"))
+    }
+
+    func testMiddleEllipsisKeepsTheExtension() {
+        XCTAssertEqual(FileCardText.middleEllipsis("dec2026.csv"), "dec2026.csv")
+        let long = FileCardText.middleEllipsis("Octop-quarterly-business-review-2026-final.pdf")
+        XCTAssertEqual(long, "Octop-quarterly-b…inal.pdf")
+        XCTAssertEqual(long.count, 26)
+        XCTAssertTrue(FileCardText.middleEllipsis("这是一个非常非常非常非常非常非常非常长的中文文件名称报告.docx").hasSuffix(".docx"))
+        XCTAssertEqual(FileCardText.middleEllipsis(String(repeating: "x", count: 40)).count, 26)
+    }
+
+    func testFileSize() {
+        XCTAssertEqual(FileCardText.formatFileSize(512), "512 B")
+        XCTAssertEqual(FileCardText.formatFileSize(1536), "1.5 KB")
+        XCTAssertEqual(FileCardText.formatFileSize(2 * 1024 * 1024), "2 MB")
+        XCTAssertEqual(FileCardText.formatFileSize(12 * 1024 * 1024 + 300_000), "12 MB")
+        XCTAssertEqual(FileCardText.formatFileSize(3 * 1024 * 1024 * 1024), "3 GB")
+    }
+
+    func testLinksInReplyText() {
+        let text = "Here: [report](/api/agents/A1/workspace/download?path=output%2Freport%201.pdf) and "
+            + "[again](/api/agents/A1/workspace/download?path=output%2Freport%201.pdf), [site](https://x.dev)."
+        let files = FileAttachment.links(in: text)
+        XCTAssertEqual(files.count, 1)
+        XCTAssertEqual(files.first?.name, "report 1.pdf")
+        XCTAssertEqual(files.first?.url, "/api/agents/A1/workspace/download?path=output%2Freport%201.pdf")
+        var message = ChatMessage(role: .assistant, text: text)
+        message.attachments = [FileAttachment(url: "/api/agents/A1/workspace/download?path=a.csv", name: "a.csv")]
+        XCTAssertEqual(message.fileCards.map(\.name), ["a.csv", "report 1.pdf"])
+        XCTAssertTrue(ChatMessage(role: .user, text: text).fileCards.isEmpty)
+    }
+
+    func testAttachmentFrame() throws {
+        var mapper = ServerFrameMapper()
+        let outcome = try mapper.map([
+            "type": "attachment", "kind": "file", "path": "/tmp/out/dec2026.csv",
+            "url": "/api/agents/A1/workspace/download?path=%2Ftmp%2Fout%2Fdec2026.csv", "mime_type": "text/csv",
+        ])
+        guard case .events(let events) = outcome, case .attachment(let file) = events.first else { return XCTFail() }
+        XCTAssertEqual(file.name, "dec2026.csv")
+        XCTAssertEqual(file.kind, .spreadsheet)
+        XCTAssertTrue(file.isWorkspaceDownload)
+        let image = FileAttachment.fromFrame(["kind": "image", "url": "/api/agents/A1/media/preview?source=x.png"])
+        XCTAssertEqual(image?.isImage, true)
+        XCTAssertNil(FileAttachment.fromFrame(["kind": "file", "url": "https://evil.example/x"]))
+    }
+
+    func testHistoryAttachesDeliveredFiles() {
+        let output = #"{"type":"file","path":"out/a&b.pdf","filename":"a&b.pdf","media_type":"application/pdf"}"#
+        let rows: [[String: Any]] = [
+            ["role": "user", "content": "make a pdf"],
+            ["role": "assistant", "content": [["type": "tool_use", "id": "t1", "name": "send_file_to_user"]]],
+            ["role": "tool", "content": [["type": "tool_result", "id": "t1", "name": "send_file_to_user", "output": output]]],
+            ["role": "tool", "content": [["type": "tool_result", "id": "t2", "name": "write_file", "output": output]]],
+            ["role": "assistant", "content": [["type": "text", "text": "Done."]]],
+        ]
+        let messages = ServerBackend.history(rows, agent: "A1")
+        XCTAssertEqual(messages.count, 2)
+        XCTAssertEqual(messages[1].text, "Done.")
+        XCTAssertEqual(messages[1].attachments.map(\.name), ["a&b.pdf"])
+        XCTAssertEqual(messages[1].attachments.first?.url, "/api/agents/A1/workspace/download?path=out/a%26b.pdf")
+        let link = URL(string: messages[1].attachments[0].url)!
+        XCTAssertEqual(FileAttachment.fromLink(link)?.name, "a&b.pdf")
+
+        let orphan = ServerBackend.history([
+            ["role": "tool", "content": [["type": "tool_result", "name": "mcp/send_file", "output": #"[{"type":"image","preview_url":"/api/agents/A1/media/preview?source=s.png","filename":"s.png"}]"#]]],
+        ], agent: "A1")
+        XCTAssertEqual(orphan.count, 1)
+        XCTAssertEqual(orphan[0].role, .assistant)
+        XCTAssertTrue(orphan[0].attachments[0].isImage)
+    }
+
+    func testHistoryAttachesGeneratedImagesAndVideos() {
+        let image = #"{"type":"image_gen_tool_result","images":[{"path":"generated/images/cat.png","mediaType":"image/png"}]}"#
+        let video = #"{"type":"video_gen_tool_result","videos":[{"path":"generated/videos/sea.mp4","mediaType":"video/mp4"}]}"#
+        let messages = ServerBackend.history([
+            ["role": "user", "content": "画一只猫，再做一段海浪的视频"],
+            ["role": "tool", "content": [["type": "tool_result", "name": "generate_image", "output": image]]],
+            ["role": "tool", "content": [["type": "tool_result", "name": "generate_video", "output": video]]],
+            ["role": "assistant", "content": [["type": "text", "text": "好了。"]]],
+        ], agent: "A1")
+        XCTAssertEqual(messages[1].attachments.map(\.name), ["cat.png", "sea.mp4"])
+        XCTAssertEqual(messages[1].attachments.map(\.url), [
+            "/api/agents/A1/workspace/download?path=generated/images/cat.png",
+            "/api/agents/A1/workspace/download?path=generated/videos/sea.mp4",
+        ])
+        XCTAssertTrue(messages[1].attachments[0].isImage)
+        XCTAssertEqual(messages[1].attachments[1].mime, "video/mp4")
+    }
+}
+
+@MainActor
 final class DeviceConnectorTests: XCTestCase {
     func testToolCallDeltasJoinByIndex() {
         var calls = ToolCallAccumulator()
@@ -682,5 +821,49 @@ final class DeviceConnectorTests: XCTestCase {
             DateInterval(start: t0.addingTimeInterval(6 * 3600), duration: 3600),
         ]) / 3600
         XCTAssertEqual(hours, 5)
+    }
+}
+
+@MainActor
+final class BotActivityTests: XCTestCase {
+    func testUpcomingKeepsServerOrderAndSchedules() {
+        let jobs = ServerBackend.UpcomingJob.parse([
+            "timezone": "Asia/Shanghai",
+            "jobs": [
+                ["id": "a", "name": "Morning brief", "enabled": true, "schedule": "工作日 8:50", "can_toggle": true],
+                ["id": "b", "name": "Script", "enabled": false, "schedule": "自定义", "can_toggle": false],
+                ["name": "no id"],
+            ],
+        ])
+        XCTAssertEqual(jobs.map(\.id), ["a", "b"])
+        XCTAssertEqual(jobs[0].schedule, "工作日 8:50")
+        XCTAssertTrue(jobs[0].enabled && jobs[0].canToggle)
+        XCTAssertFalse(jobs[1].canToggle)
+        XCTAssertFalse(jobs[0].with(enabled: false).enabled)
+    }
+
+    func testLibraryGroupsByRecencyInServerOrder() {
+        func row(_ name: String, _ period: String) -> [String: Any] {
+            ["name": name, "path": "outbound/" + name, "period": period, "mime": NSNull(),
+             "url": "/api/agents/A/workspace/download?path=outbound%2F" + name]
+        }
+        let files = ServerBackend.LibraryFile.parse(["files": [
+            row("new.pdf", "today"), row("old.xlsx", "older"), row("mid.md", "week"), row("b.png", "today"),
+        ]])
+        let groups = ServerBackend.LibraryFile.grouped(files)
+        XCTAssertEqual(groups.map(\.0), [.today, .week, .older])
+        XCTAssertEqual(groups[0].1.map(\.name), ["new.pdf", "b.png"])
+        XCTAssertTrue(ServerBackend.isWorkspaceDownload(URL(string: files[0].url)!))
+        XCTAssertEqual(ServerBackend.LibraryFile.grouped([]).count, 0)
+    }
+
+    func testLibraryIcons() {
+        func file(_ name: String, _ mime: String? = nil) -> ServerBackend.LibraryFile {
+            .init(name: name, path: name, mime: mime, period: .today, url: "")
+        }
+        XCTAssertEqual(file("a.png", "image/png").symbol, "photo")
+        XCTAssertEqual(file("deck.KEY").symbol, "rectangle.on.rectangle")
+        XCTAssertEqual(file("sheet.csv").symbol, "tablecells")
+        XCTAssertEqual(file("blob.bin").symbol, "doc")
     }
 }

@@ -9,7 +9,8 @@ import httpx
 
 ISSUER = "https://api.lynxce.cn"
 ENDPOINT = ISSUER + "/api/oauth/mcp"
-REQUESTED_SCOPE = "chat recharge"
+# media: the Bots' image and video generation (agents/providers/lynxce_media.py).
+REQUESTED_SCOPE = "chat media recharge"
 
 
 class ProviderError(Exception):

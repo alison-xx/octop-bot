@@ -385,6 +385,51 @@ async def download_file(
     OS temp, and tool outputs outside the control-plane home (for example Desktop).
     The control-plane home and system roots are denied.
     """
+    fname, file_blob = await _read_download(
+        agent_id, path, from_workspace=from_workspace, as_user=as_user, user=user, server=server
+    )
+    return StreamingResponse(
+        iter([file_blob]),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": content_disposition(fname)},
+    )
+
+
+@router.head(
+    "/agents/{agent_id}/workspace/download",
+    summary="Size of a workspace file (download headers, no body)",
+)
+async def download_file_head(
+    agent_id: str,
+    path: str,
+    from_workspace: bool = Query(default=False, description=_FROM_WORKSPACE_DESC),
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Response:
+    """Same path rules and guards as the download, but only the headers: ``Content-Length``
+    is the file size, so chat file cards can show it without transferring the file."""
+    fname, file_blob = await _read_download(
+        agent_id, path, from_workspace=from_workspace, as_user=as_user, user=user, server=server
+    )
+    return Response(
+        media_type="application/octet-stream",
+        headers={
+            "Content-Length": str(len(file_blob)),
+            "Content-Disposition": content_disposition(fname),
+        },
+    )
+
+
+async def _read_download(
+    agent_id: str,
+    path: str,
+    *,
+    from_workspace: bool,
+    as_user: int | None,
+    user: Any,
+    server: Any,
+) -> tuple[str, bytes]:
     ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
     _guard_workspace_read(io_path, ws.workspace_dir, host_files=_host_files(server, agent_id))
@@ -395,13 +440,7 @@ async def download_file(
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot download {path!r}") from exc
     if file_blob is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot download {path!r}") from None
-
-    fname = io_path.rsplit("/", 1)[-1] or "download.bin"
-    return StreamingResponse(
-        iter([file_blob]),
-        media_type="application/octet-stream",
-        headers={"Content-Disposition": content_disposition(fname)},
-    )
+    return io_path.rsplit("/", 1)[-1] or "download.bin", file_blob
 
 
 class DownloadLink(BaseModel):

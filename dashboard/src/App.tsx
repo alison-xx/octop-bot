@@ -18,6 +18,7 @@ import BotClientRoutes, {
   BotClientSetupRoute,
 } from "./pages/OctopBot/BotClientRoutes";
 import BotLoginRoute from "./pages/OctopBot/BotLoginRoute";
+import CloudComputerScreenPage from "./pages/OctopBot/CloudComputerScreenPage";
 import MainLayout from "./layouts/MainLayout";
 import LoginPage from "./pages/Login";
 import OidcComplete from "./pages/Login/OidcComplete";
@@ -151,6 +152,11 @@ function ThemedApp() {
               element={isBotWebClient() ? <BotLoginRoute /> : <LoginPage />}
             />
             <Route path="/login/oidc/complete" element={<OidcComplete />} />
+            {/* Phones open a Bot's cloud computer here with a one-time ticket. */}
+            <Route
+              path="/octop-bot/screen/:agentId"
+              element={<CloudComputerScreenPage />}
+            />
             <Route
               path="/setup"
               element={botOnly ? <BotClientSetupRoute /> : <SetupPage />}

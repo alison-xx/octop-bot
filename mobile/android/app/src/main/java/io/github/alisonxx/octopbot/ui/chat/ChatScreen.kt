@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -75,10 +76,14 @@ import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.app.AppViewModel
+import io.github.alisonxx.octopbot.app.AttachmentFiles
 import io.github.alisonxx.octopbot.app.ChatState
 import io.github.alisonxx.octopbot.app.SessionState
 import io.github.alisonxx.octopbot.character.BotCharacter
@@ -86,6 +91,7 @@ import io.github.alisonxx.octopbot.media.Photos
 import io.github.alisonxx.octopbot.model.BotMotion
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
+import io.github.alisonxx.octopbot.model.FileAttachment
 import io.github.alisonxx.octopbot.model.ImageAttachment
 import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.model.MessageRole
@@ -93,6 +99,7 @@ import io.github.alisonxx.octopbot.model.MessageStatus
 import io.github.alisonxx.octopbot.model.Timeline
 import io.github.alisonxx.octopbot.model.ToolStep
 import io.github.alisonxx.octopbot.net.ChatBackend
+import io.github.alisonxx.octopbot.net.ServerBackend
 import io.github.alisonxx.octopbot.ui.common.BackButton
 import io.github.alisonxx.octopbot.ui.common.BottomFade
 import io.github.alisonxx.octopbot.ui.common.TopBar
@@ -126,6 +133,15 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboard.current
+    // Octop Bot cloud only: the Bot's cloud computer floating over the chat, polled only while resumed.
+    val cloudServer = model.cloudServer
+    val cloudFloat = remember(botId, cloudServer) {
+        cloudServer?.takeIf { !bot.isLocal }?.let { CloudFloatState(it, botId, context.applicationContext) }
+    }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(cloudFloat) {
+        cloudFloat?.let { float -> lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { float.run() } }
+    }
     val haptics = rememberHaptics()
     var viewing by rememberSaveable { mutableStateOf<String?>(null) }
     // Keyed by the pending id: a new pause starts fresh, the same one restored after a failed answer keeps its picks.
@@ -158,6 +174,33 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
     val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
         val target = cameraTarget
         if (saved && target != null) addPhotos(listOf(target.toUri()))
+    }
+
+    // Android 8–9 have no app-writable Downloads collection: "Save to…" asks where instead.
+    var savingFile by remember { mutableStateOf<FileAttachment?>(null) }
+    val saveTo = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { target ->
+        val file = savingFile
+        savingFile = null
+        if (file != null && target != null) model.copyAttachment(file, target)
+    }
+    // Files Bots send live on their server (server mode only).
+    val fileActions = remember(backend) {
+        if (backend !is ServerBackend) return@remember null
+        AttachmentActions(
+            size = model::attachmentSize,
+            previewFile = model::attachmentPreviewFile,
+            open = { file -> model.withAttachment(file) { AttachmentFiles.openWith(context, it, AttachmentFiles.mimeOf(file)) } },
+            openImage = { file -> model.withAttachment(file) { viewing = Uri.fromFile(it).toString() } },
+            share = { file -> model.withAttachment(file) { AttachmentFiles.share(context, it, AttachmentFiles.mimeOf(file)) } },
+            save = { file ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    model.saveAttachment(file)
+                } else {
+                    savingFile = file
+                    saveTo.launch(file.name)
+                }
+            },
+        )
     }
 
     OctopTheme(accent = accentOf(bot.look)) {
@@ -207,6 +250,7 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
                 onReject = { haptics.tap(); chat.review(approve = false) },
             ),
             onCancelQueued = chat::cancelQueued,
+            cloudFloat = cloudFloat,
             actionsFor = { message, isLastReply ->
                 MessageActions(
                     copy = { text ->
@@ -223,6 +267,7 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
                     openImage = { viewing = it },
                     retry = if (isLastReply && message.role == MessageRole.Assistant) chat::retry else null,
                     speaking = speakingMessage == message.id,
+                    files = fileActions,
                 )
             },
         )
@@ -316,12 +361,13 @@ fun ChatContent(
     hitl: HitlCardState? = null,
     hitlActions: HitlCardActions? = null,
     onCancelQueued: (String) -> Unit = {},
+    cloudFloat: CloudFloatState? = null,
 ) {
     val density = LocalDensity.current
     var composerHeight by remember { mutableStateOf(96.dp) }
     Box(Modifier.fillMaxSize().imePadding()) {
         Column(Modifier.fillMaxSize()) {
-            ChatTopBar(bot, state, onBack, onEditBot, onHistory, onVoice, onNewChat)
+            ChatTopBar(bot, state, onBack, onEditBot, onHistory, onVoice, onNewChat, cloudFloat)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
                     state.loading && state.messages.isEmpty() ->
@@ -329,7 +375,12 @@ fun ChatContent(
                     state.messages.isEmpty() -> EmptyState(bot, Modifier.padding(bottom = composerHeight), onSuggestion)
                     else -> MessageList(bot, state, composerHeight, actionsFor, onCancelQueued)
                 }
+                if (cloudFloat != null) {
+                    // Clear the composer, and the suggestion chips above it in an empty chat.
+                    CloudFloatOverlay(cloudFloat, bot.name, composerHeight + if (state.messages.isEmpty()) 60.dp else 8.dp)
+                }
             }
+            if (cloudFloat?.expanded == true) CloudScreenDialog(cloudFloat, bot.name)
         }
         BottomFade(composerHeight + 16.dp, Modifier.align(Alignment.BottomCenter))
         // Measured outside the insets so the list clears the card, the composer and the navigation bar.
@@ -376,11 +427,14 @@ private fun ChatTopBar(
     onHistory: () -> Unit,
     onVoice: () -> Unit,
     onNewChat: () -> Unit,
+    cloudFloat: CloudFloatState? = null,
 ) {
+    val showComputer = cloudFloat?.available == true
     TopBar(
-        titleInset = 132.dp,
+        titleInset = if (showComputer) 176.dp else 132.dp,
         leading = { BackButton(onBack) },
         trailing = {
+            if (showComputer) CloudFloatToggle(cloudFloat!!)
             IconButton(onClick = onHistory, modifier = Modifier.size(44.dp)) {
                 Icon(Icons.Rounded.History, contentDescription = stringResource(R.string.chat_history))
             }

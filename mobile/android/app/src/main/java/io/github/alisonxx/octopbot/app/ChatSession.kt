@@ -6,6 +6,7 @@ import io.github.alisonxx.octopbot.model.BotMotion
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
+import io.github.alisonxx.octopbot.model.FileCards
 import io.github.alisonxx.octopbot.model.HitlAction
 import io.github.alisonxx.octopbot.model.HitlAnswer
 import io.github.alisonxx.octopbot.model.HitlAnswers
@@ -315,6 +316,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
                     is StreamEvent.Text -> message.copy(text = message.text + event.delta).also { motion = BotMotion.Working }
                     is StreamEvent.Thinking -> message.copy(thinking = message.thinking + event.delta).also { motion = BotMotion.Thinking }
                     is StreamEvent.Tool -> message.copy(tools = upsert(message.tools, event))
+                    is StreamEvent.Attachment -> message.copy(attachments = FileCards.merge(message.attachments, listOf(event.file)))
                     is StreamEvent.Conversation, is StreamEvent.Hitl -> message
                 }
             }

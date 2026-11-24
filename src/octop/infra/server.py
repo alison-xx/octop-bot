@@ -493,6 +493,13 @@ class OctopServer:
 
     async def _boot_runtime(self, config: OctopConfig) -> None:
         assert self.services is not None
+        from octop.infra.desktop import bot_cloud_enabled  # noqa: PLC0415
+
+        if bot_cloud_enabled():
+            # Octop Bot cloud: each tenant Bot's computer, if Tencent Cloud AGS is configured.
+            from octop.infra.cloud.computers.manager import computer_manager  # noqa: PLC0415
+
+            computer_manager(self.services)
         assert self.expert_catalog is not None
         assert self.plugin_manager is not None
 
@@ -824,6 +831,10 @@ class OctopServer:
 
             dispose_all_browse_sessions()
         finally:
+            from octop.infra.cloud.computers.manager import shutdown_manager  # noqa: PLC0415
+
+            # The computer reaper must stop before the database closes under it.
+            await asyncio.to_thread(shutdown_manager)
             if self.services is not None:
                 self.services.db.close()
             self.services = None

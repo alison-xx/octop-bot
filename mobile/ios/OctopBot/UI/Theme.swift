@@ -10,8 +10,10 @@ enum Palette {
     static let text = dynamic(light: 0x111113, dark: 0xF4F4F5)
     static let secondary = dynamic(light: 0x6B6B73, dark: 0x9A9AA3)
 
+    /// The provider is `@Sendable` (not main-actor): SwiftUI resolves colors off the main thread,
+    /// e.g. a live `Text(date, style: .relative)` while a sheet covers it, which crashed the app.
     private static func dynamic(light: UInt32, dark: UInt32) -> Color {
-        Color(UIColor { traits in
+        Color(UIColor { @Sendable traits in
             let value = traits.userInterfaceStyle == .dark ? dark : light
             return UIColor(
                 red: CGFloat((value >> 16) & 0xFF) / 255,

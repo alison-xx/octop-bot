@@ -578,6 +578,31 @@ export async function probeAuthResource(
 }
 
 /**
+ * Authenticated HEAD: the response headers only (e.g. a workspace file's
+ * ``Content-Length`` for chat file cards). Same auth/setup/401 handling.
+ */
+export async function requestHead(path: string): Promise<Headers> {
+  assertNotSetupLocked(path);
+
+  const response = await fetch(getApiUrl(path), {
+    method: "HEAD",
+    headers: buildAuthHeaders(path),
+  });
+
+  if (await check503ForSetupRequired(path, response)) {
+    throw new SetupRequiredError();
+  }
+
+  await throwIfUnauthorized(path, response);
+  applyRenewedAccessToken(response);
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return response.headers;
+}
+
+/**
  * POST JSON and hand back the response body as a byte stream (chunked TTS).
  * Mirrors requestBlob()'s auth/setup/401 handling but never buffers.
  */

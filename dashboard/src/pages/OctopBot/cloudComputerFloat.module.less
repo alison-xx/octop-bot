@@ -1,0 +1,274 @@
+// The chat's floating cloud computer screen (see docs §12.7).
+@accent: #ff5a3c;
+@control: #2f6bff;
+
+.corner() {
+  &[data-corner="br"] {
+    right: 24px;
+    bottom: 96px;
+  }
+  &[data-corner="bl"] {
+    left: 24px;
+    bottom: 96px;
+  }
+  &[data-corner="tr"] {
+    right: 24px;
+    top: 72px;
+  }
+  &[data-corner="tl"] {
+    left: 24px;
+    top: 72px;
+  }
+}
+
+.float {
+  position: fixed;
+  z-index: 900;
+  .corner();
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--fn-bg-elevated);
+  border: 1px solid var(--fn-border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  transition: box-shadow 0.2s ease;
+  &[data-busy] {
+    box-shadow:
+      0 0 0 2px @accent,
+      0 12px 32px rgba(0, 0, 0, 0.18);
+    animation: breathe 2.4s ease-in-out infinite;
+  }
+  &[data-dragging] {
+    opacity: 0.85;
+    cursor: grabbing;
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px fade(@accent, 90%),
+      0 0 14px fade(@accent, 35%),
+      0 12px 32px rgba(0, 0, 0, 0.18);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px fade(@accent, 55%),
+      0 0 4px fade(@accent, 15%),
+      0 12px 32px rgba(0, 0, 0, 0.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .float[data-busy] {
+    animation: none;
+  }
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  min-height: 32px;
+  cursor: grab;
+  user-select: none;
+  border-bottom: 1px solid var(--fn-border);
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fn-text-primary);
+  font-weight: 600;
+}
+
+.view {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #111;
+  &[data-fit] {
+    aspect-ratio: auto;
+    min-height: 120px;
+  }
+  // The screen component brings its own 16:9 frame; let it fill the view.
+  > div:first-child {
+    position: absolute;
+    inset: 0;
+    border-radius: 0;
+  }
+  &:hover .takeHint {
+    opacity: 1;
+  }
+}
+
+.takeHint {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.68);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  &:focus-visible {
+    opacity: 1;
+  }
+}
+
+.status {
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+}
+
+.resize {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  &[data-corner="br"],
+  &[data-corner="tr"] {
+    left: 0;
+    top: 0;
+    cursor: nwse-resize;
+  }
+  &[data-corner="bl"],
+  &[data-corner="tl"] {
+    right: 0;
+    top: 0;
+    cursor: nesw-resize;
+  }
+}
+
+.pill {
+  position: fixed;
+  z-index: 900;
+  .corner();
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  padding: 5px 12px 5px 5px;
+  border: 1px solid var(--fn-border);
+  border-radius: 999px;
+  background: var(--fn-bg-elevated);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+  color: var(--fn-text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  &[data-busy] .dot {
+    background: #22c55e;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+}
+
+.pillThumb {
+  width: 48px;
+  height: 27px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--fn-text-tertiary);
+  flex: none;
+}
+
+.pillText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.big {
+  border-radius: 12px;
+  &[data-control] {
+    box-shadow: 0 0 0 2px @control;
+  }
+}
+
+// Pill = open button + close button side by side.
+.pill {
+  padding: 0;
+  gap: 0;
+  cursor: default;
+}
+.pillOpen {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 6px 5px 5px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  &:disabled {
+    cursor: default;
+  }
+}
+.pillClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  &:hover {
+    background: var(--fn-fill-secondary, rgba(0, 0, 0, 0.06));
+    color: var(--fn-text-primary);
+  }
+}
+.toggle {
+  position: relative;
+  &[data-open] {
+    color: var(--fn-text-primary);
+    background: var(--fn-fill-secondary, rgba(0, 0, 0, 0.06));
+  }
+  &[data-busy]::after {
+    content: "";
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 2px var(--fn-bg-elevated);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+}

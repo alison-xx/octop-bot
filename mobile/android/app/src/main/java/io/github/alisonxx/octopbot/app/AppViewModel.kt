@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.device.DeviceConnectors
 import io.github.alisonxx.octopbot.model.BotProfile
+import io.github.alisonxx.octopbot.model.FileAttachment
+import io.github.alisonxx.octopbot.model.FileCards
 import io.github.alisonxx.octopbot.model.GroupSummary
 import io.github.alisonxx.octopbot.model.HitlTexts
 import io.github.alisonxx.octopbot.model.Look
@@ -160,6 +162,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         }
     }
 
+    /** Signed in to a server (self-hosted or Octop Bot cloud). */
+    val server: ServerBackend?
+        get() = (session.value as? SessionState.Ready)?.backend as? ServerBackend
+
+    /** Signed in to Octop Bot cloud. */
+    val cloudServer: ServerBackend?
+        get() = ((session.value as? SessionState.Ready)?.backend as? ServerBackend)?.takeIf { it.isCloud }
+
     /** The Lynxce wallet: direct with Lynxce, or kept by Octop Bot cloud. */
     val creditAccount: CreditAccount?
         get() = when (val backend = (session.value as? SessionState.Ready)?.backend) {
@@ -246,18 +256,57 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         viewModelScope.launch { _balance.value = backend.balance() }
     }
 
-    /** A file a Bot linked to: Octop Bot cloud hands out a short-lived object-store link. */
-    fun openWorkspaceFile(uri: String, open: (String) -> Unit) {
-        val server = (session.value as? SessionState.Ready)?.backend as? ServerBackend
-        if (server == null || !server.isCloud) {
+    val attachmentFiles = AttachmentFiles(application)
+
+    private val fileServer: ServerBackend? get() = (session.value as? SessionState.Ready)?.backend as? ServerBackend
+
+    /** A file's size for its card; null while unknown. */
+    suspend fun attachmentSize(file: FileAttachment): Long? =
+        fileServer?.let { server -> attachmentFiles.size(server, file) }
+
+    /** The local copy of a file for a card's preview; null when it can't be fetched (the card stays plain). */
+    suspend fun attachmentPreviewFile(file: FileAttachment): File? =
+        fileServer?.let { server -> runCatching { attachmentFiles.local(server, file) }.getOrNull() }
+
+    /** Fetches a file a Bot sent (once) and hands the local copy to [use]; failures show in the snackbar. */
+    fun withAttachment(file: FileAttachment, use: (File) -> Unit) {
+        val server = fileServer
+        if (server == null) {
             notice(resources.getString(R.string.file_open_unsupported))
             return
         }
         viewModelScope.launch {
-            runCatching { server.downloadLink(uri) }
-                .onSuccess(open)
+            runCatching { attachmentFiles.local(server, file) }
+                .onSuccess(use)
                 .onFailure { notice(resources.describe(it)) }
         }
+    }
+
+    /** Android 10+: a copy in Downloads. */
+    fun saveAttachment(file: FileAttachment) = withAttachment(file) { local ->
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { AttachmentFiles.saveToDownloads(app, local, local.name, AttachmentFiles.mimeOf(file)) }
+            }
+                .onSuccess { notice(resources.getString(R.string.file_saved)) }
+                .onFailure { notice(resources.getString(R.string.file_save_failed)) }
+        }
+    }
+
+    /** Android 8–9: write a file into the document the user picked with "Save to…". */
+    fun copyAttachment(file: FileAttachment, target: android.net.Uri) = withAttachment(file) { local ->
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { AttachmentFiles.copyTo(app, local, target) } }
+                .onSuccess { notice(resources.getString(R.string.file_saved_to)) }
+                .onFailure { notice(resources.getString(R.string.file_save_failed)) }
+        }
+    }
+
+    /** A file a Bot linked to in a reply: fetched with this account (via the object store on Octop Bot cloud). */
+    fun openWorkspaceFile(uri: String, open: (File, String) -> Unit) {
+        val name = FileCards.queryValue(uri, "path")?.let(FileCards::baseName)?.takeIf { it.isNotEmpty() } ?: "file"
+        val file = FileAttachment(uri, name)
+        withAttachment(file) { open(it, AttachmentFiles.mimeOf(file)) }
     }
 
     /** Open Lynxce's recharge page signed in as this account (a 15-minute ticket, as on the desktop). */

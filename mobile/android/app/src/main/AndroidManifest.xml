@@ -26,6 +26,11 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+        <!-- "Open with…" for files Bots send. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="*/*" />
+        </intent>
         <!-- Health Connect as an app (Android 13 and lower). -->
         <package android:name="com.google.android.apps.healthdata" />
     </queries>

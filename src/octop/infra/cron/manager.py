@@ -244,6 +244,12 @@ class CronManager:
             user_id=user_id,
         )
 
+    def next_run_time(self, cron_id: str) -> dt.datetime | None:
+        """When the scheduler fires this job next, or ``None`` when it is not on the clock."""
+        job = self._scheduler.get_job(cron_id)
+        when = getattr(job, "next_run_time", None)
+        return when if isinstance(when, dt.datetime) else None
+
     def list_all(self, *, include_disabled: bool = True) -> list[CronJobRow]:
         return self._repos.cron_repo.list_all(include_disabled=include_disabled)
 

@@ -80,8 +80,13 @@ def resolve_agent_backend_spec(
     spec: Any,
     *,
     repo: Any | None,
+    workspace_dir: Path | None = None,
 ) -> Any:
-    """Expand ``named`` refs (and composite trees) into harness-ready specs."""
+    """Expand ``named`` refs (and composite trees) into harness-ready specs.
+
+    ``workspace_dir`` (the agent's host workspace) roots a cloud computer, so the
+    model sees ``/`` as its working directory instead of the host path.
+    """
     if spec is None:
         return None
     if not isinstance(spec, dict):
@@ -101,6 +106,32 @@ def resolve_agent_backend_spec(
         return resolve_agent_backend_spec(inner, repo=repo)
 
     if kind == "bot_cloud":
+        from octop.infra.cloud.computers.manager import current_manager  # noqa: PLC0415
+
+        manager = current_manager()
+        if manager is not None:
+            # Cloud computers configured: the Bot works on its own AGS sandbox.
+            from octop_harness.backends import resolve_backend  # noqa: PLC0415
+
+            from octop.infra.cloud.bot_cloud.files import (  # noqa: PLC0415
+                FileStoreConfig,
+                harness_spec,
+            )
+            from octop.infra.cloud.computers.backend import CloudComputer  # noqa: PLC0415
+
+            # The Bot's context stays in the object store; only real work wakes the computer.
+            store = (
+                resolve_backend(harness_spec(spec), _scope_host_artifacts=False)
+                if FileStoreConfig.from_env() is not None
+                else None
+            )
+            return CloudComputer(
+                manager,
+                user_id=int(spec["user_id"]),
+                agent_id=str(spec["agent_id"]),
+                store=store,
+                root_dir=workspace_dir,
+            )
         from octop.infra.cloud.bot_cloud.files import harness_spec  # noqa: PLC0415
 
         return harness_spec(spec)

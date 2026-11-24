@@ -161,6 +161,29 @@ async def test_upload_then_download_binary(env: Any) -> None:
     assert "logo.png" in cd
 
 
+async def test_download_head_reports_size_without_body(env: Any) -> None:
+    c, srv, auth, aid = env
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    await agent.workspace.aupload_bytes("outbound/report.csv", b"a,b\n1,2\n")
+
+    r = await c.head(
+        f"/api/agents/{aid}/workspace/download",
+        params={"path": "outbound/report.csv"},
+        headers=auth,
+    )
+    assert r.status_code == 200, r.text
+    assert r.headers["content-length"] == "8"
+    assert r.content == b""
+    assert "report.csv" in r.headers.get("content-disposition", "")
+
+    r = await c.head(
+        f"/api/agents/{aid}/workspace/download",
+        params={"path": "outbound/missing.csv"},
+        headers=auth,
+    )
+    assert r.status_code == 404
+
+
 async def test_download_non_ascii_filename(env: Any) -> None:
     c, _srv, auth, aid = env
     fname = "1783510288_地球介绍.pptx"

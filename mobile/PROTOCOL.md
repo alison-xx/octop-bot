@@ -81,7 +81,11 @@ New Bot: `POST /api/agents {name, description, system_prompt}` → `{agent_id}`,
 - `GET /api/agents/{id}/threads?limit=50` → `[{thread_id, title, last_active, has_messages, turn_active, …}]` (show `has_messages`, newest first)
 - `POST /api/agents/{id}/threads` → `{thread_id}`
 - `GET /api/agents/{id}/threads/{tid}/history?limit=50` → `{messages:[{role, content:[Block], timestamp}], history_loading, history_retry_after_ms, turn_active}`
-  - Block: `{type:"text",text}` · `{type:"thinking",thinking}` · `{type:"tool_use",id,name}`; skip `role:"tool"` rows.
+  - Block: `{type:"text",text}` · `{type:"thinking",thinking}` · `{type:"tool_use",id,name}`; skip `role:"tool"` rows,
+    except files a Bot sent: a `role:"tool"` row whose `tool_result` block `name` (after the last `/`) is
+    `send_file` or `send_file_to_user` carries `output` = a JSON block or array of blocks;
+    `{type:"file",path,filename?,media_type?}` → `/api/agents/{id}/workspace/download?path=<path>`,
+    `{type:"image",preview_url|path,…}` → `preview_url` (or the download of `path`). Show them on that turn's reply.
   - `history_loading=true` → retry after `history_retry_after_ms`.
 - `DELETE /api/agents/{id}/threads/{tid}`
 
@@ -92,6 +96,8 @@ New Bot: `POST /api/agents {name, description, system_prompt}` → `{agent_id}`,
   - `turn.started {turn_id, thread_id}`
   - `token {content}` → text; `reasoning {content}` → thinking
   - `tool_call_chunk {id, name?, display_name?}` → tool step running; `tool_result {messages:[{tool_call_id|id,…}]}` → step done
+  - `attachment {kind:"file"|"image"|"video"|"audio", url, filename?, path?, mime_type?}` → a file the Bot sent
+    (`url` is server-relative: a `…/workspace/download?path=…` or `…/media/preview?source=…` link)
   - `error {message, error_code}` → failed reply
   - `done` (may repeat per segment); `turn.ended {failed?}` = finished
 - Stop: `{"type":"cancel","thread_id":tid}`. Keep-alive: `{"type":"ping"}` every 25 s.
@@ -127,6 +133,10 @@ This is not a failure: finish the reply normally and show a card.
 `{workspace_path, url, filename, media_type}`. Then content blocks
 `[{"type":"text","text":…},{"type":"image","source":{"type":"url","url":url,"media_type":mt},"workspace_path":wp,"filename":fn}]`.
 
+**Files.** A file card needs the size: `HEAD /api/agents/{id}/workspace/download?path=…` (same query and auth
+as the download) → `Content-Length`, no body; older servers answer 405 (show the type instead). To open or
+thumbnail a file, fetch it with `GET` on that link (Octop Bot cloud: get a signed link first, see below).
+
 **Groups** (`/api/octop-bot/groups`). Polled, no socket.
 - `GET ""` → `[{group_id,name,admin_id,member_ids,reply_mode}]`; `POST ""` `{name, admin_id, member_ids, reply_mode}`
 - `GET /{gid}/messages?after_id=<last message_id>` → `[{message_id, role:"user"|"assistant"|"error", agent_id, text, created_at}]` ascending
@@ -134,6 +144,18 @@ This is not a failure: finish the reply normally and show a card.
 - `GET /{gid}/drafts` → `[{agent_id, request_id, text}]` (live partial replies)
 - `GET|PUT /{gid}/memory` `{text}`, `GET /{gid}/goal` → `{title, criteria, status, stages}` | null
 - Poll messages + drafts every 2.5 s while drafts exist or right after sending, else every 10 s.
+
+**Bot profile** (Activity / Library, reached from the Bot editor).
+- `GET /api/octop-bot/bots/{id}/upcoming` → `{timezone, jobs:[{id, name, enabled, trigger, schedule, next_run_at, can_toggle}]}`,
+  already sorted (enabled by next run, then enabled without a clock time, then paused). `schedule` is one
+  localized line in the server timezone ("工作日 8:50", "Every 15 min, 8:00 – 18:45"). Show the first 5, then
+  "Show more". The switch is `PATCH /api/agents/{id}/cron/{job id}` `{enabled}` (disabled when `can_toggle` is false),
+  then reload.
+- `GET /api/octop-bot/bots/{id}/library` → `{files:[{name, path, size, mime, created_at, thread_id, period, url}]}`,
+  newest first; group by `period` (`today` / `week` = the last seven days / `older`). `url` is a
+  `/api/agents/{id}/workspace/download?path=…` link: fetch it with the session, or on Octop Bot cloud trade it for a
+  signed link (`…/download-link`, above).
+- Both answer 404 for a Bot that is not the signed-in user's.
 
 **Voice.** `GET /api/voice/active` → `{stt, tts}`. If `stt` is set: `POST /api/voice/stt` multipart
 `audio` (file) + `language` (`zh-CN`/`en-US`) → `{text}`. If `tts` is set: `POST /api/voice/tts`

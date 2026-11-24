@@ -302,6 +302,25 @@
     <string name="settings_delete_account_done">Account deletion requested. You have been signed out.</string>
     <string name="onboarding_agreement"><![CDATA[By continuing you agree to the <a href="https://admin.lynxce.cn/legal/app/user-agreement">Lynxce User Agreement</a> and the <a href="https://octop-bot.lynxce.cn/privacy.html">Privacy Policy</a>.]]></string>
     <string name="file_open_unsupported">Open this file in the Octop Bot web app or on the desktop.</string>
+    <string name="file_kind_file">File</string>
+    <string name="file_open_with">Open with…</string>
+    <string name="file_share">Share</string>
+    <string name="file_save">Save to Downloads</string>
+    <string name="file_save_to">Save to…</string>
+    <string name="file_saved">Saved to Downloads</string>
+    <string name="file_saved_to">Saved</string>
+    <string name="file_save_failed">Couldn\'t save this file.</string>
+    <string name="computer_header">Cloud computer</string>
+    <string name="computer_title">This Bot\'s computer</string>
+    <string name="computer_state_none">Not started</string>
+    <string name="computer_state_running">Running</string>
+    <string name="computer_state_paused">Paused</string>
+    <string name="computer_pause">Pause now</string>
+    <string name="computer_unavailable">Unavailable</string>
+    <string name="computer_footer">Starts when the Bot first needs to run something and pauses after 10 idle minutes. Running time is charged by the minute in Lynxce credits; files stay while it\'s paused.</string>
+    <string name="computer_view">View screen</string>
+    <string name="computer_take_over">Take over</string>
+    <string name="computer_hand_back">Hand back</string>
     <!-- Device connectors (mobile/PROTOCOL.md §C) -->
     <string name="settings_device">Device connectors</string>
     <string name="settings_device_health">Health</string>
@@ -325,4 +344,31 @@
     <string name="device_save">Save</string>
     <string name="health_rationale_title">How Octop Bot uses your health data</string>
     <string name="health_rationale_text">When you turn on Settings → Device connectors → Health, Octop Bot reads daily totals and averages (steps, active energy, exercise minutes, sleep, heart rate, resting heart rate and weight) from Health Connect, only when a Bot asks for them in a chat. The values are sent with that chat to the model that answers you, and are not stored anywhere else by Octop Bot. Octop Bot never writes health data. Turn the switch off, or revoke access in Health Connect, at any time.</string>
+    <string name="profile_entry">Activity and library</string>
+    <string name="profile_activity">Activity</string>
+    <string name="profile_library">Library</string>
+    <string name="profile_upcoming">Upcoming</string>
+    <string name="profile_no_upcoming">No scheduled tasks yet. Ask this Bot to do something on a schedule.</string>
+    <string name="profile_show_more">Show more</string>
+    <string name="profile_toggle">Run %1$s on schedule</string>
+    <string name="profile_no_files">Files this Bot makes for you will show up here.</string>
+    <string name="profile_today">Today</string>
+    <string name="profile_week">This week</string>
+    <string name="profile_older">Older</string>
+    <string name="computer_activity_click">Clicking</string>
+    <string name="computer_activity_command">Running a command</string>
+    <string name="computer_activity_file">Working with files</string>
+    <string name="computer_activity_key">Pressing keys</string>
+    <string name="computer_activity_screenshot">Looking at the screen</string>
+    <string name="computer_activity_scroll">Scrolling</string>
+    <string name="computer_activity_type">Typing</string>
+    <string name="computer_float_busy">Working on the computer</string>
+    <string name="computer_float_close">Close</string>
+    <string name="computer_float_expand">Full screen</string>
+    <string name="computer_float_idle">Idle</string>
+    <string name="computer_float_loading">Loading the screen…</string>
+    <string name="computer_float_minimise">Minimise</string>
+    <string name="computer_float_off">The computer is off. It starts when the Bot needs it.</string>
+    <string name="computer_float_toggle">Cloud computer</string>
+    <string name="computer_float_yours">You\'re in control</string>
 </resources>

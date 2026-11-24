@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
-import { Download, Eye, Paperclip } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { downloadAuthFile } from "../../../components/AuthFileDownloadLink";
+import FileCard from "../../../components/FileCard/FileCard";
+import { useAttachmentSize } from "../../../components/FileCard/attachmentData";
 import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
 import { isDesktopShell } from "../../../utils/desktopBridge";
 import {
@@ -13,7 +14,6 @@ import { getDocKind } from "../../Agent/Workspace/utils/docKind";
 import { getMediaKind } from "../../Agent/Workspace/utils/mediaKind";
 import { isProbablyText } from "../../Agent/Workspace/utils/fileKind";
 import { useChatFilePreview } from "../ChatFilePreviewContext";
-import styles from "../index.module.less";
 
 import { message as antMessage } from "@/utils/antdMessage";
 
@@ -26,23 +26,37 @@ function isPreviewable(name: string): boolean {
   );
 }
 
-/** Authenticated download card for chat / tool-result non-image files. */
+function nameFromUrl(url: string): string | undefined {
+  const path = workspacePathFromAccessUrl(url);
+  return path?.split(/[\\/]/).filter(Boolean).pop();
+}
+
+/**
+ * Authenticated file card for chat / tool-result non-image files: click opens
+ * the preview panel (or downloads), the button downloads. ``rich`` adds a
+ * visual preview (image, PDF first page, text excerpt) when the file is small.
+ */
 export function MessageFileCard({
   url,
   filename,
   agentId,
   workspacePath,
+  mediaType,
+  rich,
 }: {
   url: string;
   filename?: string;
   agentId?: string | null;
   workspacePath?: string;
+  mediaType?: string;
+  rich?: boolean;
 }) {
   const { t } = useTranslation();
   const filePreview = useChatFilePreview();
   const [loading, setLoading] = useState(false);
   const needsAuth = needsAuthBlobFetch(url) || isDataUrl(url);
-  const label = filename || url;
+  const label = filename || nameFromUrl(url) || url;
+  const size = useAttachmentSize(url);
 
   const resolvedPath = workspacePath || workspacePathFromAccessUrl(url) || "";
   const previewable = Boolean(
@@ -92,42 +106,14 @@ export function MessageFileCard({
   }, [previewable, resolvedPath, filePreview, agentId]);
 
   return (
-    <div className={styles.messageFileCard}>
-      <div className={styles.messageFileMeta}>
-        <Paperclip
-          size={16}
-          strokeWidth={2}
-          className={styles.messageFileIcon}
-          aria-hidden
-        />
-        <span className={styles.messageFileName} title={label}>
-          {label}
-        </span>
-      </div>
-      {previewable && (
-        <button
-          type="button"
-          className={styles.messageFileActionBtn}
-          onClick={openPreview}
-          title={t("common.preview")}
-          aria-label={t("common.preview")}
-        >
-          <Eye size={15} strokeWidth={2} />
-        </button>
-      )}
-      <button
-        type="button"
-        className={styles.messageFileActionBtn}
-        onClick={(e) => {
-          e.stopPropagation();
-          void handleDownload();
-        }}
-        disabled={loading}
-        title={t("common.download")}
-        aria-label={t("common.download")}
-      >
-        <Download size={15} strokeWidth={2} />
-      </button>
-    </div>
+    <FileCard
+      name={label}
+      mime={mediaType}
+      size={size}
+      previewUrl={rich ? url : undefined}
+      onOpen={previewable ? openPreview : undefined}
+      onDownload={() => void handleDownload()}
+      downloading={loading}
+    />
   );
 }

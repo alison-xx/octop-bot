@@ -1,7 +1,6 @@
 package io.github.alisonxx.octopbot.ui
 
 import android.Manifest
-import android.content.Intent
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -37,7 +36,6 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -48,10 +46,12 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.app.AppViewModel
+import io.github.alisonxx.octopbot.app.AttachmentFiles
 import io.github.alisonxx.octopbot.app.SessionState
 import io.github.alisonxx.octopbot.net.ServerProtocol
 import io.github.alisonxx.octopbot.ui.chat.ChatScreen
 import io.github.alisonxx.octopbot.ui.common.ProvideUiPrefs
+import io.github.alisonxx.octopbot.ui.editor.BotActivityScreen
 import io.github.alisonxx.octopbot.ui.editor.BotEditorScreen
 import io.github.alisonxx.octopbot.ui.group.GroupRoomScreen
 import io.github.alisonxx.octopbot.ui.home.HomeScreen
@@ -75,6 +75,7 @@ private object Routes {
     const val HOME = "home"
     const val CHAT = "chat/{bot}"
     const val EDITOR = "editor?bot={bot}"
+    const val ACTIVITY = "activity/{bot}"
     const val VOICE = "voice/{bot}"
     const val GROUP = "group/{group}"
     const val SETTINGS = "settings"
@@ -82,6 +83,7 @@ private object Routes {
 
     fun chat(bot: String) = "chat/$bot"
     fun editor(bot: String?) = if (bot == null) "editor" else "editor?bot=$bot"
+    fun activity(bot: String) = "activity/$bot"
     fun voice(bot: String) = "voice/$bot"
     fun group(group: String) = "group/$group"
 }
@@ -130,9 +132,7 @@ fun OctopBotApp(model: AppViewModel, openBot: MutableStateFlow<String?>) {
                                     object : UriHandler {
                                         override fun openUri(uri: String) {
                                             if (!ServerProtocol.isWorkspaceDownload(uri)) return system.openUri(uri)
-                                            model.openWorkspaceFile(uri) { url ->
-                                                context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
-                                            }
+                                            model.openWorkspaceFile(uri) { file, mime -> AttachmentFiles.openWith(context, file, mime) }
                                         }
                                     }
                                 }
@@ -213,7 +213,15 @@ private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<String?>)
             Routes.EDITOR,
             listOf(navArgument("bot") { type = NavType.StringType; nullable = true; defaultValue = null }),
         ) { entry ->
-            BotEditorScreen(model, entry.arguments?.getString("bot"), onDone = { nav.back() })
+            BotEditorScreen(
+                model,
+                entry.arguments?.getString("bot"),
+                onDone = { nav.back() },
+                onActivity = { nav.navigate(Routes.activity(it)) },
+            )
+        }
+        composable(Routes.ACTIVITY, listOf(navArgument("bot") { type = NavType.StringType })) { entry ->
+            BotActivityScreen(model, entry.arguments?.getString("bot").orEmpty(), onBack = { nav.back() })
         }
         composable(Routes.VOICE, listOf(navArgument("bot") { type = NavType.StringType })) { entry ->
             VoiceScreen(model, entry.arguments?.getString("bot").orEmpty(), onClose = { nav.back() })

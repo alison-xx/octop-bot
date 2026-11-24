@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import re
 from collections.abc import Coroutine, Mapping
 from contextlib import suppress
@@ -18,6 +20,8 @@ from octop.infra.crypto.fernet import decrypt_json, encrypt_json
 from octop.infra.db.services import SharedServices
 from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
 from octop.infra.errors import ErrorCode, OctopError
+
+logger = logging.getLogger(__name__)
 
 _ORIGIN = "https://api.lynxce.cn"
 _ID = r"(?!\.{1,2}(?:/|$))[A-Za-z0-9_.-]{1,256}"
@@ -515,11 +519,38 @@ _IAP_HEADERS = {"X-Lynxce-Iap-App": "cn.lynxce.octopbot"}
 # What cloud mode may do with a tenant's stored Lynxce session, besides request_cloud.
 _TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
     ("POST", "/api/user/personal-api-keys"): {},
+    # The tenant's own model key only, e.g. adding the media scopes (bot_cloud/accounts.py).
+    ("PATCH", "/api/user/personal-api-keys/{id}"): {},
     ("POST", "/api/user/account/deletion-request"): {},
     ("GET", "/api/billing/app/recharge-packages"): _IAP_HEADERS,
     ("POST", "/api/billing/apple/purchase-intents"): _IAP_HEADERS,
     ("POST", "/api/billing/apple/transactions"): _IAP_HEADERS,
+    # Cloud computers: minutes reserved before running, settled by the second at pause.
+    ("POST", "/api/billing/octop-bot/compute/reserve"): {},
+    ("POST", "/api/billing/octop-bot/compute/settle"): {},
 }
+# Compute billing also proves the caller is the cloud Octop server, not the tenant (who holds
+# their own token and could otherwise settle a running computer at 0 s). The key is shared
+# with Lynxce, set there by the operator, and never leaves this server.
+_SERVICE_KEY_PATHS = frozenset(
+    {"/api/billing/octop-bot/compute/reserve", "/api/billing/octop-bot/compute/settle"}
+)
+
+
+def _route(path: str) -> str:
+    """``/api/user/personal-api-keys/<id>`` as its allow-list entry; other paths unchanged."""
+    match = re.fullmatch(r"/api/user/personal-api-keys/[A-Za-z0-9_-]{1,64}", path)
+    return "/api/user/personal-api-keys/{id}" if match else path
+
+
+def _service_headers(path: str) -> dict[str, str]:
+    if path not in _SERVICE_KEY_PATHS:
+        return {}
+    key = (os.environ.get("OCTOP_BOT_COMPUTE_SERVICE_KEY") or "").strip()
+    if not key:
+        logger.warning("OCTOP_BOT_COMPUTE_SERVICE_KEY is not set; Lynxce will refuse %s", path)
+        return {}
+    return {"X-Octop-Service-Key": key}
 
 
 async def tenant_call(
@@ -530,9 +561,10 @@ async def tenant_call(
     json: dict[str, Any] | None = None,
 ) -> Any:
     """Cloud mode: one of a few account operations, as the tenant's stored Lynxce session."""
-    extra = _TENANT_CALLS.get((method, path))
-    if not bot_cloud_enabled() or extra is None:
+    allowed = _TENANT_CALLS.get((method, _route(path)))
+    if not bot_cloud_enabled() or allowed is None:
         raise OctopError.localized(ErrorCode.FORBIDDEN)
+    extra = {**allowed, **_service_headers(path)}
     async with _lock(services, user_id):
         grant = await asyncio.to_thread(_load, services, user_id)
         if grant is None:

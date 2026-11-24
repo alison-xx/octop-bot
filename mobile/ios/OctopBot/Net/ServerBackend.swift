@@ -288,15 +288,30 @@ final class ServerBackend: ChatBackend {
                 continue
             }
             pauses[conversation.id] = HitlPause.parse(body["hitl_pending"], labels: toolLabels)
-            return Self.history(body["messages"] as? [[String: Any]] ?? [], labels: toolLabels)
+            return Self.history(body["messages"] as? [[String: Any]] ?? [], labels: toolLabels, agent: bot.id)
         }
         return []
     }
 
-    /// Server history rows → chat messages; tool rows are folded into the assistant's tool steps.
-    static func history(_ rows: [[String: Any]], labels: [String: String] = [:]) -> [ChatMessage] {
+    /// Server history rows → chat messages; tool rows are folded into the assistant's tool steps,
+    /// and files a delivery tool sent become that reply's attachments.
+    static func history(_ rows: [[String: Any]], labels: [String: String] = [:], agent: String? = nil) -> [ChatMessage] {
         var out: [ChatMessage] = []
+        var pending: [FileAttachment] = []
+        func attach(_ files: [FileAttachment], to index: Int) {
+            for file in files where !out[index].attachments.contains(where: { $0.url == file.url }) {
+                out[index].attachments.append(file)
+            }
+        }
         for row in rows {
+            if row["role"] as? String == "tool" {
+                guard let agent else { continue }
+                let files = (row["content"] as? [[String: Any]] ?? [])
+                    .filter { $0["type"] as? String == "tool_result" && FileAttachment.isDeliveryTool($0["name"] as? String) }
+                    .flatMap { FileAttachment.fromToolOutput($0["output"], agent: (row["agent_id"] as? String) ?? agent) }
+                if let last = out.indices.last, out[last].role == .assistant { attach(files, to: last) } else { pending += files }
+                continue
+            }
             guard let role = (row["role"] as? String).flatMap(MessageRole.init(rawValue:)), role != .system else { continue }
             var text = ""
             var thinking = ""
@@ -326,14 +341,23 @@ final class ServerBackend: ChatBackend {
                 out[out.count - 1].text += (last.text.isEmpty || text.isEmpty ? "" : "\n\n") + text
                 out[out.count - 1].thinking += thinking
                 out[out.count - 1].tools += tools
+                attach(pending, to: out.count - 1)
+                pending = []
                 continue
             }
             var message = ChatMessage(role: role, text: text, thinking: thinking, tools: tools)
             if let ms = row["timestamp"] as? Double { message.createdAt = Date(timeIntervalSince1970: ms / 1000) }
             if row["status"] as? String == "error" { message.status = .failed(L("chat.failed")) }
             if let id = row["id"] as? String { message.id = id }
-            if !message.text.isEmpty || !message.tools.isEmpty || !message.thinking.isEmpty { out.append(message) }
+            if role == .assistant {
+                message.attachments = pending
+                pending = []
+            }
+            if !message.text.isEmpty || !message.tools.isEmpty || !message.thinking.isEmpty || !message.attachments.isEmpty {
+                out.append(message)
+            }
         }
+        if !pending.isEmpty { out.append(ChatMessage(role: .assistant, text: "", attachments: pending)) }
         return out
     }
 
@@ -627,6 +651,8 @@ struct ServerFrameMapper {
                 if let name = toolNames[id] { events.append(.tool(id: id, name: name, done: true)) }
             }
             return .events(events)
+        case "attachment":
+            return .events(FileAttachment.fromFrame(frame).map { [.attachment($0)] } ?? [])
         case "error":
             throw APIError(kind: .server, status: 500, message: frame["message"] as? String)
         case "hitl_required":

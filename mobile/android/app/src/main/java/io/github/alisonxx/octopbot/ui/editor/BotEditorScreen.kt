@@ -20,7 +20,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.rememberScrollState
@@ -70,7 +72,7 @@ import kotlinx.coroutines.launch
 
 /** New Bot (Lynxce mode) or edit an existing Bot's look — and name/persona for phone-local Bots. */
 @Composable
-fun BotEditorScreen(model: AppViewModel, botId: String?, onDone: () -> Unit) {
+fun BotEditorScreen(model: AppViewModel, botId: String?, onDone: () -> Unit, onActivity: (String) -> Unit = {}) {
     val bots by model.bots.collectAsStateWithLifecycle()
     val original = botId?.let { id -> bots.firstOrNull { it.id == id } }
     if (botId != null && original == null) return
@@ -91,6 +93,10 @@ fun BotEditorScreen(model: AppViewModel, botId: String?, onDone: () -> Unit) {
             model.deleteBot(bot)
             onDone()
         },
+        computer = model.cloudServer?.takeIf { original != null }?.let { server ->
+            { CloudComputerPanel(server, original!!.id) }
+        },
+        onActivity = original?.takeIf { model.server != null }?.let { bot -> { onActivity(bot.id) } },
     )
 }
 
@@ -101,6 +107,10 @@ fun BotEditor(
     onCancel: () -> Unit,
     onSave: (name: String, persona: String, look: Look) -> Unit,
     onDelete: (BotProfile) -> Unit,
+    /** Octop Bot cloud: this Bot's computer. */
+    computer: (@Composable () -> Unit)? = null,
+    /** On a server: open this Bot's scheduled tasks and files. */
+    onActivity: (() -> Unit)? = null,
 ) {
     val library = rememberCharacterLibrary()
     val palette = LocalPalette.current
@@ -214,6 +224,23 @@ fun BotEditor(
                         }
                     }
                 }
+                if (onActivity != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(palette.surface)
+                            .clickable(onClick = onActivity)
+                            .padding(horizontal = 16.dp, vertical = 15.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Rounded.History, contentDescription = null, tint = palette.secondary, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text(stringResource(R.string.profile_entry), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = palette.secondary)
+                    }
+                }
+                if (computer != null) computer()
                 if (original?.isLocal == true) {
                     Spacer(Modifier.height(8.dp))
                     Row(
