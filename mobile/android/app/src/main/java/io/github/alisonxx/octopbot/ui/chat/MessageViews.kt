@@ -45,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -75,6 +76,7 @@ import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.rememberMarkdownState
+import io.github.alisonxx.octopbot.app.creditScenarioMessage
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.app.BalanceState
 import io.github.alisonxx.octopbot.app.QueuedMessage
@@ -113,7 +115,7 @@ class MessageActions(
     /** Server mode: file cards under a reply. */
     val files: AttachmentActions? = null,
     /** Opens Lynxce's recharge page (accounts with a Lynxce wallet). */
-    val recharge: (() -> Unit)? = null,
+    val recharge: ((io.github.alisonxx.octopbot.net.CreditScenario?) -> Unit)? = null,
     /** The wallet balance, shown on the out-of-credits card. */
     val balance: BalanceState? = null,
     /** A recharge link is being fetched. */
@@ -306,12 +308,12 @@ private fun AssistantReply(message: ChatMessage, bot: BotProfile, motion: BotMot
                 if (files.isNotEmpty()) AttachmentStrip(files, fileActions, Modifier.padding(top = 2.dp))
             }
             (message.status as? MessageStatus.Failed)?.takeIf { it.credits || it.dailyLimit }?.let {
-                CreditsCard(it.dailyLimit, actions.balance, actions.recharge, actions.recharging, onContinue = actions.retry)
+                CreditsCard(it.dailyLimit, it.creditScenario, actions.balance, actions.recharge, actions.recharging, onContinue = actions.retry)
             }
             (message.status as? MessageStatus.Failed)?.takeUnless { it.credits || it.dailyLimit }?.let { failed ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        failed.message ?: stringResource(R.string.chat_failed),
+                        if (failed.message == "insufficient_balance") stringResource(R.string.error_provider_balance) else failed.message ?: stringResource(R.string.chat_failed),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.weight(1f, fill = false),
@@ -344,12 +346,22 @@ private fun AssistantReply(message: ChatMessage, bot: BotProfile, motion: BotMot
 @Composable
 private fun CreditsCard(
     dailyLimit: Boolean,
+    scenario: io.github.alisonxx.octopbot.net.CreditScenario?,
     balance: BalanceState?,
-    onRecharge: (() -> Unit)?,
+    onRecharge: ((io.github.alisonxx.octopbot.net.CreditScenario?) -> Unit)?,
     recharging: Boolean,
     onContinue: (() -> Unit)?,
 ) {
     val palette = LocalPalette.current
+    val context = LocalContext.current
+    var showFirstHint by remember { mutableStateOf(false) }
+    LaunchedEffect(dailyLimit) {
+        val prefs = context.getSharedPreferences("wallet_warnings", android.content.Context.MODE_PRIVATE)
+        if (!dailyLimit && !prefs.getBoolean("first_credits_hint_seen", false)) {
+            showFirstHint = true
+            prefs.edit().putBoolean("first_credits_hint_seen", true).apply()
+        }
+    }
     Column(
         Modifier
             .fillMaxWidth()
@@ -364,10 +376,14 @@ private fun CreditsCard(
             color = palette.text,
         )
         Text(
-            stringResource(if (dailyLimit) R.string.chat_limit_body else R.string.chat_credits_body),
+            if (dailyLimit) stringResource(R.string.chat_limit_body) else if (scenario == null) stringResource(R.string.chat_credits_body)
+            else LocalContext.current.resources.creditScenarioMessage(scenario),
             style = MaterialTheme.typography.bodyMedium,
             color = palette.secondary,
         )
+        if (showFirstHint) {
+            Text(stringResource(R.string.chat_credits_first_hint), style = MaterialTheme.typography.bodySmall, color = palette.secondary)
+        }
         balance?.takeUnless { dailyLimit }?.let {
             BalanceText(
                 it,
@@ -376,7 +392,6 @@ private fun CreditsCard(
                 format = { amount -> stringResource(R.string.chat_credits_balance, amount) },
             )
         }
-        val context = LocalContext.current
         val site = if (dailyLimit) LynxceProtocol.ACCOUNT_CENTRE else LynxceProtocol.RECHARGE_SITE
         Column {
             Text(
@@ -403,7 +418,7 @@ private fun CreditsCard(
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(palette.text)
-                        .clickable(enabled = !recharging, onClick = recharge)
+                        .clickable(enabled = !recharging) { recharge(scenario) }
                         .alpha(if (recharging) 0.5f else 1f)
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 )

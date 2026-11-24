@@ -403,7 +403,9 @@ final class LynxceBackend: ChatBackend {
             let message = (error as? [String: Any])?["message"] as? String ?? error as? String
             let code = (error as? [String: Any])?["code"] as? String
             if APIError.isDailyLimit(code) { throw APIError(kind: .dailyLimit, status: 429, message: message) }
-            throw APIError(kind: isCreditError(error) ? .credits : .server, status: isCreditError(error) ? 402 : 500, message: message)
+            let type = (error as? [String: Any])?["type"] as? String
+            let errorCode = [code, type].contains("insufficient_balance") ? "insufficient_balance" : code
+            throw APIError(kind: isCreditError(error) ? .credits : .server, status: isCreditError(error) ? 402 : 500, message: message, code: errorCode)
         }
         guard let choice = (object["choices"] as? [[String: Any]])?.first,
               let delta = choice["delta"] as? [String: Any] else { return [] }
@@ -491,7 +493,7 @@ final class LynxceBackend: ChatBackend {
 
     /// Credits have a cent quantum. Grouped whole numbers, with two decimals only below 1,000 and only
     /// when there is a fraction: 4,454,029.04 → "4,454,029", 12.5 → "12.50", 12 → "12".
-    static func formatCredits(_ value: Double) -> String {
+    nonisolated static func formatCredits(_ value: Double) -> String {
         let cents = (value * 100).rounded()
         let small = abs(cents) < 100_000 && cents.truncatingRemainder(dividingBy: 100) != 0
         let formatter = NumberFormatter()

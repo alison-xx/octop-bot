@@ -5,6 +5,43 @@ import XCTest
 
 @MainActor
 final class CharacterTests: XCTestCase {
+    func testComputerCreditCodesAreRecognized() {
+        XCTAssertTrue(APIError.isCreditsRequired(APIError.computerCreditsRequired))
+        XCTAssertTrue(APIError.isCreditsRequired(APIError.computerPausedNoCredits))
+        XCTAssertFalse(APIError.isCreditsRequired(nil))
+    }
+
+    func testCreditScenariosAndErrorDetails() {
+        for kind in ["text", "image", "video"] {
+            let details = CreditDetails(["need": 12.2, "balance": 3, "kind": kind])
+            XCTAssertEqual(creditScenario(code: APIError.creditsRequired, details: details)?.kind.rawValue, kind)
+        }
+        let details = CreditDetails(["need": 12.2, "balance": 3])
+        XCTAssertEqual(creditScenario(code: APIError.computerCreditsRequired, details: details)?.kind, .computer)
+        XCTAssertEqual(creditScenario(code: APIError.computerPausedNoCredits, details: details)?.kind, .paused)
+        XCTAssertNil(creditScenario(code: APIError.creditsRequired, details: CreditDetails(["balance": 3, "kind": "text"])))
+        XCTAssertNil(creditScenario(code: APIError.creditsRequired, details: CreditDetails(["need": 1, "kind": "text"])))
+        XCTAssertNil(creditScenario(code: APIError.creditsRequired, details: CreditDetails(["need": 1, "balance": 2, "kind": "unknown"])))
+        // A paused computer needs no figures; starting one needs only `need`.
+        XCTAssertEqual(creditScenario(code: APIError.computerPausedNoCredits, details: nil)?.kind, .paused)
+        XCTAssertEqual(creditScenario(code: APIError.computerCreditsRequired, details: CreditDetails(["need": 9]))?.need, 9)
+        XCTAssertNil(creditScenario(code: APIError.computerCreditsRequired, details: CreditDetails(["balance": 2])))
+        let data = Data(#"{"error":{"code":"BOT_CLOUD_CREDITS_REQUIRED","details":{"need":12.2,"balance":3,"kind":"image"}}}"#.utf8)
+        let http = APIError.from(status: 402, message: nil, code: HTTP.errorCode(data), details: HTTP.errorDetails(data))
+        let frame = ServerFrameMapper.error(["error_code": APIError.creditsRequired, "error_details": ["need": 12.2, "balance": 3, "kind": "image"]])
+        let provider = ServerFrameMapper.error(["error_code": "insufficient_balance"])
+        XCTAssertEqual(provider.kind, .server)
+        XCTAssertEqual(provider.message, L("error.providerBalance"))
+        XCTAssertEqual(http.details, frame.details)
+        XCTAssertEqual(creditScenario(code: frame.code, details: frame.details)?.kind, .image)
+    }
+
+    func testLowBalanceDismissalLasts24Hours() {
+        XCTAssertTrue(AppModel.lowBalanceIsDismissed(at: 1_000, now: 1_000 + 86_399))
+        XCTAssertFalse(AppModel.lowBalanceIsDismissed(at: 1_000, now: 1_000 + 86_400))
+        XCTAssertFalse(AppModel.lowBalanceIsDismissed(at: 0, now: 1_000))
+    }
+
     func testEveryShapeParsesInsideTheViewBox() {
         let library = Characters.library
         XCTAssertGreaterThanOrEqual(library.order.count, 19)

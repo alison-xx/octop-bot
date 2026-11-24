@@ -38,6 +38,15 @@ import java.util.UUID
 
 /** Pure Octop server wire mapping (no I/O), shared by [ServerBackend] and unit tests. */
 object ServerProtocol {
+    fun rechargeBody(account: String, need: Double? = null, reason: String? = null) = buildJsonObject {
+        put("source", "cloud")
+        put("expected_account_id", account)
+        put("intent", "credits")
+        put("from", "android")
+        need?.takeIf { it.isFinite() && it > 0 && it <= Int.MAX_VALUE }?.let { put("need", kotlin.math.ceil(it).toInt()) }
+        reason?.takeIf { it in setOf("text", "image", "video", "computer", "disk", "plan_limit") }?.let { put("reason", it) }
+    }
+
     /** Octop Bot cloud, run by Lynxce. */
     const val LYNXCE_CLOUD = "https://bot.lynxce.cn"
 
@@ -279,7 +288,7 @@ object ServerProtocol {
                 status = if (row.str("status") == "error") {
                     MessageStatus.Failed(
                         null,
-                        credits = row.str("error_code") == ApiException.CREDITS_REQUIRED,
+                        credits = ApiException.isCreditsRequired(row.str("error_code")),
                         dailyLimit = row.str("error_code") == ApiException.DAILY_LIMIT,
                     )
                 } else {
@@ -546,8 +555,10 @@ object ServerProtocol {
     fun streamError(frame: JsonObject, message: String?): ApiException {
         val code = frame.str("error_code")
         if (code == ApiException.DAILY_LIMIT) return ApiException(ApiException.Kind.DailyLimit, 429, message, code)
-        return if (code == ApiException.CREDITS_REQUIRED) {
-            ApiException(ApiException.Kind.Credits, 402, message, code)
+        return if (ApiException.isCreditsRequired(code)) {
+            ApiException(ApiException.Kind.Credits, 402, message, code, creditDetails(frame.obj("error_details") ?: frame.obj("details")))
+        } else if (code == "insufficient_balance" || message == "octop:stream_errors.insufficient_balance" || message == "The model provider rejected this request due to insufficient balance or quota. Top up or upgrade the plan for this API key, then try again." || message == "模型服务返回余额或额度不足。请为该 API Key 对应的账户充值或升级套餐后再试。") {
+            ApiException(ApiException.Kind.Server, 500, code = "insufficient_balance")
         } else {
             ApiException(ApiException.Kind.Server, 500, message, code)
         }
@@ -586,7 +597,8 @@ object ServerProtocol {
         val url = raw.toHttpUrlOrNull() ?: return null
         if (url.scheme != "https" || url.host != "admin.lynxce.cn" || url.port != 443) return null
         if ("@" in raw || "#" in raw || url.username.isNotEmpty() || url.password.isNotEmpty() || url.fragment != null) return null
-        if (url.encodedPath != "/recharge" || url.querySize != 1 || url.queryParameterName(0) != "token") return null
+        if (url.encodedPath != "/recharge" || url.querySize == 0 || url.queryParameterName(0) != "token") return null
+        if (url.querySize != 1 && !(url.querySize == 2 && url.queryParameterName(1) == "tab" && url.queryParameterValue(1) == "boost")) return null
         val ticket = url.queryParameterValue(0) ?: return null
         if (!CLOUD_TICKET.matches(ticket)) return null
         if (!raw.startsWith("https://admin.lynxce.cn/recharge?token=")) return null

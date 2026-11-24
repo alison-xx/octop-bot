@@ -48,6 +48,16 @@ Three groups, like the desktop:
 - **本地模型 · 免费** (phone only). Ollama or LM Studio by address (`192.168.1.8` → `:11434/v1`); the
   phone talks to it directly. Not shown when signed in to a server, which runs the chat itself.
 
+The chat balance warning appears below 1,000 credits. Closing it hides it for that wallet for 24 hours,
+across app restarts. Out-of-credits cards follow the server's code and `details`: chat, images and video
+show what the step needs and the balance, starting a cloud computer shows what it needs, and a computer
+paused for credits says its files are kept; missing details fall back to the generic text. A personal API
+key's balance error points to the provider and never shows our top-up. Android: the first shortage adds a
+one-time note on top-ups versus monthly member credits; top-up from a card sends `need` (rounded up) and
+`reason` to the cloud checkout, other entry points send neither, and direct Lynxce checkout opens the
+top-up tab (`tab=boost`) after the URL check. iOS: the card offers only the App Store packs, and only
+while `CreditPurchases.inApp` is on (off in this build); no web checkout or external links.
+
 The desktop app's built-in server listens on `127.0.0.1` only, so phones connect to a NAS/Docker
 deployment (`deploy/docker`, `fnos/`), not to the desktop app.
 

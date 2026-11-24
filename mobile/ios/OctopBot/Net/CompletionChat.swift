@@ -169,7 +169,7 @@ final class CompletionChat {
                 for parsed in try LynxceBackend.parseChunk(event.data) { onEvent(parsed) }
             } catch let error as APIError {
                 // A vendor's quota is not the Lynxce wallet: never show the top-up card for it.
-                throw APIError(kind: .server, status: error.status, message: error.message)
+                throw APIError(kind: .server, status: error.status, message: error.code == "insufficient_balance" ? L("error.providerBalance") : error.message)
             }
             calls.add(event.data)
             if finishReason(event.data) != nil { completed = true }

@@ -175,7 +175,7 @@ final class ServerBackend: ChatBackend {
         let request = try HTTP.request(base.appending(path: path), method: method, json: json)
         let (data, response) = try await HTTP.data(for: request)
         guard (200..<300).contains(response.statusCode) else {
-            throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data))
+            throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data), details: HTTP.errorDetails(data))
         }
         return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
@@ -203,7 +203,7 @@ final class ServerBackend: ChatBackend {
             Keychain.setCodable(session, for: Self.sessionKey)
         }
         guard (200..<300).contains(response.statusCode) else {
-            throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data))
+            throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data), details: HTTP.errorDetails(data))
         }
         return data
     }
@@ -391,7 +391,7 @@ final class ServerBackend: ChatBackend {
 
     /// History `error_code`s that render as a card instead of a red error.
     static func stoppedStatus(_ code: String?) -> MessageStatus? {
-        if code == APIError.creditsRequired { return .outOfCredits }
+        if APIError.isCreditsRequired(code) { return .outOfCredits }
         if APIError.isDailyLimit(code) { return .dailyLimit }
         return nil
     }
@@ -433,7 +433,7 @@ final class ServerBackend: ChatBackend {
                     guard (200..<300).contains(http.statusCode) else {
                         var data = Data()
                         for try await byte in bytes { data.append(byte); if data.count > 16_384 { break } }
-                        throw APIError.from(status: http.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data))
+                        throw APIError.from(status: http.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data), details: HTTP.errorDetails(data))
                     }
                     var mapper = ServerFrameMapper(labels: toolLabels, endsOnDone: true)
                     loop: for try await event in SSE.events(bytes) {
@@ -754,8 +754,11 @@ struct ServerFrameMapper {
         if APIError.isDailyLimit(frame["error_code"] as? String) {
             return APIError(kind: .dailyLimit, status: 429, message: text)
         }
-        if frame["error_code"] as? String == APIError.creditsRequired {
-            return APIError(kind: .credits, status: 402, message: text)
+        if APIError.isCreditsRequired(frame["error_code"] as? String) {
+            return APIError(kind: .credits, status: 402, message: text, code: frame["error_code"] as? String, details: CreditDetails((frame["error_details"] ?? frame["details"]) as? [String: Any]))
+        }
+        if frame["error_code"] as? String == "insufficient_balance" || text == "octop:stream_errors.insufficient_balance" || text == "The model provider rejected this request due to insufficient balance or quota. Top up or upgrade the plan for this API key, then try again." || text == "模型服务返回余额或额度不足。请为该 API Key 对应的账户充值或升级套餐后再试。" {
+            return APIError(kind: .server, status: 500, message: L("error.providerBalance"))
         }
         return APIError(kind: .server, status: 500, message: text)
     }

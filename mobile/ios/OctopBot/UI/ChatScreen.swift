@@ -473,6 +473,7 @@ struct MessageRow: View {
                     // Not an error: top up (or wait for the daily reset), then "Continue" re-runs the turn like retry does.
                     OutOfCreditsCard(
                         reason: message.status == .dailyLimit ? .dailyLimit : .outOfCredits,
+                        scenario: message.creditScenario,
                         canContinue: isLast && !chat.isStreaming
                     ) { chat.retry() }
                 } else if case .failed(let reason) = message.status {
