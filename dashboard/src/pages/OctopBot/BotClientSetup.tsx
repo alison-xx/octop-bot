@@ -377,7 +377,7 @@ export default function BotClientSetup() {
   );
 
   const webForms = (
-    <div className={intro.webForms}>
+    <div className={`${intro.webForms} ${intro.lynxceCard}`}>
       <LynxceSignInForm
         idPrefix="bot-lynxce"
         autoFocus

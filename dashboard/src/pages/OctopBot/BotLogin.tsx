@@ -95,7 +95,7 @@ export default function BotLogin() {
               </p>
               {error && <Alert type="error" message={error} showIcon />}
               {mode === "lynxce" && (
-                <div className={intro.webForms}>
+                <div className={`${intro.webForms} ${intro.lynxceCard}`}>
                   {legacy && (
                     <div className={intro.form}>
                       <label htmlFor="bot-login-legacy">

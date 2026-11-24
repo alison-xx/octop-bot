@@ -107,7 +107,7 @@
     text-wrap: pretty;
   }
   // The way in is black on light, white on dark, like the rest of Octop Bot.
-  :global(.ant-btn-primary:not(:disabled)) {
+  :global(.octop-btn-primary:not(:disabled)) {
     background: var(--fn-text-primary);
     border-color: var(--fn-text-primary);
     color: var(--fn-bg-elevated);
@@ -116,15 +116,21 @@
       opacity: 0.88;
     }
   }
-  :global(.ant-btn-primary) {
+  :global(.octop-btn-primary) {
     height: 44px;
     border-radius: 10px;
     font-weight: 600;
   }
-  :global(.ant-input),
-  :global(.ant-input-affix-wrapper) {
+  :global(.octop-input),
+  :global(.octop-input-affix-wrapper) {
     min-height: 42px;
     border-radius: 10px;
+  }
+  :global(.octop-btn-link:not(:disabled)) {
+    color: var(--fn-text-secondary);
+    &:hover {
+      color: var(--fn-text-primary);
+    }
   }
 }
 .lynxceCard {
