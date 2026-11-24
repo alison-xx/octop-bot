@@ -59,14 +59,16 @@
     return payload.data === undefined ? payload : payload.data;
   }
   auth.api = request;
-  auth.redeemHash = async () => {
+  // scope is the landing page's purpose: "account" (account.html) or "recharge" (pricing.html).
+  auth.redeemHash = async (scope) => {
+    if (scope !== "account" && scope !== "recharge") return false;
     await auth.ready;
     const match = location.hash.match(/^#(?:ticket|code)=([^&]+)$/);
     if (!match) return false;
     const code = decodeURIComponent(match[1]);
     history.replaceState(null, "", location.pathname + location.search);
     if (!auth.config.oneTimeCodeEnabled) return false;
-    try { const data = await request("/api/auth/login-codes/redeem", { method: "POST", auth: false, body: { code } }); auth.setSession(data, true); return true; } catch (_) { return false; }
+    try { const data = await request("/api/auth/login-codes/redeem", { method: "POST", auth: false, body: { code, scope } }); auth.setSession(data, true); return true; } catch (_) { return false; }
   };
   window.OctopAuth = auth;
 })();

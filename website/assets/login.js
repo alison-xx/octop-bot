@@ -57,7 +57,7 @@
       try { const endpoint = method === "wechat" ? "/api/auth/wechat-web/config?site=octop-bot" : "/api/oauth/workbuddy/config?site=octop-bot"; const data = await a.api(endpoint, { auth: false, headers: { "X-Lynxce-Client": "web" } }); if (!data.enabled) continue; $(method).hidden = false; $("other-methods").hidden = false;
         $(method).addEventListener("click", () => {
           if (method === "wechat") { sessionStorage.setItem("ob-wechat-state", data.state); sessionStorage.setItem("ob-wechat-next", next); const url = new URL("https://open.weixin.qq.com/connect/qrconnect"); url.search = new URLSearchParams({ appid: data.appId, redirect_uri: data.redirectUri, response_type: "code", scope: "snsapi_login", state: data.state }); location.assign(url.href + "#wechat_redirect"); }
-          else { const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join(""); sessionStorage.setItem("ob-workbuddy-login", JSON.stringify({ nonce, timestamp: Date.now() })); const url = new URL("/api/oauth/workbuddy/start", a.config.apiBase); url.search = new URLSearchParams({ site: "octop-bot", signupSite: "octop-bot", returnTo: next }); location.assign(url.href); }
+          else { const bytes = crypto.getRandomValues(new Uint8Array(32)); const nonce = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); sessionStorage.setItem("ob-workbuddy-login", JSON.stringify({ nonce, timestamp: Date.now() })); const url = new URL("/api/oauth/workbuddy/start", a.config.apiBase); url.search = new URLSearchParams({ site: "octop-bot", signupSite: "octop-bot", returnTo: next, clientState: nonce }); location.assign(url.href); }
         });
       } catch (_) {}
     }
