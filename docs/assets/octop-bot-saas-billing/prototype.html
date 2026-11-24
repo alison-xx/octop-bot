@@ -142,12 +142,19 @@
   .small { font-size: 12.5px; }
   .plan { padding: 20px 16px; }
   .plan .renew { font-size: 12px; color: var(--ink-3); margin-top: -6px; }
+  .plan .credits { min-height: 92px; }
   .plan .credits .row { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
   .plan .credits .row + .row { margin-top: 4px; }
   .plan .credits .gift { color: var(--accent); }
   .plan .credits .later { color: var(--ink-3); }
   .plan .credits em { font-style: normal; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
   .plan .yr { font-size: 12px; color: var(--ink-3); }
+  .plan ul.perks { gap: 6px; font-size: 12.5px; }
+  .plan ul.perks li { display: grid; grid-template-columns: 58px 1fr; gap: 6px; align-items: baseline; }
+  .plan ul.perks li::before { content: none; }
+  .plan ul.perks li span { color: var(--ink-3); }
+  .plan ul.perks li b { font-weight: 500; color: var(--ink); }
+  .plan .renew s { color: var(--ink-3); }
   body.app .header, body.app .footer { display: none; }
   .appwrap { padding: 28px 24px 60px; background: #e9e7e2; min-height: 100vh; }
   .appcap { max-width: 1180px; margin: 0 auto 12px; display: flex; justify-content: space-between; align-items: baseline; }
@@ -184,7 +191,7 @@
   .menu .rowx b { color: #1d1c1a; font-weight: 600; }
   .menu .two { display: flex; gap: 8px; margin: 10px 0 8px; } .menu .two span { flex: 1; text-align: center; border-radius: 10px; padding: 7px; font-size: 13px; border: 1px solid #ddd; } .menu .two .pri { background: #1d1c1a; color: #fff; border-color: #1d1c1a; }
   .menu hr { border: 0; border-top: 1px solid #eee; margin: 8px 0; } .menu .li { padding: 6px 2px; font-size: 13.5px; color: #3d3b37; }
-  .note2 { position: absolute; right: 18px; top: 66px; width: 250px; background: #1d1c1a; color: #eee; border-radius: 12px; padding: 10px 12px; font-size: 12px; z-index: 6; }
+  .note2 { position: absolute; right: 18px; bottom: 96px; width: 250px; background: #1d1c1a; color: #eee; border-radius: 12px; padding: 10px 12px; font-size: 12px; z-index: 6; }
   .note2 b { color: #ffd86b; display: block; margin-bottom: 2px; }
   .float { position: absolute; right: 22px; bottom: 90px; width: 330px; background: #1d1c1a; border-radius: 14px; overflow: hidden; color: #eee; box-shadow: 0 18px 40px -10px rgba(0,0,0,.4); }
   .float .scr { height: 150px; background: repeating-linear-gradient(45deg,#2a2926 0 8px,#24231f 8px 16px); display: grid; place-items: center; color: #bbb; font-size: 13px; }
@@ -268,7 +275,7 @@
     <div class="pview on" id="v-plans">
       <div class="center"><div class="cycle" id="cycle" style="margin-top:0"><button class="on" data-c="m">月付</button><button data-c="y">年付<em>限时 9 折</em></button></div></div>
       <div class="plans" id="plans"></div>
-      <p class="note">每月积分从发放起 1 个月有效；年付也是每月发一次。第一期到期手动续费。签到将于第二期上线，上线前不显示那一行。</p>
+      <p class="note">月度积分 1 个月有效，年付一次付清、积分按月到账。作图和视频数量按当前默认模型（作图 <span id="imgModel"></span>，视频 <span id="vidModel"></span>）的单价换算，以实际消耗为准。</p>
     </div>
     <div class="pview" id="v-packs">
       <div class="buy">
@@ -281,7 +288,7 @@
           <h3>加油包 <span class="pill gray" style="float:right">一次性购买</span></h3>
           <div style="font-size:36px;font-weight:700">¥50</div>
           <div class="line"><span>到账</span><b>5,000 积分</b></div>
-          <div class="line"><span>有效期</span><b>365 天 <span class="draft">待确认</span></b></div>
+          <div class="line"><span>有效期</span><b>365 天</b></div>
           <div class="line"><span>和会员</span><b>可叠加使用</b></div>
           <a class="btn btn-primary" href="#result" style="width:100%;justify-content:center;margin-top:10px">¥50 立即购买</a>
           <p class="muted small" style="margin:12px 0 0">第一期在灵策收银台付款，付完回到这里。长期使用，开通会员更划算 → <a href="#pricing">看会员</a></p>
@@ -293,8 +300,8 @@
       <div class="section-head"><h2>按量单价</h2><p class="muted">所有消耗都用积分结算；本机 Bot 用自己的模型和电脑，不花积分。</p></div>
       <div class="rates" style="margin-top:0">
         <div class="rate"><b>文本对话</b>按 token 计，一次普通对话约 10–20 积分</div>
-        <div class="rate"><b>作图</b>按张计（默认模型由灵策后台设定），价格读灵策</div>
-        <div class="rate"><b>做视频</b>按秒计（默认模型由灵策后台设定），价格读灵策</div>
+        <div class="rate"><b>作图</b><span id="rateImg"></span></div>
+        <div class="rate"><b>做视频</b><span id="rateVid"></span></div>
         <div class="rate"><b>标准云电脑</b>1.70 积分 / 分钟（约 102 / 小时），暂停不收</div>
         <div class="rate"><b>专业云电脑</b>3.40 积分 / 分钟（约 204 / 小时）</div>
         <div class="rate"><b>云电脑磁盘</b>4.80 积分 / GB·天，删除电脑后停止计费</div>
@@ -409,29 +416,38 @@
 const PAGES = [["pricing","定价·月付"],["pricing-year","定价·年付"],["packs","定价·积分包"],["changelog","更新日志"],["changelog-en","Changelog (EN)"],["login","登录"],["checkout","结账"],["result","支付结果"],["account","个人中心·概览"],["usage","用量明细"],["orders","订单与发票"],["plan","套餐管理"],["security","账号与安全"],["devices","登录设备"],["bots","我的 Bot 与下载"],["app-desktop","客户端·余额与不足"],["app-limits","客户端·云电脑与上限"],["app-mobile","客户端·手机线框"]];
 const ACCOUNT = ["account","usage","orders","plan","security","devices","bots"];
 let cycle = "m";
+// Read live from Lynxce on the real page: default image / video model and their unit prices.
+const IMG_STD_PRICE = __IMG_STD__, IMG_HD_PRICE = __IMG_HD__, VID_768_PRICE = __VID_768__, VID_2K_PRICE = __VID_2K__;
+const MEDIA = { image: { model: "gpt2.6", std: IMG_STD_PRICE, hd: IMG_HD_PRICE }, video: { model: "MiniMax H3", p768: VID_768_PRICE, k2: VID_2K_PRICE } };
+const imgN = credits => Math.floor(credits / MEDIA.image.std).toLocaleString("en-US");
+const vidN = credits => Math.floor(credits / (MEDIA.video.p768 * 6)).toLocaleString("en-US");
 const PLANS = [
-  { id:"trial", name:"体验", m:0, credits:[["新用户赠送 300 积分","14 天有效"]], items:["本机 Bot 不限，自带模型免费","文本对话、作图、做视频（按积分）","标准云电脑（按积分）","协同 Bot 3 个、协同群聊 2 个","同步 2 台设备"], off:["优先排队"], btn:"当前套餐", cur:true },
-  { id:"standard", name:"标准", m:69, credits:[["7,000 积分每月","1 个月有效"]], gift:"加赠 700 积分", items:["包含体验版全部","更多文本模型（腾讯专业套餐开通后）","协同 Bot 20 个、协同群聊 10 个","同步 3 台设备"], off:["专业云电脑","优先排队"], btn:"开通标准版" },
-  { id:"plus", name:"进阶", m:99, credits:[["10,000 积分每月","1 个月有效"]], gift:"加赠 1,000 积分", items:["包含标准版全部","协同 Bot 50 个、协同群聊不限","同步 5 台设备"], off:["专业云电脑","优先排队"], btn:"开通进阶版", hot:"稳定使用推荐" },
-  { id:"pro", name:"专业", m:199, credits:[["20,000 积分每月","1 个月有效"]], gift:"首月加赠 4,000 积分", items:["包含进阶版全部","专业云电脑（8 核 16G）","协同 Bot、群聊不限","同步 10 台设备","模型和云电脑优先排队"], off:[], btn:"开通专业版" },
-  { id:"max", name:"卓越", m:699, credits:[["70,000 积分每月","1 个月有效"]], gift:"首月加赠 14,000 积分", items:["包含专业版全部","同步 20 台设备","最高优先级排队"], off:[], btn:"开通卓越版" },
+  { id:"trial", name:"体验", m:0, monthly:300, credits:[["注册送 300 积分","14 天有效"]],
+    items:[["文本模型","全部可用模型"],["作图",(c)=>`标准画质 · 约 ${imgN(c)} 张`],["做视频",(c)=>`768p · 约 ${vidN(c)} 条 6 秒视频`],["协同 Bot","3 个"],["群聊","1 个"],["同步设备","2 台"],["云电脑","标准，同时 1 台"],["云端文件","1 GB"],["定时任务","3 个"],["支持","社群"]], btn:"当前套餐", cur:true },
+  { id:"standard", name:"标准", m:69, y:745, monthly:7000, credits:[["7,000 积分每月","1 个月有效"]], gift:"每月加赠 700 积分",
+    items:[["文本模型","全部可用模型"],["作图",(c)=>`标准画质 · 约 ${imgN(c)} 张`],["做视频",(c)=>`768p · 约 ${vidN(c)} 条 6 秒视频`],["协同 Bot","20 个"],["群聊","10 个"],["同步设备","3 台"],["云电脑","标准，同时 1 台"],["云端文件","10 GB"],["定时任务","20 个"],["支持","社群"]], btn:"开通标准版" },
+  { id:"plus", name:"进阶", m:99, y:1069, monthly:10000, credits:[["10,000 积分每月","1 个月有效"]], gift:"每月加赠 1,000 积分", hot:"稳定使用推荐",
+    items:[["文本模型","全部可用模型"],["作图",(c)=>`标准画质 · 约 ${imgN(c)} 张`],["做视频",(c)=>`768p · 约 ${vidN(c)} 条 6 秒视频`],["协同 Bot","50 个"],["群聊","30 个"],["同步设备","5 台"],["云电脑","标准，同时 2 台"],["云端文件","20 GB"],["定时任务","50 个"],["支持","社群"]], btn:"开通进阶版" },
+  { id:"pro", name:"专业", m:199, y:2149, monthly:20000, credits:[["20,000 积分每月","1 个月有效"]], gift:"首月加赠 4,000 积分",
+    items:[["文本模型","全部可用模型"],["作图",(c)=>`可选高清，单次最多 4 张 · 约 ${imgN(c)} 张`],["做视频",(c)=>`可选 2K · 约 ${vidN(c)} 条 6 秒视频`],["协同 Bot","不限"],["群聊","不限"],["同步设备","10 台"],["云电脑","标准 + 专业，同时 3 台"],["云端文件","50 GB"],["定时任务","200 个"],["排队优先","模型和云电脑"],["支持","工单优先"]], btn:"开通专业版" },
+  { id:"max", name:"卓越", m:699, y:7549, monthly:70000, credits:[["70,000 积分每月","1 个月有效"]], gift:"首月加赠 14,000 积分",
+    items:[["文本模型","全部可用模型"],["作图",(c)=>`可选高清，单次最多 4 张 · 约 ${imgN(c)} 张`],["做视频",(c)=>`可选 2K · 约 ${vidN(c)} 条 6 秒视频`],["协同 Bot","不限"],["群聊","不限"],["同步设备","20 台"],["云电脑","标准 + 专业，同时 10 台"],["云端文件","200 GB"],["定时任务","不限"],["排队优先","模型和云电脑"],["支持","专属顾问"]], btn:"开通卓越版" },
 ];
 const PACKS = [[20, "2,000"], [50, "5,000"], [100, "10,000"], [200, "20,000"], [500, "50,000"]];
 const money = v => "¥" + (Number.isInteger(v) ? v.toLocaleString("en-US") : v.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 2 }));
 function renderPlans() {
   document.getElementById("plans").innerHTML = PLANS.map(p => {
-    const year = Math.round(p.m * 12 * 0.9 * 100) / 100;
-    const price = p.m === 0 ? `¥0` : cycle === "m" ? `${money(p.m)}<small>/月</small>` : `${money(year)}<small>/年</small>`;
-    const sub = p.m === 0 ? "免费" : cycle === "m" ? "到期手动续费" : `折合 ${money(Math.round(year / 12 * 10) / 10)}/月 · 到期手动续费`;
+    const price = p.m === 0 ? `¥0` : cycle === "m" ? `${money(p.m)}<small>/月</small>` : `${money(p.y)}<small>/年</small>`;
+    const sub = p.m === 0 ? "免费" : cycle === "m" ? "到期前 3 天提醒，手动续费" : `<s>${money(p.m * 12)}</s> · 折合 ${money(Math.round(p.y / 12))}/月 · 手动续费`;
     const rows = p.credits.map(([a, b]) => `<div class="row"><span>✦ <b>${a}</b></span><em>${b}</em></div>`).join("")
       + (p.gift ? `<div class="row gift"><span>🎁 ${p.gift}</span></div>` : "")
-      + (p.m ? `<div class="row later"><span>📅 签到得 3,000 积分每月</span><em>第二期</em></div>` : "");
+      + (p.m ? `<div class="row later"><span>📅 签到每天 100，约 3,000 积分每月</span></div>` : "");
     return `<div class="plan ${p.hot ? "hot" : ""}">${p.hot ? `<span class="tag">${p.hot}</span>` : ""}
       <h3>${p.name}</h3>
       <div class="amount">${price}</div><div class="renew">${sub}</div>
       <div class="credits">${rows}</div>
       <a class="btn ${p.hot ? "btn-primary" : "btn-ghost"}" href="${p.cur ? "#login" : "#result"}">${p.btn}</a>
-      <ul>${p.items.map(i => `<li>${i}</li>`).join("")}${p.off.map(i => `<li class="off">${i}</li>`).join("")}</ul>
+      <ul class="perks">${p.items.map(([k, v]) => `<li><span>${k}</span><b>${typeof v === "function" ? v(p.monthly) : v}</b></li>`).join("")}<li><span>本机 Bot</span><b>不限、不扣积分</b></li></ul>
     </div>`; }).join("");
   document.querySelectorAll("#cycle button").forEach(b => b.classList.toggle("on", b.dataset.c === cycle));
 }
@@ -650,6 +666,10 @@ function render() {
   window.scrollTo(0, 0);
 }
 if (new URLSearchParams(location.search).has("clean")) document.body.classList.add("clean");
+document.getElementById("imgModel").textContent = MEDIA.image.model;
+document.getElementById("vidModel").textContent = MEDIA.video.model;
+document.getElementById("rateImg").textContent = `${MEDIA.image.model}：标准 ${MEDIA.image.std} 积分/张，高清 ${MEDIA.image.hd} 积分/张`;
+document.getElementById("rateVid").textContent = `${MEDIA.video.model}：768p ${MEDIA.video.p768} 积分/秒，2K ${MEDIA.video.k2} 积分/秒`;
 renderPlans();
 window.onhashchange = render;
 render();
