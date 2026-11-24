@@ -315,8 +315,11 @@ describe("directory sections", () => {
       expect(screen.queryByRole("button", { name: "Editorial" })).toBeNull(),
     );
     expect(remove).toHaveBeenCalledWith("team");
-    expect(screen.getByTestId("location")).toHaveTextContent(
-      "/octop-bot/bots/chief",
+    // Leaving for Chief can land a tick after the row disappears.
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "/octop-bot/bots/chief",
+      ),
     );
   });
 
