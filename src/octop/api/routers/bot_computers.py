@@ -9,6 +9,7 @@ import secrets
 import time
 from typing import Any, Literal
 
+import anyio
 from fastapi import APIRouter, Depends, Query, WebSocket
 from pydantic import BaseModel, Field
 
@@ -276,7 +277,9 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
     # Only the screen that has the computer hands it back when it closes: one opened while
     # taken over, or one the user typed into. A view-only screen closing (the phone swaps its
     # view-only page for the control page right after taking over) must not undo the takeover.
-    holds = {"control": await asyncio.to_thread(manager.taken_over, agent_id, user_id)}
+    holds = {"control": False}
+    initial = asyncio.create_task(asyncio.to_thread(manager.taken_over, agent_id, user_id))
+    tasks: list[asyncio.Task[None]] = []
 
     async def input_allowed() -> bool:
         # View-only is a client setting; the relay itself holds input back until takeover.
@@ -287,6 +290,7 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
         return bool(control["allowed"])
 
     try:
+        holds["control"] = await asyncio.shield(initial)
         url, headers = await asyncio.to_thread(manager.screen, agent_id, user_id)
         pinned = (
             await asyncio.to_thread(manager.screen_ssl, agent_id, user_id)
@@ -335,22 +339,33 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
                     await asyncio.to_thread(manager.viewing, agent_id, user_id)
 
             tasks = [asyncio.create_task(job()) for job in (down, up, keep_alive)]
-            _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            for task in pending:
-                task.cancel()
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
     except Exception:  # noqa: BLE001 - the viewer just closes
         logger.warning("screen relay for %s ended with an error", agent_id, exc_info=True)
     finally:
-        # Leaving the screen in control (closed tab, lost network, crash) hands the computer back.
-        # Shielded: the relay task may be cancelled right as the viewer goes away, and a
-        # hand-back skipped then would leave the computer taken over with nobody at the screen.
-        if holds["control"]:
 
-            def hand_back() -> None:
-                if manager.taken_over(agent_id, user_id):
-                    manager.set_takeover(agent_id, user_id, False)
+        async def cleanup() -> None:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            # The first read may still be running when the relay is cancelled.
+            with contextlib.suppress(Exception):
+                holds["control"] |= await initial
+            if holds["control"]:
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(manager.release_takeover_if_held, agent_id, user_id)
+            with contextlib.suppress(Exception):
+                await websocket.close()
 
-            with contextlib.suppress(Exception, asyncio.CancelledError):
-                await asyncio.shield(asyncio.to_thread(hand_back))
-        with contextlib.suppress(Exception):
-            await websocket.close()
+        # Scope shielding and repeated joins also withstand direct Task.cancel().
+        cancelled: asyncio.CancelledError | None = None
+        with anyio.CancelScope(shield=True):
+            cleanup_task = asyncio.create_task(cleanup())
+            while not cleanup_task.done():
+                try:
+                    await asyncio.shield(cleanup_task)
+                except asyncio.CancelledError as exc:
+                    cancelled = exc
+            await cleanup_task
+        if cancelled is not None:
+            raise cancelled
