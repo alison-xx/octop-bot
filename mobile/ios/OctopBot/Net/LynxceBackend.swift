@@ -116,10 +116,14 @@ final class LynxceBackend: ChatBackend {
     /// Picks Octop Bot's App Store products on Lynxce's in-app purchase endpoints without moving
     /// the sign-in out of the multi-session 'web' channel.
     nonisolated static let iapApp = "cn.lynxce.octopbot"
+    /// Lynxce's Octop Bot line: every model it offers Octop Bot is named `tencent/…`.
+    nonisolated static let modelPrefix = "tencent/"
 
     private static func headers(_ bearer: String?, iap: Bool = false) -> [String: String] {
         // 'web' is Lynxce's multi-session channel; signing in here never signs other devices out.
         var headers = ["X-Lynxce-Client": "web"]
+        // Lynxce serves Octop Bot only the Tencent Cloud TokenHub models and records sign-ups made here.
+        headers["X-Lynxce-App"] = "octopbot"
         if let bearer { headers["Authorization"] = "Bearer \(bearer)" }
         if iap { headers["X-Lynxce-Iap-App"] = iapApp }
         return headers

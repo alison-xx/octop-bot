@@ -297,6 +297,8 @@ LYNXCE_VISION_MODELS = frozenset(
         "kimi-k3",
         "doubao-seed-2.1-turbo",
         "yunxin/doubao-seed-2-1-pro-260628",
+        # Octop Bot's Lynxce line (checked 2026-11-24 with a PNG).
+        "tencent/auto",
     }
 )
 
