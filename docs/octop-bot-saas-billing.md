@@ -154,7 +154,7 @@
 | 专业云电脑 | 3.40 积分 / 分钟 | 同上 |
 | 云电脑磁盘 | 4.80 积分 / GB·天 | 同上 |
 
-模型价格表照 LobsterAI 的结构：文本 / 作图 / 视频三个切换，列出能不能看图、能不能深度思考。读价格的公开接口要和灵策对接确认（盘点里没写到模型价格的公开接口，见 §6 第 15 条）。
+模型价格表照 LobsterAI 的结构：文本 / 作图 / 视频三个切换，列出能不能看图、能不能深度思考。价格读灵策公开的 `pricing-catalog`（§6），不写死。
 
 ## 5. 登录和付款链路
 
@@ -198,6 +198,8 @@ Octop 后端返回 https://octop-bot.lynxce.cn/pricing.html?ticket=…&from=desk
 
 ## 6. 复用灵策（按盘点）
 
+来源：灵策对接的《灵策能力盘点-官网》§6–7（灵策 main d5b69a459 只读核对，回答了 8 个计费能力问题），以及 11-25 的补充回复（默认模型、单价、公开价格接口、用量类别）。
+
 | 能力 | 灵策现状 | 官网第一期怎么用 |
 |---|---|---|
 | 登录注册（手机 / 邮箱验证码、密码、Apple） | 现成 | 直接调；跨域要放行 |
@@ -209,7 +211,8 @@ Octop 后端返回 https://octop-bot.lynxce.cn/pricing.html?ticket=…&from=desk
 | checkout-link | 现成，15 分钟票据 | 要加品牌、预选、回跳 |
 | 订单 `GET /api/user/purchase-orders`、状态、续付 | 现成，没有来源字段 | 要加 `product` |
 | 发票 `GET /api/user/invoice-requests/orders`、`GET/POST /api/user/invoice-requests` | 现成 | 直接用 |
-| 用量 `GET /api/user/usage-ledger`、`usage-overview`、`usage-trend` | 现成，不能按类别或来源筛，不返回 `subjectId` | 要加 `product` 和类别筛选；Bot 维度要 Octop 带 `X-Lynxce-Bot-Id`（模型）和 `botId`（云电脑、磁盘） |
+| 用量 `GET /api/user/usage-ledger`、`usage-overview`、`usage-trend` | 现成，不能按类别或来源筛，不返回 `subjectId`。作图、视频记为 `subjectType=media`，`metadata.type` 是 `image` 或 `video`，带 `metadata.model` 和 `apiKeyId` | 要加 `product` 和类别筛选（作图、视频直接按 `metadata.type` 归类）；Bot 维度要 Octop 带 `X-Lynxce-Bot-Id`（模型）和 `botId`（云电脑、磁盘） |
+| 模型价格 `GET https://api.lynxce.cn/api/models/pricing-catalog` | 现成、公开、不用密钥。返回文本、作图、视频模型；每类第一个即默认模型（灵策自己的 MCP 工具也这么取）。作图单价在 `creditsPerImage`，视频在 `videoPricingTiers` 和 `defaultResolution`，另有可直接显示的 `pricingDescription`。不分账号（带用户密钥的 `/v1/models` 会按账号过滤，目前第一个一致） | 定价页和单价表直接读；跨域放行前构建时拉一份，或经 bot.lynxce.cn 转发 |
 | 登录设备 `GET /api/user/login-devices`、`DELETE …/:id`、`POST /api/user/logout-all` | 现成；JWT 无状态，不能逐个网页会话下线 | 设备页列推送和桌面设备，另给「全部下线」 |
 | 注销、换绑手机、绑定邮箱 | 现成 | 账号与安全页直接用 |
 | 用户自助改密码 / 忘记密码 | 没有，只有运营后台重置 | 第二期（灵策约 1 天，碰登录） |
@@ -219,9 +222,9 @@ Octop 后端返回 https://octop-bot.lynxce.cn/pricing.html?ticket=…&from=desk
 
 灵策要新做的（汇总盘点 §5 和运营后台设计 2.3.6，第一期会员约 14–19 个开发日，全部走 Codex 评审和灵策总管列车）：
 
-1. 跨域白名单加官网（0.5 小时）。
+1. 跨域白名单加官网（0.5 小时）。官网直接调登录、余额、价格接口都靠这一项，必须做。
 2. 收银台支持 Octop Bot 品牌、预选、回跳（约 1 天）。
-3. 套餐、加油包、订阅、订单、流水、密钥加 `product`；`Subscription` 唯一约束改为 `(organizationId, product)`。
+3. 套餐、加油包、订阅、订单、流水、密钥加 `product`；`Subscription` 唯一约束改为 `(organizationId, product)`。这也是区分 Octop Bot 用量的唯一可靠办法：现在 Octop 的调用在灵策记成 `appId=cn.lynxce.app`，认不出来。
 4. 会过期积分 `CreditLot`：发放、到期、先扣快到期的。
 5. 五档会员和年付套餐、首月加赠、体验档发放。
 6. Octop Bot 加油包（单独建，带有效期）。
@@ -229,11 +232,10 @@ Octop 后端返回 https://octop-bot.lynxce.cn/pricing.html?ticket=…&from=desk
 8. 权益接口 `GET /api/billing/octop-bot/entitlements`（第一期只返回档位、周期、到期日、积分）。
 9. 中台收银台登记 `octop-web`（支付宝）。
 10. 第二期：签到（会员专属）、兑换码、自助改密码、权益 `limits`、受限下单令牌。
-11. 以后：三站单点、签约代扣（要先向微信、支付宝申请）、自助退款、对公转账。
+11. 以后：三站单点、签约代扣（正在向微信、支付宝申请，《自动续费服务协议》挂在官网 `auto-renew.html`）、自助退款、对公转账。
 12. 发版模块写 `changelog.json`（§11）。
-13. 模型价格的公开读取接口（文本、作图、视频），如果现在没有。
 
-Octop 自己要做的：模型调用带 `X-Lynxce-Bot-Id`、云电脑和磁盘计费带 `botId`（云端与计费，各约半天）；`wallet/recharge` 改成返回官网地址（我）。
+Octop 自己要做的：模型调用带 `X-Lynxce-Bot-Id`、云电脑和磁盘计费带 `botId`（云端与计费，各约半天）；在密钥标上 `product=octop_bot` 之前，调用先带 `X-Lynxce-App: octopbot`，让灵策能认出来源；作图、视频的默认模型每次按「价格目录里该类第一个」取，不写死（灵策对接已在改，PR 待发）；`wallet/recharge` 改成返回官网地址（我）。
 
 ## 7. 视觉
 
@@ -435,7 +437,7 @@ Octop 自己要做的：模型调用带 `X-Lynxce-Bot-Id`、云电脑和磁盘�
 |---|---|---|
 | 桌面与 Web（我） | 官网：定价（会员 / 加油包、月付年付、单价、模型价格表）、登录、支付结果、个人中心（概览、用量、订单与发票、套餐、账号与安全、登录设备、我的 Bot 与下载）、更新日志页和旧数据迁移 | 6–8 天 |
 | 桌面与 Web（我） | 网页 / 桌面客户端：余额展示、预警横幅、`CreditsPrompt`（§8.3）、跳官网带票据和 `need`、回跳刷新、新用户提示、错误码和中英文案 | 4–5 天 |
-| 灵策对接 | §6 第 1–9、12、13 条（会员约 14–19 个开发日） | 见运营后台设计 |
+| 灵策对接 | §6 第 1–9、12 条（会员约 14–19 个开发日） | 见运营后台设计 |
 | 云端与计费 | 模型调用带 `X-Lynxce-Bot-Id`；云电脑和磁盘计费带 `botId`；新错误码在云电脑管理器里抛出 | 1–2 天 |
 | 移动端 | §8 的 Android / iOS 部分 | 移动端估 |
 | 内容运营 | 定价页文案、FAQ、购买须知、协议里的付费条款 | |
