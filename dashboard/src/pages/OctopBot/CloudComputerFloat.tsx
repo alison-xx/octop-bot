@@ -5,7 +5,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Button, Modal, Space, Tooltip } from "antd";
+import { Button, Modal, Space, Spin, Tooltip } from "antd";
 import {
   ChevronDown,
   Hand,
@@ -20,6 +20,7 @@ import {
   type CloudComputerGlance,
   type CloudComputerStatus,
 } from "../../api/modules/botCloudComputer";
+import { apiErrorMessage } from "../../utils/apiError";
 import CloudComputerScreen from "./CloudComputerScreen";
 import styles from "./cloudComputerFloat.module.less";
 
@@ -84,6 +85,7 @@ export function nextMode(
     nowMs,
     closed = false,
     pinned = false,
+    starting = false,
   }: {
     pillOnly: boolean;
     idleSinceMs: number | null;
@@ -92,10 +94,14 @@ export function nextMode(
     closed?: boolean;
     /** The user asked to see it (header button): show at least the pill. */
     pinned?: boolean;
+    /** The user opened the screen and the computer is starting for it: stay open. */
+    starting?: boolean;
   },
 ): FloatMode {
   if (status?.takeover && status.state === "running") return "expanded";
   if (closed) return "hidden";
+  if (starting && (current === "window" || current === "expanded"))
+    return current;
   if (!status || status.state !== "running") return pinned ? "pill" : "hidden";
   if (status.busy) {
     if (current === "expanded" || current === "window") return current;
@@ -161,6 +167,14 @@ export default function CloudComputerFloat({
   );
   // Shown on request from the header button (sticks until closed again).
   const [pinned, setPinned] = useState(false);
+  // Opening the screen starts (or resumes) the computer; that can take a minute or two.
+  const [starting, setStarting] = useState(false);
+  // Why the computer did not start (shown on the pill), translated when rendered.
+  const [startError, setStartError] = useState<unknown>(null);
+  const startingRef = useRef(false);
+  useEffect(() => {
+    startingRef.current = starting;
+  }, [starting]);
   const [busy, setBusy] = useState(false);
   const idleSince = useRef<number | null>(null);
   const [dragging, setDragging] = useState<{ x: number; y: number } | null>(
@@ -195,9 +209,10 @@ export default function CloudComputerFloat({
         nowMs: Date.now(),
         closed,
         pinned,
+        starting,
       }),
     );
-  }, [status, pillOnly, closed, pinned]);
+  }, [status, pillOnly, closed, pinned, starting]);
 
   const close = useCallback(() => {
     setClosed(true);
@@ -219,7 +234,10 @@ export default function CloudComputerFloat({
       setPillOnly(false);
       writeStored(`pillOnly.${botId}`, false);
       setPinned(true);
-      setMode(status?.state === "running" ? "window" : "pill");
+      // The computer icon opens the screen, starting the computer if it is off.
+      setStartError(null);
+      setStarting(status?.state !== "running");
+      setMode("window");
     };
     bus.addEventListener("toggle", onToggle);
     return () => bus.removeEventListener("toggle", onToggle);
@@ -259,9 +277,30 @@ export default function CloudComputerFloat({
     if (!live) return;
     let current = true;
     botCloudComputerApi.openScreen(botId).then(
-      (ticket) =>
-        current && setScreen({ ws: ticket.ws_path, session: ticket.session }),
-      () => current && setScreen(null),
+      (ticket) => {
+        if (!current) return;
+        setScreen({ ws: ticket.ws_path, session: ticket.session });
+        if (!startingRef.current) return;
+        // Up now: stay open as a fresh window once the status says it is running.
+        idleSince.current = Date.now();
+        botCloudComputerApi
+          .status(botId)
+          .then(
+            (next) => current && setStatus(next),
+            () => undefined,
+          )
+          .finally(() => current && setStarting(false));
+      },
+      (err) => {
+        if (!current) return;
+        setScreen(null);
+        if (startingRef.current) {
+          // It did not start (no free computer, out of credits, ...): say why on the pill.
+          setStartError(err ?? new Error());
+          setStarting(false);
+          setMode("pill");
+        }
+      },
     );
     return () => {
       current = false;
@@ -276,6 +315,8 @@ export default function CloudComputerFloat({
   const open = () => {
     setPillOnly(false);
     writeStored(`pillOnly.${botId}`, false);
+    setStartError(null);
+    setStarting(status?.state !== "running");
     setMode("window");
   };
   const takeover = async (active: boolean) => {
@@ -320,7 +361,11 @@ export default function CloudComputerFloat({
   if (mode === "hidden") return null;
 
   const title = glance?.window || botName;
-  const activity = status?.takeover
+  const activity = starting
+    ? t("cloudComputer.float.starting")
+    : startError
+    ? apiErrorMessage(startError, t("cloudComputer.float.startFailed"), t)
+    : status?.takeover
     ? t("cloudComputer.float.youControl")
     : status?.state !== "running"
     ? t(
@@ -345,7 +390,6 @@ export default function CloudComputerFloat({
           type="button"
           className={styles.pillOpen}
           onClick={open}
-          disabled={status?.state !== "running"}
           aria-label={t("cloudComputer.float.open")}
         >
           {glance?.thumbnail ? (
@@ -441,14 +485,21 @@ export default function CloudComputerFloat({
                 session={screen.session}
               />
             )}
-            <button
-              type="button"
-              className={styles.takeHint}
-              onClick={() => void takeover(true)}
-            >
-              <Hand size={14} aria-hidden="true" />
-              {t("cloudComputer.float.takeOverHint")}
-            </button>
+            {starting && !screen ? (
+              <div className={styles.starting} role="status">
+                <Spin size="small" />
+                <span>{t("cloudComputer.float.starting")}</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className={styles.takeHint}
+                onClick={() => void takeover(true)}
+              >
+                <Hand size={14} aria-hidden="true" />
+                {t("cloudComputer.float.takeOverHint")}
+              </button>
+            )}
           </div>
           <footer className={styles.status}>{activity}</footer>
           <span

@@ -743,3 +743,107 @@ async def test_model_key_names_are_fixed_per_server_and_user(
         # A new database on the same OCTOP_HOME keeps the names; another home does not.
         (tmp_octop_home / accounts.INSTANCE_FILE).write_text("other-server")
         assert accounts.key_name(srv.services, 1) != first
+
+
+async def test_only_the_bots_work_or_its_screen_start_a_cloud_computer(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Signing up, making Bots, writing deliverables, file cards, previews and the @ menu
+    never start a cloud computer; opening its screen does (as do commands, unit-tested)."""
+    import octop_harness.backends as harness_backends
+    from deepagents.backends.filesystem import FilesystemBackend
+    from octop_harness.backends.workspace import BackendWorkspace
+
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.cloud.computers import manager as computers
+    from octop.infra.cloud.computers.backend import CloudComputer
+
+    # As in production: new computers on CVM, older ones on AGS.
+    for name, value in {
+        "OCTOP_AGS_SECRET_ID": "id",
+        "OCTOP_AGS_SECRET_KEY": "key",
+        "OCTOP_AGS_TOOL": "octop-bot-desktop",
+        "OCTOP_CVM_SECRET_ID": "AKID-test",
+        "OCTOP_CVM_SECRET_KEY": "secret-test",
+        "OCTOP_CVM_IMAGE_ID": "img-octop",
+        "OCTOP_CVM_VPC_ID": "vpc-1",
+        "OCTOP_CVM_SUBNETS": "ap-guangzhou-6:subnet-6",
+        "OCTOP_CVM_SECURITY_GROUP": "sg-1",
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(computers, "_manager", None)
+    started: list[str] = []
+    monkeypatch.setattr(
+        computers.ComputerManager,
+        "ensure_running",
+        lambda self, agent_id, user_id, seed=None: started.append(agent_id) or "ins-1",
+    )
+    # The object store, as a local folder per Bot.
+    monkeypatch.setattr(
+        cloud_files.FileStoreConfig, "from_env", classmethod(lambda cls, env=None: object())
+    )
+    monkeypatch.setattr(
+        cloud_files,
+        "harness_spec",
+        lambda spec, config=None: {"type": "test-store", "agent_id": spec["agent_id"]},
+    )
+    real_resolve = harness_backends.resolve_backend
+
+    def resolve(spec: Any, *args: Any, **kwargs: Any) -> Any:
+        if isinstance(spec, dict) and spec.get("type") == "test-store":
+            return FilesystemBackend(root_dir=str(tmp_path / spec["agent_id"]), virtual_mode=True)
+        return real_resolve(spec, *args, **kwargs)
+
+    monkeypatch.setattr(harness_backends, "resolve_backend", resolve)
+
+    async with octop_client(tmp_octop_home) as (client, srv):
+        from octop.infra.cloud.computers.mixed import MixedDriver
+
+        assert isinstance(computers.current_manager()._driver, MixedDriver)  # type: ignore[union-attr]
+        signed = await _sign_in(client, "13800000040")
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        assert (await client.get("/api/octop-bot/workspace", headers=auth)).status_code == 200
+        row = await srv.app_runtime.agent_registry.create(
+            AgentCreateSpec(user_id=signed["user"]["id"], name="Analyst")
+        )
+        aid = row.agent_id
+        # Tests run a fake harness agent: give it the workspace production builds, on the
+        # Bot's own backend (its cloud computer, with the store in front).
+        entry = srv.app_runtime.agent_registry._harness_manager.get_agent(aid)
+        assert isinstance(entry.config.backend, CloudComputer)
+        entry.agent._backend = entry.config.backend
+        entry.agent._workspace = BackendWorkspace(entry.config.backend, tmp_path / "host")
+        # A document it writes in a chat, an image it generates.
+        workspace = srv.app_runtime.agent_registry.workspace_for_agent(aid)
+        await workspace.aupload_bytes("generated/report.md", b"# Report")
+        await workspace.aupload_bytes("generated/cat.png", b"\x89PNG fake")
+        assert started == []
+
+        base = f"/api/agents/{aid}"
+        card = await client.head(
+            base + "/workspace/download", params={"path": "/generated/report.md"}, headers=auth
+        )
+        assert card.status_code == 200 and card.headers["content-length"] == "8"
+        preview = await client.get(
+            base + "/media/preview", params={"source": "/generated/cat.png"}, headers=auth
+        )
+        assert preview.status_code == 200
+        mentions = await client.get(base + "/workspace/mention-index", headers=auth)
+        assert mentions.status_code == 200
+        assert "generated/report.md" in mentions.json()["paths"]
+        # Files only on the (off) computer: a clear answer instead of starting it.
+        off = await client.head(
+            base + "/workspace/download", params={"path": "/notes/plan.md"}, headers=auth
+        )
+        assert off.status_code == 409
+        shot = await client.get(
+            base + "/media/preview", params={"source": "/shots/screen.png"}, headers=auth
+        )
+        assert shot.status_code == 409
+        assert shot.json()["error"]["code"] == "BOT_COMPUTER_OFF"
+        assert started == []
+
+        # The user opening its screen starts it.
+        screen = await client.post(f"/api/octop-bot/computers/{aid}/screen", headers=auth)
+        assert screen.status_code == 200, screen.text
+        assert started == [aid]

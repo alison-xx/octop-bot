@@ -11,13 +11,21 @@ reads it at every start and new conversation, and that must never wake (and bill
 Only work on the computer starts it: ``execute`` and files outside those paths. The first time
 a Bot's computer starts, the files the Bot already had in the object store are copied onto it.
 ``close`` leaves the computer running, since the idle reaper pauses it.
+
+The Bot's deliverables (``generated/``: documents it writes, images and videos it makes;
+``outbound/``: files it sends the user) are kept in the object store too, so chatting, file
+cards and previews never wake the computer. They are mirrored onto the computer whenever it
+starts or resumes and before each command, and what a command leaves there is copied back to
+the store afterwards (``SHARED_DIRS``). Deleting a file on one side does not delete the other.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 import posixpath
 import shlex
+import threading
 from typing import TYPE_CHECKING, Any
 
 from deepagents.backends.protocol import (
@@ -31,12 +39,15 @@ from deepagents.backends.protocol import (
 from deepagents.backends.sandbox import BaseSandbox
 
 from octop.infra.cloud.computers.driver import WORKSPACE
+from octop.infra.cloud.computers.manager import WAKE_COMMAND_TIMEOUT
 from octop.infra.errors import ErrorCode, OctopError
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from octop.infra.cloud.computers.manager import ComputerManager
+    from octop.infra.cloud.computers.manager import ComputerIO, ComputerManager
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_COMMAND_TIMEOUT = 30 * 60
 TAKEN_OVER = (
@@ -65,6 +76,8 @@ STORE_FILES = frozenset(
         "/manifest.json",
     }
 )
+# Deliverables: in the object store, mirrored onto the computer (see the module docstring).
+SHARED_DIRS = ("/generated/", "/outbound/")
 # ``/agents/`` holds the built-in sub-agent definitions, checked whenever a Bot is created.
 STORE_DIRS = (
     "/.octop/",
@@ -74,6 +87,18 @@ STORE_DIRS = (
     "/memories/",
     "/skills/",
     "/inbound/",
+    *SHARED_DIRS,
+)
+# Bounds for mirroring the deliverables: files past them stay where they are.
+MAX_SHARED_FILES = 500
+MAX_SHARED_FILE_BYTES = 100 * 1024 * 1024
+# Lists the computer's deliverables as "<size> <mtime> <path relative to WORKSPACE>".
+_LIST_SHARED = (
+    f"cd {shlex.quote(WORKSPACE)} 2>/dev/null && "
+    + "find "
+    + " ".join(d.strip("/") for d in SHARED_DIRS)
+    + f" -type f -size -{MAX_SHARED_FILE_BYTES // 1024}k -printf '%s %T@ %p\\n' 2>/dev/null"
+    + f" | head -n {MAX_SHARED_FILES}; true"
 )
 
 
@@ -84,6 +109,29 @@ def on_store(path: str | None) -> bool:
         raw = raw[len(WORKSPACE) :]
     raw = posixpath.normpath(raw)
     return raw in STORE_FILES or any(raw + "/" == d or raw.startswith(d) for d in STORE_DIRS)
+
+
+def _listing(output: str) -> dict[str, tuple[int, float]]:
+    """``_LIST_SHARED`` output → virtual path → (size, mtime)."""
+    found: dict[str, tuple[int, float]] = {}
+    for line in output.splitlines():
+        size, _, rest = line.strip().partition(" ")
+        mtime, _, relative = rest.partition(" ")
+        try:
+            found["/" + relative.strip().lstrip("./")] = (int(size), float(mtime))
+        except ValueError:
+            continue
+    return found
+
+
+def computer_off(workspace: Any, path: str, *, search: bool = False) -> bool:
+    """Reading or writing ``path`` would wake this Bot's paused (or never started) computer.
+
+    Dashboard and app requests check this first and answer ``BOT_COMPUTER_OFF`` instead: only
+    the Bot's own work or the user opening the computer may start it.
+    """
+    backend = getattr(workspace, "backend", None)
+    return isinstance(backend, CloudComputer) and backend.would_wake(path, search=search)
 
 
 class CloudComputer(BaseSandbox):
@@ -105,9 +153,118 @@ class CloudComputer(BaseSandbox):
         # The agent's host workspace: the harness then shows the model "/" as its
         # working directory (the computer's workspace), never the host path.
         self.root_dir: Path | None = root_dir
+        # Deliverable mirroring: store path → size last copied onto the computer, and computer
+        # path → (size, mtime) last seen there.
+        self._pushed: dict[str, int] = {}
+        self._seen: dict[str, tuple[int, float]] = {}
+        self._sync_lock = threading.Lock()
+        if store is not None:
+            manager.on_wake(agent_id, self._on_wake)
 
     def _stored(self, path: str | None) -> bool:
         return self._store is not None and on_store(path)
+
+    def would_wake(self, path: str | None, *, search: bool = False) -> bool:
+        """Is ``path`` on the computer (not the store) while the computer is off?
+
+        Listing the workspace itself shows the store's copy, so it never wakes; a ``search``
+        (glob, grep, a whole-workspace archive) from there does.
+        """
+        if self._stored(path) or (not search and self._map_path(path) == WORKSPACE):
+            return False
+        return not self._manager.is_running(self._agent_id, self._user_id)
+
+    # -- deliverables: the store's copy and the computer's --------------------
+
+    def _store_shared(self) -> dict[str, int | None]:
+        """The store's deliverables: virtual path → size (None when the store does not say)."""
+        assert self._store is not None
+        found: dict[str, int | None] = {}
+        for folder in SHARED_DIRS:
+            listing = self._store.glob("**/*", folder.rstrip("/"))
+            for match in getattr(listing, "matches", None) or []:
+                path = "/" + str(match.get("path") or "").lstrip("/")
+                if match.get("is_dir") or not on_store(path) or len(found) >= MAX_SHARED_FILES:
+                    continue
+                size = match.get("size")
+                found[path] = int(size) if isinstance(size, (int, float)) else None
+        return found
+
+    def _push(self, write: Any, *, on_computer: dict[str, tuple[int, float]]) -> None:
+        """Copy the store's deliverables the computer lacks or has another version of."""
+        assert self._store is not None
+        for path, size in self._store_shared().items():
+            there = on_computer.get(path)
+            if size is not None and (
+                self._pushed.get(path) == size or (there and there[0] == size)
+            ):
+                self._pushed[path] = size
+                continue
+            got = self._store.download_files([path])[0]
+            if got.content is None or len(got.content) > MAX_SHARED_FILE_BYTES:
+                continue
+            if there is None or there[0] != len(got.content):
+                write(self._map_path(path), got.content)
+            self._pushed[path] = len(got.content)
+
+    def _pull(self, read: Any, found: dict[str, tuple[int, float]], *, only_new: bool) -> None:
+        """Copy deliverables from the computer into the store.
+
+        ``only_new``: just those the store does not have (a computer from before mirroring);
+        otherwise every file that changed since it was last seen.
+        """
+        assert self._store is not None
+        known = self._store_shared() if only_new else {}
+        for path, stamp in found.items():
+            if (only_new and path in known) or (not only_new and self._seen.get(path) == stamp):
+                continue
+            data = read(self._map_path(path))
+            if data is None:
+                continue
+            self._store.upload_files([(path, data)])
+            self._pushed[path] = len(data)
+
+    def _on_wake(self, io: ComputerIO) -> None:
+        """The computer just started or resumed: bring both copies of the deliverables level."""
+        with self._sync_lock:
+            found = _listing(io.run(_LIST_SHARED)[1])
+            self._pull(io.read, found, only_new=True)
+            self._push(io.write, on_computer=found)
+            self._seen = _listing(io.run(_LIST_SHARED)[1])
+
+    def _before_command(self) -> None:
+        """The store's newer deliverables onto the running computer, before a command uses them."""
+        if self._store is None or not self._manager.is_running(self._agent_id, self._user_id):
+            return  # starting it runs ``_on_wake``
+        try:
+            with self._sync_lock:
+                self._push(
+                    lambda path, data: self._manager.write(
+                        self._agent_id, self._user_id, path, data
+                    ),
+                    on_computer={},
+                )
+        except Exception:  # noqa: BLE001 - the command still runs; copied next time
+            logger.warning("copying deliverables onto the computer of %s failed", self._agent_id)
+
+    def _after_command(self) -> None:
+        """What the command left in the deliverable folders, back into the store."""
+        if self._store is None:
+            return
+        try:
+            with self._sync_lock:
+                _, output = self._manager.run(
+                    self._agent_id, self._user_id, _LIST_SHARED, WAKE_COMMAND_TIMEOUT
+                )
+                found = _listing(output)
+                self._pull(
+                    lambda path: self._manager.read(self._agent_id, self._user_id, path),
+                    found,
+                    only_new=False,
+                )
+                self._seen = found
+        except Exception:  # noqa: BLE001 - the command worked; copied after the next one
+            logger.warning("copying deliverables off the computer of %s failed", self._agent_id)
 
     def _seed(self, write: Any) -> None:
         """First start of this Bot's computer: copy its object-store files (not context) onto it."""
@@ -130,6 +287,7 @@ class CloudComputer(BaseSandbox):
         if self._manager.taken_over(self._agent_id, self._user_id):
             # Agent-facing: the user is signing in or solving a check on this computer.
             return ExecuteResponse(output=TAKEN_OVER, exit_code=1, truncated=False)
+        self._before_command()
         try:
             exit_code, output = self._manager.run(
                 self._agent_id,
@@ -143,6 +301,7 @@ class CloudComputer(BaseSandbox):
                 raise
             # Agent-facing: AGS is out of capacity even after pausing idle computers.
             return ExecuteResponse(output=NO_CAPACITY, exit_code=1, truncated=False)
+        self._after_command()
         return ExecuteResponse(output=output, exit_code=exit_code, truncated=False)
 
     # -- path mapping ---------------------------------------------------------
