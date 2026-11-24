@@ -1,5 +1,6 @@
 package io.github.alisonxx.octopbot.net
 
+import io.github.alisonxx.octopbot.device.DeviceCatalog
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
@@ -181,7 +182,8 @@ object ServerProtocol {
         return out
     }
 
-    fun userTurn(threadId: String, text: String, content: JsonElement, model: String?): JsonObject = buildJsonObject {
+    /** [deviceTools]: the phone's tools that are on (PROTOCOL §C); sent on every turn so the server can drop them. */
+    fun userTurn(threadId: String, text: String, content: JsonElement, model: String?, deviceTools: List<String> = emptyList()): JsonObject = buildJsonObject {
         put("type", "user_turn")
         put("thread_id", threadId)
         put("text", text)
@@ -193,6 +195,7 @@ object ServerProtocol {
             }
         }
         model?.let { put("model", it) }
+        putJsonArray("device_tools") { deviceTools.forEach { add(JsonPrimitive(it)) } }
     }
 
     fun cancel(threadId: String) = buildJsonObject {
@@ -234,13 +237,16 @@ object ServerProtocol {
         val actions = obj.arr("action_requests")?.objects().orEmpty().mapNotNull { action ->
             val name = action.str("name") ?: return@mapNotNull null
             val args = argsObject(action["args"])
+            val device = DeviceCatalog.isDevice(name)
             HitlAction(
                 name = name,
                 label = toolLabels[name] ?: name,
-                description = action.str("description")?.takeIf { it.isNotBlank() },
-                details = if (name == ASK_USER_QUESTION) emptyList() else keyArgs(args),
+                // Device tools show a preview of their arguments instead (the server's text is for the model).
+                description = action.str("description")?.takeIf { it.isNotBlank() && !device },
+                details = if (name == ASK_USER_QUESTION || device) emptyList() else keyArgs(args),
                 questions = if (name == ASK_USER_QUESTION) questions(args) else null,
                 allowedDecisions = allowed[name]?.takeIf { it.isNotEmpty() },
+                args = if (device) args ?: JsonObject(emptyMap()) else null,
             )
         }
         if (actions.isEmpty()) return null

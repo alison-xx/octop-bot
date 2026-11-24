@@ -73,6 +73,9 @@ Grok-style: dark-first, chat-first, one big character.
   - *Chat*: model (Lynxce only; a pushed list with "Auto" first and a checkmark on the current one,
     each model's name), expand reasoning by default (off), read replies aloud (off), speaking speed
     (slow / normal / fast = 0.85 / 1.0 / 1.2; applies to the backend voice and the system voice).
+  - *Device connectors*: Health (read only), Calendar and Reminders (iOS; Android has Health and
+    Calendar), each off until switched on, which asks for the system permission. Bots then read these
+    on request and write only after a preview card is confirmed ([PROTOCOL.md](PROTOCOL.md) §C).
   - *Notifications*: notify when a reply finishes. If the system permission is denied, the footer
     says so and offers "Open system settings".
   - *Storage*: "Clear local cache" (reply previews, unread marks, temporary voice and image files;

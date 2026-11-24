@@ -314,6 +314,8 @@ struct SettingsView: View {
                     if model.isLynxce { Text("settings.model.footer") }
                 }
 
+                DeviceConnectorsSection()
+
                 Section {
                     Toggle(isOn: $model.notifyOnReply) { row("settings.notify", "bell.badge", .red) }
                         .tint(.green)

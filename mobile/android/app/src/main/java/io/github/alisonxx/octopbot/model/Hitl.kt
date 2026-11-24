@@ -1,5 +1,7 @@
 package io.github.alisonxx.octopbot.model
 
+import kotlinx.serialization.json.JsonObject
+
 /** A paused server turn waiting for the user (human in the loop): questions to answer or actions to approve. */
 data class HitlRequest(val pendingId: String?, val actions: List<HitlAction>) {
     /** Every action is an `ask_user_question`: a question card. Otherwise an approval card. */
@@ -17,6 +19,8 @@ data class HitlAction(
     val questions: List<HitlQuestion>?,
     /** From `review_configs`; null when the server didn't say (both allowed). */
     val allowedDecisions: Set<String>? = null,
+    /** The call's arguments, kept for device tools (`device_*`): the phone runs them and previews writes. */
+    val args: JsonObject? = null,
 ) {
     fun allows(decision: String): Boolean = allowedDecisions?.contains(decision) ?: true
 }

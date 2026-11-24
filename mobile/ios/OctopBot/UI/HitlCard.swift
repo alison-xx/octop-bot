@@ -180,11 +180,14 @@ private struct ApprovalCard: View {
     let chat: ChatSession
     let pause: HitlPause
 
+    /// Only tools that write to this phone: a preview with Add / Cancel.
+    private var device: Bool { pause.actions.allSatisfy(\.isDevice) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
-                Text("hitl.title").font(.subheadline.weight(.semibold))
+                Image(systemName: device ? "iphone" : "hand.raised.fill").foregroundStyle(device ? chat.bot.accent : .orange)
+                Text(device ? "device.confirm.title" : "hitl.title").font(.subheadline.weight(.semibold))
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
@@ -194,13 +197,28 @@ private struct ApprovalCard: View {
                             if let description = action.description {
                                 Text(description).font(.footnote).foregroundStyle(Palette.secondary)
                             }
-                            ForEach(action.details, id: \.self) { detail in
-                                Text(detail.value)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .lineLimit(4)
-                                    .padding(8)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Palette.raised, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            if action.isDevice {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(action.details, id: \.self) { detail in
+                                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                            Text(verbatim: detail.key).foregroundStyle(Palette.secondary).frame(width: 44, alignment: .leading)
+                                            Text(verbatim: detail.value).lineLimit(4)
+                                        }
+                                        .font(.footnote)
+                                    }
+                                }
+                                .padding(10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Palette.raised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            } else {
+                                ForEach(action.details, id: \.self) { detail in
+                                    Text(detail.value)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .lineLimit(4)
+                                        .padding(8)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(Palette.raised, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                }
                             }
                         }
                     }
@@ -209,10 +227,10 @@ private struct ApprovalCard: View {
             .frame(maxHeight: 220)
             .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
-                Button("hitl.reject", role: .destructive) { chat.decide(pause, approve: false) }
+                Button(device ? "common.cancel" : "hitl.reject", role: .destructive) { chat.decide(pause, approve: false) }
                     .buttonStyle(PillButtonStyle())
                 Spacer()
-                Button("hitl.approve") {
+                Button(device ? "device.confirm.ok" : "hitl.approve") {
                     Haptics.tap()
                     chat.decide(pause, approve: true)
                 }
