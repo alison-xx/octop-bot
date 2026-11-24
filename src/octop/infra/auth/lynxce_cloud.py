@@ -537,10 +537,20 @@ async def keep_session(services: SharedServices, user_id: int, session: CloudSes
 
 
 _IAP_HEADERS = {"X-Lynxce-Iap-App": "cn.lynxce.octopbot"}
-_MODEL_KEY_CALL = ("POST", "/api/user/personal-api-keys")
+# The desktop mints, lists and revokes its own chat key with the signed-in session.
+_MODEL_KEY_CALLS = frozenset(
+    {
+        ("POST", "/api/user/personal-api-keys"),
+        ("GET", "/api/user/personal-api-keys"),
+        ("DELETE", "/api/user/personal-api-keys/{id}"),
+    }
+)
 # What cloud mode may do with a tenant's stored Lynxce session, besides request_cloud.
 _TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
     ("POST", "/api/user/personal-api-keys"): {},
+    # This server's own model keys only: listed and revoked before a replacement is minted.
+    ("GET", "/api/user/personal-api-keys"): {},
+    ("DELETE", "/api/user/personal-api-keys/{id}"): {},
     # The tenant's own model key only, e.g. adding the media scopes (bot_cloud/accounts.py).
     ("PATCH", "/api/user/personal-api-keys/{id}"): {},
     ("POST", "/api/user/account/deletion-request"): {},
@@ -584,8 +594,8 @@ async def tenant_call(
 ) -> Any:
     """Cloud mode: one of a few account operations, as the tenant's stored Lynxce session."""
     allowed = _TENANT_CALLS.get((method, _route(path)))
-    # The desktop mints its own chat key with the signed-in session; the rest is cloud only.
-    desktop_key = bot_desktop_enabled() and (method, path) == _MODEL_KEY_CALL
+    # The desktop manages its own chat key with the signed-in session; the rest is cloud only.
+    desktop_key = bot_desktop_enabled() and (method, _route(path)) in _MODEL_KEY_CALLS
     if not (bot_cloud_enabled() or desktop_key) or allowed is None:
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     extra = {**allowed, **_service_headers(path)}
@@ -627,6 +637,16 @@ async def model_key_rejected(secret: str) -> bool:
 async def create_model_key(services: SharedServices, user_id: int, body: dict[str, Any]) -> Any:
     """Mint a Lynxce personal API key for this tenant with its stored session."""
     return await tenant_call(services, user_id, "POST", "/api/user/personal-api-keys", body)
+
+
+async def list_model_keys(services: SharedServices, user_id: int) -> Any:
+    """The account's personal API keys (``{"items": [{id, name, lastUsedAt, ...}]}``, no secrets)."""
+    return await tenant_call(services, user_id, "GET", "/api/user/personal-api-keys")
+
+
+async def revoke_model_key(services: SharedServices, user_id: int, key_id: str) -> None:
+    """Revoke (delete) one of the account's personal API keys; Lynxce cannot undo it."""
+    await tenant_call(services, user_id, "DELETE", f"/api/user/personal-api-keys/{key_id}")
 
 
 def forget_session(services: SharedServices, user_id: int) -> None:

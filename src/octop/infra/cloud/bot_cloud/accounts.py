@@ -2,15 +2,22 @@
 
 Each Lynxce account maps to one non-admin Octop user through the ``user_sso_identities`` table
 (provider kind ``lynxce``, subject = Lynxce user id). The tenant's chats call the Lynxce open
-gateway with a personal API key minted for them ("Octop Bot 云端"), so usage is billed to their
-own Lynxce wallet and shows up, revocable, in their Lynxce account centre.
+gateway with a personal API key minted for them ("Octop Bot 云端 · <tag>"), so usage is billed
+to their own Lynxce wallet and shows up, revocable, in their Lynxce account centre.
+
+Lynxce never returns a key's secret again, so a key this server lost (new database, key
+forgotten or revoked) cannot be reused: it is revoked before the replacement is minted. The
+``<tag>`` tells this server's keys apart from those of other servers and desktops signed in to
+the same account, which must keep working.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
+import secrets
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -32,6 +39,8 @@ KEY_NAME = "Octop Bot 云端"
 DEFAULT_MODEL = "deepseek-flash"
 # Chat, plus the Bots' image and video generation (lynxce_media.py).
 KEY_SCOPES = ("model:chat", "media:image", "media:video")
+# Under OCTOP_HOME, not in the database, so the tag survives a database swap.
+INSTANCE_FILE = ".lynxce-key-instance"
 # UserManager.disabled_reason of a tenant who asked Lynxce to delete their account.
 DELETION_PENDING = "lynxce_deletion_pending"
 
@@ -91,11 +100,24 @@ def _save_model_key(services: SharedServices, user_id: int, key: ModelKey) -> No
     repo.put(ref, encrypt_json(repo, ref + ".fernet", data))
 
 
-def _key_request() -> dict[str, Any]:
+def key_name(services: SharedServices, user_id: int) -> str:
+    """``Octop Bot 云端 · <tag>``: the tag is fixed for this server and local user."""
+    path = services.paths.root / INSTANCE_FILE
+    try:
+        with path.open("x", encoding="utf-8") as fh:
+            fh.write(secrets.token_hex(16))
+    except FileExistsError:
+        pass
+    instance = path.read_text(encoding="utf-8").strip()
+    tag = hashlib.sha256(f"{instance}:{user_id}".encode()).hexdigest()[:6]
+    return f"{KEY_NAME} · {tag}"
+
+
+def _key_request(name: str) -> dict[str, Any]:
     """Chat and media generation; the daily cap is Lynxce's default unless
     OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT says otherwise (``none`` = no cap). The user can change it
     in their Lynxce account centre."""
-    body: dict[str, Any] = {"name": KEY_NAME, "scopes": list(KEY_SCOPES)}
+    body: dict[str, Any] = {"name": name, "scopes": list(KEY_SCOPES)}
     raw = (os.environ.get("OCTOP_BOT_CLOUD_KEY_DAILY_LIMIT") or "").strip().lower()
     if raw == "none":
         body["dailyCreditLimit"] = None
@@ -124,11 +146,49 @@ async def ensure_model_key(
             if not verify or not await lynxce_cloud.model_key_rejected(existing.secret):
                 return existing
             await asyncio.to_thread(forget_model_key, services, user_id)
-        return await _mint_model_key(services, user_id)
+        return await _mint_model_key(services, user_id, existing)
 
 
-async def _mint_model_key(services: SharedServices, user_id: int) -> ModelKey:
-    data = await lynxce_cloud.create_model_key(services, user_id, _key_request())
+async def _revoke(services: SharedServices, user_id: int, key_id: str) -> None:
+    try:
+        await lynxce_cloud.revoke_model_key(services, user_id, key_id)
+    except Exception:  # noqa: BLE001 - already gone, or Lynxce down: the key just stays
+        logger.warning("Could not revoke Lynxce key %s of user %s", key_id, user_id)
+
+
+async def _revoke_stale_keys(
+    services: SharedServices, user_id: int, name: str, stale: ModelKey | None
+) -> None:
+    """Before minting: revoke this server's previous keys for the account (best effort).
+
+    That is the key it held (``stale``), any key with this server's ``name`` (one it lost),
+    and keys named plain ``KEY_NAME`` that were never used: those came from before the tag,
+    from no server that is chatting with them.
+    """
+    ids = {stale.key_id} if stale is not None else set()
+    try:
+        listing = await lynxce_cloud.list_model_keys(services, user_id)
+    except Exception:  # noqa: BLE001 - mint anyway; the next replacement cleans up
+        logger.warning("Could not list the Lynxce keys of user %s", user_id)
+        listing = None
+    items = listing.get("items") if isinstance(listing, dict) else None
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            continue
+        if item.get("name") == name or (
+            item.get("name") == KEY_NAME and item.get("lastUsedAt") is None
+        ):
+            ids.add(item["id"])
+    for key_id in sorted(ids):
+        await _revoke(services, user_id, key_id)
+
+
+async def _mint_model_key(
+    services: SharedServices, user_id: int, stale: ModelKey | None = None
+) -> ModelKey:
+    name = await asyncio.to_thread(key_name, services, user_id)
+    await _revoke_stale_keys(services, user_id, name, stale)
+    data = await lynxce_cloud.create_model_key(services, user_id, _key_request(name))
     key_id = data.get("id") if isinstance(data, dict) else None
     secret = data.get("secret") if isinstance(data, dict) else None
     if not isinstance(key_id, str) or not isinstance(secret, str) or not secret.startswith("sk-"):
@@ -136,6 +196,16 @@ async def _mint_model_key(services: SharedServices, user_id: int) -> ModelKey:
     key = ModelKey(key_id=key_id, secret=secret, scopes=KEY_SCOPES)
     await asyncio.to_thread(_save_model_key, services, user_id, key)
     return key
+
+
+async def revoke_model_key(services: SharedServices, user_id: int) -> None:
+    """Desktop sign-out: revoke the key upstream while the session still works, then forget it."""
+    async with _key_lock(services, user_id):
+        key = await asyncio.to_thread(load_model_key, services, user_id)
+        if key is None:
+            return
+        await _revoke(services, user_id, key.key_id)
+        await asyncio.to_thread(forget_model_key, services, user_id)
 
 
 async def ensure_media_scopes(services: SharedServices, user_id: int) -> None:

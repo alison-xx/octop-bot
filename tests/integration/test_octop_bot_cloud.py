@@ -29,6 +29,10 @@ class Upstream:
         self.forbidden: set[str] = set()
         self.mint_fails = False
         self.patched: list[tuple[str, dict[str, Any]]] = []
+        # Unrevoked personal API keys by id, as the Lynxce account centre lists them.
+        self.live: dict[str, dict[str, Any]] = {}
+        self.deleted: list[str] = []
+        self.list_fails = False
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         assert req.url.host == "api.lynxce.cn" and req.url.scheme == "https"
@@ -58,6 +62,24 @@ class Upstream:
                     },
                 },
             )
+        if path == "/api/user/personal-api-keys" and req.method == "GET":
+            owner = req.headers["Authorization"].removeprefix("Bearer ")
+            if self.list_fails:
+                return httpx.Response(503, json={"message": "busy"})
+            items = [
+                {k: v for k, v in key.items() if k != "owner"}
+                for key in self.live.values()
+                if key["owner"] == owner
+            ]
+            return httpx.Response(200, json={"code": 0, "data": {"items": items}})
+        if req.method == "DELETE" and path.startswith("/api/user/personal-api-keys/"):
+            key_id = path.rsplit("/", 1)[1]
+            owner = req.headers["Authorization"].removeprefix("Bearer ")
+            if self.live.get(key_id, {}).get("owner") != owner:
+                return httpx.Response(404, json={"error": {"code": "personal_api_key_not_found"}})
+            del self.live[key_id]
+            self.deleted.append(key_id)
+            return httpx.Response(200, json={"code": 0, "data": {}})
         if path == "/api/user/personal-api-keys":
             assert req.headers["Authorization"].startswith("Bearer access-")
             if self.mint_fails:
@@ -65,6 +87,12 @@ class Upstream:
             body = json.loads(req.content)
             self.keys.append(body)
             n = len(self.keys)
+            self.live[f"key-{n}"] = {
+                "id": f"key-{n}",
+                "name": body["name"],
+                "lastUsedAt": None,
+                "owner": req.headers["Authorization"].removeprefix("Bearer "),
+            }
             return httpx.Response(
                 200, json={"code": 0, "data": {"id": f"key-{n}", "secret": f"sk-test-{n}"}}
             )
@@ -149,7 +177,13 @@ async def test_each_lynxce_account_gets_its_own_tenant(
         # Signing in again finds the same tenant and keeps its model key.
         again = await _sign_in(client, "13800000001")
         assert again["user"]["id"] == alice["user"]["id"]
-        assert [k["name"] for k in upstream.keys] == [accounts.KEY_NAME, accounts.KEY_NAME]
+        names = [k["name"] for k in upstream.keys]
+        assert names == [
+            accounts.key_name(srv.services, alice["user"]["id"]),
+            accounts.key_name(srv.services, bob["user"]["id"]),
+        ]
+        assert names[0].startswith(accounts.KEY_NAME + " · ") and names[0] != names[1]
+        assert upstream.deleted == []
         assert upstream.keys[0]["scopes"] == ["model:chat", "media:image", "media:video"]
         assert upstream.patched == []  # new keys already have the media scopes
         # The replaced session is closed upstream.
@@ -585,3 +619,70 @@ async def test_disabled_tenants_and_cancelled_deletions(
         assert refused.status_code == 403
         assert srv.services.user_repo.get(uid).disabled
         assert upstream.counts["/api/auth/logout"] == logouts + 1
+
+
+async def test_a_replaced_model_key_is_revoked_not_left_behind(
+    tmp_octop_home: Path, upstream: Upstream
+) -> None:
+    """Revoked or lost keys are replaced without piling up in the Lynxce account."""
+    async with octop_client(tmp_octop_home) as (client, srv):
+        phone = "13800000040"
+        owner = f"access-{phone}"
+        uid = (await _sign_in(client, phone))["user"]["id"]
+        name = accounts.key_name(srv.services, uid)
+        # Another server and a desktop chat through the same account; an old untagged key
+        # was used once, another never.
+        upstream.live.update(
+            {
+                "web": {"id": "web", "name": "Octop Bot 云端 · 0a0a0a", "lastUsedAt": None},
+                "old-used": {
+                    "id": "old-used",
+                    "name": accounts.KEY_NAME,
+                    "lastUsedAt": "2026-11-01T00:00:00.000Z",
+                },
+                "old-idle": {"id": "old-idle", "name": accounts.KEY_NAME, "lastUsedAt": None},
+                "mine": {"id": "mine", "name": "我的脚本", "lastUsedAt": None},
+            }
+        )
+        for key in upstream.live.values():
+            key.setdefault("owner", owner)
+
+        # Signing in again with a working key mints nothing and revokes nothing.
+        await _sign_in(client, phone)
+        assert len(upstream.keys) == 1 and upstream.deleted == []
+
+        # Revoked in the console (401): the old key is deleted with the idle untagged one.
+        upstream.revoked.add("sk-test-1")
+        await _sign_in(client, phone)
+        assert sorted(upstream.deleted) == ["key-1", "old-idle"]
+        assert accounts.load_model_key(srv.services, uid).key_id == "key-2"
+
+        # Database swap (the key is forgotten here): this server's key is found by its name.
+        accounts.forget_model_key(srv.services, uid)
+        await accounts.ensure_model_key(srv.services, uid)
+        assert upstream.deleted[-1] == "key-2"
+        assert {k["name"] for k in upstream.live.values() if k["owner"] == owner} == {
+            name,
+            "Octop Bot 云端 · 0a0a0a",
+            accounts.KEY_NAME,
+            "我的脚本",
+        }
+        assert sorted(upstream.live) == ["key-3", "mine", "old-used", "web"]
+
+        # Lynxce cannot list keys right now: the replacement is still minted.
+        upstream.list_fails = True
+        accounts.forget_model_key(srv.services, uid)
+        assert (await accounts.ensure_model_key(srv.services, uid)).key_id == "key-4"
+
+
+async def test_model_key_names_are_fixed_per_server_and_user(
+    tmp_octop_home: Path, upstream: Upstream
+) -> None:
+    async with octop_client(tmp_octop_home) as (_client, srv):
+        first = accounts.key_name(srv.services, 1)
+        assert accounts.key_name(srv.services, 1) == first
+        assert accounts.key_name(srv.services, 2) != first
+        assert len(first) <= 40  # Lynxce's limit on key names
+        # A new database on the same OCTOP_HOME keeps the names; another home does not.
+        (tmp_octop_home / accounts.INSTANCE_FILE).write_text("other-server")
+        assert accounts.key_name(srv.services, 1) != first

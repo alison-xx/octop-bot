@@ -250,6 +250,22 @@ async def adopt_cloud_account(services: SharedServices, user_id: int, account_id
     return await asyncio.to_thread(services.settings_repo.replace_if_current, key, previous, saved)
 
 
+async def revoke_cloud_key(
+    services: SharedServices, user_id: int, expected_account_id: str | None = None
+) -> None:
+    """Desktop sign-out: revoke the account's model key upstream while the session still works.
+
+    Skipped when the sign-out is for another account than the key's (it will be refused).
+    A key that could not be revoked is cleaned up at this desktop's next sign-in.
+    """
+    from octop.infra.cloud.bot_cloud.accounts import revoke_model_key  # noqa: PLC0415
+
+    owner = await asyncio.to_thread(services.settings_repo.get, _key_owner(user_id))
+    if owner is None or (expected_account_id is not None and owner != expected_account_id):
+        return
+    await revoke_model_key(services, user_id)
+
+
 def release_cloud_account(services: SharedServices, user_id: int) -> None:
     """Desktop sign-out: forget the account's model key and stop using it."""
     from octop.infra.cloud.bot_cloud.accounts import forget_model_key  # noqa: PLC0415

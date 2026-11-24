@@ -185,6 +185,54 @@ async def test_desktop_sign_in_chats_through_the_account_key_without_a_browser_g
     assert not lynxce.pays_with_account_credits(services.settings_repo, services.user_repo, 1)
 
 
+async def test_desktop_sign_out_revokes_its_key_and_sign_in_cleans_up_a_lost_one(
+    accounts, monkeypatch
+):
+    """Each sign-in no longer leaves a key behind in the Lynxce account."""
+    from octop.infra.cloud.bot_cloud import accounts as cloud_accounts
+
+    services, _grants = accounts
+    name = cloud_accounts.key_name(services, 1)
+    live: dict[str, str] = {"phone": "Octop Bot 云端 · 0a0a0a"}  # another device's key
+    revoked: list[str] = []
+
+    async def mint(_services, _user_id, body):
+        key_id = f"key-{len(live)}"
+        live[key_id] = body["name"]
+        return {"id": key_id, "secret": f"sk-{key_id}"}
+
+    async def listing(_services, _user_id):
+        return {"items": [{"id": i, "name": n, "lastUsedAt": "x"} for i, n in live.items()]}
+
+    async def revoke(_services, _user_id, key_id):
+        revoked.append(key_id)
+        del live[key_id]
+
+    monkeypatch.setattr(cloud_accounts.lynxce_cloud, "create_model_key", mint)
+    monkeypatch.setattr(cloud_accounts.lynxce_cloud, "list_model_keys", listing)
+    monkeypatch.setattr(cloud_accounts.lynxce_cloud, "revoke_model_key", revoke)
+
+    await lynxce.adopt_cloud_account(services, 1, "acct-a")
+    assert live == {"phone": "Octop Bot 云端 · 0a0a0a", "key-1": name}
+
+    # Signing out for another account is refused later; the key stays.
+    await lynxce.revoke_cloud_key(services, 1, "acct-b")
+    assert revoked == []
+    # Signing out revokes the key, so signing in again leaves one key, not two.
+    await lynxce.revoke_cloud_key(services, 1, "acct-a")
+    lynxce.release_cloud_account(services, 1)
+    assert revoked == ["key-1"]
+    await lynxce.revoke_cloud_key(services, 1)  # nothing left to revoke
+    await lynxce.adopt_cloud_account(services, 1, "acct-a")
+    assert live == {"phone": "Octop Bot 云端 · 0a0a0a", "key-1": name}
+
+    # A key this desktop lost (sign-out while Lynxce was down) is revoked at the next sign-in.
+    lynxce.release_cloud_account(services, 1)
+    await lynxce.adopt_cloud_account(services, 1, "acct-a")
+    assert revoked == ["key-1", "key-1"]
+    assert sorted(live) == ["key-1", "phone"]
+
+
 async def test_desktop_sign_in_keeps_a_model_the_user_already_chose(accounts, monkeypatch):
     from octop.infra.cloud.bot_cloud import accounts as cloud_accounts
 

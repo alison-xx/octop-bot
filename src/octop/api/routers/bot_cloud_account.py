@@ -152,6 +152,8 @@ async def login_workbuddy(
 async def logout(
     user: Owner, services: Services, expected_account_id: str | None = None
 ) -> CloudAccountStatus:
+    if bot_desktop_enabled():
+        await account_models.revoke_cloud_key(services, user.id, expected_account_id)
     status = await logout_cloud(services, user.id, expected_account_id=expected_account_id)
     if bot_desktop_enabled() and not status.connected:
         await asyncio.to_thread(account_models.release_cloud_account, services, user.id)
