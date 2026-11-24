@@ -312,6 +312,10 @@ class CvmDriver(AgsDriver):
         request.InstanceIds = [instance_id]
         self._api().StartInstances(request)
 
+    def disk_gb(self, instance_id: str) -> int:
+        """The system disk, billed by Tencent Cloud for as long as the instance exists."""
+        return self._cvm_config.disk_gb
+
     def pause(self, instance_id: str) -> None:
         self._forget(instance_id)
         request = self._models().StopInstancesRequest()
