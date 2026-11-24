@@ -9,12 +9,12 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.GroupSummary
 import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.net.Http
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -84,6 +84,7 @@ data class BotPreview(val text: String, val at: Long, val unread: Boolean = fals
 /** App preferences in DataStore; tokens are sealed with [SecretBox] before they touch disk. */
 class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
     private val store = context.applicationContext.dataStore
+    private val walletPreferences = context.applicationContext.getSharedPreferences("wallet_warnings", Context.MODE_PRIVATE)
 
     private object Keys {
         val lynxce = stringPreferencesKey("lynxce.grant")
@@ -109,7 +110,6 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
         val installId = stringPreferencesKey("update.installId")
         val lastUpdateCheck = longPreferencesKey("update.lastCheck")
         val dismissedUpdate = intPreferencesKey("update.dismissedVersionCode")
-        val lowBalanceDismissed = stringSetPreferencesKey("wallet.lowBalanceDismissed")
     }
 
     private val stringMap = MapSerializer(String.serializer(), String.serializer())
@@ -205,12 +205,14 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
     val dismissedUpdate: Flow<Int?> = store.data.map { it[Keys.dismissedUpdate] }
     suspend fun setDismissedUpdate(versionCode: Int) = store.edit { it[Keys.dismissedUpdate] = versionCode }
 
-    /** Wallets whose low-balance banner was closed; a wallet leaves the set once its balance is back to 100. */
-    val lowBalanceDismissed: Flow<Set<String>> = store.data.map { it[Keys.lowBalanceDismissed].orEmpty() }
-    suspend fun setLowBalanceDismissed(wallet: String, dismissed: Boolean) = store.edit {
-        val current = it[Keys.lowBalanceDismissed].orEmpty()
-        val next = if (dismissed) current + wallet else current - wallet
-        if (next != current) it[Keys.lowBalanceDismissed] = next
+    /** Close times are kept per wallet, including across app restarts. */
+    val lowBalanceDismissed = MutableStateFlow<Map<String, Long>>(
+        walletPreferences.all.mapNotNull { (key, value) -> (value as? Long)?.let { key to it } }.toMap()
+    )
+
+    fun dismissLowBalance(wallet: String, at: Long = System.currentTimeMillis()) {
+        walletPreferences.edit().putLong(wallet, at).apply()
+        lowBalanceDismissed.value = lowBalanceDismissed.value + (wallet to at)
     }
 
     /** Forget what belongs to the signed-in account: tokens and caches. Settings toggles stay. */

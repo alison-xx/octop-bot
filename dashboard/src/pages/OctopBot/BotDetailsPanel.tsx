@@ -242,6 +242,7 @@ export default function BotDetailsPanel({
     value: modelOptionValue(m),
     id: m.model,
     name: m.name,
+    group: m.provider_name,
   }));
   if (modelValue && !items.some((item) => item.value === modelValue)) {
     items.push({ value: modelValue, id: modelValue });

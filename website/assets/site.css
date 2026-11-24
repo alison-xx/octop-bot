@@ -1504,12 +1504,16 @@ a.card:hover,
 
 /* ---------- Pricing page ---------- */
 .price-tabs {
+  position: relative;
+  max-width: 100%;
   display: inline-flex;
   padding: 4px;
   border-radius: 14px;
   background: var(--bg-soft);
 }
 .price-tabs button {
+  position: relative;
+  min-height: 40px;
   padding: 8px 20px;
   border: 0;
   border-radius: 11px;
@@ -1520,16 +1524,46 @@ a.card:hover,
   cursor: pointer;
 }
 .price-tabs button[aria-selected="true"] {
-  background: var(--surface);
   color: var(--ink);
   font-weight: 600;
+}
+.segment-indicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 1px;
+  border-radius: calc(11px / var(--indicator-scale, 1)) / 11px;
+  background: var(--surface);
   box-shadow: var(--shadow-sm);
+  transform-origin: left center;
+  pointer-events: none;
+}
+.segment-indicator.ready {
+  transition: transform 220ms cubic-bezier(.2,.8,.2,1);
+}
+.price-tabs button:focus-visible,
+.cycle button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+@keyframes pricing-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.pricing-enter {
+  animation: pricing-enter 220ms cubic-bezier(.2,.8,.2,1);
+}
+@media (max-width: 560px) {
+  .price-tabs { display: flex; width: 100%; }
+  .price-tabs button { flex: 1; min-width: 0; padding-inline: 4px; font-size: 13px; }
 }
 .cycle-wrap {
   display: flex;
   justify-content: center;
 }
 .cycle {
+  position: relative;
   display: inline-flex;
   padding: 4px;
   border: 1px solid var(--line);
@@ -1537,6 +1571,8 @@ a.card:hover,
   background: var(--surface);
 }
 .cycle button {
+  position: relative;
+  min-height: 40px;
   padding: 7px 16px;
   border: 0;
   border-radius: 999px;
@@ -1546,8 +1582,14 @@ a.card:hover,
   color: var(--ink-2);
   cursor: pointer;
 }
-.cycle button[aria-pressed="true"] {
+.cycle .segment-indicator {
+  top: 3px;
+  bottom: 3px;
+  border-radius: calc(20px / var(--indicator-scale, 1)) / 20px;
   background: var(--ink);
+  box-shadow: none;
+}
+.cycle button[aria-pressed="true"] {
   color: var(--on-ink);
 }
 .cycle em {

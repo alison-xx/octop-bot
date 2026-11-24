@@ -19,29 +19,28 @@ struct OnboardingView: View {
     @State private var cloudUnreachable = false
     @FocusState private var focus: Field?
 
-    enum Field { case account, password }
+    @State private var shakeAccount: CGFloat = 0
+    @State private var shakeSecond: CGFloat = 0
 
-    private let crowd: [Look] = [
-        Look(shape: "acorn", color: "green"), Look(shape: "beacon", color: "cobalt"),
-        Look(shape: "wave", color: "sky"), Look(shape: "bunny", color: "tangerine"),
-        Look(shape: "cushion", color: "violet"),
-    ]
+    enum Field { case account, password, code }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 18) {
-                    hero
+                VStack(alignment: .leading, spacing: 18) {
+                    banner
+                    header
                     form
                     divider
                     ownModelRow
                     Button("onboarding.server") { showServer = true }
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(Palette.secondary)
+                        .frame(maxWidth: .infinity)
                         .accessibilityIdentifier("connectServer")
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 12)
+                .padding(.top, 8)
                 .padding(.bottom, 28)
                 .frame(maxWidth: 520)
                 .frame(maxWidth: .infinity)
@@ -61,27 +60,35 @@ struct OnboardingView: View {
         }
     }
 
-    private var hero: some View {
-        VStack(spacing: 10) {
-            ZStack {
-                ForEach(Array(crowd.enumerated()), id: \.offset) { index, look in
-                    let angle = Double(index) / Double(crowd.count) * 2 * .pi - .pi / 2
-                    CharacterView(look: look, size: 30, seed: look.shape)
-                        .offset(x: cos(angle) * 96, y: sin(angle) * 50 + 4)
-                }
-                CharacterView(look: .chief, size: 78, motion: busy ? .working : .idle)
-            }
-            .frame(height: 132)
+    /// The desktop's left-hand stage, folded into a banner on a phone: Chief and the headline.
+    private var banner: some View {
+        HStack(spacing: 14) {
+            CharacterView(look: .chief, size: 88, motion: busy ? .working : .idle)
+                .shadow(color: Color(red: 0.24, green: 0, blue: 0.08).opacity(0.3), radius: 14, y: 10)
             Text("onboarding.heroTitle")
                 .font(.system(size: 26, weight: .bold))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 22)
+        .frame(maxWidth: .infinity, minHeight: 148)
+        .background(StageBackground().clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous)))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("onboarding.title")
+                .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(Palette.text)
-                .multilineTextAlignment(.center)
-            Text("onboarding.heroBody")
+            Text("onboarding.subtitle")
                 .font(.subheadline)
                 .foregroundStyle(Palette.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 8)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(.top, 6)
     }
 
     private var target: LynxceBackend.CodeTarget? { LynxceBackend.CodeTarget(account) }
@@ -95,71 +102,101 @@ struct OnboardingView: View {
         cloudUnreachable = check == .unreachable
         return available
     }
+    /// Signing in with something missing points at the account field first, then the code or password.
+    static func missingField(account: String, usePassword: Bool) -> Field {
+        let accountMissing = usePassword
+            ? account.trimmingCharacters(in: .whitespaces).isEmpty
+            : LynxceBackend.CodeTarget(account) == nil
+        return accountMissing ? .account : (usePassword ? .password : .code)
+    }
+
     private var canSignIn: Bool {
         usePassword ? !account.isEmpty && password.count >= 8 : target != nil && entry.isComplete
     }
 
-    /// The Lynxce account card: code or password tabs, the fields, sign in.
+    /// One "phone or email" field (its icon follows what is typed), the code with "Get code" inside
+    /// it, or the password; "Use password" swaps the two. New accounts come from a code sign-in.
     private var form: some View {
-        VStack(spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             if let notice = model.signedOutNotice {
                 Text(notice)
                     .font(.footnote)
                     .foregroundStyle(Palette.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            HStack(spacing: 10) {
-                VendorLogo(company: "lynxce", size: 24)
-                Text("onboarding.lynxceAccount").font(.headline)
-                Spacer()
-                Text("onboarding.recommended")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(Palette.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Palette.raised, in: Capsule())
+            HStack(spacing: 8) {
+                VendorLogo(company: "lynxce", size: 22)
+                Text("onboarding.lynxceAccount").font(.subheadline.weight(.semibold))
+                Spacer(minLength: 8)
+                Text("onboarding.recommendedSync")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Palette.brandText)
+                    .lineLimit(1)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Palette.brand.opacity(0.1), in: Capsule())
             }
-            MethodTabs(usePassword: $usePassword)
-                .onChange(of: usePassword) {
+            HStack(spacing: 10) {
+                Image(systemName: account.contains("@") ? "envelope" : "iphone")
+                    .font(.body)
+                    .foregroundStyle(Palette.secondary)
+                    .frame(width: 22)
+                    .contentTransition(.symbolEffect(.replace))
+                TextField("onboarding.target", text: $account)
+                    .textContentType(.username)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($focus, equals: .account)
+                    .submitLabel(usePassword ? .next : .send)
+                    .onSubmit { if usePassword { focus = .password } else { sendCode() } }
+                    .onChange(of: account) {
+                        entry.reset()
+                        error = nil
+                    }
+                    .accessibilityIdentifier("account")
+            }
+            .signInFieldStyle(focused: focus == .account)
+            .modifier(Shake(shakes: shakeAccount))
+            Group {
+                if usePassword {
+                    HStack(spacing: 10) {
+                        Image(systemName: "lock").foregroundStyle(Palette.secondary).frame(width: 22)
+                        SecureField("onboarding.password", text: $password)
+                            .textContentType(.password)
+                            .focused($focus, equals: .password)
+                            .submitLabel(.go)
+                            .onSubmit(signIn)
+                            .accessibilityIdentifier("password")
+                    }
+                    .signInFieldStyle(focused: focus == .password)
+                } else {
+                    InlineCodeField(entry: entry, canSend: entry.canSend(to: account), focus: $focus, send: sendCode, complete: signIn)
+                }
+            }
+            .modifier(Shake(shakes: shakeSecond))
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Group {
+                    if let error {
+                        Text(error).foregroundStyle(.red)
+                    } else if entry.sent && !usePassword {
+                        Text(entry.sentNote(for: account)).foregroundStyle(Palette.secondary)
+                    } else {
+                        Text(usePassword ? "onboarding.register" : "onboarding.autoRegister").foregroundStyle(Palette.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                Button(usePassword ? "onboarding.useCodeLink" : "onboarding.usePasswordLink") {
+                    usePassword.toggle()
                     error = nil
                     focus = nil
                 }
-            TextField(usePassword ? "onboarding.account" : "onboarding.target", text: $account)
-                .textContentType(.username)
-                .keyboardType(.emailAddress)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .focused($focus, equals: .account)
-                .submitLabel(usePassword ? .next : .send)
-                .onSubmit { if usePassword { focus = .password } else { sendCode() } }
-                .onChange(of: account) {
-                    entry.reset()
-                    error = nil
-                }
-                .cardFieldStyle()
-                .accessibilityIdentifier("account")
-            if usePassword {
-                SecureField("onboarding.password", text: $password)
-                    .textContentType(.password)
-                    .focused($focus, equals: .password)
-                    .submitLabel(.go)
-                    .onSubmit(signIn)
-                    .cardFieldStyle()
-                    .accessibilityIdentifier("password")
-            } else {
-                CodeEntryRow(entry: entry, canSend: entry.canSend(to: account), card: true, send: sendCode, complete: signIn)
+                .fontWeight(.semibold)
+                .foregroundStyle(Palette.brandText)
+                .accessibilityIdentifier("loginMode")
             }
-            if let error {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else if entry.sent && !usePassword {
-                Text(entry.sentNote(for: account))
-                    .font(.footnote)
-                    .foregroundStyle(Palette.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            .font(.footnote)
             if cloudUnreachable {
                 VStack(alignment: .leading, spacing: 4) {
                     Label("onboarding.cloudUnreachable", systemImage: "icloud.slash")
@@ -178,44 +215,32 @@ struct OnboardingView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("cloudUnreachable")
             }
+            // Always looks tappable: with something missing it shakes that field instead.
             Button(action: signIn) {
                 HStack(spacing: 8) {
-                    if busy { ProgressView().tint(Palette.background) }
+                    if busy { ProgressView().tint(.white) }
                     Text("onboarding.signIn").font(.headline)
                     if !busy { Image(systemName: "arrow.right").font(.subheadline.weight(.semibold)) }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Palette.text, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .foregroundStyle(Palette.background)
+                .padding(.vertical, 15)
+                .background(
+                    LinearGradient(colors: [Palette.brandButtonTop, Palette.brandButtonBottom], startPoint: .top, endPoint: .bottom),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .foregroundStyle(.white)
+                .shadow(color: Palette.brand.opacity(0.3), radius: 12, y: 6)
             }
-            .disabled(busy || !canSignIn)
-            .opacity(canSignIn ? 1 : 0.5)
+            .buttonStyle(PressDown())
+            .disabled(busy)
+            .padding(.top, 4)
             .accessibilityIdentifier("signIn")
-            Group {
-                if usePassword {
-                    // New accounts have no password: the code sign-in creates them.
-                    Button("onboarding.register") {
-                        usePassword = false
-                        error = nil
-                    }
-                    .foregroundStyle(Palette.secondary)
-                    .accessibilityIdentifier("register")
-                } else {
-                    Text("onboarding.codeHint")
-                        .foregroundStyle(Palette.secondary)
-                }
-            }
-            .font(.footnote)
-            .frame(maxWidth: .infinity, alignment: .leading)
             Text("onboarding.agreement")
                 .font(.caption)
                 .foregroundStyle(Palette.secondary)
                 .tint(Palette.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(18)
-        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private var divider: some View {
@@ -271,7 +296,16 @@ struct OnboardingView: View {
     }
 
     private func signIn() {
-        guard !busy, canSignIn else { return }
+        guard !busy else { return }
+        guard canSignIn else {
+            // Point at what is missing rather than greying the button out.
+            let missing = Self.missingField(account: account, usePassword: usePassword)
+            withAnimation(.linear(duration: 0.4)) {
+                if missing == .account { shakeAccount += 1 } else { shakeSecond += 1 }
+            }
+            focus = missing
+            return
+        }
         busy = true
         error = nil
         Task {
@@ -586,46 +620,6 @@ struct CodeEntryRow: View {
     }
 }
 
-/// 验证码 | 密码, a segmented pair at the top of the account card (as on the web).
-struct MethodTabs: View {
-    @Binding var usePassword: Bool
-
-    var body: some View {
-        HStack(spacing: 4) {
-            tab("onboarding.tabCode", selected: !usePassword) { usePassword = false }
-                .accessibilityIdentifier("tabCode")
-            tab("onboarding.tabPassword", selected: usePassword) { usePassword = true }
-                .accessibilityIdentifier("loginMode")
-        }
-        .padding(4)
-        .background(Palette.raised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text("onboarding.methods"))
-    }
-
-    private func tab(_ title: LocalizedStringKey, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button {
-            withAnimation(.snappy(duration: 0.2)) { action() }
-        } label: {
-            Text(title)
-                .font(.subheadline.weight(selected ? .semibold : .regular))
-                .foregroundStyle(selected ? Palette.text : Palette.secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background {
-                    if selected {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(Palette.background)
-                            .shadow(color: .black.opacity(0.08), radius: 1, y: 1)
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
 extension View {
     /// A field inside the start page's account card.
     func cardFieldStyle() -> some View {
@@ -639,5 +633,131 @@ extension View {
         padding(.horizontal, 16)
             .padding(.vertical, 14)
             .background(Palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+/// The rose stage behind the sign-in banner (the desktop's left panel): light and dark versions.
+struct StageBackground: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let dark = scheme == .dark
+        ZStack {
+            LinearGradient(
+                colors: dark
+                    ? [Color(hex: 0x6A2337), Color(hex: 0x4A1A2C), Color(hex: 0x24111D)]
+                    : [Color(hex: 0xFF8E9F), Color(hex: 0xE85D75), Color(hex: 0xB3305A)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            RadialGradient(
+                colors: [Color(red: 1, green: dark ? 0.59 : 0.84, blue: dark ? 0.47 : 0.67).opacity(dark ? 0.28 : 0.55), .clear],
+                center: UnitPoint(x: 0.85, y: 0.05), startRadius: 0, endRadius: 220
+            )
+            RadialGradient(
+                colors: [Color(red: dark ? 0.35 : 0.47, green: dark ? 0.12 : 0.16, blue: dark ? 0.43 : 0.47).opacity(dark ? 0.6 : 0.5), .clear],
+                center: UnitPoint(x: 0, y: 1), startRadius: 0, endRadius: 220
+            )
+        }
+    }
+}
+
+private extension Color {
+    init(hex: UInt32) {
+        self.init(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
+    }
+}
+
+/// A quick side-to-side shake when the field it wraps is missing; animate `shakes` up by one.
+struct Shake: GeometryEffect {
+    var shakes: CGFloat
+    var animatableData: CGFloat {
+        get { shakes }
+        set { shakes = newValue }
+    }
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        ProjectionTransform(CGAffineTransform(translationX: 7 * sin(shakes * .pi * 4), y: 0))
+    }
+}
+
+/// The primary button sinks a little while pressed.
+struct PressDown: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .brightness(configuration.isPressed ? -0.04 : 0)
+            .animation(.snappy(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
+/// The 6-digit code with "Get code" (then the countdown) inside the field, as on the desktop.
+struct InlineCodeField<Field: Hashable>: View {
+    @Bindable var entry: CodeEntry
+    var canSend: Bool
+    var focus: FocusState<Field?>.Binding
+    let field: Field
+    var send: () -> Void
+    var complete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.shield").foregroundStyle(Palette.secondary).frame(width: 22)
+            TextField("onboarding.code", text: $entry.code)
+                .keyboardType(.numberPad)
+                .textContentType(.oneTimeCode)
+                .focused(focus, equals: field)
+                .onChange(of: entry.code) { _, value in
+                    let digits = String(value.filter { $0.isASCII && $0.isNumber }.prefix(6))
+                    if digits != value {
+                        entry.code = digits
+                    } else if digits.count == 6 {
+                        complete()
+                    }
+                }
+                .onChange(of: entry.sends) { focus.wrappedValue = field }
+                .accessibilityIdentifier("code")
+            Button(action: send) {
+                Group {
+                    if entry.sending {
+                        ProgressView()
+                    } else if entry.countdown > 0 {
+                        Text(L("onboarding.resendIn %lld", entry.countdown)).monospacedDigit()
+                    } else {
+                        Text(entry.sent ? "onboarding.resendCode" : "onboarding.sendCode")
+                    }
+                }
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .foregroundStyle(canSend ? Palette.brandText : Palette.secondary)
+            }
+            .buttonStyle(.borderless)
+            .disabled(!canSend)
+            .accessibilityIdentifier("sendCode")
+        }
+        .signInFieldStyle(focused: focus.wrappedValue == field)
+    }
+}
+
+extension InlineCodeField where Field == OnboardingView.Field {
+    init(entry: CodeEntry, canSend: Bool, focus: FocusState<Field?>.Binding, send: @escaping () -> Void, complete: @escaping () -> Void) {
+        self.init(entry: entry, canSend: canSend, focus: focus, field: .code, send: send, complete: complete)
+    }
+}
+
+extension View {
+    /// The sign-in page's fields: page background, hairline border, a rose ring while focused.
+    func signInFieldStyle(focused: Bool) -> some View {
+        padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(Palette.background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(focused ? Palette.brand : Palette.hairline, lineWidth: focused ? 1.5 : 1)
+            )
+            .background(
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .stroke(Palette.brand.opacity(focused ? 0.18 : 0), lineWidth: 6)
+            )
+            .animation(.snappy(duration: 0.15), value: focused)
     }
 }

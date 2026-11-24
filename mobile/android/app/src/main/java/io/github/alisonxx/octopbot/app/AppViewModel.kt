@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.device.DeviceConnectors
 import io.github.alisonxx.octopbot.model.BotProfile
+import io.github.alisonxx.octopbot.model.shouldPollBots
 import io.github.alisonxx.octopbot.model.FileAttachment
 import io.github.alisonxx.octopbot.model.FileCards
 import io.github.alisonxx.octopbot.model.GroupSummary
@@ -42,7 +43,9 @@ import io.github.alisonxx.octopbot.voice.VoiceInput
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -112,7 +115,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     /** The low balance the chat banner warns about, or null (enough credits, or the banner was closed). */
     val lowBalance: StateFlow<Double?> =
         combine(_balance, _walletKey, store.lowBalanceDismissed) { balance, wallet, dismissed ->
-            (balance as? BalanceState.Value)?.takeIf { it.low && wallet != null && wallet !in dismissed }?.credits
+            (balance as? BalanceState.Value)?.takeIf { it.low && wallet != null && !lowBalanceIsDismissed(dismissed[wallet], System.currentTimeMillis()) }?.credits
         }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val _usage = MutableStateFlow<UsageState?>(null)
     /** Usage on an Octop server; null in direct-Lynxce mode, which has no Octop server to ask. */
@@ -125,8 +128,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     /** The recharge page was opened; coming back refreshes the balance. */
     private var rechargeOpened = false
     /** The app comes back to the foreground: the balance may have changed on the website or another device. */
+    private var pollJob: Job? = null
     private val foreground = LifecycleEventObserver { _, event ->
-        if (event == Lifecycle.Event.ON_START && session.value is SessionState.Ready) refreshBalance()
+        if (event == Lifecycle.Event.ON_START && session.value is SessionState.Ready) {
+            refreshBalance()
+            if (shouldPollBots(_bots.value)) refreshDirectory()
+        }
+        if (event == Lifecycle.Event.ON_STOP) { pollJob?.cancel(); pollJob = null }
     }
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing
@@ -305,6 +313,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     fun signOut(notice: String? = null, reopenServer: Boolean = false) {
         val backend = (session.value as? SessionState.Ready)?.backend ?: return
+        pollJob?.cancel()
+        pollJob = null
         stopReading()
         voiceInput.cancel()
         chats.clear()
@@ -352,7 +362,46 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
                 }
             }
             _refreshing.value = false
+            scheduleBotPolling()
             _launchReady.value = true
+        }
+    }
+
+    private fun scheduleBotPolling() {
+        if (!shouldPollBots(_bots.value) || !ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            pollJob?.cancel()
+            pollJob = null
+            return
+        }
+        if (pollJob?.isActive == true) return
+        pollJob = viewModelScope.launch {
+            while (shouldPollBots(_bots.value)) {
+                delay(1500)
+                val server = (session.value as? SessionState.Ready)?.backend as? ServerBackend ?: break
+                try {
+                    val bots = server.bots()
+                    _bots.value = bots
+                    _directoryError.value = null
+                    store.setDirectory(DirectoryCache(bots, _groups.value))
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    if (error is ApiException && error.kind == ApiException.Kind.Unauthorized) {
+                        failed(error)
+                        break
+                    }
+                    _directoryError.value = resources.describe(error)
+                }
+            }
+        }
+    }
+
+    fun retryBot(bot: BotProfile) {
+        val server = (session.value as? SessionState.Ready)?.backend as? ServerBackend ?: return
+        viewModelScope.launch {
+            runCatching { server.startBot(bot) }
+                .onSuccess { refreshDirectory() }
+                .onFailure { _directoryError.value = resources.describe(it) }
         }
     }
 
@@ -376,8 +425,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
             _balance.value = BalanceState.Value(credits)
             val wallet = account.walletKey
             _walletKey.value = wallet
-            // Back to 100 or more: the next low balance warns again.
-            if (wallet != null && credits >= LynxceProtocol.LOW_BALANCE) store.setLowBalanceDismissed(wallet, false)
+            if (wallet != null) scheduleLowBalanceReset(wallet)
         }.onFailure { error ->
             // Signed out elsewhere: the session ends (and the wallet with it).
             if (error is ApiException && error.kind == ApiException.Kind.Unauthorized) failed(error) else _balance.value = BalanceState.Failed
@@ -415,10 +463,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         }
     }
 
-    /** The chat banner's close: hidden for this wallet until the balance is back to 100 or more. */
+    /** The chat banner stays hidden for 24 hours after closing. */
     fun dismissLowBalance() {
         val wallet = _walletKey.value ?: return
-        viewModelScope.launch { store.setLowBalanceDismissed(wallet, true) }
+        store.dismissLowBalance(wallet)
+        scheduleLowBalanceReset(wallet)
+    }
+
+    private fun scheduleLowBalanceReset(wallet: String) {
+        val dismissedAt = store.lowBalanceDismissed.value[wallet] ?: return
+        val remaining = dismissedAt + LOW_BALANCE_DISMISSAL_MS - System.currentTimeMillis()
+        if (remaining <= 0) return
+        viewModelScope.launch {
+            delay(remaining)
+            if (store.lowBalanceDismissed.value[wallet] == dismissedAt) {
+                store.lowBalanceDismissed.value = store.lowBalanceDismissed.value - wallet
+            }
+        }
     }
 
     /** The activity resumed; back from the recharge page, the new balance shows. */
@@ -487,12 +548,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
      * Open Lynxce's recharge page signed in as this account (a 15-minute ticket, as on the desktop). Taps while
      * the link is being fetched are ignored.
      */
-    fun recharge(open: (String) -> Unit) {
+    fun recharge(scenario: io.github.alisonxx.octopbot.net.CreditScenario? = null, open: (String) -> Unit) {
         val account = creditAccount ?: return
         if (_recharging.value) return
         _recharging.value = true
         viewModelScope.launch {
-            runCatching { account.checkoutUrl() }
+            runCatching { account.checkoutUrl(scenario) }
                 .onSuccess {
                     rechargeOpened = true
                     open(it)
@@ -719,3 +780,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         voiceInput.cancel()
     }
 }
+
+internal const val LOW_BALANCE_DISMISSAL_MS = 24 * 60 * 60 * 1000L
+internal fun lowBalanceIsDismissed(at: Long?, now: Long): Boolean =
+    at != null && at > 0 && now - at < LOW_BALANCE_DISMISSAL_MS

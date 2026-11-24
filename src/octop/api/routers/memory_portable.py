@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_owner_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
+from octop.api.common.bot_cloud import no_cloud_tenant
 from octop.api.common.content_disposition import content_disposition
 from octop.api.common.memory_client import memory_db_path_for_cfg, memory_namespace
 from octop.api.deps import current_user, get_server, require_permission
@@ -28,7 +29,8 @@ from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(dependencies=[Depends(require_permission("memory"))])
+# Host-level operator features: not for cloud tenants.
+router = APIRouter(dependencies=[Depends(require_permission("memory")), Depends(no_cloud_tenant)])
 
 
 def _agent_config_dict(server: Any, agent_id: str) -> dict[str, Any]:
@@ -100,7 +102,10 @@ async def list_portable_sources(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> JSONResponse:
-    """List all migratable memory stores on this host."""
+    """List all migratable memory stores on this host (operators only: it names every
+    agent's store on the server)."""
+    if not user.is_admin:
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
     try:
         from octop_memory.operations.migration.portable import list_sources
 
@@ -199,8 +204,12 @@ async def pack_agent_memory(
 async def adopt_agent_memory(
     agent_id: str,
     pkg_file: UploadFile = File(..., description=".hmpkg 文件"),
-    target_host: str = Form(default="agent", description="目标宿主"),
-    target_namespace: str | None = Form(default=None),
+    target_host: str = Form(
+        default="agent", description="已忽略：总是导入到这个 Agent 自己的记忆库"
+    ),
+    target_namespace: str | None = Form(
+        default=None, description="已忽略：总是使用这个 Agent 自己的 namespace"
+    ),
     on_conflict: str = Form(default="skip"),
     host_rewrite: str = Form(default="keep"),
     dry_run: bool = Form(default=False),
@@ -222,14 +231,19 @@ async def adopt_agent_memory(
             tmp.flush()
             tmp_path = Path(tmp.name)
 
+        # Always into this agent's own store and namespace; the form's target is ignored.
+        del target_host, target_namespace
+        workspace = resolve_agent_workspace_dir(server, agent_id)
+        db_path = memory_db_path_for_cfg(workspace, _agent_config_dict(server, agent_id))
         try:
             summary = adopt(
                 tmp_path,
-                target_host,
-                target_namespace=target_namespace,
+                "agent",
+                target_namespace=memory_namespace(agent_id),
                 on_conflict=on_conflict,
                 host_rewrite=host_rewrite,
                 dry_run=dry_run,
+                target_db_path=db_path,
             )
         finally:
             tmp_path.unlink(missing_ok=True)

@@ -14,11 +14,12 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, model_validator
 
-from octop.api.common.bot_cloud import no_cloud_tenant
+from octop.api.common.bot_cloud import is_cloud_tenant, no_cloud_tenant
 from octop.api.common.public_base import resolve_public_base
 from octop.api.deps import current_user, get_server, require_permission
 from octop.i18n import tr
 from octop.infra.auth.sso.redirect_after import sanitize_redirect_after
+from octop.infra.cloud.bot_cloud.endpoints import check_public_endpoints
 from octop.infra.connectors.builder import (
     mcp_server_name,
     normalize_weiyun_mcp_token,
@@ -854,6 +855,8 @@ async def create_instance(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Connect a third-party account as a new named instance."""
+    if is_cloud_tenant(user):
+        await check_public_endpoints(body.credentials)
     if is_custom_mcp_kind(body.kind):
         raise OctopError(
             ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
@@ -940,6 +943,8 @@ async def patch_instance(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Edit a connector instance without replacing its identity."""
+    if is_cloud_tenant(user) and body.credentials is not None:
+        await check_public_endpoints(body.credentials)
     custom_target = _resolve_custom_target(instance_id, user=user, server=server)
     if custom_target is not None:
         custom_user_id, synthetic_name = custom_target
@@ -1209,6 +1214,8 @@ async def test_credentials(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Validate credentials before creating an instance (no persistence)."""
+    if is_cloud_tenant(user):
+        await check_public_endpoints(body.credentials)
     del user
     entry = get_catalog_entry(body.kind)
     if entry is None:

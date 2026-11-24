@@ -26,7 +26,14 @@ data class BotProfile(
     val systemPrompt: String? = null,
     /** True for Bots defined on this phone (Lynxce mode); they can be edited and deleted. */
     val isLocal: Boolean = false,
-)
+    val state: String? = null,
+    val preparing: Boolean = false,
+    val lastError: String? = null,
+) {
+    val canSend: Boolean get() = isLocal || (!preparing && state != "failed")
+}
+
+fun shouldPollBots(bots: List<BotProfile>): Boolean = bots.any { !it.isLocal && it.preparing }
 
 data class ConversationSummary(
     val id: String,
@@ -47,7 +54,7 @@ sealed interface MessageStatus {
      * so the reply shows the recharge card instead of an error. [dailyLimit]: Lynxce's daily cap for Octop Bot is
      * used up (credits remain); the card says when it resets.
      */
-    data class Failed(val message: String?, val credits: Boolean = false, val dailyLimit: Boolean = false) : MessageStatus
+    data class Failed(val message: String?, val credits: Boolean = false, val dailyLimit: Boolean = false, val creditScenario: io.github.alisonxx.octopbot.net.CreditScenario? = null) : MessageStatus
 }
 
 data class ToolStep(val id: String, val name: String, val done: Boolean)

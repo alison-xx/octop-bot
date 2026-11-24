@@ -47,6 +47,8 @@ from octop_harness.media.models import (
     VideoGenerationRequest,
 )
 
+from octop.infra.auth.lynxce_cloud import LYNXCE_APP_HEADERS
+
 if TYPE_CHECKING:
     from octop_harness.backends.workspace import BackendWorkspace
 
@@ -60,6 +62,9 @@ VIDEO_MODEL = "ucloud/MiniMax-H3"
 DEFAULTS_TTL_SECONDS = 600.0
 DEFAULTS_RETRY_SECONDS = 60.0
 LYNXCE_HOSTS = frozenset({"api.lynxce.cn", "center.lynxce.cn"})
+# Lynxce records the Bot behind each model or media call so usage can be broken down per Bot;
+# X-Lynxce-App (LYNXCE_APP_HEADERS) marks the call as Octop Bot's, as on model gateway calls.
+BOT_ID_HEADER = "X-Lynxce-Bot-Id"
 
 _RUNNING = frozenset({"pending", "submitting", "processing", "uncertain"})
 _FAILED = frozenset({"failed", "timeout", "cancelled"})
@@ -170,9 +175,11 @@ class LynxceMediaProvider:
         image_model: str | None = None,
         video_model: str | None = None,
         client: httpx.AsyncClient | None = None,
+        bot_id: str | None = None,
     ) -> None:
         """``image_model`` / ``video_model`` pin a model; left out, Lynxce's defaults are used."""
         self._auth = auth
+        self._headers = {**LYNXCE_APP_HEADERS, **({BOT_ID_HEADER: bot_id} if bot_id else {})}
         self._pinned = {"image": image_model, "video": video_model}
         self._used = {"image": image_model or IMAGE_MODEL, "video": video_model or VIDEO_MODEL}
         self._client = client
@@ -202,7 +209,8 @@ class LynxceMediaProvider:
         found: dict[str, str] = {}
         try:
             response = await self._get(
-                auth.base_url + "/models", {"Authorization": f"Bearer {auth.bearer}"}
+                auth.base_url + "/models",
+                {**self._headers, "Authorization": f"Bearer {auth.bearer}"},
             )
             if response.is_success:
                 found = _first_models(response.json())
@@ -252,7 +260,7 @@ class LynxceMediaProvider:
                     "Do not retry. Tell the user to sign in to their Lynxce account again."
                 ),
             ) from exc
-        headers = {"Authorization": f"Bearer {auth.bearer}"}
+        headers = {**self._headers, "Authorization": f"Bearer {auth.bearer}"}
         if method == "POST":
             # A retried submit must not start (and bill) a second task.
             headers["Idempotency-Key"] = uuid4().hex
@@ -470,7 +478,9 @@ class LynxceMediaTools(AgentMiddleware[Any, Any]):
         return await handler(_with_media_prompt(request))
 
 
-def lynxce_media_tools(workspace: BackendWorkspace, auth: AuthSource) -> list[Any]:
+def lynxce_media_tools(
+    workspace: BackendWorkspace, auth: AuthSource, *, bot_id: str | None = None
+) -> list[Any]:
     """The harness's ``generate_image`` / ``generate_video`` tools, routed to Lynxce."""
     from octop_harness import MediaGenerationConfig  # noqa: PLC0415
     from octop_harness.builtin.tools.media_generation import (  # noqa: PLC0415
@@ -480,11 +490,12 @@ def lynxce_media_tools(workspace: BackendWorkspace, auth: AuthSource) -> list[An
 
     config = MediaGenerationConfig()
     manager = MediaManager(workspace, output_dir=config.output_dir)
-    manager.add_provider("lynxce", LynxceMediaProvider(auth))
+    manager.add_provider("lynxce", LynxceMediaProvider(auth, bot_id=bot_id))
     return build_media_generation_tools(workspace, config, manager=manager)
 
 
 __all__ = [
+    "BOT_ID_HEADER",
     "IMAGE_MODEL",
     "LYNXCE_HOSTS",
     "VIDEO_MODEL",

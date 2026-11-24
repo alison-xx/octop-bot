@@ -105,6 +105,7 @@ async def recharge(
     source: WalletSource,
     expected_account_id: str | None,
     expected_connection_id: str | None,
+    origin: str | None = None,
 ) -> CheckoutLink:
     if source == "cloud":
         if not expected_account_id or expected_connection_id is not None:
@@ -114,6 +115,7 @@ async def recharge(
             user_id,
             "POST",
             lynxce_cloud.CHECKOUT_PATH,
+            json=lynxce_cloud.checkout_body(origin),
             expected_account_id=expected_account_id,
         )
         return _checkout(data, source)

@@ -8,6 +8,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChatSessionTest {
+    @org.junit.Test
+    fun lowBalanceDismissalLasts24Hours() {
+        org.junit.Assert.assertTrue(lowBalanceIsDismissed(1_000, 1_000 + LOW_BALANCE_DISMISSAL_MS - 1))
+        org.junit.Assert.assertFalse(lowBalanceIsDismissed(1_000, 1_000 + LOW_BALANCE_DISMISSAL_MS))
+        org.junit.Assert.assertFalse(lowBalanceIsDismissed(null, 1_000))
+    }
+
     @Test
     fun aReplyThatAsksWaitsForTheUser() {
         fun reply(text: String, status: MessageStatus = MessageStatus.Done) =

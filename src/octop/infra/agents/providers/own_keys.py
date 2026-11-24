@@ -293,7 +293,12 @@ class OwnKeyModel(AccountModel):
     def ref(self) -> str:
         return f"own/{self.model_id}"
 
-    def provider(self, services: SharedServices | None) -> ProviderConfig:
+    def provider(
+        self, services: SharedServices | None, bot_id: str | None = None
+    ) -> ProviderConfig:
+        # The user's own provider, not Lynxce: no Lynxce headers, so bot_id is unused.
+        del bot_id
+
         async def key_for_request() -> str:
             own = (
                 await asyncio.to_thread(get_key, services, self.user_id, self.key_id)

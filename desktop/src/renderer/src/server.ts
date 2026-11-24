@@ -16,6 +16,7 @@ const t = zh
       insecure: "公网地址需要使用 HTTPS；局域网地址可以用 http://。",
       unreachable: "连接不上这个地址，请确认服务器已启动，且这台电脑能访问。",
       "not-octop": "这个地址上没有找到 Octop 服务器。",
+      loopback: "这是这台电脑自己的地址。要用这台电脑，请点「使用本机服务」。",
     }
   : {
       title: "Connect to your own server",
@@ -30,6 +31,7 @@ const t = zh
       insecure: "Public addresses need HTTPS; http:// works only on your local network.",
       unreachable: "Couldn't reach that address. Check the server is running and reachable from this computer.",
       "not-octop": "No Octop server was found at that address.",
+      loopback: "That's this computer's own address. To use this computer, choose the local service instead.",
     };
 
 const bridge = window.octopServer!;
