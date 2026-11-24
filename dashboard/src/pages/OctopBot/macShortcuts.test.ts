@@ -3,6 +3,7 @@ import {
   copyToThisDevice,
   installMacShortcuts,
   isApplePlatform,
+  isMacDesktop,
 } from "./macShortcuts";
 
 const CONTROL = 0xffe3;
@@ -44,6 +45,12 @@ describe("Mac shortcuts on the cloud computer", () => {
     expect(isApplePlatform("MacIntel")).toBe(true);
     expect(isApplePlatform("iPhone")).toBe(true);
     expect(isApplePlatform("Win32")).toBe(false);
+  });
+
+  it("shows the Mac clipboard hint only on a Mac, not an iPhone or iPad", () => {
+    expect(isMacDesktop("MacIntel", 0)).toBe(true);
+    expect(isMacDesktop("iPhone", 5)).toBe(false);
+    expect(isMacDesktop("MacIntel", 5)).toBe(false); // iPadOS
   });
 
   it("sends ⌘ shortcuts as Ctrl and never sends ⌘ itself", () => {

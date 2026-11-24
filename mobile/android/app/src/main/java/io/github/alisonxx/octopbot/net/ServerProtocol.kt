@@ -47,8 +47,24 @@ object ServerProtocol {
     }
 
     /** A Bot's cloud computer on Octop Bot cloud (`/api/octop-bot/computers/{id}`). */
-    data class ComputerStatus(val state: State, val runningSinceMillis: Long?, val takeover: Boolean = false) {
+    data class ComputerStatus(
+        val state: State,
+        val runningSinceMillis: Long?,
+        val takeover: Boolean = false,
+        /** The Bot is working on the computer right now, and its last action (`click`, `type`, …). */
+        val busy: Boolean = false,
+        val activity: String? = null,
+    ) {
         enum class State { None, Running, Paused }
+    }
+
+    /** `GET …/computers/{id}/glance`: the front window's title and a small JPEG of the screen. */
+    class Glance(val window: String?, val thumbnail: ByteArray?)
+
+    fun glance(data: JsonElement): Glance? {
+        val obj = data.asObject() ?: return null
+        val thumbnail = obj.str("thumbnail")?.let { runCatching { java.util.Base64.getDecoder().decode(it) }.getOrNull() }
+        return Glance(obj.str("window")?.takeIf { it.isNotBlank() }, thumbnail)
     }
 
     fun computerStatus(data: JsonElement): ComputerStatus? {
@@ -59,7 +75,13 @@ object ServerProtocol {
             "paused" -> ComputerStatus.State.Paused
             else -> return null
         }
-        return ComputerStatus(state, obj.double("running_since")?.let { (it * 1000).toLong() }, obj.bool("takeover") == true)
+        return ComputerStatus(
+            state,
+            obj.double("running_since")?.let { (it * 1000).toLong() },
+            obj.bool("takeover") == true,
+            busy = obj.bool("busy") == true,
+            activity = obj.str("activity"),
+        )
     }
 
     /**

@@ -9,6 +9,12 @@ export const isApplePlatform = (
   platform = navigator.platform || navigator.userAgent,
 ) => /Mac|iPhone|iPad|iPod/.test(platform);
 
+/** A Mac computer, not an iPhone or iPad (iPadOS also reports "MacIntel", but with touch). */
+export const isMacDesktop = (
+  platform = navigator.platform || navigator.userAgent,
+  touchPoints = navigator.maxTouchPoints || 0,
+) => /Mac/.test(platform) && touchPoints < 2;
+
 /**
  * On a Mac, the cloud desktop (Ubuntu) expects Ctrl where the Mac hand reaches for ⌘. While
  * the user has taken over, ⌘+key goes to the desktop as Ctrl+key and ⌘ alone is never sent (a

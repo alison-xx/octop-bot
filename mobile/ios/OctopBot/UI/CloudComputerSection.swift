@@ -8,7 +8,6 @@ struct CloudComputerSection: View {
     @State private var status: ServerBackend.ComputerStatus?
     @State private var busy = false
     @State private var failed = false
-    @State private var screen: URL?
 
     var body: some View {
         Section {
@@ -65,16 +64,15 @@ struct CloudComputerSection: View {
             Text("computer.footer")
         }
         .task { await load() }
-        .sheet(item: $screen) { url in
-            SafariView(url: url).ignoresSafeArea()
-        }
     }
 
+    /// Presented from UIKit, not a `.sheet` on this Form section: the row redraws when `busy`
+    /// flips back, which dismissed a sheet (and the editor under it) as soon as it appeared.
     private func openScreen() async {
         busy = true
         defer { busy = false }
         if let url = try? await server.screenURL(botId, control: status?.takeover == true) {
-            screen = url
+            FileOpener.present(SFSafariViewController(url: url))
         }
     }
 
@@ -112,6 +110,9 @@ extension ServerBackend {
         var state: State
         var runningSince: Date?
         var takeover = false
+        /// The Bot is working on the computer right now, and its last action (`click`, `type`, …).
+        var busy = false
+        var activity: String?
 
         var label: String {
             switch state {
@@ -126,7 +127,9 @@ extension ServerBackend {
                 throw APIError(kind: .server, status: 502, message: nil)
             }
             let since = (body["running_since"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
-            return ComputerStatus(state: state, runningSince: since, takeover: body["takeover"] as? Bool ?? false)
+            return ComputerStatus(
+                state: state, runningSince: since, takeover: body["takeover"] as? Bool ?? false,
+                busy: body["busy"] as? Bool ?? false, activity: body["activity"] as? String)
         }
     }
 
@@ -170,18 +173,3 @@ extension ServerBackend {
     }
 }
 
-
-extension URL: @retroactive Identifiable {
-    public var id: String { absoluteString }
-}
-
-/// The server's screen page in an in-app browser (noVNC needs a real web view).
-struct SafariView: UIViewControllerRepresentable {
-    let url: URL
-
-    func makeUIViewController(context: Context) -> SFSafariViewController {
-        SFSafariViewController(url: url)
-    }
-
-    func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
-}

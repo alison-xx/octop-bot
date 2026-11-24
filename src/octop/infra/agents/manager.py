@@ -4314,6 +4314,7 @@ class AgentManager:
         resolved = resolve_agent_backend_spec(
             backend_spec,
             repo=self._repos.storage_backend_repo,
+            workspace_dir=workspace_dir,
         )
         # Windows: the dashboard defaults local backends to root_dir "/", which
         # resolves to a drive other than the workspace and breaks path checks.

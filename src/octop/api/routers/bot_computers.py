@@ -273,6 +273,10 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
     gate = RfbClientFilter()
     opened = last_input = time.monotonic()
     control = {"allowed": False, "checked": float("-inf")}
+    # Only the screen that has the computer hands it back when it closes: one opened while
+    # taken over, or one the user typed into. A view-only screen closing (the phone swaps its
+    # view-only page for the control page right after taking over) must not undo the takeover.
+    holds = {"control": await asyncio.to_thread(manager.taken_over, agent_id, user_id)}
 
     async def input_allowed() -> bool:
         # View-only is a client setting; the relay itself holds input back until takeover.
@@ -308,6 +312,7 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
                     forward, saw_input = gate.feed(data, allow_input=allowed)
                     if saw_input and allowed:
                         last_input = time.monotonic()
+                        holds["control"] = True
                     if forward:
                         await upstream.send(forward)
 
@@ -327,9 +332,9 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
     except Exception:  # noqa: BLE001 - the viewer just closes
         logger.warning("screen relay for %s ended with an error", agent_id, exc_info=True)
     finally:
-        # Leaving the screen (closed tab, lost network, crash) hands the computer back.
+        # Leaving the screen in control (closed tab, lost network, crash) hands the computer back.
         with contextlib.suppress(Exception):
-            if await asyncio.to_thread(manager.taken_over, agent_id, user_id):
+            if holds["control"] and await asyncio.to_thread(manager.taken_over, agent_id, user_id):
                 await asyncio.to_thread(manager.set_takeover, agent_id, user_id, False)
         with contextlib.suppress(Exception):
             await websocket.close()

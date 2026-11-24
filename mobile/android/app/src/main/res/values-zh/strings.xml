@@ -336,4 +336,20 @@
     <string name="profile_today">今天</string>
     <string name="profile_week">本周</string>
     <string name="profile_older">更早</string>
+    <string name="computer_activity_click">点击</string>
+    <string name="computer_activity_command">运行命令</string>
+    <string name="computer_activity_file">读写文件</string>
+    <string name="computer_activity_key">按键</string>
+    <string name="computer_activity_screenshot">查看屏幕</string>
+    <string name="computer_activity_scroll">滚动</string>
+    <string name="computer_activity_type">输入文字</string>
+    <string name="computer_float_busy">正在操作电脑</string>
+    <string name="computer_float_close">关闭</string>
+    <string name="computer_float_expand">放大</string>
+    <string name="computer_float_idle">空闲</string>
+    <string name="computer_float_loading">正在加载画面…</string>
+    <string name="computer_float_minimise">收起</string>
+    <string name="computer_float_off">电脑没开机，Bot 用到时会自动开机</string>
+    <string name="computer_float_toggle">云电脑</string>
+    <string name="computer_float_yours">你在操作</string>
 </resources>
