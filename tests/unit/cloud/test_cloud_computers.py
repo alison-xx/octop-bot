@@ -59,6 +59,8 @@ class Driver:
         self.stopped: dict[str, float] = {}
 
         self.listed: list[driver_module.Instance] = []
+        # A billed disk that outlives a pause (CVM); 0 like AGS unless a test sets it.
+        self.disk_size = 0
 
     def start(self, *, spec: str, labels: Mapping[str, str]) -> str:
         if self.fail_start:
@@ -113,6 +115,9 @@ class Driver:
     def read_clipboard(self, instance_id: str) -> str:
         return self.clipboard
 
+    def disk_gb(self, instance_id: str) -> int:
+        return self.disk_size
+
 
 class Billing:
     def __init__(self) -> None:
@@ -121,6 +126,13 @@ class Billing:
         self.broke = False
         self.settle_down = False
         self.settle_refused = False
+        self.disks: list[tuple[str, str, int]] = []
+        self.disk_down = False
+
+    def charge_disk(self, record: Any, day: str, size_gb: int) -> None:
+        if self.disk_down:
+            raise OctopError.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
+        self.disks.append((record.agent_id, day, size_gb))
 
     def reserve(self, record: Any, minutes: int) -> computers.Reservation:
         if self.broke:
@@ -713,3 +725,104 @@ def test_ags_times_without_a_zone_are_utc() -> None:
     assert driver_module._timestamp("2026-11-24T09:44:02+08:00") == driver_module._timestamp(
         "2026-11-24T01:44:02Z"
     )
+
+
+# 1970-01-02 00:00 Beijing is 1970-01-01 16:00 UTC.
+BEIJING_MIDNIGHT = 16 * 3600.0
+
+
+def test_beijing_day_turns_at_beijing_midnight() -> None:
+    assert computers.beijing_day(BEIJING_MIDNIGHT - 1) == "1970-01-01"
+    assert computers.beijing_day(BEIJING_MIDNIGHT) == "1970-01-02"
+
+
+def test_a_cvm_disk_is_prepaid_once_per_beijing_day_even_while_stopped(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    driver.disk_size = 40
+    clock.now = BEIJING_MIDNIGHT - 3600
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    manager.tick()
+    manager.tick()
+    assert billing.disks == [("bot1", "1970-01-01", 40)]
+    manager.pause("bot1", 7)
+    clock.now = BEIJING_MIDNIGHT + 60
+    manager.tick()  # stopped, but the disk is still there and billed by the provider
+    manager.tick()
+    assert billing.disks == [("bot1", "1970-01-01", 40), ("bot1", "1970-01-02", 40)]
+
+
+def test_an_unpaid_disk_is_retried_later_and_never_deleted(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    driver.disk_size = 40
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    manager.pause("bot1", 7)
+    billing.disk_down = True
+    manager.tick()
+    clock.now += computers.REAP_INTERVAL_SECONDS
+    manager.tick()  # not retried on every pass
+    assert billing.disks == []
+    billing.disk_down = False
+    clock.now += computers.DISK_RETRY_SECONDS
+    manager.tick()
+    assert billing.disks == [("bot1", "1970-01-01", 40)]
+    # The computer was only paused, never stopped for the missed charge.
+    assert ("stop", "ins-1") not in driver.calls
+
+
+def test_ags_computers_and_deleted_bots_pay_no_disk(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    manager.tick()
+    assert billing.disks == []  # AGS: a paused sandbox keeps no billed disk
+    driver.disk_size = 40
+    manager._services.agent_repo.deleted.add("bot1")
+    manager.tick()
+    assert billing.disks == []
+    assert ("stop", "ins-1") in driver.calls
+
+
+def test_a_driver_without_disks_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(computers.ComputerManager, "_start_reaper", lambda self: None)
+
+    class NoDisk(Driver):
+        disk_gb = None  # type: ignore[assignment]
+
+    billing = Billing()
+    manager = computers.ComputerManager(Services(), NoDisk(), billing=billing, clock=Clock())  # type: ignore[arg-type]
+    CloudComputer(manager, user_id=7, agent_id="bot1").execute("ls")
+    manager.tick()
+    assert billing.disks == []
+
+
+def test_disk_charges_carry_the_cloud_server_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.auth import lynxce_cloud
+
+    disk = "/api/billing/octop-bot/compute/disk/charge"
+    assert ("POST", disk) in lynxce_cloud._TENANT_CALLS
+    monkeypatch.setenv("OCTOP_BOT_COMPUTE_SERVICE_KEY", "k" * 32)
+    assert lynxce_cloud._service_headers(disk) == {"X-Octop-Service-Key": "k" * 32}
+
+
+def test_billing_charges_the_disk_as_the_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.auth import lynxce_cloud
+
+    sent: list[tuple[Any, ...]] = []
+
+    async def tenant_call(
+        services: Any, user_id: int, method: str, path: str, json: Any = None
+    ) -> Any:
+        sent.append((user_id, method, path, json))
+        return {"credits": 4.8}
+
+    monkeypatch.setattr(lynxce_cloud, "tenant_call", tenant_call)
+    record = computers.ComputerRecord(agent_id="bot1", user_id=7, instance_id="ins-1")
+    computers.Billing(Services()).charge_disk(record, "2026-11-24", 40)  # type: ignore[arg-type]
+    assert sent == [
+        (
+            7,
+            "POST",
+            "/api/billing/octop-bot/compute/disk/charge",
+            {"computerId": "bot1", "day": "2026-11-24", "sizeGb": 40},
+        )
+    ]
+    computers.FreeBilling().charge_disk(record, "2026-11-24", 40)  # self-hosted: nothing to pay

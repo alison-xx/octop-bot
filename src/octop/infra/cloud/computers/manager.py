@@ -46,6 +46,15 @@ REAP_INTERVAL_SECONDS = 30
 ORPHAN_AGE_SECONDS = 15 * 60
 ORPHAN_SCAN_SECONDS = 10 * 60
 SERVER_ID_KEY = "octop_bot:computers:server_id"
+# A disk charge Lynxce did not take (out of credits, Lynxce down, disk not priced) is tried
+# again this much later, not on every 30 s pass.
+DISK_RETRY_SECONDS = 10 * 60
+_BEIJING_OFFSET_SECONDS = 8 * 3600
+
+
+def beijing_day(timestamp: float) -> str:
+    """The calendar day in Beijing time, which is how Lynxce prepays disks (YYYY-MM-DD)."""
+    return time.strftime("%Y-%m-%d", time.gmtime(timestamp + _BEIJING_OFFSET_SECONDS))
 
 
 @dataclass
@@ -123,6 +132,9 @@ class ComputerRecord:
     unsettled: list[Unsettled] = field(default_factory=list)
     # The Bot's object-store files were copied onto its computer once.
     seeded: bool = False
+    # The Beijing day the disk is paid for, and when to retry a disk charge that failed.
+    disk_paid_day: str = ""
+    disk_retry_at: float = 0.0
 
     def controlled(self, now: float) -> bool:
         """Taken over and still watched: a closed tab or a phone that left hands it back."""
@@ -195,6 +207,20 @@ class Billing:
             )
         )
 
+    def charge_disk(self, record: ComputerRecord, day: str, size_gb: int) -> None:
+        """Prepay the disk for a Beijing day; Lynxce charges each computer once per day."""
+        from octop.infra.auth import lynxce_cloud  # noqa: PLC0415
+
+        _run(
+            lynxce_cloud.tenant_call(
+                self._services,
+                record.user_id,
+                "POST",
+                "/api/billing/octop-bot/compute/disk/charge",
+                {"computerId": record.agent_id, "day": day, "sizeGb": size_gb},
+            )
+        )
+
 
 class FreeBilling:
     """No Lynxce billing: a self-hosted server on its own AGS account, or a local test run
@@ -204,6 +230,9 @@ class FreeBilling:
         return Reservation(f"free-{uuid.uuid4().hex[:12]}", minutes)
 
     def settle(self, record: ComputerRecord, reservation: Reservation, used_seconds: int) -> None:
+        return None
+
+    def charge_disk(self, record: ComputerRecord, day: str, size_gb: int) -> None:
         return None
 
 
@@ -483,6 +512,8 @@ class ComputerManager:
         if self._services.agent_repo.get(record.agent_id) is None:
             self._release(record.agent_id, record.user_id)
             return
+        # Before the running check: a stopped CVM computer still has a disk to pay for.
+        self._charge_disk(record.agent_id, record.user_id, now)
         if not record.running:
             return
         if record.instance_id and self._driver.state(record.instance_id) == "gone":
@@ -509,6 +540,38 @@ class ComputerManager:
             except Exception:  # noqa: BLE001 - out of credits (402) or Lynxce down
                 logger.info("computer %s could not be paid for; pausing", record.agent_id)
         self.pause(record.agent_id, record.user_id)
+
+    def _charge_disk(self, agent_id: str, user_id: int, now: float) -> None:
+        """Prepay today's disk once per Beijing day while the computer exists.
+
+        A failed charge (out of credits, Lynxce down, disk not priced yet) is retried every
+        ``DISK_RETRY_SECONDS``; the disk is never deleted for it, the user's files stay.
+        """
+        disk_gb = getattr(self._driver, "disk_gb", None)
+        if disk_gb is None:
+            return
+        day = beijing_day(now)
+        with self._lock(agent_id):
+            record = self.record(agent_id, user_id)
+            if not record.instance_id or record.disk_paid_day == day or now < record.disk_retry_at:
+                return
+            try:
+                size = int(disk_gb(record.instance_id))
+            except Exception:  # noqa: BLE001 - provider hiccup, tried on the next pass
+                logger.warning("reading the disk size of computer %s failed", agent_id)
+                return
+            if size <= 0:
+                return
+            try:
+                self._billing.charge_disk(record, day, size)
+            except Exception:  # noqa: BLE001 - out of credits (402), unpriced (503) or Lynxce down
+                logger.info("disk of computer %s not paid for %s; retrying later", agent_id, day)
+                record.disk_retry_at = now + DISK_RETRY_SECONDS
+                self._save(record)
+                return
+            record.disk_paid_day = day
+            record.disk_retry_at = 0.0
+            self._save(record)
 
     def _lost(self, agent_id: str, user_id: int) -> None:
         """The provider no longer has the instance (stopped, expired): close its billing."""
