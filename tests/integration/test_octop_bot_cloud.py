@@ -33,6 +33,7 @@ class Upstream:
         self.live: dict[str, dict[str, Any]] = {}
         self.deleted: list[str] = []
         self.list_fails = False
+        self.login_fields: dict[str, Any] = {}
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         assert req.url.host == "api.lynxce.cn" and req.url.scheme == "https"
@@ -46,22 +47,27 @@ class Upstream:
                 return httpx.Response(403, json={"error": {"message": "insufficient balance"}})
             return httpx.Response(200, json={"object": "list", "data": []})
         assert req.headers["X-Lynxce-Client"] == "web"
-        if path == "/api/auth/phone-login":
+        if path in {"/api/auth/phone-login", "/api/auth/password-login", "/api/auth/refresh"}:
             payload = json.loads(req.content)
-            if payload["code"] != "123456":
+            if path == "/api/auth/phone-login" and payload["code"] != "123456":
                 return httpx.Response(401, json={"message": "bad code"})
-            uid = payload["phone"]
+            uid = payload.get("phone", payload.get("account", "13800000001"))
+            data: dict[str, Any] = {
+                "accessToken": f"access-{uid}",
+                "refreshToken": f"refresh-{uid}",
+                **self.login_fields,
+            }
+            if path != "/api/auth/refresh":
+                data["user"] = {"id": "lx-" + uid, "displayName": "User " + uid}
             return httpx.Response(
                 200,
                 json={
                     "code": 0,
-                    "data": {
-                        "accessToken": f"access-{uid}",
-                        "refreshToken": f"refresh-{uid}",
-                        "user": {"id": "lx-" + uid, "displayName": "User " + uid},
-                    },
+                    "data": data,
                 },
             )
+        if path == "/api/user/profile":
+            return httpx.Response(200, json={"code": 0, "data": {"id": "lx-13800000001"}})
         if path == "/api/user/personal-api-keys" and req.method == "GET":
             owner = req.headers["Authorization"].removeprefix("Bearer ")
             if self.list_fails:
@@ -150,6 +156,61 @@ async def _sign_in(client: httpx.AsyncClient, phone: str) -> dict[str, Any]:
     assert res.status_code == 200, res.text
     body: dict[str, Any] = res.json()
     return body
+
+
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        (CODE_LOGIN, {"target": "13800000001", "code": "123456"}),
+        ("/api/auth/lynxce/login", {"account": "13800000001", "password": "test-password"}),
+        ("/api/auth/lynxce/session-login", {"refresh_token": "test-refresh"}),
+    ],
+)
+@pytest.mark.parametrize(
+    ("upstream_fields", "expected"),
+    [
+        (
+            {
+                "isNewUser": True,
+                "signupGrant": {"credits": 100.5, "expiresAt": "2027-01-01T00:00:00Z"},
+            },
+            {
+                "isNewUser": True,
+                "signupGrant": {"credits": 100.5, "expiresAt": "2027-01-01T00:00:00Z"},
+            },
+        ),
+        ({"isNewUser": False, "signupGrant": None}, {"isNewUser": False, "signupGrant": None}),
+        (
+            {"isNewUser": True, "signupGrant": {"credits": 50, "expiresAt": None}},
+            {"isNewUser": True, "signupGrant": {"credits": 50, "expiresAt": None}},
+        ),
+        ({}, {}),
+        ({"isNewUser": "true", "signupGrant": {"credits": True, "expiresAt": "x"}}, {}),
+        ({"isNewUser": 1, "signupGrant": {"credits": 10, "expiresAt": 123}}, {}),
+        ({"isNewUser": False, "signupGrant": "invalid"}, {"isNewUser": False}),
+        (
+            {"isNewUser": None, "signupGrant": {"credits": 0, "expiresAt": "x", "other": "hidden"}},
+            {"signupGrant": {"credits": 0, "expiresAt": "x"}},
+        ),
+    ],
+)
+async def test_cloud_login_signup_fields(
+    tmp_octop_home: Path,
+    upstream: Upstream,
+    path: str,
+    body: dict[str, Any],
+    upstream_fields: dict[str, Any],
+    expected: dict[str, Any],
+) -> None:
+    upstream.login_fields = {**upstream_fields, "otherUpstreamField": "hidden"}
+    async with octop_client(tmp_octop_home) as (client, srv):
+        response = await client.post(path, json=body)
+        assert response.status_code == 200, response.text
+        result = response.json()
+        assert {k: result[k] for k in ("isNewUser", "signupGrant") if k in result} == expected
+        assert "otherUpstreamField" not in result
+        stored = cloud._load(srv.services, result["user"]["id"])
+        assert stored is not None and stored.login_fields == {}
 
 
 async def test_each_lynxce_account_gets_its_own_tenant(

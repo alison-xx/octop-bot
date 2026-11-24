@@ -67,6 +67,7 @@ class _Grant:
     refresh_token: str = field(repr=False)
     # None: not read from Lynxce yet (logins saved before the avatar was kept); "": no avatar.
     avatar_url: str | None = None
+    login_fields: dict[str, Any] = field(default_factory=dict, repr=False)
 
     def status(self) -> CloudAccountStatus:
         return CloudAccountStatus(
@@ -96,7 +97,9 @@ def _load(services: SharedServices, user_id: int) -> _Grant | None:
 def _save(services: SharedServices, user_id: int, grant: _Grant) -> None:
     repo = services.secret_repo
     key = _key(user_id)
-    repo.put(key, encrypt_json(repo, key + ".fernet", asdict(grant)))
+    stored = asdict(grant)
+    stored.pop("login_fields")
+    repo.put(key, encrypt_json(repo, key + ".fernet", stored))
     # The local owner can be removed during an upstream login/refresh. Its deletion
     # transaction clears existing keys; also clear a write that arrived afterwards.
     if services.user_repo.get(user_id) is None:
@@ -263,6 +266,27 @@ def display_name(profile: dict[str, Any]) -> str | None:
     return None
 
 
+def _login_fields(data: dict[str, Any]) -> dict[str, Any]:
+    fields: dict[str, Any] = {}
+    if isinstance(data.get("isNewUser"), bool):
+        fields["isNewUser"] = data["isNewUser"]
+    if "signupGrant" in data:
+        grant = data["signupGrant"]
+        if grant is None:
+            fields["signupGrant"] = None
+        elif (
+            isinstance(grant, dict)
+            and type(grant.get("credits")) in (int, float)
+            and (grant.get("expiresAt") is None or isinstance(grant.get("expiresAt"), str))
+        ):
+            # A null expiresAt means the grant does not expire.
+            fields["signupGrant"] = {
+                "credits": grant["credits"],
+                "expiresAt": grant.get("expiresAt"),
+            }
+    return fields
+
+
 async def _session_login(path: str, body: dict[str, str]) -> _Grant:
     """Open a Lynxce 'web' session through one of its sign-in endpoints."""
     try:
@@ -287,6 +311,7 @@ async def _session_login(path: str, body: dict[str, str]) -> _Grant:
         _token(data, "accessToken"),
         _token(data, "refreshToken"),
         _avatar(profile),
+        _login_fields(data),
     )
 
 
@@ -591,7 +616,13 @@ async def open_refresh_session(refresh_token: str) -> CloudSession:
         raise OctopError.localized(ErrorCode.NETWORK_ERROR)
     renewed = _token(data, "refreshToken") if "refreshToken" in data else refresh_token
     return _Grant(
-        profile["id"], display_name(profile), uuid4().hex, access, renewed, _avatar(profile)
+        profile["id"],
+        display_name(profile),
+        uuid4().hex,
+        access,
+        renewed,
+        _avatar(profile),
+        _login_fields(data),
     )
 
 
