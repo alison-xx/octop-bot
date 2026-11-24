@@ -134,3 +134,6 @@ website/media/*.mp4
 website/film-src/renders/
 website/film-src/assets/audio/
 website/film-src/node_modules/
+
+# Video tool caches (hold local paths)
+.hyperframes/
