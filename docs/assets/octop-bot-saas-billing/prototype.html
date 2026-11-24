@@ -147,6 +147,24 @@
   #v-plans .plan { padding: 24px 22px; }
   #v-plans .plan ul.perks li { grid-template-columns: 64px 1fr; }
   .plan .credits { min-height: 102px; }
+  /* Header: four places in the middle, everything about the visitor on the right. */
+  .nav-more { position: relative; }
+  .nav-more > button { display: inline-flex; align-items: center; gap: 4px; padding: 8px 14px; border: 0; border-radius: 999px; background: transparent; font: inherit; font-size: 14px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
+  .nav-more > button svg { width: 14px; height: 14px; transition: transform .2s; }
+  .nav-more:hover > button, .nav-more:focus-within > button { color: var(--ink); background: var(--line); }
+  .nav-more:hover > button svg, .nav-more:focus-within > button svg { transform: rotate(180deg); }
+  .nav-more[data-current] > button { color: var(--ink); font-weight: 650; }
+  .nav-menu { position: absolute; top: calc(100% + 6px); left: -6px; min-width: 236px; padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-lg); display: grid; opacity: 0; visibility: hidden; transform: translateY(-4px); transition: opacity .15s, transform .15s, visibility .15s; z-index: 60; }
+  .nav-more:hover .nav-menu, .nav-more:focus-within .nav-menu, .nav-more.open .nav-menu { opacity: 1; visibility: visible; transform: none; }
+  .nav-menu::before { content: ""; position: absolute; inset: -8px 0 auto; height: 8px; }
+  .nav .nav-menu a { display: grid; gap: 2px; padding: 9px 12px; border-radius: 10px; }
+  .nav-menu a b { font-weight: 600; color: var(--ink); font-size: 14px; }
+  .nav-menu a small { color: var(--ink-3); font-size: 12px; font-weight: 400; }
+  .nav-menu a[aria-current="page"] { background: var(--bg-soft); }
+  .nav-menu hr { border: 0; border-top: 1px solid var(--line); margin: 6px 8px; }
+  .header-tools .web-link { padding: 8px 12px; font-size: 14px; font-weight: 500; color: var(--ink-2); border-radius: 999px; white-space: nowrap; }
+  .header-tools .web-link:hover { color: var(--ink); background: var(--line); }
+  .header-tools .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
   .plan .btn { margin-top: 0; }
   .plan .credits .row { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
   .plan .credits .row + .row { margin-top: 4px; }
@@ -263,7 +281,17 @@
   <div class="wrap">
     <a class="brand" href="#pricing"><img src="../../../website/assets/app-icon.webp" alt="" width="30" height="30">Octop Bot</a>
     <nav class="nav">
-      <a href="#">首页</a><a href="#">功能</a><a href="#">Bot 市场</a><a href="#pricing" id="navPricing">定价</a><a href="#">下载</a><a href="#">网页版</a><a href="#">使用指南</a><a href="#changelog" id="navChangelog">更新日志</a>
+      <a href="#">功能</a><a href="#">Bot 市场</a><a href="#pricing" id="navPricing">定价</a>
+      <div class="nav-more" id="navHelp">
+        <button type="button" aria-haspopup="true">帮助<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="nav-menu" role="menu">
+          <a href="#" role="menuitem"><b>使用指南</b><small>从安装到第一个 Bot</small></a>
+          <a href="#changelog" role="menuitem" id="navChangelog"><b>更新日志</b><small>每个版本改了什么</small></a>
+          <a href="#" role="menuitem"><b>常见问题</b><small>积分、会员、账号</small></a>
+          <hr>
+          <a href="#" role="menuitem"><b>GitHub</b><small>Octop Bot 和上游 Octop 的源码</small></a>
+        </div>
+      </div>
     </nav>
     <div class="header-tools" id="tools"></div>
   </div>
@@ -657,11 +685,14 @@ function render() {
   if (pageId === "pricing") showView(id === "packs" ? "packs" : "plans");
   if (pageId === "changelog") renderChangelog(id === "changelog-en" ? "en" : "zh");
   document.getElementById("navChangelog").setAttribute("aria-current", pageId === "changelog" ? "page" : "false");
+  document.getElementById("navHelp").toggleAttribute("data-current", pageId === "changelog");
+  document.getElementById("navHelp").classList.toggle("open", location.search.includes("help"));
   document.getElementById("proto").innerHTML = "<b>原型 · 页面</b>" + PAGES.map(([k, n]) => `<a href="#${k}" class="${k === id ? "on" : ""}">${n}</a>`).join("");
   const signedIn = !["pricing", "pricing-year", "packs", "login", "changelog", "changelog-en"].includes(id);
-  document.getElementById("tools").innerHTML = signedIn
+  const prefs = `<a class="web-link" href="#">网页版</a><button class="icon-btn" type="button" aria-label="English">EN</button><button class="icon-btn" type="button" aria-label="外观"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16Z" fill="currentColor"/></svg></button><span class="sep"></span>`;
+  document.getElementById("tools").innerHTML = prefs + (signedIn
     ? `<a class="acct-btn" href="#account"><span class="avatar">A</span>23,280 <small>积分</small></a>`
-    : `<a class="btn btn-ghost btn-sm" href="#login">登录</a><a class="btn btn-primary btn-sm" href="#">下载</a>`;
+    : `<a class="btn btn-ghost btn-sm" href="#login">登录</a><a class="btn btn-primary btn-sm" href="#">下载</a>`);
   document.getElementById("navPricing").setAttribute("aria-current", pageId === "pricing" ? "page" : "false");
   if (inAccount) {
     document.getElementById("side").innerHTML = `<div class="me"><span class="avatar">A</span><div><b>Alison</b><small>138****0001 · 灵策账号</small></div></div>` +
