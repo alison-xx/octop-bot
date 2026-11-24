@@ -90,7 +90,7 @@
 ### 2.4 云电脑归属
 - 云电脑属于灵策账号（云端租户），每个协同 Bot 一台。这和现在的租户模型一样，计费不变。
 - 本机 Bot（🔒）没有云电脑，只用这台电脑。
-- 协同 Bot 在桌面上跑回合时，默认用这台电脑。要用自己的云电脑，需要 §12.4 计划里的「远程云电脑」接口（`/api/octop-bot/remote-computers/{key}`，还没实现），放在第三期。
+- 桌面上跑的 Bot 也能用云电脑：2026-11-25 提前到第 1.5 期，做法见 §7。
 
 ### 2.5 和现有 bot.lynxce.cn 多租户云的关系
 - 不动多租户：灵策账号在云端仍然是一个租户，网页和手机的用户继续直接用它。方案 C 只是让桌面成为这个租户的一份副本，外加同步接口：
@@ -119,7 +119,8 @@
 | 0（1.0.6，马上） | CloudMove 触发默认关闭；#44 改成本机引导 | 质量与发版、桌面与 Web |
 | 1（最小可用 A） | 首次启动设本地账号、密码和模型（上游流程，接 Octop Bot 的新设计）；老用户补设密码；Bot 加 🔒 标；账户菜单显示「本地账号 · 灵策已连接/未连接」。灵策的模型和积分沿用 1.0.5 | 桌面与 Web（首启页、设置）；云端与计费（本地账号接口和设备凭据的衔接，基本是上游现成的） |
 | 2（C 第一步） | Bot 的「同步到灵策云」开关和 ☁ 标；云端 `sync_changes`、push/pull、运行租约（数据库迁移）；同步 Bot 设置、会话、附件、全协同群组、引导状态；手机和网页接着聊时由云端跑，碰不到本机时直接说明 | 云端与计费（同步接口、租约、迁移）；桌面与 Web（同步程序、开关、标记、断开状态）；移动端（只显示协同 Bot，标记） |
-| 3 | 记忆同步；「交给电脑」任务队列（桌面上线后执行）；桌面使用远程云电脑；云端新建的 Bot 拉到桌面 | 三个岗位都要，加上 Agent 任务质量（交接任务的契约） |
+| 1.5（提前，见 §7） | 桌面登录灵策后 Bot 可以用云电脑：「Bot 的电脑」可选本机或云电脑；对话里出现电脑图标和浮窗，点开才开机 | 云端与计费（云端接口和鉴权）；桌面客户端（本机转发、界面）。不依赖第 2 期同步 |
+| 3 | 记忆同步；「交给电脑」任务队列（桌面上线后执行）；云端新建的 Bot 拉到桌面 | 三个岗位都要，加上 Agent 任务质量（交接任务的契约） |
 | 4 | 一个灵策账号多台桌面；冲突处理界面；工作区选择性同步 | 云端与计费、桌面与 Web |
 
 ## 5. 风险
@@ -141,3 +142,98 @@
 7. **只用灵策、不设本地密码，允许吗？** 已定：**允许**（本地账号在后台照样建好），但会持续提醒「为这台电脑设置密码」。
 8. **新用户引导：跟着灵策账号只引导一次，还是每台设备各引导一次？** 已定：**登录了灵策就跟着账号走（只一次）**，没登录的本机引导一次。
 9. **退出或切换灵策账号时，协同 Bot 怎么办？** 已定：**留在本机、标「已断开」**，不删除、不迁到新账号。
+
+## 7. 桌面登录灵策后用云电脑（2026-11-25 提前，第 1.5 期）
+
+起因：用户用正式版 1.0.5 桌面端登录灵策后，「Bot 的电脑」只有本机电脑控制，对话里也没有电脑图标，和网页、手机上的云端 Bot 不一样。用户的预期是：登录灵策就能用云电脑。目标是让登录灵策的桌面用户看到和网页、手机**一样的云电脑入口**：Bot 详情里的云电脑卡片、对话里的电脑图标和浮窗、点开才开机、接管、交还。
+
+### 7.1 原则
+- 腾讯云密钥不进客户端。云电脑由云 Octop（bot.lynxce.cn）统一开、统一计费，扣这个灵策账号的钱包，单价和网页上的云端 Bot 一样。
+- Bot 的大脑（Agent 循环、工作区、对话）仍在本机，**只有「电脑」在云上**。本机文件只有在 Bot 明确传上去时才会上云电脑。
+- 尽量复用：
+  - 云端复用现有的 `ComputerManager`，所以开机、暂停、名额、闲置回收、磁盘费、扣费都不用重写。
+  - 本机复用现有的 `computer_use_tool` / `request_takeover_tool` 和网页端的云电脑组件，只把它们底下的「管理器」换成一个远程版。
+
+### 7.2 本机 Bot 在云端对应谁：影子 Bot
+- 不另起一套「远程云电脑 key」（`docs/octop-bot-cloud-plan.md` §12.4 原来设想的 `/remote-computers/{key}`），而是在这个灵策账号的云端租户里，给每个要用云电脑的本机 Bot 建一个**影子 Bot**，也就是一行普通的 agents 记录：
+  - `config_json.octop_bot.origin` = `<本机安装 id>:<本机 agent_id>`，同一来源只建一次；
+  - `config_json.octop_bot.hidden` = true，云端 Bot 列表、手机和网页都不显示它；
+  - 建好后不启动 Agent 运行时，只拿来挂云电脑。
+- 好处：
+  - 现有的 `/api/octop-bot/computers/{agent_id}` 全套接口（状态、一瞥、暂停、接管、画面票据、画面 WebSocket、粘贴和剪贴板）不用改，可以直接用；
+  - 计费的 `computerId` 就是影子 Bot 的 id；
+  - 名额按账号算，影子 Bot 和云端 Bot 一起占名额。
+- 和第 2 期的关系：协同（☁）Bot 到第 2 期同步时，就用同一个 `origin` 把影子 Bot 转成正式的同步副本（去掉 hidden），云电脑原样保留，不白做。本机（🔒）Bot 的影子一直隐藏，只挂电脑，不带对话。
+- 本机安装 id：本机 settings 键 `octop_bot:install_id`，第一次用时生成一个 ULID。
+
+### 7.3 鉴权：本机怎么以这个灵策账号调用云 Octop
+- 云 Octop 新增 `POST /api/auth/lynxce/token-login {access_token}`。传进来的是本机手上的**灵策 access token**（本机自己会续期），云端拿它查 `/api/user/profile`，按灵策账号找到租户，签发一个云 Octop 的 JWT。本机缓存这个 JWT，过期了就用新的 access token 再换一次。**不交出 refresh token**：CloudMove 的 `session-login` 会把本机的灵策登录态搬走，这里不能这样做。
+- 云电脑扣费走租户**自己保存的灵策会话**（`Billing` → `lynxce_cloud.tenant_call`）。所以：
+  - 用过网页或手机的账号已经有这个会话，直接能用；
+  - 从没用过云端的账号（只有租户，没有会话，或者连租户都没有），`token-login` 返回 409 `BOT_CLOUD_SESSION_REQUIRED`。桌面弹一次「开通云电脑：再验证一次灵策账号」，用验证码或密码直接登录 bot.lynxce.cn 现有的灵策登录接口，云端就有了自己的会话。每个灵策账号只需要做一次。
+  - 以后可以去掉这一步，前提是灵策提供「用现有登录态再开一个独立会话」的接口。这要请灵策对接确认 refresh token 是否轮换、有没有这类接口；在确认之前不要把 refresh token 交给云端共用。
+
+### 7.4 云 Octop 新增的接口（云端与计费）
+现有的 `/api/octop-bot/computers/{agent_id}` 保留不动，另外新增：
+
+| 接口 | 作用 |
+|---|---|
+| `POST /api/auth/lynxce/token-login` | 见 7.3 |
+| `PUT /api/octop-bot/remote-bots/{origin}` | 按来源新建或更新影子 Bot（名字、头像），返回云端 `agent_id` |
+| `DELETE /api/octop-bot/remote-bots/{origin}` | 本机删 Bot 时调用：释放云电脑，删除影子 Bot |
+| `POST /api/octop-bot/computers/{agent_id}/run` | 执行命令：`{command, timeout}` → `{exit_code, output}`，走 `manager.run` |
+| `POST /api/octop-bot/computers/{agent_id}/python` | 在云电脑上跑一段 Python，走 `manager.use(... run_python)`。电脑操作工具的点击、输入、等待、读取元素都用它 |
+| `GET /api/octop-bot/computers/{agent_id}/screenshot` | 截图 PNG |
+| `GET /api/octop-bot/computers/{agent_id}/accessibility` | 无障碍树 XML（点击前的付款和高风险检查要用） |
+| `GET` / `PUT /api/octop-bot/computers/{agent_id}/files?path=` | 读写云电脑上的文件，用于本机工作区和云电脑互传 |
+
+- 这些接口都要求是自己的 Bot（沿用现在 `_owned` 的检查），只在云端模式下开放，并且会让电脑开机（走 `ensure_running`）。
+- 被接管时，`run` 和 `python` 返回「用户正在接管」，和 `CloudComputer.execute` 的处理一样。
+- 影子 Bot 的回收：本机删 Bot 时会通知云端；本机卸载、长期不用时，按「影子 Bot 30 天没人用 → 释放云电脑并删除影子」处理。暂停期间按现有规则收磁盘费。
+
+### 7.5 本机 Octop（桌面客户端）
+- 新增 `infra/cloud/computers/remote.py`：
+  - `RemoteComputerManager`：实现工具和路由用到的那部分 `ComputerManager` 方法，包括 `use`、`run`、`read`、`write`、`taken_over`、`set_takeover`、`pause`、`record`、`glance`、`claim_screen`、`note`、`activity`、`busy`。
+  - `RemoteDriver`：`use(work)` 交给 `work` 的就是它，`screenshot`、`accessibility`、`run_python`、`run`、`read`、`write` 各对应 7.4 的一个接口。
+  - 这样 `computer_use_tool`、`request_takeover_tool` 一行都不用改，就能用在本机 Bot 上。
+- Bot 的电脑选择：Agent 的 `config_json.octop_bot.computer` = `"local"` 或 `"cloud"`。
+  - 没有这个键时，☁ 协同 Bot 默认 cloud，🔒 本机 Bot 默认 local。
+  - 没登录灵策时一律按 local，云电脑选项不出现。
+  - 🔒 Bot 改成云电脑时提示一句：「Bot 在云电脑上看到和输入的内容会经过灵策云；这台电脑上的文件只有在 Bot 传上去时才会上云电脑。」
+- 工具：
+  - computer = cloud 时，挂 `computer_use_tool`、`request_takeover_tool` 和 `ComputerBriefing`（底下是 `RemoteComputerManager`），不挂本机应用控制工具。
+  - 另外加一个 `cloud_computer` 工具：在云电脑上跑命令，以及在本机工作区和云电脑之间传文件。
+  - Bot 自带的 `execute` 和文件工具仍然作用在本机工作区。
+- 路由：桌面模式下，本机的 `/api/octop-bot/computers/{本机 agent_id}` 对 computer = cloud 的 Bot 转发到云端，也就是先换成影子 Bot 的 id，再调云端接口。画面 WebSocket 由本机中转：本机拿云端签发的一次性票据，自己连云端的 `/screen/ws`，再和网页对接。这样网页端的 `CloudComputerCard`、`CloudComputerFloat`、`CloudComputerScreen`、`CloudComputerHandoff` 组件不用改，还是同源调用。
+- 入口开关：`/api/octop-bot/server-info` 的 `cloud_computer` 在桌面上「登录了灵策」时也是 true；另外每个 Bot 多返回一个 `computer` 字段。对话里的电脑图标、浮窗、Bot 详情里的云电脑卡片，按这个 Bot 的 `computer === "cloud"` 显示，本机电脑面板按 local 显示。
+- 退出灵策时，先把所有影子 Bot 的云电脑暂停，再清掉本机缓存的云端 JWT。
+
+### 7.6 和「云电脑用到才开」、名额、闲置回收、磁盘费的关系
+- 这些全在云端的 `ComputerManager` 里，影子 Bot 和云端 Bot 走的是同一套，所以云端与计费正在做的方案 A（用到才开，点图标才开机）做完以后，桌面自动跟着生效，本机不用另写。
+- **点图标才开机**：打开画面时，本机转发的画面票据请求就是一次「用到」。在这之前，对话里的电脑图标只显示「未开机」，不会去开机。
+- **名额**：按灵策账号统计，影子 Bot 也占名额。名额满了，云端照现在的方式报错，本机把这个错误原样显示出来。
+- **闲置回收、磁盘费**：照现有规则。本机断网或关机以后，云电脑会被闲置回收暂停，不会一直扣积分。
+
+### 7.7 工作量和分工
+- **云端与计费**：大约 2～3 天。
+  - token-login 和 409 的处理；
+  - remote-bots 的新建、更新、删除，以及 hidden 过滤（Bot 列表、群组成员选择、手机接口都要排除）；
+  - 7.4 里的 run、python、screenshot、accessibility、files 几个接口；
+  - 影子 Bot 30 天回收；
+  - 测试。
+  - 排在方案 A 之后，或者和方案 A 并行，两者改的地方不重叠。
+- **桌面客户端**（local_f166a106）：大约 3～4 天。
+  - `remote.py`（RemoteComputerManager 和 RemoteDriver）、JWT 缓存和「再验证一次」弹窗；
+  - 路由转发和画面 WebSocket 中转；
+  - 在 `agents/manager.py` 里按 computer 字段挂工具；
+  - `cloud_computer` 工具；
+  - 「Bot 的电脑」本机 / 云电脑选择，以及按 Bot 显示电脑入口。
+  - 先按 7.4 的接口约定写，用假的云端接口测；云端接口上线后，再在 bot.lynxce.cn 上联调。
+- **能不能不等第 2 期**：能。第 1.5 期只依赖第 1 期的 `octop_bot.sync` 来决定默认值，第 1 期还没合进去时，默认值先一律按 local，用户手动选云电脑。
+- **另外的问题**：本机电脑控制一直黑屏转圈，这是本机画面权限或画面服务的问题，和本节无关，总管已另派桌面客户端查。
+
+### 7.8 风险
+1. **会慢一点**：每次电脑操作都多绕一跳，本机 → 杭州的 bot.lynxce.cn → 广州的 CVM，截图还要回传一次。可以接受；以后如果慢，就让本机直接连 CVM 的 443 端口，用云端签发的短期令牌。
+2. **租户会话缺失**：没用过云端的账号第一次要再验证一次（7.3），这是方案里唯一多出来的一步。要让灵策提供「再开一个会话」的接口才能去掉。
+3. **影子 Bot 混进列表**：凡是列 Bot 的地方都要排除 hidden，漏一处，手机上就会冒出一个空 Bot。测试要覆盖列表、群组、手机接口。
+4. **两处同时操作一台电脑**：同一个影子 Bot 只被一台桌面使用，`claim_screen` 已经保证同一时刻只有一个会话在点。第 2 期以后，同一个 ☁ Bot 的云端回合和桌面回合会共用这台电脑，到时再复用 claim_screen 的规则。
