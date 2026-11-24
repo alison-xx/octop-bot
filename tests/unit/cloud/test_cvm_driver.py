@@ -121,6 +121,8 @@ def test_instance_secret_outlives_a_cam_key_rotation() -> None:
     assert rotated.secret_key == "new-secret"
     assert rotated.derive("token") == old.derive("token")
     assert rotated.derive("ca") == old.derive("ca")
+    # Printing or logging the config never shows the secrets.
+    assert "secret-test" not in repr(rotated) and "new-secret" not in repr(rotated)
 
 
 def test_states_map_a_stopped_computer_to_paused() -> None:
