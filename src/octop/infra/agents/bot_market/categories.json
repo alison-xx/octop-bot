@@ -1,0 +1,52 @@
+[
+  {
+    "id": "ecommerce",
+    "name": { "zh": "电商零售", "en": "E-commerce & Retail" },
+    "blurb": { "zh": "上新、店铺经营和客服，交给专门的 Bot。", "en": "Listings, store numbers and customer service, each with its own Bot." }
+  },
+  {
+    "id": "content",
+    "name": { "zh": "内容创作", "en": "Content & Media" },
+    "blurb": { "zh": "公众号、短视频和小红书，从选题写到成稿。", "en": "Articles, short video and social posts, from idea to final draft." }
+  },
+  {
+    "id": "marketing",
+    "name": { "zh": "市场营销", "en": "Marketing" },
+    "blurb": { "zh": "搜索内容、竞品动向和活动方案。", "en": "Search content, competitor moves and campaign plans." }
+  },
+  {
+    "id": "sales",
+    "name": { "zh": "销售", "en": "Sales" },
+    "blurb": { "zh": "找线索、跟进客户、复盘每一通电话。", "en": "Find leads, follow up with customers and review every call." }
+  },
+  {
+    "id": "finance",
+    "name": { "zh": "财务", "en": "Finance" },
+    "blurb": { "zh": "票据、现金流和财报，算清楚再说话。", "en": "Receipts, cash flow and reports, with the numbers checked first." }
+  },
+  {
+    "id": "legal",
+    "name": { "zh": "法务合规", "en": "Legal & Compliance" },
+    "blurb": { "zh": "合同、合规和用工问题的第一道把关。", "en": "A first pass on contracts, compliance and employment questions." }
+  },
+  {
+    "id": "hr",
+    "name": { "zh": "人力招聘", "en": "People & Recruiting" },
+    "blurb": { "zh": "排面试、筛简历、带新人。", "en": "Schedule interviews, screen résumés and onboard new hires." }
+  },
+  {
+    "id": "education",
+    "name": { "zh": "教育培训", "en": "Education" },
+    "blurb": { "zh": "给学生讲题，给老师备课，陪你练口语。", "en": "Tutoring for students, lesson prep for teachers, speaking practice for you." }
+  },
+  {
+    "id": "engineering",
+    "name": { "zh": "研发技术", "en": "Engineering" },
+    "blurb": { "zh": "代码审查、线上值班和需求拆解。", "en": "Code review, on-call checks and turning requests into tasks." }
+  },
+  {
+    "id": "personal",
+    "name": { "zh": "个人生活", "en": "Personal" },
+    "blurb": { "zh": "旅行、记账和健身，照顾好自己的日子。", "en": "Trips, budgets and fitness for everyday life." }
+  }
+]

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Empty, Spin } from "antd";
-import { Coins, RefreshCw, X } from "lucide-react";
+import { Check, Clock3, Coins, RefreshCw, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { lynxceWalletApi } from "../../api/modules/lynxceWallet";
 import {
@@ -74,7 +74,7 @@ export function CreditsAmount({ credits }: { credits: CreditsState }) {
   );
 }
 
-/** Settings → 账号与积分: balance, recharge and the last 30 days of usage. */
+/** Settings → 账号与积分: balance and recharge beside the last 30 days of usage. */
 export function CreditsPanel() {
   const { t, i18n } = useTranslation();
   const credits = useLynxceCredits();
@@ -82,12 +82,14 @@ export function CreditsPanel() {
   const low = isLowCredits(credits);
   if (credits.status === "none") return null;
   return (
-    <section className={styles.panel} aria-labelledby="bot-credits-title">
-      <div className={styles.balanceCard} data-low={low || undefined}>
+    <div className={styles.panel}>
+      <section
+        className={styles.balanceCard}
+        data-low={low || undefined}
+        aria-labelledby="bot-credits-title"
+      >
         <div className={styles.balanceHead}>
-          <span id="bot-credits-title">
-            <Coins size={15} aria-hidden /> {t("botCredits.balance")}
-          </span>
+          <h3 id="bot-credits-title">{t("botCredits.walletTitle")}</h3>
           <Button
             type="text"
             size="small"
@@ -126,22 +128,36 @@ export function CreditsPanel() {
             }
           />
         )}
-        {low && <p className={styles.lowNote}>{t("botCredits.lowNote")}</p>}
-        <Button
-          type="primary"
-          size="large"
-          block
-          autoInsertSpace={false}
-          disabled={!credits.wallet}
-          loading={opening}
-          onClick={() => void recharge()}
-        >
-          {t("botCredits.recharge")}
-        </Button>
+        {low ? (
+          <p className={styles.lowNote}>{t("botCredits.lowNote")}</p>
+        ) : (
+          <p className={styles.muted}>{t("botCredits.rate")}</p>
+        )}
+        <div className={styles.balanceActions}>
+          <Button
+            type="primary"
+            size="large"
+            autoInsertSpace={false}
+            disabled={!credits.wallet}
+            loading={opening}
+            onClick={() => void recharge()}
+          >
+            {t("botCredits.recharge")}
+          </Button>
+          <Button
+            size="large"
+            autoInsertSpace={false}
+            href={LYNXCE_ACCOUNT_SITE}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t("botCredits.accountCentre")}
+          </Button>
+        </div>
         <small className={styles.muted}>{t("botCredits.shared")}</small>
-      </div>
+      </section>
       <AccountUsage language={i18n.language} />
-    </section>
+    </div>
   );
 }
 
@@ -153,6 +169,7 @@ function AccountUsage({ language }: { language: string }) {
   } | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  const [group, setGroup] = useState<"bots" | "models">("bots");
   useEffect(() => {
     let current = true;
     setError("");
@@ -171,9 +188,34 @@ function AccountUsage({ language }: { language: string }) {
     [...summary.buckets]
       .filter((b) => b.total_tokens > 0)
       .sort((a, b) => b.total_tokens - a.total_tokens);
+  const list = data ? rows(data[group]) : [];
+  const top = list[0]?.total_tokens ?? 0;
   return (
-    <div className={styles.usage}>
-      <h3>{t("botCredits.usageTitle")}</h3>
+    <section className={styles.usage} aria-labelledby="bot-usage-title">
+      <div className={styles.usageHead}>
+        <h3 id="bot-usage-title">{t("botCredits.usageTitle")}</h3>
+        <div
+          className={styles.segmented}
+          role="group"
+          aria-label={t("botCredits.usageGroup")}
+        >
+          {(
+            [
+              ["bots", "botCredits.byBot"],
+              ["models", "botCredits.byModel"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={group === value}
+              onClick={() => setGroup(value)}
+            >
+              {t(label)}
+            </button>
+          ))}
+        </div>
+      </div>
       {error ? (
         <Alert
           type="error"
@@ -194,37 +236,38 @@ function AccountUsage({ language }: { language: string }) {
         />
       ) : (
         <>
-          <p className={styles.muted}>
-            {t("botCredits.usageTotal", {
-              tokens: formatExactCount(data.bots.total_tokens, language),
-              calls: formatExactCount(data.bots.model_calls, language),
-            })}
-          </p>
-          {(
-            [
-              ["botCredits.byBot", rows(data.bots)],
-              ["botCredits.byModel", rows(data.models)],
-            ] as const
-          ).map(
-            ([label, list]) =>
-              list.length > 0 && (
-                <div key={label}>
-                  <h4>{t(label)}</h4>
-                  <ul className={styles.rows}>
-                    {list.map((row) => (
-                      <li key={row.key}>
-                        <span>{row.label || row.key}</span>
-                        <b>{formatExactCount(row.total_tokens, language)}</b>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ),
-          )}
+          <dl className={styles.stats}>
+            <div>
+              <dt>{t("botCredits.tokens")}</dt>
+              <dd>{formatExactCount(data.bots.total_tokens, language)}</dd>
+            </div>
+            <div>
+              <dt>{t("botCredits.calls")}</dt>
+              <dd>{formatExactCount(data.bots.model_calls, language)}</dd>
+            </div>
+          </dl>
+          <ul className={styles.rows} aria-label={t("botCredits.usageTitle")}>
+            {list.map((row) => (
+              <li key={row.key}>
+                <span>{row.label || row.key}</span>
+                <span className={styles.bar} aria-hidden="true">
+                  <span
+                    style={{
+                      width: `${Math.max(
+                        2,
+                        top ? (row.total_tokens / top) * 100 : 0,
+                      )}%`,
+                    }}
+                  />
+                </span>
+                <b>{formatExactCount(row.total_tokens, language)}</b>
+              </li>
+            ))}
+          </ul>
           <small className={styles.muted}>{t("botCredits.usageHint")}</small>
         </>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -307,10 +350,10 @@ export function CreditsRequiredCard({
   }, []);
   if (kind === "limit")
     return (
-      <div className={styles.outCard} role="alert">
+      <div className={styles.outCard} role="alert" data-state="limit">
         <div className={styles.outHead}>
           <span className={styles.outIcon} aria-hidden>
-            <Coins size={16} />
+            <Clock3 size={16} />
           </span>
           <strong>{t("botCredits.limitTitle")}</strong>
         </div>
@@ -339,12 +382,18 @@ export function CreditsRequiredCard({
     !!credits.wallet &&
     credits.wallet.credits >= LOW_CREDITS;
   return (
-    <div className={styles.outCard} role="alert">
+    <div
+      className={styles.outCard}
+      role="alert"
+      data-state={enough ? "ready" : "out"}
+    >
       <div className={styles.outHead}>
         <span className={styles.outIcon} aria-hidden>
-          <Coins size={16} />
+          {enough ? <Check size={16} /> : <Coins size={16} />}
         </span>
-        <strong>{t("botCredits.outTitle")}</strong>
+        <strong>
+          {t(enough ? "botCredits.readyTitle" : "botCredits.outTitle")}
+        </strong>
       </div>
       <p>{t(enough ? "botCredits.outReady" : "botCredits.outBody")}</p>
       {credits.wallet && (
