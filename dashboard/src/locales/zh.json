@@ -388,6 +388,19 @@
       "signIn": "登录灵策智算",
       "cloudModels": "对话使用你的灵策智算账号里的模型，费用从灵策积分扣除。"
     },
+    "octopImport": {
+      "title": "从 Octop 导入",
+      "found": "发现本机的 Octop：{{agents}} 个助手、{{threads}} 段会话",
+      "nothingNew": "本机 Octop 的助手都已导入",
+      "action": "一键导入",
+      "confirmTitle": "从 Octop 导入？",
+      "confirmBody": "会复制 Octop 里的助手（含记忆和工作区文件）、会话和模型配置，Octop 本身不受影响。已导入过的助手会跳过。IM 频道和定时任务导入后先暂停，避免两边同时回复。",
+      "done": "已导入 {{agents}} 个助手、{{threads}} 段会话",
+      "providers": "新增模型配置：{{names}}",
+      "paused": "{{channels}} 个 IM 频道、{{cron}} 个定时任务已暂停，确认 Octop 不再使用它们后再开启。",
+      "skipped": "跳过 {{count}} 个已存在的助手",
+      "failed": "{{names}} 导入失败"
+    },
     "update": {
       "title": "关于与更新",
       "current": "当前版本 {{version}}",

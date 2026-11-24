@@ -16,6 +16,7 @@ import { lynxceBotApi } from "../../api/modules/lynxceBot";
 import { refreshBotModels, useLynxceStatus } from "../../hooks/useLynxceStatus";
 import LynxceAccount from "./LynxceAccount";
 import BotNotifySettings from "./BotNotifySettings";
+import OctopImport from "./OctopImport";
 import RetainedFolders from "./RetainedFolders";
 import BotUpdatePanel from "./BotUpdatePanel";
 import { providerApi } from "../../api/modules/provider";
@@ -267,6 +268,7 @@ export default function BotClientSettings() {
                 )}
               </div>
               <BotNotifySettings />
+              <OctopImport />
               <BotUpdatePanel />
               <h3>{t("botClient.nav.privacy")}</h3>
               <div className={settings.group}>

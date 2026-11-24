@@ -388,6 +388,19 @@
       "signIn": "Sign in to Lynxce",
       "cloudModels": "Chats run on the models in your Lynxce account and are paid with Lynxce credits."
     },
+    "octopImport": {
+      "title": "Import from Octop",
+      "found": "Octop found on this computer: {{agents}} assistants, {{threads}} chats",
+      "nothingNew": "All assistants from Octop on this computer are already imported",
+      "action": "Import",
+      "confirmTitle": "Import from Octop?",
+      "confirmBody": "Copies Octop's assistants (with their memory and workspace files), chats and model settings. Octop itself is not changed. Assistants imported before are skipped. IM channels and scheduled tasks arrive paused so the two apps don't both reply.",
+      "done": "Imported {{agents}} assistants and {{threads}} chats",
+      "providers": "Model settings added: {{names}}",
+      "paused": "{{channels}} IM channels and {{cron}} scheduled tasks are paused; turn them on once Octop no longer uses them.",
+      "skipped": "Skipped {{count}} assistants that are already here",
+      "failed": "Could not import {{names}}"
+    },
     "update": {
       "title": "About & updates",
       "current": "Version {{version}}",
