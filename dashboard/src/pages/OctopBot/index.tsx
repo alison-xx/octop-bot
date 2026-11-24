@@ -18,6 +18,7 @@ import {
   PanelLeftOpen,
   Plus,
   Settings2,
+  Store,
   Users,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -40,6 +41,7 @@ import {
   BOT_CLOUD,
   BOT_GUIDE,
   BOT_HOME,
+  BOT_MARKET,
   botGuideSeenKey,
 } from "../../utils/botClientRoute";
 import { pickPreferredSession, toSession } from "../Chat/hooks/useSessions";
@@ -292,6 +294,10 @@ export default function OctopBotPage() {
     },
     [],
   );
+  const openMarket = useCallback(() => {
+    setShowList(false);
+    navigate(BOT_MARKET, { state: { from: location.pathname } });
+  }, [navigate, location.pathname]);
   const startGroupWithMembers = useCallback(
     (group: BotGroup) => {
       const section = workspace?.sections.find((s) =>
@@ -903,6 +909,16 @@ export default function OctopBotPage() {
             onClick={() => setSearchOpen(true)}
           />
         )}
+        {standalone && navAllowed(user, "experts") && (
+          <Button
+            type="text"
+            className={directory.iconButton}
+            title={t("botMarket.entry")}
+            aria-label={t("botMarket.entry")}
+            icon={<Store size={16} />}
+            onClick={openMarket}
+          />
+        )}
         <Dropdown
           trigger={["click"]}
           {...directoryMenu.overflowProps("add")}
@@ -927,13 +943,15 @@ export default function OctopBotPage() {
                     { key: "bot", label: t("octopBot.newBot") },
                     ...(!standalone
                       ? [{ key: "managed", label: t("octopBot.newManaged") }]
-                      : []),
+                      : [{ key: "market", label: t("botMarket.menuEntry") }]),
                   ]
                 : []),
               { key: "group", label: t("octopBot.newGroup") },
             ],
             onClick: ({ key }) => {
-              if (key === "newChat") {
+              if (key === "market") {
+                openMarket();
+              } else if (key === "newChat") {
                 if (selectedGroup) startGroupWithMembers(selectedGroup);
                 else
                   startPrivateChat(
@@ -1017,6 +1035,19 @@ export default function OctopBotPage() {
                   }}
                 >
                   {t("botDirectory.addFirst")}
+                </Button>
+              )}
+            {!compactDirectory &&
+              all.length === 1 &&
+              navAllowed(user, "experts") && (
+                <Button
+                  className={directory.firstMember}
+                  type="text"
+                  block
+                  icon={<Store size={15} />}
+                  onClick={openMarket}
+                >
+                  {t("botMarket.browse")}
                 </Button>
               )}
           </>
@@ -1268,6 +1299,10 @@ export default function OctopBotPage() {
           onChoose={setNewLook}
           onClose={close}
           onCreated={onBotCreated}
+          onBrowseMarket={() => {
+            close();
+            openMarket();
+          }}
         />
       )}
       {dialog === "bot" && !standalone && (

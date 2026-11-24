@@ -18,6 +18,16 @@ describe("standalone Bot navigation", () => {
     ["/octop-bot/settings", "/octop-bot/settings"],
     ["/octop-bot/cloud", "/octop-bot/cloud"],
     ["/octop-bot/guide", "/octop-bot/guide"],
+    ["/octop-bot/market", "/octop-bot/market"],
+    [
+      "/octop-bot/market/store-daily-brief",
+      "/octop-bot/market/store-daily-brief",
+    ],
+    [
+      "/octop-bot/market/store-daily-brief/import",
+      "/octop-bot/market/store-daily-brief/import",
+    ],
+    ["/octop-bot/market/store-daily-brief/delete", "/octop-bot"],
     ["/admin/users", "/octop-bot"],
     ["/invite", "/octop-bot"],
     ["//external.test", "/octop-bot"],

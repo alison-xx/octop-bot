@@ -49,6 +49,8 @@ _JWT_EXEMPT_PREFIXES = (
     "/api/shares/",
     # An open cloud computer screen: the unguessable screen session is the credential.
     "/api/octop-bot/screen-sessions/",
+    # The Bot market catalog is static and public (website links, plain <img> portraits).
+    "/api/octop-bot/market/",
 )
 _JWT_EXEMPT_EXACT = (
     "/api/health",
@@ -60,6 +62,7 @@ _JWT_EXEMPT_EXACT = (
     "/api/auth/lynxce/status",
     # Octop Bot clients check an address before showing a sign-in form.
     "/api/octop-bot/server-info",
+    "/api/octop-bot/market",
     # Desktop shells renew an expired session here; the device token is the
     # credential and the router enforces shell-flag + loopback + digest match.
     "/api/auth/device/token",
