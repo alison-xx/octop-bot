@@ -1,10 +1,81 @@
 {
   "schemaVersion": 1,
   "product": "octop-bot",
-  "hidden": [
-    "ios"
-  ],
+  "hidden": [],
   "releases": [
+    {
+      "version": "1.0.6",
+      "channel": "beta",
+      "date": "2026-11-25",
+      "tag": "octop-bot-v1.0.6-macos",
+      "notes": {
+        "zh": [
+          "第一次使用时，可以选择行业或岗位，让 Chief 帮你组建第一支 Bot 团队并创建群聊。",
+          "登录页和账号菜单换了布局。设置现在按账号、AI、通用和其他分组，外观与语言、通知、桌面与隐私各有独立页面。",
+          "账号菜单和聊天中的本人头像会显示灵策照片；未设置或图片无法加载时，显示名字首字。充值完成后，返回 Mac 应用可查看最新积分余额。",
+          "在「Bot 的电脑」里查看这台 Mac 时，如果缺少屏幕录制或辅助功能权限，应用会提示你到系统设置授权。修复了画面一直黑屏加载的问题。",
+          "正式版与开发版分别保存服务器设置，修复了正式版启动时尝试连接本地开发服务器的问题。"
+        ],
+        "en": [
+          "On your first visit, pick an industry or role and Chief will set up your first Bot team and group chat.",
+          "The sign-in screen and account menu have new layouts. Settings now groups options under Account, AI, General, and Other, with separate pages for appearance and language, notifications, and desktop privacy.",
+          "Your account menu and chat show your Lynxce profile photo, with the first character of your name as a fallback. Return to the Mac app after checkout to see the refreshed credit balance.",
+          "When viewing your Mac in Bot’s computer, the app tells you which screen recording or accessibility permission to grant in System Settings. This fixes a black screen that could keep loading indefinitely.",
+          "The installed Mac app keeps its server settings separate from development builds, so it opens the right server at startup."
+        ]
+      },
+      "assets": [
+        {
+          "platform": "darwin",
+          "arch": "arm64",
+          "kind": "dmg",
+          "name": "Octop-Bot-1.0.6-mac-arm64.dmg",
+          "sha256": "c6a126a53b5f8b24679054e70a5d97b50f7312ed33b3d91a945b2073ca583f65",
+          "size": 356877177,
+          "url": "https://dl.lynxce.cn/releases/octop-bot/1.0.6/Octop-Bot-1.0.6-mac-arm64.dmg"
+        }
+      ]
+    },
+    {
+      "version": "1.0.5",
+      "channel": "beta",
+      "date": "2026-11-25",
+      "tag": "octop-bot-v1.0.5",
+      "notes": {
+        "en": [
+          "Octop Bot 1.0.5: new sign-in and settings, Lynxce credits and top-up, your own model keys (Tencent Cloud, Bailian, Ark and more), cloud computers with live screen and takeover, image and video generation, file cards, Bot market."
+        ],
+        "zh": [
+          "开始页和登录改版：用灵策智算账号登录（验证码或密码，顶部标签切换，没有账号会自动注册），或者不登录、在本机自己配置模型。",
+          "设置页按新设计改版：左侧导航分为账号与积分、模型、能力、通用、关于与更新；「账号与积分」页并排显示余额和近 30 天用量，未登录时给出登录引导；「关于与更新」页显示版本、检查更新、当前服务器，并可切换服务器。积分提示条和积分不足卡片换成新样式。",
+          "设置 → 模型分成三组：灵策智算（扣积分）、我的 API Key、本地模型。「我的 API Key」可以填腾讯云 TokenHub、阿里云百炼、火山方舟、DeepSeek、智谱、Kimi、MiniMax、硅基流动等 40 多家厂商的 Key，用自己的 Key 聊天由厂商直接收费，不扣灵策积分。",
+          "积分与充值：账号菜单和侧边栏显示灵策积分余额，「账号与积分」页可以充值、查看近 30 天按 Bot 和按模型的用量；余额低于 100 积分时提醒；积分不足或当天额度用完时，对话里给出充值或稍后继续的卡片。",
+          "灵策云端：用灵策账号登录 bot.lynxce.cn，Bot、群聊和文件都在云端，电脑和手机上都能接着用。",
+          "云电脑：每个 Bot 可以有自己的云电脑，按分钟扣积分，空闲 10 分钟自动暂停。可以实时看画面、接管键鼠、输入中文、同步剪贴板，Bot 工作时画面以浮窗显示。",
+          "Bot 可以用灵策的模型画图、做视频，结果以文件卡片显示。",
+          "附件和 Bot 产出的文件改为卡片显示，可预览、下载。",
+          "新增 Bot 市场：30 个行业的 Bot 模板，一键添加到自己的团队。",
+          "每个 Bot 的资料页新增「动态」和「资料库」。",
+          "侧边栏可以删除群聊。",
+          "Windows 上「分享」按钮不再被窗口右上角的按钮挡住。",
+          "后台窗口的未读数和旧群聊的未读数保留正确。"
+        ]
+      },
+      "assets": [
+        {
+          "platform": "darwin",
+          "arch": "arm64",
+          "kind": "dmg",
+          "name": "Octop-Bot-1.0.5-mac-arm64.dmg",
+          "sha256": "0fc29e91b7684d7704cd6d65520ab9b4e3e4c2d0aca19bd8ce5cd9986ebef7f7",
+          "size": 356104469,
+          "url": "https://dl.lynxce.cn/releases/octop-bot/1.0.5/Octop-Bot-1.0.5-mac-arm64.dmg"
+        }
+      ],
+      "nas": {
+        "image": "ghcr.io/alison-xx/octop-bot:nas-1.0.5"
+      }
+    },
     {
       "version": "1.0.4",
       "channel": "stable",
@@ -53,6 +124,21 @@
           "url": "https://dl.lynxce.cn/releases/octop-bot/mobile/1.0.3/octop-bot-1.0.3-6.apk",
           "size": 17984087,
           "sha256": "0470ab06e7f8fc033cfcd9def5f80c16f7d5f200f447e4c466d1656ff866daff"
+        },
+        {
+          "platform": "darwin",
+          "arch": "arm64",
+          "kind": "dmg",
+          "name": "Octop-Bot-1.0.4-mac-arm64.dmg",
+          "sha256": "fb2f85534dd4a71e4efadc12b8bee3ae34920cbabf512023a7251c527edd1fbf",
+          "size": 335294177,
+          "url": "https://dl.lynxce.cn/releases/octop-bot/1.0.4/Octop-Bot-1.0.4-mac-arm64.dmg"
+        },
+        {
+          "platform": "ios",
+          "kind": "store",
+          "appVersion": "1.0.0",
+          "url": "https://apps.apple.com/app/id6838257776"
         }
       ]
     },

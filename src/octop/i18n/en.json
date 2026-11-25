@@ -1,4 +1,7 @@
 {
+  "bot_tasks": {
+    "model_silence": "The model stopped responding. The task has been interrupted. Your completed work and evidence are saved in the task card."
+  },
   "bot_rooms": {
     "attachments": "Read the requested attachments at their attachment_paths in this group's workspace.",
     "im_text_only": "Send text to this Bot group. Open Octop Bot to attach or view files.",
@@ -66,6 +69,11 @@
       "role": "What this job usually involves: {hint}"
     },
     "approval": {
+      "start_observing": "Always allow starts an observation period. You will confirm three more actions and review them before enabling the rule.",
+      "observing": "Observation {count}/3. Allow once records this approval. Denying ends observation of this rule.",
+      "review_records": "Review the three actions you approved before enabling this rule.",
+      "activate": "Enable rule and allow",
+      "budget_detail": "Total limits change from {old_steps} steps and {old_minutes} minutes to {steps} steps and {minutes} minutes.",
       "title": "Needs your OK",
       "header": "Confirm",
       "question": "The Bot wants to {action}: {target}\n{detail}",
@@ -74,6 +82,7 @@
       "always": "Always allow",
       "deny": "Deny",
       "category": {
+        "budget": "extend the task limits for",
         "send": "send",
         "publish": "publish",
         "submit": "submit",
@@ -522,8 +531,11 @@
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",
     "LOGIN_LOCKED": "Too many failed sign-in attempts. Try again in {minutes} minutes.",
+    "RATE_LIMITED": "Too many requests. Please try again later.",
     "USERNAME_TAKEN": "Username is already taken.",
     "EMAIL_TAKEN": "Email is already taken.",
+    "BOT_PLAN_UNAVAILABLE": "Plan purchases are not available yet.",
+    "BOT_RECHARGE_RATE_LIMITED": "Too many recharge requests. Try again in a minute.",
     "EMAIL_INVALID": "Invalid email address.",
     "PASSWORD_SAME_AS_OLD": "New password must be different from the current password.",
     "PASSWORD_NOT_SET": "This account signs in through a directory and has no local password to change.",
@@ -971,6 +983,7 @@
     }
   },
   "agent_errors": {
+    "generic_start_failure": "The Bot could not start. Please try again later.",
     "no_models_configured": "No models are configured. Go to Admin → Model Management to add a provider, then enable this expert again.",
     "model_ref_unavailable": "The default model is unavailable or disabled. Check Admin → Model Management or update this expert's default model, then try again.",
     "start_timeout": "This expert took too long to start (storage backend I/O). Try again, or switch it to a local workspace backend."

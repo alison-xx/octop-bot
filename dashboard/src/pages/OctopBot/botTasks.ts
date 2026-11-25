@@ -1,3 +1,4 @@
+import type { BotTaskStatus } from "../../api/modules/botTaskStatus";
 import type { ChatMessage } from "../Chat/hooks/useChat";
 import { isResumableHitl } from "../Chat/utils/pendingHitl";
 import {
@@ -6,7 +7,12 @@ import {
 } from "../../utils/parseWriteTodos";
 
 /** The Bot's task tools; each returns the whole task as JSON. */
-export const TASK_TOOLS = ["task_plan", "task_check", "task_finish"] as const;
+export const TASK_TOOLS = [
+  "task_plan",
+  "task_check",
+  "task_finish",
+  "task_extend_budget",
+] as const;
 export type TaskToolName = (typeof TASK_TOOLS)[number];
 
 export type TaskStatus = "running" | "done" | "partial" | "stopped";
@@ -104,7 +110,10 @@ export function parseTaskOutput(output: unknown): BotTask | null {
  * One entry per task in the conversation: its latest state (a check made in a later turn
  * updates the card where the task started) and the plan kept while it ran.
  */
-export function indexBotTasks(messages: readonly ChatMessage[]): BotTaskIndex {
+export function indexBotTasks(
+  messages: readonly ChatMessage[],
+  statuses: readonly BotTaskStatus[] = [],
+): BotTaskIndex {
   const byId = new Map<string, BotTaskEntry>();
   const byMessage = new Map<string, string>();
   const starts: { id: string; index: number }[] = [];
@@ -140,6 +149,12 @@ export function indexBotTasks(messages: readonly ChatMessage[]): BotTaskIndex {
         isResumableHitl(m.hitlData),
     );
   });
+  for (const status of statuses) {
+    const entry = byId.get(status.id);
+    if (entry && status.updated_at >= entry.task.updated_at) {
+      entry.task = { ...entry.task, ...status };
+    }
+  }
   return { byId, byMessage, latest: starts[starts.length - 1]?.id };
 }
 

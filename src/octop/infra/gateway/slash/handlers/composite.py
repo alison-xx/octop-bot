@@ -12,6 +12,7 @@ from octop_harness.slash import SlashCommand, SlashSink, thread_message_count
 
 from octop.i18n.domains.agents import agent_error_message
 from octop.i18n.domains.slash import localized_rows, tr
+from octop.infra.agents.error_display import visible_agent_error
 from octop.infra.gateway.slash.ctx import SlashCtx, ensure_thread_id, lang_of
 from octop.infra.gateway.slash.formatting import (
     format_duration,
@@ -286,10 +287,17 @@ async def cmd_status(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink:
         cron_count = len(ctx.cron_manager.list_by_agent(ctx.agent_id, include_disabled=False))
         rows.append(("cron_jobs", str(cron_count)))
     if agent_row is not None and agent_row.last_error:
+        viewer = ctx.user_repo.get(ctx.user_id) if ctx.user_repo is not None else None
+        error = visible_agent_error(
+            ctx.agent_id,
+            agent_row.last_error,
+            is_admin=viewer is not None and viewer.role == "admin",
+            locale=lang,
+        )
         rows.append(
             (
                 "last_error",
-                agent_error_message(agent_row.last_error, lang)[:120],
+                agent_error_message(error, lang)[:120],
             )
         )
 

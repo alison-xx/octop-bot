@@ -1,0 +1,75 @@
+{
+  "identifier": "dfdea7fc-7b2c-41c3-b769-61295c9559e8",
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "9.99",
+      "familyShareable": false,
+      "internalID": "a319a0d1-486b-4513-a56e-724e1c7d43b6",
+      "localizations": [
+        {
+          "description": "5,000 credits",
+          "displayName": "5,000 credits",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "cn.lynxce.octopbot.credits.5000",
+      "referenceName": "5,000 credits",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "19.99",
+      "familyShareable": false,
+      "internalID": "8092affc-47e3-4d04-9f97-ce18005014a9",
+      "localizations": [
+        {
+          "description": "10,000 credits",
+          "displayName": "10,000 credits",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "cn.lynxce.octopbot.credits.10000",
+      "referenceName": "10,000 credits",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "99.99",
+      "familyShareable": false,
+      "internalID": "dc09c69c-72af-4adb-9218-eb129b3bdf84",
+      "localizations": [
+        {
+          "description": "52,500 credits",
+          "displayName": "52,500 credits",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "cn.lynxce.octopbot.credits.52500",
+      "referenceName": "52,500 credits",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "199.99",
+      "familyShareable": false,
+      "internalID": "4f8e1eca-259c-4b5d-b86e-846e14b00f7b",
+      "localizations": [
+        {
+          "description": "110,000 credits",
+          "displayName": "110,000 credits",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "cn.lynxce.octopbot.credits.110000",
+      "referenceName": "110,000 credits",
+      "type": "Consumable"
+    }
+  ],
+  "settings": {
+    "_locale": "en_US",
+    "_storefront": "USA"
+  },
+  "subscriptionGroups": [],
+  "version": {
+    "major": 3,
+    "minor": 0
+  }
+}

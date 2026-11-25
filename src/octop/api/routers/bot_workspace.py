@@ -171,6 +171,7 @@ async def bot_privacy(
             row,
             server.services.settings_repo.get(chief_key(user.id)) or "",
             server.services.settings_repo,
+            is_admin=user.is_admin,
         )
     )
 

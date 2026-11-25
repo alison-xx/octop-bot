@@ -38,6 +38,8 @@ def sign_token(
     ttl_seconds: int = 86400,
     mfa_version: int = 0,
     password_version: int = 0,
+    session_version: int = 0,
+    auth_time: int | None = None,
     amr: str | None = None,
     jti: str | None = None,
 ) -> str:
@@ -56,6 +58,8 @@ def sign_token(
     if purpose in (PURPOSE_ACCESS, PURPOSE_DESKTOP_REMOTE):
         payload["mfa_version"] = int(mfa_version)
         payload["password_version"] = int(password_version)
+        payload["sv"] = int(session_version)
+        payload["auth_time"] = now if auth_time is None else auth_time
     elif purpose == PURPOSE_MFA:
         payload["mfa_version"] = int(mfa_version)
         if amr is None:

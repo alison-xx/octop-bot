@@ -23,6 +23,7 @@ import { parseSkillSlugsInText } from "../utils/skillSlash";
 interface UseChatSendParams {
   resolvedAgentId: string | null | undefined;
   activeThreadId: string | null;
+  activeThreadReady?: boolean;
   selectedModel: string | null;
   selectedConnectors: string[];
   selectedKnowledgeBaseIds: string[];
@@ -76,6 +77,7 @@ export type ChatSendOverrides = {
 export function useChatSend({
   resolvedAgentId,
   activeThreadId,
+  activeThreadReady = true,
   selectedModel,
   selectedConnectors,
   selectedKnowledgeBaseIds,
@@ -107,6 +109,11 @@ export function useChatSend({
         return false;
       }
 
+      if (
+        !activeThreadReady &&
+        (overrides?.threadId ?? activeThreadId) === activeThreadId
+      )
+        return false;
       const trimmed = text.trim();
       if (!trimmed && !(attachments && attachments.length > 0)) return false;
 
@@ -234,6 +241,7 @@ export function useChatSend({
     },
     [
       activeThreadId,
+      activeThreadReady,
       sendMessage,
       createSession,
       navigate,
@@ -255,6 +263,7 @@ export function useChatSend({
 
   useEffect(() => {
     const consumePending = () => {
+      if (!activeThreadReady) return;
       const raw = localStorage.getItem("octop.pendingChatMessage");
       if (!raw) return;
       localStorage.removeItem("octop.pendingChatMessage");
@@ -318,7 +327,13 @@ export function useChatSend({
     window.addEventListener("octop:pending-chat-message", handler);
     return () =>
       window.removeEventListener("octop:pending-chat-message", handler);
-  }, [handleSend, activeThreadId, onAutoRecordingStarted, t]);
+  }, [
+    handleSend,
+    activeThreadReady,
+    activeThreadId,
+    onAutoRecordingStarted,
+    t,
+  ]);
 
   return { handleSend };
 }

@@ -297,6 +297,7 @@ private fun AssistantReply(message: ChatMessage, bot: BotProfile, motion: BotMot
                 }
             }
             when {
+                streaming && message.text.isNotEmpty() -> Text(message.text, style = chatText(MaterialTheme.typography.bodyLarge))
                 message.text.isNotEmpty() -> MarkdownText(message.text)
                 streaming && message.thinking.isEmpty() -> TypingDots(Modifier.padding(top = 8.dp))
             }

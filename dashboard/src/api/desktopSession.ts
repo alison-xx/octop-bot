@@ -49,7 +49,7 @@ function claimOf(token: string, key: "sub" | "uname"): string | null {
 }
 
 /** Subject claim, used to notice a different user signing in. */
-function subjectOf(token: string): string | null {
+export function subjectOf(token: string): string | null {
   return claimOf(token, "sub");
 }
 

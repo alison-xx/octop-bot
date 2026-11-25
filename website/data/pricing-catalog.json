@@ -4,18 +4,20 @@
    {
     "modelId": "deepseek-flash",
     "routeId": "yunxin::deepseek-flash",
-    "routeCostRank": 2,
+    "routeCostRank": 10,
+    "pricingDescription": "每百万 Token 积分价：空闲输入 384、输出 1536、缓存命中 7.68；高峰输入 768、输出 3072、缓存命中 15.36。",
+    "description": "支持对话与工具调用，按实际输入、输出及缓存用量计费。 峰谷计费：中国法定节假日全天为空闲；峰谷计费：北京时间周一至周五 09:00–12:00、14:00–18:00 为高峰，其余时间（含周末）为空闲。按每次调用开始时的时段计费。",
     "modelName": "DeepSeek V4.1 Flash",
     "providerLabel": "DeepSeek",
     "supportsImage": true,
     "supportsThinking": true,
-    "creditsPerKInputTokens": 0.384,
-    "creditsPerKOutputTokens": 1.536
+    "creditsPerKInputTokens": 0.768,
+    "creditsPerKOutputTokens": 3.072
    },
    {
     "modelId": "qwen3.8-flash",
     "routeId": "qianwen::qwen3.8-flash",
-    "routeCostRank": 7,
+    "routeCostRank": 6,
     "modelName": "Qwen3.8 Flash",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -26,7 +28,7 @@
    {
     "modelId": "glm-5.3-flash",
     "routeId": "bigmodel::glm-5.3-flash",
-    "routeCostRank": 8,
+    "routeCostRank": 7,
     "modelName": "GLM-5.3 Flash",
     "providerLabel": "智谱 GLM",
     "supportsImage": true,
@@ -37,57 +39,67 @@
    {
     "modelId": "deepseek-flash",
     "routeId": "deepseek::deepseek-flash",
-    "routeCostRank": 11,
+    "routeCostRank": 21,
+    "pricingDescription": "每百万 Token 积分价：空闲输入 300、输出 1200、缓存命中 6；高峰输入 600、输出 2400、缓存命中 12。",
+    "description": "DeepSeek-V4.1-Flash-1017，使用稳定模型 ID deepseek-flash 自动访问最新版本，价格不变；原生图片理解、1M 上下文，支持思考模式与工具调用。 峰谷计费：北京时间周一至周五 09:00–12:00、14:00–18:00 为高峰，其余时间（含周末）为空闲。按每次调用开始时的时段计费。",
     "modelName": "DeepSeek V4.1 Flash",
     "providerLabel": "DeepSeek",
     "supportsImage": true,
     "supportsThinking": true,
-    "creditsPerKInputTokens": 0.3,
-    "creditsPerKOutputTokens": 1.2
+    "creditsPerKInputTokens": 0.6,
+    "creditsPerKOutputTokens": 2.4
    },
    {
     "modelId": "deepseek-ai/DeepSeek-V4-Flash",
     "routeId": "deepseek::deepseek-ai/DeepSeek-V4-Flash",
-    "routeCostRank": 11,
+    "routeCostRank": 21,
+    "pricingDescription": "每百万 Token 积分价：空闲输入 300、输出 1200、缓存命中 6；高峰输入 600、输出 2400、缓存命中 12。",
+    "description": "官方 deepseek-flash 已自动升级至 DeepSeek-V4.1-Flash-1017，价格不变，1M 上下文。 峰谷计费：北京时间周一至周五 09:00–12:00、14:00–18:00 为高峰，其余时间（含周末）为空闲。按每次调用开始时的时段计费。",
     "modelName": "DeepSeek V4.1 Flash",
     "providerLabel": "DeepSeek",
     "supportsImage": false,
     "supportsThinking": true,
-    "creditsPerKInputTokens": 0.3,
-    "creditsPerKOutputTokens": 1.2
+    "creditsPerKInputTokens": 0.6,
+    "creditsPerKOutputTokens": 2.4
    },
    {
     "modelId": "deepseek-v4-flash-vision-exp",
     "routeId": "deepseek::deepseek-v4-flash-vision-exp",
-    "routeCostRank": 11,
+    "routeCostRank": 21,
+    "pricingDescription": "每百万 Token 积分价：空闲输入 300、输出 1200、缓存命中 6；高峰输入 600、输出 2400、缓存命中 12。",
+    "description": "官方 deepseek-flash 已自动升级至 DeepSeek-V4.1-Flash-1017，价格不变，1M 上下文。 峰谷计费：北京时间周一至周五 09:00–12:00、14:00–18:00 为高峰，其余时间（含周末）为空闲。按每次调用开始时的时段计费。",
     "modelName": "DeepSeek V4.1 Flash",
     "providerLabel": "DeepSeek",
     "supportsImage": true,
     "supportsThinking": false,
-    "creditsPerKInputTokens": 0.3,
-    "creditsPerKOutputTokens": 1.2
+    "creditsPerKInputTokens": 0.6,
+    "creditsPerKOutputTokens": 2.4
    },
    {
     "modelId": "deepseek-v4.1-flash-expires-on-0910",
     "routeId": "deepseek::deepseek-v4.1-flash-expires-on-0910",
-    "routeCostRank": 11,
+    "routeCostRank": 21,
+    "pricingDescription": "每百万 Token 积分价：空闲输入 300、输出 1200、缓存命中 6；高峰输入 600、输出 2400、缓存命中 12。",
+    "description": "V4.1 Flash 限时内测版本（型号标记 expires-on-0910），支持思考模式、文本对话与图片理解；平台接入窗口为 1M。 峰谷计费：北京时间周一至周五 09:00–12:00、14:00–18:00 为高峰，其余时间（含周末）为空闲。按每次调用开始时的时段计费。",
     "modelName": "DeepSeek V4.1 Flash",
     "providerLabel": "DeepSeek",
     "supportsImage": true,
     "supportsThinking": true,
-    "creditsPerKInputTokens": 0.3,
-    "creditsPerKOutputTokens": 1.2
+    "creditsPerKInputTokens": 0.6,
+    "creditsPerKOutputTokens": 2.4
    },
    {
     "modelId": "deepseek-ai/DeepSeek-V4-Pro",
     "routeId": "deepseek::deepseek-ai/DeepSeek-V4-Pro",
-    "routeCostRank": 11,
+    "routeCostRank": 21,
+    "pricingDescription": "每百万 Token 积分价：空闲输入 300、输出 1200、缓存命中 6；高峰输入 600、输出 2400、缓存命中 12。",
+    "description": "V4 旗舰推理模型，1M 长上下文，支持思考模式、工具调用与 JSON 输出；适合复杂规划、深度代码审查和多步骤 Agent 任务。 峰谷计费：北京时间周一至周五 09:00–12:00、14:00–18:00 为高峰，其余时间（含周末）为空闲。按每次调用开始时的时段计费。",
     "modelName": "DeepSeek V4 Pro",
     "providerLabel": "DeepSeek",
     "supportsImage": false,
     "supportsThinking": true,
-    "creditsPerKInputTokens": 0.3,
-    "creditsPerKOutputTokens": 1.2
+    "creditsPerKInputTokens": 0.6,
+    "creditsPerKOutputTokens": 2.4
    },
    {
     "modelId": "qwen3.7-plus",
@@ -114,7 +126,7 @@
    {
     "modelId": "doubao-seed-2.0-pro",
     "routeId": "ark::doubao-seed-2.0-pro",
-    "routeCostRank": 27,
+    "routeCostRank": 28,
     "modelName": "Doubao Seed 2.0 Pro",
     "providerLabel": "字节豆包",
     "supportsImage": true,
@@ -125,7 +137,7 @@
    {
     "modelId": "doubao-seed-2-1-pro-260628",
     "routeId": "ark::doubao-seed-2-1-pro-260628",
-    "routeCostRank": 33,
+    "routeCostRank": 34,
     "modelName": "Doubao Seed 2.1 Pro",
     "providerLabel": "字节豆包",
     "supportsImage": true,
@@ -169,7 +181,7 @@
    {
     "modelId": "deepseek-v4-pro-0813",
     "routeId": "qianwen::deepseek-v4-pro-0813",
-    "routeCostRank": 24,
+    "routeCostRank": 25,
     "modelName": "DeepSeek V4 Pro",
     "providerLabel": "DeepSeek",
     "supportsImage": false,
@@ -180,7 +192,7 @@
    {
     "modelId": "deepseek-v4-pro",
     "routeId": "qianwen::deepseek-v4-pro",
-    "routeCostRank": 25,
+    "routeCostRank": 26,
     "modelName": "DeepSeek V4 Pro",
     "providerLabel": "DeepSeek",
     "supportsImage": false,
@@ -191,7 +203,7 @@
    {
     "modelId": "qwen3.6-flash",
     "routeId": "qianwen::qwen3.6-flash",
-    "routeCostRank": 10,
+    "routeCostRank": 9,
     "modelName": "Qwen3.6 Flash",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -202,7 +214,7 @@
    {
     "modelId": "qwen3.7-max",
     "routeId": "qianwen::qwen3.7-max",
-    "routeCostRank": 29,
+    "routeCostRank": 30,
     "modelName": "Qwen3.7 Max",
     "providerLabel": "Qwen",
     "supportsImage": false,
@@ -213,7 +225,7 @@
    {
     "modelId": "qwen3.8-max",
     "routeId": "qianwen::qwen3.8-max",
-    "routeCostRank": 29,
+    "routeCostRank": 30,
     "modelName": "Qwen3.8 Max",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -224,7 +236,7 @@
    {
     "modelId": "qwen4-max-preview",
     "routeId": "qianwen::qwen4-max-preview",
-    "routeCostRank": 29,
+    "routeCostRank": 30,
     "modelName": "Qwen4 Max Preview",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -235,7 +247,7 @@
    {
     "modelId": "qwen-auto",
     "routeId": "qianwen::qwen-auto",
-    "routeCostRank": 29,
+    "routeCostRank": 30,
     "modelName": "Qwen Auto",
     "providerLabel": "Qwen",
     "supportsImage": false,
@@ -246,7 +258,7 @@
    {
     "modelId": "ZHIPU/GLM-5.2",
     "routeId": "qianwen::ZHIPU/GLM-5.2",
-    "routeCostRank": 25,
+    "routeCostRank": 26,
     "modelName": "GLM-5.2",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -257,7 +269,7 @@
    {
     "modelId": "glm-5.3",
     "routeId": "qianwen::glm-5.3",
-    "routeCostRank": 25,
+    "routeCostRank": 26,
     "modelName": "GLM-5.3",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -268,7 +280,7 @@
    {
     "modelId": "glm-5.3",
     "routeId": "yunxin::glm-5.3",
-    "routeCostRank": 32,
+    "routeCostRank": 33,
     "modelName": "GLM-5.3",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -279,7 +291,7 @@
    {
     "modelId": "glm-5.2",
     "routeId": "yunxin::glm-5.2",
-    "routeCostRank": 32,
+    "routeCostRank": 33,
     "modelName": "GLM-5.2",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -290,7 +302,7 @@
    {
     "modelId": "glm-5.1",
     "routeId": "yunxin::glm-5.1",
-    "routeCostRank": 30,
+    "routeCostRank": 31,
     "modelName": "GLM-5.1",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -301,7 +313,7 @@
    {
     "modelId": "glm-5-turbo",
     "routeId": "yunxin::glm-5-turbo",
-    "routeCostRank": 28,
+    "routeCostRank": 29,
     "modelName": "GLM-5 Turbo",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -312,7 +324,7 @@
    {
     "modelId": "glm-5",
     "routeId": "yunxin::glm-5",
-    "routeCostRank": 26,
+    "routeCostRank": 27,
     "modelName": "GLM-5",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -323,7 +335,7 @@
    {
     "modelId": "kimi-k3",
     "routeId": "yunxin::kimi-k3",
-    "routeCostRank": 35,
+    "routeCostRank": 36,
     "modelName": "Kimi K3",
     "providerLabel": "月之暗面 Kimi",
     "supportsImage": false,
@@ -334,7 +346,7 @@
    {
     "modelId": "kimi-k2.7-code",
     "routeId": "yunxin::kimi-k2.7-code",
-    "routeCostRank": 31,
+    "routeCostRank": 32,
     "modelName": "Kimi K2.7 Code",
     "providerLabel": "月之暗面 Kimi",
     "supportsImage": false,
@@ -345,7 +357,7 @@
    {
     "modelId": "kimi-k2.6",
     "routeId": "yunxin::kimi-k2.6",
-    "routeCostRank": 31,
+    "routeCostRank": 32,
     "modelName": "Kimi K2.6",
     "providerLabel": "月之暗面 Kimi",
     "supportsImage": false,
@@ -356,7 +368,7 @@
    {
     "modelId": "qwen3.8-max",
     "routeId": "yunxin::qwen3.8-max",
-    "routeCostRank": 33,
+    "routeCostRank": 34,
     "modelName": "Qwen3.8 Max",
     "providerLabel": "Qwen",
     "supportsImage": false,
@@ -389,7 +401,7 @@
    {
     "modelId": "doubao-seed-2.1-turbo",
     "routeId": "yunxin::doubao-seed-2.1-turbo",
-    "routeCostRank": 22,
+    "routeCostRank": 23,
     "modelName": "Doubao Seed 2.1 Turbo",
     "providerLabel": "字节豆包",
     "supportsImage": false,
@@ -400,7 +412,7 @@
    {
     "modelId": "doubao-seed-2-0-pro-260215",
     "routeId": "yunxin::doubao-seed-2-0-pro-260215",
-    "routeCostRank": 23,
+    "routeCostRank": 24,
     "modelName": "Doubao Seed 2.0 Pro",
     "providerLabel": "字节豆包",
     "supportsImage": false,
@@ -433,7 +445,7 @@
    {
     "modelId": "yunxin/MiniMax-M3.1-Flash",
     "routeId": "yunxin::yunxin/MiniMax-M3.1-Flash",
-    "routeCostRank": 9,
+    "routeCostRank": 8,
     "modelName": "MiniMax M3.1 Flash",
     "providerLabel": "MiniMax",
     "supportsImage": true,
@@ -444,7 +456,7 @@
    {
     "modelId": "yunxin/doubao-seed-2-0-lite-260428",
     "routeId": "yunxin::yunxin/doubao-seed-2-0-lite-260428",
-    "routeCostRank": 6,
+    "routeCostRank": 5,
     "modelName": "Doubao Seed 2.0 Lite",
     "providerLabel": "字节豆包",
     "supportsImage": true,
@@ -466,7 +478,7 @@
    {
     "modelId": "yunxin/doubao-seed-2-1-lite-260915",
     "routeId": "yunxin::yunxin/doubao-seed-2-1-lite-260915",
-    "routeCostRank": 3,
+    "routeCostRank": 2,
     "modelName": "Doubao Seed 2.1 Lite",
     "providerLabel": "字节豆包",
     "supportsImage": true,
@@ -499,7 +511,7 @@
    {
     "modelId": "yunxin/glm-4.6v",
     "routeId": "yunxin::yunxin/glm-4.6v",
-    "routeCostRank": 5,
+    "routeCostRank": 4,
     "modelName": "GLM-4.6v",
     "providerLabel": "智谱 GLM",
     "supportsImage": false,
@@ -521,7 +533,7 @@
    {
     "modelId": "yunxin/glm-5.3-flash",
     "routeId": "yunxin::yunxin/glm-5.3-flash",
-    "routeCostRank": 4,
+    "routeCostRank": 3,
     "modelName": "GLM-5.3 Flash",
     "providerLabel": "智谱 GLM",
     "supportsImage": true,
@@ -554,7 +566,7 @@
    {
     "modelId": "yunxin/kimi-k3.1-pro",
     "routeId": "yunxin::yunxin/kimi-k3.1-pro",
-    "routeCostRank": 34,
+    "routeCostRank": 35,
     "modelName": "Kimi K3.1 Pro",
     "providerLabel": "月之暗面 Kimi",
     "supportsImage": true,
@@ -565,7 +577,7 @@
    {
     "modelId": "yunxin/qwen3.5-plus",
     "routeId": "yunxin::yunxin/qwen3.5-plus",
-    "routeCostRank": 10,
+    "routeCostRank": 9,
     "modelName": "Qwen3.5 Plus",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -587,7 +599,7 @@
    {
     "modelId": "yunxin/qwen3.6-plus",
     "routeId": "yunxin::yunxin/qwen3.6-plus",
-    "routeCostRank": 21,
+    "routeCostRank": 22,
     "modelName": "Qwen3.6 Plus",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -609,7 +621,7 @@
    {
     "modelId": "yunxin/qwen3.7-max",
     "routeId": "yunxin::yunxin/qwen3.7-max",
-    "routeCostRank": 33,
+    "routeCostRank": 34,
     "modelName": "Qwen3.7 Max",
     "providerLabel": "Qwen",
     "supportsImage": false,
@@ -620,7 +632,7 @@
    {
     "modelId": "yunxin/qwen3.8-flash",
     "routeId": "yunxin::yunxin/qwen3.8-flash",
-    "routeCostRank": 3,
+    "routeCostRank": 2,
     "modelName": "Qwen3.8 Flash",
     "providerLabel": "Qwen",
     "supportsImage": true,
@@ -631,7 +643,7 @@
    {
     "modelId": "yunxin/qwen3.8-max-0902",
     "routeId": "yunxin::yunxin/qwen3.8-max-0902",
-    "routeCostRank": 33,
+    "routeCostRank": 34,
     "modelName": "Qwen3.8 Max",
     "providerLabel": "Qwen",
     "supportsImage": true,

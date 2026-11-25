@@ -6,8 +6,8 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 from octop.i18n import tr
-from octop.i18n.domains.agents import agent_error_message
 from octop.infra.agents.bot_appearance import appearance_prefix, bot_appearance
+from octop.infra.agents.error_display import visible_agent_error
 from octop.infra.agents.experts.avatar import display_agent_icon_url
 from octop.infra.agents.settings.profile import parse_config_json
 from octop.infra.db.repos.agents import SHADOW
@@ -70,6 +70,7 @@ def bot_card(
     cached: dict[str, str] | None = None,
     *,
     locale: str = "en",
+    is_admin: bool = False,
 ) -> dict[str, Any]:
     avatar = bot_appearance(settings, row, chief_id, cached)
     return {
@@ -92,7 +93,10 @@ def bot_card(
         "default_model": row.default_model,
         "state": row.last_state or "unknown",
         "preparing": row.last_state == "starting",
-        "last_error": agent_error_message(row.last_error, locale) or None,
+        "last_error": visible_agent_error(
+            row.agent_id, row.last_error, is_admin=is_admin, locale=locale
+        )
+        or None,
     }
 
 
@@ -101,8 +105,10 @@ def list_bot_cards(
 ) -> list[dict[str, Any]]:
     cached = services.settings_repo.with_prefix(appearance_prefix(owner))
     locale = resolve_user_locale(user_repo=services.user_repo, user_id=owner)
+    owner_row = services.user_repo.get(owner)
+    is_admin = owner_row is not None and owner_row.role == "admin"
     return [
-        bot_card(row, chief_id, services.settings_repo, cached, locale=locale)
+        bot_card(row, chief_id, services.settings_repo, cached, locale=locale, is_admin=is_admin)
         for row in services.agent_repo.list_by_user(owner)
         if row.kind != "team" and (include_private or not is_private_bot(row))
     ]

@@ -364,7 +364,7 @@ async def get_public_share(
     if thread is None or thread.agent_id != share.agent_id:
         raise OctopError(ErrorCode.NOT_FOUND, "share not found")
     projection = server.services.thread_message_repo.projection_status(share.thread_id)
-    messages, truncated = _load_projected_thread_messages(
+    messages, truncated, _ = _load_projected_thread_messages(
         server,
         share.agent_id,
         share.thread_id,
