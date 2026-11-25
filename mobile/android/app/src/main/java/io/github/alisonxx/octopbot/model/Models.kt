@@ -41,7 +41,14 @@ data class ConversationSummary(
     /** Epoch milliseconds. */
     val updatedAt: Long?,
     val botId: String?,
-)
+    val owned: Boolean? = null,
+    val active: Boolean = false,
+) {
+    companion object {
+        fun personalDefault(rows: List<ConversationSummary>) =
+            rows.firstOrNull { it.owned == true && it.active } ?: rows.firstOrNull { it.owned == true }
+    }
+}
 
 /** [Note] is a centered caption in the timeline (e.g. "Approved: …"); it is never sent to a model. */
 enum class MessageRole { User, Assistant, Note }
@@ -79,6 +86,7 @@ class ImageAttachment(val uri: String, val jpeg: ByteArray)
 /** Incremental output of one reply. */
 sealed interface StreamEvent {
     data class Conversation(val id: String) : StreamEvent
+    data class TurnStarted(val id: String) : StreamEvent
     data class Text(val delta: String) : StreamEvent
     data class Thinking(val delta: String) : StreamEvent
     data class Tool(val id: String, val name: String, val done: Boolean) : StreamEvent

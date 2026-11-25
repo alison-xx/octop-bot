@@ -142,6 +142,30 @@ beforeEach(() => {
 });
 
 describe("useChatComposerResources — per-expert KB selection", () => {
+  it.each(["default", "auto", "build", "full-access"])(
+    "restores a managed thread's %s runner mode and enables its composer",
+    async (mode) => {
+      agentState.agents = [
+        { agent_id: "managed", kind: "managed", config: {} },
+      ];
+      const { result } = renderHook(() =>
+        useChatComposerResources(
+          "managed",
+          "old",
+          undefined,
+          undefined,
+          undefined,
+          mode,
+          undefined,
+          mode,
+        ),
+      );
+      await waitFor(() => expect(result.current.sessionMode).toBe(mode));
+      expect(result.current.conversationMode).toBe("craft");
+      expect(result.current.threadModesReady).toBe(true);
+    },
+  );
+
   it("restores expert A's manual selection after switching A -> B -> A", async () => {
     const threadId = "thread-existing"; // existing session → saved prefs apply
     const { result, rerender } = renderHook(

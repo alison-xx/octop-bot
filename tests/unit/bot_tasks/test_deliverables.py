@@ -70,3 +70,9 @@ def test_real_images_report_their_size() -> None:
     assert inspect_file("截图.png", out.getvalue()).facts == [
         {"k": "pixels", "n": 1200, "w": 40, "h": 30}
     ]
+
+
+def test_checks_distinguish_name_bytes_and_parsed_content() -> None:
+    assert inspect_file("report.json", None).facts == [{"k": "filenameOnly", "n": 1}]
+    assert inspect_file("report.bin", b"example").facts == [{"k": "nonempty", "n": 1}]
+    assert inspect_file("report.json", b'{"count": 4}').facts == [{"k": "validJson", "n": 1}]

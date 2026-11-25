@@ -81,7 +81,7 @@ final class CloudFloat {
             if mode == .card, !pinned, Date().timeIntervalSince(since) > Self.idleToPill { mode = .pill }
             if mode == .hidden, !closed { mode = .pill }
         }
-        if mode != .hidden || expanded, let glance = try? await server.glance(botId) {
+        if mode == .card, !expanded, !Task.isCancelled, let glance = try? await server.glance(botId), !Task.isCancelled {
             window = glance.window
             if let image = glance.image { thumbnail = image }
         }
@@ -115,6 +115,7 @@ final class CloudFloat {
     }
 
     func open() {
+        pinned = true
         pillOnly = false
         mode = .card
     }
@@ -163,7 +164,7 @@ struct CloudFloatOverlay: View {
                             .onChanged { drag = $0.translation }
                             .onEnded { value in
                                 let corner = nearest(to: value.predictedEndLocation, from: value.startLocation, in: geo.size)
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)) {
                                     float.corner = corner
                                     drag = .zero
                                 }
@@ -172,7 +173,7 @@ struct CloudFloatOverlay: View {
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
             }
         }
-        .animation(.snappy, value: float.mode)
+        .animation(reduceMotion ? nil : .snappy, value: float.mode)
     }
 
     @ViewBuilder private var content: some View {
@@ -203,7 +204,7 @@ struct CloudFloatOverlay: View {
             }
             .padding(.leading, 10)
             .padding(.trailing, 4)
-            .frame(height: 38)
+            .frame(minHeight: 44)
             screen
                 .frame(width: Self.cardWidth, height: Self.cardWidth * 9 / 16)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -279,7 +280,7 @@ struct CloudFloatOverlay: View {
 
     private func headerButton(_ symbol: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.caption.weight(.semibold)).frame(width: 30, height: 30)
+            Image(systemName: symbol).font(.caption.weight(.semibold)).frame(width: 44, height: 44).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(label))
@@ -362,6 +363,7 @@ struct CloudScreenCover: View {
     @State private var url: URL?
     @State private var error: String?
     @State private var busy = false
+    @State private var controlError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -370,6 +372,7 @@ struct CloudScreenCover: View {
                     Image(systemName: "chevron.down").font(.body.weight(.semibold)).frame(width: 40, height: 44)
                 }
                 .accessibilityLabel(Text("computer.float.minimise"))
+                .accessibilityIdentifier("cloudScreenMinimise")
                 VStack(alignment: .leading, spacing: 0) {
                     Text(float.window?.isEmpty == false ? float.window! : bot.name).font(.subheadline.weight(.semibold)).lineLimit(1)
                     Text(url == nil && error == nil && !float.running ? "computer.startingShort" : float.activityText).font(.caption2).foregroundStyle(Palette.secondary).lineLimit(1)
@@ -389,10 +392,19 @@ struct CloudScreenCover: View {
             }
             .padding(.horizontal, 8)
             .foregroundStyle(Palette.text)
+            if let error, url != nil {
+                VStack {
+                    Text(verbatim: error).font(.footnote)
+                    Button("common.retry") { Task { await load(control: float.status?.takeover == true) } }
+                }.padding(.horizontal)
+            }
+            if let controlError {
+                Text(verbatim: controlError).font(.footnote).foregroundStyle(Palette.text).padding(.horizontal)
+            }
             ZStack {
                 Color.black
                 if let url {
-                    ScreenWebView(url: url)
+                    ScreenWebView(url: url).id(url)
                 } else if let error {
                     VStack(spacing: 12) {
                         Text(error).multilineTextAlignment(.center).foregroundStyle(.white)
@@ -432,10 +444,17 @@ struct CloudScreenCover: View {
     private func takeover(_ active: Bool) async {
         busy = true
         defer { busy = false }
-        guard (try? await float.server.setTakeover(float.botId, active: active)) != nil else { return }
+        controlError = nil
+        do {
+            _ = try await float.server.setTakeover(float.botId, active: active)
+        } catch is CancellationError {
+            return
+        } catch {
+            controlError = error.localizedDescription
+            return
+        }
         Haptics.success()
         await float.refresh()
-        url = nil
         await load(control: active)
     }
 }
@@ -456,7 +475,7 @@ private struct ScreenWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
-        if view.url?.absoluteString != url.absoluteString, !view.isLoading { view.load(URLRequest(url: url)) }
+        // Redirects consume a one-time ticket. Only a newly issued URL creates another view.
     }
 }
 

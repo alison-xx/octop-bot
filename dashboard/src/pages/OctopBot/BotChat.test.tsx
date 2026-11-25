@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { octopBotApi } from "../../api/modules/octopBot";
@@ -81,6 +87,53 @@ describe("BotChat panels", () => {
     );
     await screen.findByText("Earlier chat");
     expect(screen.queryByText("offline")).toBeNull();
+  });
+
+  it("keeps the in-flight drawer request through focus and a poll", async () => {
+    const timer = vi.spyOn(window, "setInterval");
+    let finish!: (
+      items: Awaited<ReturnType<typeof octopThreadsApi.list>>,
+    ) => void;
+    vi.mocked(octopThreadsApi.list).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    try {
+      chat();
+      fireEvent.click(screen.getByRole("button", { name: "octopBot.history" }));
+      await waitFor(() =>
+        expect(octopThreadsApi.list).toHaveBeenCalledTimes(1),
+      );
+      const tick = timer.mock.calls.find(([, delay]) => delay === 20000)?.[0];
+      expect(typeof tick).toBe("function");
+      act(() => {
+        fireEvent.focus(window);
+        (tick as () => void)();
+      });
+      expect(octopThreadsApi.list).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        finish([{ thread_id: "slow", title: "Slow chat" } as never]);
+      });
+      await screen.findByText("Slow chat");
+    } finally {
+      timer.mockRestore();
+    }
+  });
+
+  it("discovers a thread created on another client when the window regains focus", async () => {
+    vi.mocked(octopThreadsApi.list)
+      .mockResolvedValueOnce([{ thread_id: "old", title: "Existing" } as never])
+      .mockResolvedValue([
+        { thread_id: "phone", title: "From mobile" } as never,
+        { thread_id: "old", title: "Existing" } as never,
+      ]);
+    chat();
+    fireEvent.click(screen.getByRole("button", { name: "octopBot.history" }));
+    await screen.findByText("Existing");
+    fireEvent.focus(window);
+    await screen.findByText("From mobile");
+    expect(screen.getAllByText("Existing")).toHaveLength(1);
   });
 
   it("retries a failed side question in place and sends with Ctrl+Enter", async () => {

@@ -8,6 +8,11 @@ import {
   type WalletSource,
 } from "../../api/modules/lynxceWallet";
 import { parseApiError } from "../../utils/apiError";
+import {
+  RECHARGE_RETURN,
+  rememberCheckout,
+  reportCheckoutBalance,
+} from "./useLynxceCredits";
 import styles from "./LynxceWallet.module.less";
 
 /** The hosted checkout, only if it is exactly Lynxce's recharge page with a fresh ticket. */
@@ -98,6 +103,7 @@ export default function WalletBalance({
         applyWallet(null);
         setLoadError(true);
       } else {
+        reportCheckoutBalance(next);
         applyWallet(next);
         setLoadError(false);
       }
@@ -128,6 +134,7 @@ export default function WalletBalance({
       if (document.visibilityState === "visible") void refresh();
     };
     window.addEventListener("focus", onFocus);
+    window.addEventListener(RECHARGE_RETURN, onFocus);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       query.current?.abort();
@@ -135,6 +142,7 @@ export default function WalletBalance({
       checkout.current?.abort();
       checkout.current = undefined;
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener(RECHARGE_RETURN, onFocus);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [refresh, applyWallet]);
@@ -150,8 +158,10 @@ export default function WalletBalance({
       const result = await lynxceWalletApi.recharge(wallet, controller.signal);
       if (controller.signal.aborted) return;
       const url = checkoutUrl(result.url, result.expires_at, source);
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
-      else setProblem("open");
+      if (url) {
+        rememberCheckout(wallet, result.expires_at);
+        window.open(url, "_blank", "noopener,noreferrer");
+      } else setProblem("open");
     } catch (err) {
       if (controller.signal.aborted) return;
       if (

@@ -253,7 +253,7 @@ async def test_get_thread_history_returns_has_more(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(
         history_mod,
         "_load_projected_thread_messages",
-        MagicMock(return_value=([{"role": "user", "content": "hi"}], True)),
+        MagicMock(return_value=([{"role": "user", "content": "hi"}], True, "2")),
     )
     out = await history_mod.get_thread_history(
         "agt_1",
