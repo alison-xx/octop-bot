@@ -1199,8 +1199,8 @@
     row.append(avatar(session, name), text); return row;
   }
   function render() {
-    document.querySelectorAll(".auth-nav").forEach((el) => el.remove());
     const session = auth.session();
+    document.querySelectorAll(".auth-nav").forEach((el) => el.remove());
     const name = session ? displayName(session) : "";
     if (accountIdentity) accountIdentity.replaceChildren(...(session ? [identity(session, name)] : []));
     if (!session && !auth.config.loginEnabled) return;
@@ -1228,7 +1228,8 @@
     render();
     if (!auth.session()) return;
     const results = await Promise.allSettled([auth.api("/api/user/profile", { cache: "no-store" }), auth.api("/api/user/quota")]);
-    if (id !== generation || !auth.session()) return;
+    // Reading the session can synchronously notify us of a newer sign-in.
+    if (!auth.session() || id !== generation) return;
     if (results[0].status === "fulfilled") profile = results[0].value;
     if (results[1].status === "fulfilled") quota = results[1].value;
     render();
