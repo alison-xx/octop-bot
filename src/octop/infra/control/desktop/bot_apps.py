@@ -165,6 +165,7 @@ class BotComputer:
         self.native = NativeWindows()
         self.active: dict[str, tuple[int, str]] = {}
         self.foreground = False
+        self._grant_versions: dict[tuple[int, str], object] = {}
         self.observed: dict[tuple[int, str], tuple[int, int, set[str]]] = {}
 
     @staticmethod
@@ -233,6 +234,7 @@ class BotComputer:
         key = await asyncio.to_thread(self.key, repos, owner, bot)
         policy = ComputerPolicy(level=level, apps=[apps[i] for i in dict.fromkeys(app_ids)])
         await asyncio.to_thread(repos.settings_repo.set, key, policy.model_dump_json())
+        self._invalidate_grant(owner, bot)
         return await asyncio.to_thread(self.state, repos, owner, bot)
 
     def pause(self, repos: RepoBundle, owner: int, bot: str, paused: bool) -> ComputerState:
@@ -241,8 +243,17 @@ class BotComputer:
             repos.settings_repo.set(key, "1")
         else:
             repos.settings_repo.delete(key)
-        self.observed.pop((owner, bot), None)
+        self._invalidate_grant(owner, bot)
         return self.state(repos, owner, bot)
+
+    def _invalidate_grant(self, owner: int, bot: str) -> None:
+        subject = (owner, bot)
+        self._grant_versions[subject] = object()
+        self.observed.pop(subject, None)
+
+    def _check_grant(self, subject: tuple[int, str], version: object | None) -> None:
+        if self._grant_versions.get(subject) is not version:
+            raise OctopError.localized(ErrorCode.FORBIDDEN)
 
     async def run(
         self,
@@ -257,20 +268,30 @@ class BotComputer:
         value: str,
         foreground: bool,
     ) -> Any:
+        subject = (owner, bot)
+        version = self._grant_versions.get(subject)
         state = await asyncio.to_thread(self.state, repos, owner, bot)
         if action == "handoff":
             await asyncio.to_thread(self.pause, repos, owner, bot, True)
             return {"paused": True}
         if not state.available or state.paused or state.level == "off":
             raise OctopError.localized(ErrorCode.FORBIDDEN)
+        self._check_grant(subject, version)
         grants = {a.id for a in state.apps}
         apps = await self.native.apps()
+        self._check_grant(subject, version)
         if action == "windows":
             result = []
             for process, app in apps.items():
                 if app.id in grants:
-                    for window in await self.native.windows(process):
+                    windows = await self.native.windows(process)
+                    self._check_grant(subject, version)
+                    for window in windows:
                         result.append({**window, "app_id": app.id, "app": app.name})
+            current = await asyncio.to_thread(self.state, repos, owner, bot)
+            self._check_grant(subject, version)
+            if current.paused or current.level == "off" or current.apps != state.apps:
+                raise OctopError.localized(ErrorCode.FORBIDDEN)
             return result
         if app_id not in grants or pid not in apps or apps[pid].id != app_id:
             raise OctopError.localized(ErrorCode.FORBIDDEN)
@@ -278,11 +299,11 @@ class BotComputer:
             raise OctopError.localized(ErrorCode.NOT_FOUND)
         # Recheck the user's current grant after asynchronous native discovery.
         state = await asyncio.to_thread(self.state, repos, owner, bot)
+        self._check_grant(subject, version)
         if state.paused or state.level == "off" or app_id not in {a.id for a in state.apps}:
             raise OctopError.localized(ErrorCode.FORBIDDEN)
         if app_id in self.active or (foreground and self.foreground):
             raise OctopError.localized(ErrorCode.DESKTOP_SESSION_LIMIT)
-        subject = (owner, bot)
         session = "octop-" + hashlib.sha256(repr(subject).encode()).hexdigest()[:24]
         write = action != "read"
         if write:
@@ -301,12 +322,14 @@ class BotComputer:
             self.foreground = True
         try:
             if not write:
+                tokens: set[str] = set()
+                pending = (pid, window_id, tokens)
+                self.observed[subject] = pending
                 elements = await self.native.read(session, pid, window_id)
-                self.observed[subject] = (
-                    pid,
-                    window_id,
-                    {e["token"] for e in elements if e["token"]},
-                )
+                self._check_grant(subject, version)
+                if self.observed.get(subject) is not pending:
+                    raise OctopError.localized(ErrorCode.FORBIDDEN)
+                tokens.update(e["token"] for e in elements if e["token"])
                 return elements
             args = {
                 "session": session,
