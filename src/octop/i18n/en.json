@@ -640,6 +640,8 @@
     "KNOWLEDGE_MOVE_BUSY": "Some of these documents are still being indexed. Move them to another knowledge base once indexing finishes.",
     "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
     "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit.",
+    "REQUEST_TOO_LARGE": "The request is too large (at most {limit_mb} MB).",
+    "BOT_MOVE_IN_LIMITED": "Too much is being moved to the cloud, or too fast. Try again later.",
     "INVITE_INVALID": "This invite code is invalid.",
     "INVITE_ROLE_MISSING": "The role on this invite was deleted or renamed, so the account cannot be created.",
     "USER_ROLE_IN_USE": "This role is still assigned to users. Reassign them before deleting it.",

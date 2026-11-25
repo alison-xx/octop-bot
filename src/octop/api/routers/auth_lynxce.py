@@ -32,12 +32,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _MAX_FAILURES = 5
+# Per Lynxce account (phone or email), across addresses: higher, so someone typing wrong
+# codes for another person's number cannot easily lock that person out.
+_MAX_ACCOUNT_FAILURES = 10
 _FAILURE_WINDOW_SECONDS = 300
+# Keys: "ip:<client address>" and "account:<phone or email>".
 _failures: dict[str, list[float]] = {}
-# Code sends per client address: Lynxce pays for the SMS, so a public instance must not relay floods.
+# Code sends per client address and per phone or email: Lynxce pays for the SMS, so a public
+# instance must not relay floods, to anyone or at anyone.
 _MAX_SENDS = 5
 _SEND_WINDOW_SECONDS = 600
 _sends: dict[str, list[float]] = {}
+_next_cleanup = 0.0
 # One process serves an instance; serialize the "first sign-in claims it" step.
 _claim_lock = asyncio.Lock()
 
@@ -95,20 +101,52 @@ class LynxceIdentityStatus(BaseModel):
     )
 
 
-def _client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
+def _expire_throttle_keys(now: float) -> None:
+    global _next_cleanup
+    if now < _next_cleanup:
+        return
+    for buckets, window in ((_sends, _SEND_WINDOW_SECONDS), (_failures, _FAILURE_WINDOW_SECONDS)):
+        expired = [key for key, times in buckets.items() if not times or times[-1] <= now - window]
+        for key in expired:
+            del buckets[key]
+    _next_cleanup = now + _FAILURE_WINDOW_SECONDS
 
 
-def _raise_if_throttled(ip: str) -> None:
-    now = time.time()
-    recent = [t for t in _failures.get(ip, []) if now - t < _FAILURE_WINDOW_SECONDS]
-    _failures[ip] = recent
-    if len(recent) >= _MAX_FAILURES:
-        raise OctopError(
-            ErrorCode.LOGIN_LOCKED,
-            "too many Lynxce sign-in attempts",
-            details={"retry_after_seconds": _FAILURE_WINDOW_SECONDS},
-        )
+def _keys(request: Request, account: str | None = None) -> list[str]:
+    """Throttle keys: the real client address (through trusted proxies only), and the
+    Lynxce account the attempt is for, when there is one."""
+    peer = request.client.host if request.client else "unknown"
+    keys = [f"ip:{peer}"]
+    if account and account.strip():
+        keys.append(f"account:{account.strip().lower()}")
+    return keys
+
+
+def _limit(key: str) -> int:
+    return _MAX_ACCOUNT_FAILURES if key.startswith("account:") else _MAX_FAILURES
+
+
+def _raise_if_throttled(keys: list[str]) -> None:
+    now = time.monotonic()
+    _expire_throttle_keys(now)
+    for key in keys:
+        recent = [t for t in _failures.get(key, []) if now - t < _FAILURE_WINDOW_SECONDS]
+        if recent:
+            _failures[key] = recent
+        else:
+            _failures.pop(key, None)
+        if len(recent) >= _limit(key):
+            raise OctopError(
+                ErrorCode.LOGIN_LOCKED,
+                "too many Lynxce sign-in attempts",
+                details={"retry_after_seconds": _FAILURE_WINDOW_SECONDS},
+            )
+
+
+def _record_failure(keys: list[str]) -> None:
+    now = time.monotonic()
+    for key in keys:
+        _failures.setdefault(key, []).append(now)
 
 
 def _require_enabled() -> None:
@@ -174,6 +212,7 @@ async def lynxce_login(
             request,
             body.locale,
             lambda: lynxce_cloud.open_password_session(body.account, body.password),
+            account=body.account,
         )
     return await _sign_in(
         server,
@@ -181,6 +220,7 @@ async def lynxce_login(
         body.locale,
         lambda: lynxce_cloud.verify_account(body.account, body.password),
         body.local_password,
+        account=body.account,
     )
 
 
@@ -191,7 +231,7 @@ async def lynxce_login(
     description=(
         "Lynxce texts or emails a six-digit code to the phone number or email. "
         "New Lynxce accounts are created on first sign-in and need no password. "
-        "Rate-limited per client address."
+        "Rate-limited per client address and per phone number or email."
     ),
 )
 async def lynxce_send_code(
@@ -199,13 +239,14 @@ async def lynxce_send_code(
 ) -> LynxceCodeSent:
     _require_enabled()
     require_database(server)
-    ip = _client_ip(request)
-    now = time.time()
-    recent = [t for t in _sends.get(ip, []) if now - t < _SEND_WINDOW_SECONDS]
-    if len(recent) >= _MAX_SENDS:
-        _sends[ip] = recent
+    now = time.monotonic()
+    _expire_throttle_keys(now)
+    keys = _keys(request, body.target)
+    recent = {k: [t for t in _sends.get(k, []) if now - t < _SEND_WINDOW_SECONDS] for k in keys}
+    if any(len(times) >= _MAX_SENDS for times in recent.values()):
         raise OctopError.localized(ErrorCode.LYNXCE_CODE_THROTTLED, status=429)
-    _sends[ip] = [*recent, now]
+    for key, times in recent.items():
+        _sends[key] = [*times, now]
     locale = body.locale or resolve_request_locale(request)
     return LynxceCodeSent(channel=await lynxce_cloud.request_login_code(body.target, locale))
 
@@ -226,6 +267,7 @@ async def lynxce_code_login(
             request,
             body.locale,
             lambda: lynxce_cloud.open_code_session(body.target, body.code, body.password),
+            account=body.target,
         )
     return await _sign_in(
         server,
@@ -233,6 +275,7 @@ async def lynxce_code_login(
         body.locale,
         lambda: lynxce_cloud.verify_account_code(body.target, body.code, body.password),
         body.local_password,
+        account=body.target,
     )
 
 
@@ -266,10 +309,13 @@ async def lynxce_session_login(
     )
 
 
-async def _opened[T](request: Request, opener: Callable[[], Awaitable[T]]) -> T:
-    """Run a Lynxce sign-in, counting wrong passwords and codes toward the client's lockout."""
-    ip = _client_ip(request)
-    _raise_if_throttled(ip)
+async def _opened[T](
+    request: Request, opener: Callable[[], Awaitable[T]], account: str | None = None
+) -> T:
+    """Run a Lynxce sign-in, counting wrong passwords and codes toward the lockout of the
+    client's address and of the account tried."""
+    keys = _keys(request, account)
+    _raise_if_throttled(keys)
     try:
         return await opener()
     except OctopError as exc:
@@ -278,7 +324,7 @@ async def _opened[T](request: Request, opener: Callable[[], Awaitable[T]]) -> T:
             ErrorCode.SLASH_BAD_ARGS,
             ErrorCode.LYNXCE_CODE_INVALID,
         }:
-            _failures.setdefault(ip, []).append(time.time())
+            _record_failure(keys)
         raise
 
 
@@ -287,10 +333,12 @@ async def _cloud_sign_in(
     request: Request,
     requested_locale: str | None,
     opener: Callable[[], Awaitable[lynxce_cloud.CloudSession]],
+    *,
+    account: str | None = None,
 ) -> dict[str, Any]:
     """Cloud mode: any Lynxce account signs in to (and on first use, gets) its own account."""
     require_database(server)
-    session = await _opened(request, opener)
+    session = await _opened(request, opener, account)
     locale = normalize_locale(requested_locale or resolve_request_locale(request))
     user = await cloud_accounts.provision(server.services, server.user_manager, session, locale)
     # Tells clients this server also keeps the Lynxce wallet for the account.
@@ -317,11 +365,13 @@ async def _sign_in(
     requested_locale: str | None,
     verify: Callable[[], Awaitable[lynxce_cloud.CloudAccountStatus]],
     local_password: str | None = None,
+    *,
+    account: str | None = None,
 ) -> dict[str, Any]:
     _require_enabled()
     require_database(server)
-    ip = _client_ip(request)
-    identity = await _opened(request, verify)
+    keys = _keys(request, account)
+    identity = await _opened(request, verify, account)
     assert identity.account_id is not None
     locale = normalize_locale(requested_locale or resolve_request_locale(request))
     async with _claim_lock:
@@ -340,7 +390,7 @@ async def _sign_in(
                 raise OctopError.localized(ErrorCode.LYNXCE_LEGACY_PASSWORD_REQUIRED)
             legacy = await server.user_manager.authenticate(LEGACY_OWNER_USERNAME, local_password)
             if legacy is None:
-                _failures.setdefault(ip, []).append(time.time())
+                _record_failure(keys)
                 raise OctopError.localized(ErrorCode.AUTH_FAILED)
             await asyncio.to_thread(bind_owner, settings, identity.account_id, legacy.id)
             server.services.audit_repo.write(
@@ -348,6 +398,6 @@ async def _sign_in(
             )
             user = legacy
         if user is None:
-            _failures.setdefault(ip, []).append(time.time())
+            _record_failure(keys)
             raise OctopError.localized(ErrorCode.LYNXCE_OWNER_MISMATCH, status=403)
     return _issue(server, user, "auth.lynxce_login")

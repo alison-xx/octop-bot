@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from octop.api.deps import current_user, get_server
 from octop.infra.cloud.move_in import (
@@ -14,6 +14,7 @@ from octop.infra.cloud.move_in import (
     MovedGroup,
     MovedNotes,
     MovedThread,
+    charge_move_request,
     move_bot,
     move_group,
     move_notes,
@@ -35,7 +36,12 @@ def _cloud(server: Annotated[OctopServer, Depends(get_server)]) -> OctopServer:
 Server = Annotated[OctopServer, Depends(_cloud)]
 Owner = Annotated[User, Depends(current_user)]
 
-router = APIRouter(prefix="/move-in")
+
+async def _metered(request: Request, user: Owner, server: Server) -> None:
+    charge_move_request(user.id, len(await request.body()))
+
+
+router = APIRouter(prefix="/move-in", dependencies=[Depends(_metered)])
 
 _REPEAT = "Sending the same `source` again returns what it became the first time."
 

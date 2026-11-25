@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from scalar_fastapi import get_scalar_api_reference
 
+from octop.api.middleware.body_limit import install as install_body_limit
 from octop.api.middleware.jwt_auth import install as install_jwt_auth
 from octop.api.middleware.setup_lockdown import install as install_setup_lockdown
 from octop.api.openapi_meta import API_DESCRIPTION, OPENAPI_TAGS, configure_openapi
@@ -142,6 +143,7 @@ def build_app(server: OctopServer) -> FastAPI:
 
     # Bridge proxy must sit inside JWT auth so ``request.state.octop_user`` is set
     # (Starlette runs the last-added middleware first).
+    install_body_limit(app)
     install_bridge_proxy(app, server)
     install_jwt_auth(app, server)
     install_setup_lockdown(app, server)

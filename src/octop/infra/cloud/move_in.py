@@ -9,10 +9,15 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
+import time
+from collections import deque
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from langchain_core.messages import messages_from_dict
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints, field_validator
+from pydantic_core import PydanticKnownError
 
 from octop.infra.agents.bot_appearance import Character, set_character
 from octop.infra.agents.bot_workspace import (
@@ -36,6 +41,48 @@ Source = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, m
 Text = Annotated[str, StringConstraints(max_length=200_000)]
 
 
+# Per-account move-in budgets, as (seconds, requests, bytes).
+_MOVE_WINDOWS = ((3600, 3000, 300 * 1024 * 1024), (86400, 20000, 1024 * 1024 * 1024))
+
+
+@dataclass
+class _MoveWindow:
+    requests: deque[tuple[float, int]] = field(default_factory=deque)
+    size: int = 0
+
+    def expire(self, cutoff: float) -> None:
+        while self.requests and self.requests[0][0] <= cutoff:
+            self.size -= self.requests.popleft()[1]
+
+
+_move_usage: dict[int, list[_MoveWindow]] = {}
+_next_usage_cleanup = 0.0
+
+
+def charge_move_request(user_id: int, size: int) -> None:
+    """Count a request atomically on the server event loop, across all move-in routes."""
+    global _next_usage_cleanup
+    now = time.monotonic()
+    if now >= _next_usage_cleanup:
+        cutoff = now - _MOVE_WINDOWS[-1][0]
+        for account, windows in list(_move_usage.items()):
+            latest = windows[-1].requests
+            if not latest or latest[-1][0] <= cutoff:
+                del _move_usage[account]
+        _next_usage_cleanup = now + _MOVE_WINDOWS[0][0]
+
+    if user_id not in _move_usage:
+        _move_usage[user_id] = [_MoveWindow() for _ in _MOVE_WINDOWS]
+    windows = _move_usage[user_id]
+    for bucket, (duration, max_requests, max_bytes) in zip(windows, _MOVE_WINDOWS, strict=True):
+        bucket.expire(now - duration)
+        if len(bucket.requests) >= max_requests or bucket.size + size > max_bytes:
+            raise OctopError.localized(ErrorCode.BOT_MOVE_IN_LIMITED)
+    for bucket in windows:
+        bucket.requests.append((now, size))
+        bucket.size += size
+
+
 class MovedBot(BaseModel):
     source: Source
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
@@ -56,6 +103,14 @@ class MovedThread(BaseModel):
         max_length=5000,
         description="The conversation as LangChain message dicts (``messages_to_dict``).",
     )
+
+    @field_validator("messages")
+    @classmethod
+    def bound_message_size(cls, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        for message in messages:
+            if len(json.dumps(message, ensure_ascii=False, separators=(",", ":"))) > 200_000:
+                raise PydanticKnownError("string_too_long", {"max_length": 200_000})
+        return messages
 
 
 class MovedGroupMessage(BaseModel):
