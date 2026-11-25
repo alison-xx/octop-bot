@@ -600,7 +600,7 @@
   const OUT =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M8 7h9v9"/></svg>';
   const WEB_APP = "https://bot.lynxce.cn";
-  const storeName = (url) => (/testflight\.apple\.com/.test(url) ? "TestFlight" : "App Store");
+  const IOS_STORE_URL = "https://apps.apple.com/app/id6838257776";
 
   /* A release can skip a platform (say, no Windows build). Offer that platform's newest package instead. */
   function releaseWith(test) {
@@ -611,11 +611,18 @@
   const isWin = (a) => a.platform === "win32";
   const isMac = (a) => a.platform === "darwin";
   const isAndroid = (a) => a.platform === "android";
-  const isIos = (a) => a.platform === "ios";
   const isNas = Object.assign((a) => a.platform === "nas", { nas: true });
 
+  function iosVersion() {
+    const listed = (asset) => asset.platform === "ios" && asset.url === IOS_STORE_URL && asset.appVersion;
+    return releaseWith(listed)?.assets.find(listed)?.appVersion;
+  }
+
   function primaryChoice() {
-    const release = releaseWith(os === "win" ? isWin : os === "mac" ? isMac : phone === "android" ? isAndroid : isIos);
+    if (phone === "ios") {
+      return { href: IOS_STORE_URL, external: true, label: t("前往 App Store 下载", "Download on the App Store"), sub: "iPhone · iPad", icon: OS_ICON.phone, version: iosVersion() };
+    }
+    const release = releaseWith(os === "win" ? isWin : os === "mac" ? isMac : isAndroid);
     if (!release) return null;
     if (os === "win") {
       const a = pick(release, "win32", "installer", "x64");
@@ -629,16 +636,11 @@
       const a = pick(release, "android");
       return a && { href: assetUrl(release, a), label: t("下载 Android 版", "Download for Android"), sub: `APK · ${formatSize(a.size)}`, icon: OS_ICON.phone, version: a.appVersion };
     }
-    if (phone === "ios") {
-      const a = pick(release, "ios");
-      return a && { href: a.url, external: true, label: storeName(a.url) === "App Store" ? t("前往 App Store 下载", "Get on the App Store") : t("在 TestFlight 中打开", "Open in TestFlight"), sub: storeName(a.url), icon: OS_ICON.phone, version: a.appVersion };
-    }
     return null;
   }
 
   function renderPrimary(release) {
     const choice = primaryChoice();
-    $$("[data-store-shortcut]").forEach((el) => (el.hidden = phone === "ios" && choice?.href === $("a", el).href));
     $$("[data-download-primary]").forEach((btn) => {
       btn.removeAttribute("target");
       btn.removeAttribute("rel");
@@ -651,21 +653,19 @@
         } else btn.setAttribute("download", "");
         btn.innerHTML = `${choice.icon}<span>${choice.label}</span>`;
       } else {
-        const useWeb = phone === "ios" && $("#platforms");
-        btn.href = useWeb ? WEB_APP : "download.html#platforms-section";
+        btn.href = $("#platforms") ? "#platforms-section" : "download.html";
         btn.removeAttribute("download");
-        btn.innerHTML = useWeb
-          ? `${OS_ICON.web}<span>${t("打开网页版", "Open web app")}</span>`
-          : `${ARROW}<span>${t("选择版本下载", "Choose a download")}</span>`;
+        btn.innerHTML = `${ARROW}<span>${t("选择版本下载", "Choose a download")}</span>`;
       }
     });
     $$("[data-download-note]").forEach((el) => {
       el.textContent = choice
-        ? `${t("版本", "Version")} ${choice.version} · ${choice.sub} · ${t("免费开源", "Free & open source")}`
+        ? `${choice.version ? `${t("版本", "Version")} ${choice.version} · ` : ""}${choice.sub} · ${t("免费开源", "Free & open source")}`
         : os === "mobile"
           ? t("手机也可以用浏览器登录灵策账号，继续云端对话。", "Sign in with Lynxce in your mobile browser to continue a cloud chat.")
           : t("Windows x64 · Apple 芯片 Mac · Android APK", "Windows x64 · Apple silicon Mac · Android APK");
     });
+    if (!release) return;
     $$("[data-version]").forEach((el) => (el.textContent = release.version));
     $$("[data-release-date]").forEach((el) => (el.textContent = release.date));
   }
@@ -688,7 +688,6 @@
     const winRel = releaseWith(isWin);
     const macRel = releaseWith(isMac);
     const androidRel = releaseWith(isAndroid);
-    const iosRel = releaseWith(isIos);
     const nasRel = releaseWith(isNas) || latest;
     const win = winRel && pick(winRel, "win32", "installer", "x64");
     const winArm = winRel && pick(winRel, "win32", "installer", "arm64");
@@ -696,7 +695,7 @@
     const mac = macRel && pick(macRel, "darwin", null, "arm64");
     const intel = macRel && pick(macRel, "darwin", null, "x64");
     const apk = androidRel && pick(androidRel, "android");
-    const ios = iosRel && pick(iosRel, "ios");
+    const storeVersion = iosVersion();
     const fpk = pick(nasRel, "nas");
     const image = nasRel.nas && nasRel.nas.image;
     const cards = [];
@@ -731,22 +730,25 @@
         ),
       );
     }
-    if (apk || ios) {
+    cards.push(
+      card(
+        "ios",
+        OS_ICON.phone,
+        "iOS / iPadOS",
+        "iPhone · iPad",
+        `<div class="files"><div class="file"><div><b>App Store</b>${storeVersion ? `<small>${esc(storeVersion)}</small>` : ""}</div><a class="btn ${phone === "ios" ? "btn-primary" : "btn-ghost"} btn-sm" href="${IOS_STORE_URL}"><span>${t("前往 App Store 下载", "Download on the App Store")}</span>${OUT}</a></div></div>`,
+        phone === "ios",
+      ),
+    );
+    if (apk) {
       cards.push(
         card(
-          "phone",
+          "android",
           OS_ICON.phone,
-          t("手机", "Phone"),
-          [apk && "Android", ios && "iPhone"].filter(Boolean).join(" · "),
-          `<div class="files">
-          ${apk ? fileRow(androidRel, apk, "Android", `APK · ${esc(apk.appVersion || androidRel.version)}`, phone === "android") : ""}
-          ${
-            ios
-              ? `<div class="file"><div><b>iPhone / iPad</b><small>${storeName(ios.url)} · ${esc(ios.appVersion || iosRel.version)}</small></div><a class="btn ${phone === "ios" ? "btn-primary" : "btn-ghost"} btn-sm" href="${esc(ios.url)}" target="_blank" rel="noopener"><span>${storeName(ios.url)}</span>${OUT}</a></div>`
-              : ""
-          }
-        </div><p class="muted" style="font-size:14px">${t("登录灵策账号继续云端对话，或连接自己的 Octop Bot 服务器。", "Sign in with Lynxce to continue your cloud chats, or connect to your own Octop Bot server.")}</p>`,
-          os === "mobile",
+          "Android",
+          apk.appVersion ? `APK · ${esc(apk.appVersion)}` : "APK",
+          `<div class="files">${fileRow(androidRel, apk, "Android", "APK", phone === "android")}</div>`,
+          phone === "android",
         ),
       );
     }
@@ -854,12 +856,16 @@
 
   let site = null;
   function renderReleases() {
-    if (!site) return;
+    if (!site) {
+      if (phone === "ios") renderPrimary(null);
+      return;
+    }
     renderPrimary(site.latest);
     renderPlatforms(site.latest, site.beta);
     renderHistory(site.history);
   }
   if ($("[data-download-primary], #platforms, #history")) {
+    renderReleases();
     loadReleases().then((loaded) => {
       if (!loaded) return;
       site = loaded;
