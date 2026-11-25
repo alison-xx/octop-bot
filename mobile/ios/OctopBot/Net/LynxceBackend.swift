@@ -231,6 +231,10 @@ final class LynxceBackend: ChatBackend {
         set { UserDefaults.standard.set(newValue, forKey: "lynxce.sessionBots") }
     }
 
+    func deletionNotice(for bot: BotProfile) -> String? {
+        pending.interruptedDeletions(bot: bot.id).isEmpty ? nil : L("chat.deletionQueued")
+    }
+
     func conversations(for bot: BotProfile) async throws -> [ConversationSummary] {
         for session in pending.interruptedDeletions(bot: bot.id) where session.hasPrefix(Self.sessionPrefix) {
             guard !signedOut else { throw CancellationError() }
@@ -245,7 +249,7 @@ final class LynxceBackend: ChatBackend {
         let items = (data as? [String: Any])?["items"] as? [[String: Any]] ?? []
         let owners = sessionBots
         var rows: [ConversationSummary] = items.compactMap { item in
-            guard let id = item["id"] as? String, id.hasPrefix(Self.sessionPrefix) else { return nil }
+            guard let id = item["id"] as? String, id.hasPrefix(Self.sessionPrefix), !pending.isDeleted(id) else { return nil }
             let owner = owners[id] ?? LocalBots.chiefId
             guard owner == bot.id else { return nil }
             return ConversationSummary(

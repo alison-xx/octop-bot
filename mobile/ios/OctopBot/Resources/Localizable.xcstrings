@@ -646,6 +646,12 @@
         }
       }
     },
+    "chat.deletionQueued": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This conversation is hidden on this device. Refresh the list when online to finish deleting it from Lynxce." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "会话已从本机列表隐藏。联网后刷新列表，将继续从灵策删除。" } }
+      }
+    },
     "chat.deletionInProgress": {
       "localizations": {
         "en": { "stringUnit": { "state": "translated", "value": "This conversation is being deleted. Refresh the list or start a new conversation." } },

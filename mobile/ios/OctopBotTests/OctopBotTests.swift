@@ -1591,12 +1591,14 @@ extension StreamTests {
         XCTAssertTrue(other.interruptedDeletions(bot: "bot").isEmpty)
         let backend = LynxceBackend(grant: .init(accountId: "A", accessToken: "synthetic", refreshToken: "synthetic"), historyRoot: root)
         let bot = BotProfile(id: "bot", name: "qa", look: .fallback, isChief: true)
+        XCTAssertNotNil(backend.deletionNotice(for: bot))
         let stream = backend.send("new", images: [], to: bot, conversation: turn.sessionID, history: [], model: nil)
         do {
             for try await _ in stream { XCTFail("Model dispatch must wait for deletion") }
             XCTFail("Expected pending deletion")
         } catch { XCTAssertEqual((error as? APIError)?.status, 409) }
         try await reopened.delete(bot: "bot", session: turn.sessionID) {}
+        XCTAssertNil(backend.deletionNotice(for: bot))
         XCTAssertTrue(reopened.interruptedDeletions(bot: "bot").isEmpty)
         XCTAssertTrue(reopened.turns(bot: "bot").isEmpty)
     }

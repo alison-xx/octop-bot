@@ -14,6 +14,7 @@ final class ChatSession {
     private(set) var isSavingHistory = false
     private(set) var isLoading = false
     var error: String?
+    private(set) var deletionNotice: String?
     /// The composer's unsent text; kept per Bot so leaving the chat doesn't lose it.
     var draft = ""
     /// Bumped to ask the composer to take focus (e.g. after "Edit").
@@ -69,7 +70,10 @@ final class ChatSession {
 
     func reloadConversations() async {
         guard let backend = app?.backend else { return }
-        if let rows = try? await backend.conversations(for: bot), app?.backend === backend { conversations = rows }
+        let rows = try? await backend.conversations(for: bot)
+        guard app?.backend === backend else { return }
+        if let rows { conversations = rows }
+        deletionNotice = (backend as? LynxceBackend)?.deletionNotice(for: bot)
     }
 
     func open(_ conversation: ConversationSummary) async {
@@ -98,9 +102,22 @@ final class ChatSession {
     }
 
     func delete(_ conversation: ConversationSummary) async {
+        guard let backend = app?.backend else { return }
         conversations.removeAll { $0.id == conversation.id }
         if conversationId == conversation.id { newChat() }
-        try? await app?.backend?.deleteConversation(conversation, bot: bot)
+        do {
+            try await backend.deleteConversation(conversation, bot: bot)
+            guard app?.backend === backend else { return }
+            deletionNotice = (backend as? LynxceBackend)?.deletionNotice(for: bot)
+        } catch {
+            guard app?.backend === backend else { return }
+            if let queued = (backend as? LynxceBackend)?.deletionNotice(for: bot) {
+                deletionNotice = queued
+            } else {
+                if !conversations.contains(where: { $0.id == conversation.id }) { conversations.append(conversation) }
+                deletionNotice = error.localizedDescription
+            }
+        }
     }
 
     func send(_ text: String, images: [Data] = []) {

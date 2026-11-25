@@ -18,6 +18,9 @@ struct HistorySheet: View {
     var body: some View {
         NavigationStack {
             List {
+                if let notice = chat.deletionNotice {
+                    Text(notice).font(.footnote).foregroundStyle(.secondary)
+                }
                 if query.isEmpty {
                     Section {
                         Button {
