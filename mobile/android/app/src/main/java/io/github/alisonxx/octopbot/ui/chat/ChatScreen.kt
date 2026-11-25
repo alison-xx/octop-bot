@@ -132,11 +132,11 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
     val recharging by model.recharging.collectAsStateWithLifecycle()
     LaunchedEffect(botId) {
         model.noteBotOpened(botId)
-        chat.openLatest()
     }
     // On screen (resumed) clears the unread mark; replies finishing while away mark it again.
     LifecycleResumeEffect(botId) {
         model.chatOnScreen(botId, true)
+        chat.openLatest()
         onPauseOrDispose { model.chatOnScreen(botId, false) }
     }
     val context = LocalContext.current
@@ -148,6 +148,10 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
         cloudServer?.takeIf { !bot.isLocal }?.let { CloudFloatState(it, botId, context.applicationContext) }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(state.conversationId, state.streaming, lifecycle) {
+        val id = state.conversationId ?: return@LaunchedEffect
+        if (!state.streaming) lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { chat.observe(id) }
+    }
     LaunchedEffect(cloudFloat) {
         cloudFloat?.let { float -> lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { float.run() } }
     }
@@ -261,6 +265,7 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
                 onReject = { haptics.tap(); chat.review(approve = false) },
             ),
             onCancelQueued = chat::cancelQueued,
+            onEarlier = chat::loadOlder,
             cloudFloat = cloudFloat,
             lowBalance = lowBalance,
             onRecharge = recharge,
@@ -379,6 +384,7 @@ fun ChatContent(
     hitl: HitlCardState? = null,
     hitlActions: HitlCardActions? = null,
     onCancelQueued: (String) -> Unit = {},
+    onEarlier: () -> Unit = {},
     cloudFloat: CloudFloatState? = null,
     /** Under 1,000 credits and not dismissed: a banner under the top bar. */
     lowBalance: Double? = null,
@@ -396,7 +402,7 @@ fun ChatContent(
                     state.loading && state.messages.isEmpty() ->
                         CircularProgressIndicator(Modifier.align(Alignment.Center).size(28.dp), strokeWidth = 2.dp)
                     state.messages.isEmpty() -> EmptyState(bot, Modifier.padding(bottom = composerHeight), onSuggestion)
-                    else -> MessageList(bot, state, composerHeight, actionsFor, onCancelQueued)
+                    else -> MessageList(bot, state, composerHeight, actionsFor, onCancelQueued, onEarlier)
                 }
                 if (cloudFloat != null) {
                     // Clear the composer, and the suggestion chips above it in an empty chat.
@@ -602,6 +608,7 @@ private fun MessageList(
     composerHeight: Dp,
     actionsFor: (ChatMessage, Boolean) -> MessageActions,
     onCancelQueued: (String) -> Unit,
+    onEarlier: () -> Unit,
 ) {
     val palette = LocalPalette.current
     val list = rememberLazyListState()
@@ -609,7 +616,15 @@ private fun MessageList(
     val reversed = state.messages.asReversed()
     val separators = remember(state.messages) { Timeline.separators(state.messages.map { it.createdAt }).asReversed() }
     // Newest at the bottom: a reversed layout stays pinned to the end while a reply streams in.
-    LaunchedEffect(state.messages.size, state.queued.size) { list.animateScrollToItem(0) }
+    var followsLatest by remember(state.conversationId) { mutableStateOf(true) }
+    LaunchedEffect(list) {
+        androidx.compose.runtime.snapshotFlow {
+            list.isScrollInProgress to (list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset < 24)
+        }.collect { (scrolling, atEnd) -> if (scrolling) followsLatest = atEnd }
+    }
+    LaunchedEffect(state.conversationId, state.messages.lastOrNull()?.id, state.queued.lastOrNull()?.id) {
+        if (followsLatest) list.scrollToItem(0)
+    }
     val scrolledUp by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 240 } }
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -634,6 +649,11 @@ private fun MessageList(
                     )
                 }
             }
+            if (state.hasOlder) item(key = "load-earlier") {
+                TextButton(onClick = onEarlier, enabled = !state.loadingOlder && !state.streaming) {
+                    Text(stringResource(R.string.chat_load_earlier))
+                }
+            }
         }
         AnimatedVisibility(
             visible = scrolledUp,
@@ -642,7 +662,7 @@ private fun MessageList(
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = composerHeight + 12.dp),
         ) {
             IconButton(
-                onClick = { scope.launch { list.animateScrollToItem(0) } },
+                onClick = { followsLatest = true; scope.launch { list.animateScrollToItem(0) } },
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)

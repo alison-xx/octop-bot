@@ -11,6 +11,8 @@ import io.github.alisonxx.octopbot.app.AppViewModel
 import io.github.alisonxx.octopbot.ui.OctopBotApp
 import kotlinx.coroutines.flow.MutableStateFlow
 
+internal fun isRechargeReturn(url: String?) = url == "octop-bot://recharge/done"
+
 /** AppCompat so per-app language and the appearance setting apply live on every supported Android. */
 class MainActivity : AppCompatActivity() {
     private val model: AppViewModel by viewModels()
@@ -23,12 +25,20 @@ class MainActivity : AppCompatActivity() {
         installSplashScreen().setOnExitAnimationListener { it.remove() }
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        openBot.value = intent.getStringExtra(EXTRA_BOT)
+        handleLaunchIntent(intent)
         setContent { OctopBotApp(model, openBot) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        handleLaunchIntent(intent)
+    }
+
+    private fun handleLaunchIntent(intent: Intent) {
+        if (intent.action == Intent.ACTION_VIEW) {
+            if (isRechargeReturn(intent.dataString)) model.appResumed(explicitReturn = true)
+            return
+        }
         intent.getStringExtra(EXTRA_BOT)?.let { openBot.value = it }
     }
 

@@ -32,7 +32,6 @@ struct ChatScreen: View {
             Composer(chat: chat)
         }
         .animation(.snappy, value: chat.pause)
-        .animation(.snappy, value: chat.isStreaming)
         .animation(.snappy, value: model.showsLowBalanceBanner)
         .background(Palette.background.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
@@ -49,7 +48,13 @@ struct ChatScreen: View {
         .onChange(of: LocalBots.shared.custom.map(\.id)) { _, ids in
             if chat.bot.isLocal && !ids.contains(chat.bot.id) { dismiss() }
         }
-        .task { await chat.reloadConversations() }
+        .task(id: scenePhase == .active) {
+            if scenePhase == .active { await chat.showConversation() }
+        }
+        .task(id: scenePhase == .active && !chat.isStreaming ? chat.conversationId : nil) {
+            guard scenePhase == .active, !chat.isStreaming, let id = chat.conversationId else { return }
+            await chat.observe(id)
+        }
         // Polls only while this chat is open and the app is in front (the screen is never streamed in the background).
         .task(id: scenePhase == .active) {
             guard scenePhase == .active, !chat.bot.isLocal, let server = model.server, server.isCloud else { return }
@@ -149,6 +154,16 @@ struct ConversationView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 18) {
+                            if chat.older != nil {
+                                Button {
+                                    guard let anchor = chat.messages.first?.id else { return }
+                                    Task {
+                                        await chat.loadOlder()
+                                        proxy.scrollTo(anchor, anchor: .top)
+                                    }
+                                } label: { Label("chat.older", systemImage: "arrow.up") }
+                                .disabled(chat.isStreaming || chat.loadingOlder)
+                            }
                             ForEach(Array(chat.messages.enumerated()), id: \.element.id) { index, message in
                                 let previous = index > 0 ? chat.messages[index - 1].createdAt : nil
                                 if TimeLabel.needsSeparator(message.createdAt, after: previous) {
@@ -172,12 +187,12 @@ struct ConversationView: View {
                     }
                     .scrollDismissesKeyboard(.interactively)
                     .defaultScrollAnchor(.bottom)
-                    .onChange(of: chat.messages.last?.text) {
-                        // Follow the stream only while the reader is at the end.
+                    // Reflow only moves the bottom when the user is following it. Avoid animating each token.
+                    .onChange(of: chat.messages.last?.id) {
                         if atBottom { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
-                    .onChange(of: chat.messages.count + chat.queued.count) {
-                        withAnimation(.snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
+                    .onChange(of: chat.queued.last?.id) {
+                        if atBottom { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
                     .overlay(alignment: .bottom) {
                         if !atBottom {
@@ -197,7 +212,7 @@ struct ConversationView: View {
                             .accessibilityLabel(Text("chat.jumpToLatest"))
                         }
                     }
-                    .animation(.snappy, value: atBottom)
+
                 }
             }
         }
@@ -462,7 +477,12 @@ struct MessageRow: View {
                     FlowChips(tools: message.tools)
                 }
                 if !message.text.isEmpty {
-                    MarkdownText(text: message.text).foregroundStyle(Palette.text)
+                    if message.status == .streaming {
+                        Text(verbatim: message.text).lineSpacing(3).foregroundStyle(Palette.text)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        MarkdownText(text: message.text).foregroundStyle(Palette.text)
+                    }
                 } else if message.status == .streaming && message.thinking.isEmpty && message.tools.isEmpty {
                     TypingDots()
                 }
@@ -475,16 +495,26 @@ struct MessageRow: View {
                     OutOfCreditsCard(
                         reason: message.status == .dailyLimit ? .dailyLimit : .outOfCredits,
                         scenario: message.creditScenario,
-                        canContinue: isLast && !chat.isStreaming
+                        canContinue: isLast && !chat.isStreaming && chat.unsavedReplies[message.id] == nil
                     ) { chat.retry() }
                 } else if case .failed(let reason) = message.status {
                     HStack(spacing: 10) {
                         Label { LinkedText(text: reason) } icon: { Image(systemName: "exclamationmark.triangle") }
                             .font(.footnote).foregroundStyle(.red)
-                        if isLast { Button("chat.retry") { chat.retry() }.font(.footnote.weight(.semibold)) }
+                        if isLast && chat.unsavedReplies[message.id] == nil {
+                            Button("chat.retry") { chat.retry() }.font(.footnote.weight(.semibold))
+                        }
                     }
                 } else if message.status == .done && !message.text.isEmpty {
-                    ReplyActions(chat: chat, message: message, isLast: isLast)
+                    ReplyActions(chat: chat, message: message, isLast: isLast && chat.unsavedReplies[message.id] == nil)
+                }
+                if let receipt = chat.unsavedReplies[message.id] {
+                    HStack {
+                        Text(receipt.canRetry() ? LocalizedStringKey("chat.historySaveFailed") : LocalizedStringKey("chat.savingHistory")).font(.footnote).foregroundStyle(.secondary)
+                        Button("chat.retrySave") { Task { await chat.retrySaving(message.id) } }
+                            .font(.footnote.weight(.semibold))
+                            .disabled(!receipt.canRetry() || chat.savingReplies.contains(message.id))
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -495,7 +525,7 @@ struct MessageRow: View {
                 Speaker.shared.speak(message.text, backend: model.backend, id: message.id)
             }
             ShareLink(item: message.text) { Label("common.share", systemImage: "square.and.arrow.up") }
-            if isLast && message.status != .streaming && !message.status.isStoppedByLynxce {
+            if isLast && chat.unsavedReplies[message.id] == nil && message.status != .streaming && !message.status.isStoppedByLynxce {
                 Button("chat.retry", systemImage: "arrow.clockwise") { chat.retry() }
             }
         }
@@ -720,6 +750,7 @@ struct Composer: View {
     private var composerPrompt: String {
         if recorder.isRecording { return L("chat.listening") }
         if let pause = chat.pause { return L(pause.isQuestion ? "hitl.ask.composer" : "hitl.composer") }
+        if chat.isSavingHistory { return L("chat.savingHistory") }
         if chat.isStreaming { return L("chat.placeholder.queue") }
         return recorder.failure ?? L("chat.placeholder")
     }
@@ -727,7 +758,10 @@ struct Composer: View {
     @ViewBuilder
     private var trailingButton: some View {
         let empty = chat.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty
-        if chat.isStreaming {
+        if chat.isSavingHistory {
+            ProgressView().frame(width: 44, height: 44)
+                .accessibilityLabel(Text("chat.savingHistory"))
+        } else if chat.isStreaming {
             Button { chat.stop() } label: {
                 Image(systemName: "stop.fill").font(.callout).frame(width: 36, height: 36)
                     .background(Palette.text, in: Circle()).foregroundStyle(Palette.background)

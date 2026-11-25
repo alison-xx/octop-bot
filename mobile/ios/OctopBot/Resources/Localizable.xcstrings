@@ -598,6 +598,12 @@
         }
       }
     },
+    "chat.older": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Load earlier messages" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "加载更早的消息" } }
+      }
+    },
     "chat.attach": {
       "localizations": {
         "en": {
@@ -642,6 +648,72 @@
           "stringUnit": {
             "state": "translated",
             "value": "编辑"
+          }
+        }
+      }
+    },
+    "chat.deletionQueued": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This conversation is hidden on this device. Refresh the list when online to finish deleting it from Lynxce." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "会话已从本机列表隐藏。联网后刷新列表，将继续从灵策删除。" } }
+      }
+    },
+    "chat.deletionInProgress": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This conversation is being deleted. Refresh the list or start a new conversation." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "此会话正在删除。请刷新列表或新建会话。" } }
+      }
+    },
+    "chat.historySaveFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This reply is still on screen. Chat history could not be saved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回复仍在当前页面，但未能保存到历史会话。"
+          }
+        }
+      }
+    },
+    "chat.retryDelete": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Retry deletion" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "重新删除" } }
+      }
+    },
+    "chat.retrySave": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry saving"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新保存"
+          }
+        }
+      }
+    },
+    "chat.savingHistory": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving conversation…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在保存会话…"
           }
         }
       }
@@ -4418,6 +4490,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 积分"
+          }
+        }
+      }
+    },
+    "account.signupExpiry %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trial credit expiry: %@ (UTC)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验积分到期日：%@（UTC）"
+          }
+        }
+      }
+    },
+    "credits.signup %@ %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ trial credits added for use in Octop. Expires on %2$@ (UTC)."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已到账 %1$@ 体验积分，仅限 Octop 使用。到期日：%2$@（UTC）。"
+          }
+        }
+      }
+    },
+    "credits.signup %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ trial credits have been added for use in Octop."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已到账 %@ 体验积分，仅限 Octop 使用。"
           }
         }
       }

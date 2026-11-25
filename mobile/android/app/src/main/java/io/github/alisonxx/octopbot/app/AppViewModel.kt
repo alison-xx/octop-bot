@@ -17,6 +17,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import io.github.alisonxx.octopbot.net.ApiException
+import io.github.alisonxx.octopbot.net.AccountPhoto
 import io.github.alisonxx.octopbot.net.ChatBackend
 import io.github.alisonxx.octopbot.net.CheckoutRefused
 import io.github.alisonxx.octopbot.net.CreditAccount
@@ -107,6 +108,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     val replying: StateFlow<Set<String>> = _replying
     private val _models = MutableStateFlow<List<ModelOption>>(emptyList())
     val models: StateFlow<List<ModelOption>> = _models
+    private val _accountPhoto = MutableStateFlow<AccountPhoto?>(null)
+    val accountPhoto: StateFlow<AccountPhoto?> = _accountPhoto
+    private var photoJob: Job? = null
     private val _balance = MutableStateFlow<BalanceState?>(null)
     /** null when the account has no Lynxce wallet (a self-hosted server). */
     val balance: StateFlow<BalanceState?> = _balance
@@ -126,11 +130,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     /** A recharge link is being fetched; the button ignores further taps. */
     val recharging: StateFlow<Boolean> = _recharging
     /** The recharge page was opened; coming back refreshes the balance. */
-    private var rechargeOpened = false
+    private var pendingRecharge: Pair<CreditAccount, Double?>? = null
     /** The app comes back to the foreground: the balance may have changed on the website or another device. */
     private var pollJob: Job? = null
     private val foreground = LifecycleEventObserver { _, event ->
         if (event == Lifecycle.Event.ON_START && session.value is SessionState.Ready) {
+            refreshAccountPhoto()
             refreshBalance()
             if (shouldPollBots(_bots.value)) refreshDirectory()
         }
@@ -295,6 +300,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         _groups.value = cached?.groups.orEmpty()
         _lastBotId.value = store.lastBot()
         _session.value = SessionState.Ready(backend)
+        refreshAccountPhoto()
+        (backend as? CreditAccount)?.let { account ->
+            account.signupCredits?.let {
+                val amount = LynxceProtocol.formatCredits(it)
+                val expiry = account.signupExpiryDay
+                notice(if (expiry == null) resources.getString(R.string.signup_credit_notice, amount)
+                    else resources.getString(R.string.signup_credit_notice_until, amount, expiry))
+            }
+            account.signupCredits = null
+        }
         refreshDirectory()
         _models.value = if (backend.definesBotsLocally) runCatching { backend.models() }.getOrDefault(emptyList()) else emptyList()
         _serverKeys.value = null
@@ -302,13 +317,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         refreshBalance()
     }
 
+    private fun refreshAccountPhoto() {
+        val backend = (session.value as? SessionState.Ready)?.backend ?: return
+        photoJob?.cancel()
+        photoJob = viewModelScope.launch {
+            val photo = runCatching { backend.accountPhoto() }.getOrNull() ?: return@launch
+            if ((session.value as? SessionState.Ready)?.backend === backend) _accountPhoto.value = photo
+        }
+    }
+
     private fun clearWallet() {
+        photoJob?.cancel()
+        _accountPhoto.value = null
         balanceJob?.cancel()
         balanceJob = null
         _balance.value = null
         _walletKey.value = null
         _usage.value = null
-        rechargeOpened = false
+        pendingRecharge = null
     }
 
     fun signOut(notice: String? = null, reopenServer: Boolean = false) {
@@ -483,12 +509,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     }
 
     /** The activity resumed; back from the recharge page, the new balance shows. */
-    fun appResumed() {
-        if (!rechargeOpened) return
-        rechargeOpened = false
+    fun appResumed(explicitReturn: Boolean = false) {
+        val checkout = pendingRecharge
+        if (checkout == null) {
+            if (explicitReturn) refreshBalance()
+            return
+        }
+        pendingRecharge = null
+        val (account, before) = checkout
+        if (creditAccount !== account) return
         balanceJob?.cancel()
-        balanceJob = null
-        refreshBalance()
+        balanceJob = viewModelScope.launch {
+            loadBalance(account)
+            val after = (_balance.value as? BalanceState.Value)?.credits
+            if (creditAccount === account && before != null && after != null && after > before) {
+                notice(resources.getString(R.string.checkout_balance_increased, LynxceProtocol.formatCredits(after - before), LynxceProtocol.formatCredits(after)))
+            }
+        }
     }
 
     val attachmentFiles = AttachmentFiles(application)
@@ -555,7 +592,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         viewModelScope.launch {
             runCatching { account.checkoutUrl(scenario) }
                 .onSuccess {
-                    rechargeOpened = true
+                    if (creditAccount !== account) return@onSuccess
+                    pendingRecharge = account to (_balance.value as? BalanceState.Value)?.credits
                     open(it)
                 }
                 .onFailure { notice(rechargeFailure(it)) }

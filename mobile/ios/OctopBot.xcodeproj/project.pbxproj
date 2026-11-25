@@ -59,6 +59,7 @@
 		DB504ED3D1733302B3F10D9E /* CreditAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5466325A942736154E927DB0 /* CreditAccount.swift */; };
 		DEC5AC974DAE214BF6C67D43 /* Hitl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44AA9D2522DD5EC8E5320048 /* Hitl.swift */; };
 		DEC9A2364E12C86351B28398 /* LaunchSplash@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 7D05B2CADB1735B180DD738F /* LaunchSplash@1x.png */; };
+		E2BDE23556DA2FCDEF509EF0 /* PendingHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 613EB1BE0AD6FCB0DEE632BE /* PendingHistory.swift */; };
 		E4D12A2503C63875BFFB19EA /* LynxceBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */; };
 		F2ED60F819DD51A46615A4E4 /* CloudComputerFloat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 226FEDB7E21C711880C1281F /* CloudComputerFloat.swift */; };
 		F3F52925138F82147211FBC8 /* DeviceBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FD0386C1154594D3587BBE1 /* DeviceBackend.swift */; };
@@ -101,6 +102,7 @@
 		5466325A942736154E927DB0 /* CreditAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditAccount.swift; sourceTree = "<group>"; };
 		5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LynxceBackend.swift; sourceTree = "<group>"; };
 		60FE975D80457770F2B56FE7 /* CreditsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditsView.swift; sourceTree = "<group>"; };
+		613EB1BE0AD6FCB0DEE632BE /* PendingHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingHistory.swift; sourceTree = "<group>"; };
 		64A1DD83356759A7465B69ED /* HitlCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitlCard.swift; sourceTree = "<group>"; };
 		687A510E1D53E5F2DED96BFF /* CloudComputerSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudComputerSection.swift; sourceTree = "<group>"; };
 		6F77470F5AE016E9DEF759F6 /* LaunchSplash@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LaunchSplash@2x.png"; sourceTree = "<group>"; };
@@ -160,6 +162,7 @@
 				ED1E4C98857F2A9A92FA53F6 /* HTTP.swift */,
 				5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */,
 				DFF2C65122F117E4F482A0E3 /* ModelSources.swift */,
+				613EB1BE0AD6FCB0DEE632BE /* PendingHistory.swift */,
 				853AB250E633AC85F64B4B8E /* ServerBackend.swift */,
 				3360C9BF7AE6466E31224253 /* ToolCalls.swift */,
 			);
@@ -455,6 +458,7 @@
 				06D222EA88F08977C5F70343 /* OctopBotApp.swift in Sources */,
 				D79859D85ACC51E337C24629 /* OnboardingView.swift in Sources */,
 				B771D743DC4B5E39F8C6F4EF /* Panels.swift in Sources */,
+				E2BDE23556DA2FCDEF509EF0 /* PendingHistory.swift in Sources */,
 				1FDC57332E69AE769E1243A7 /* Preferences.swift in Sources */,
 				871A5E282D3F9B836B3A0901 /* ServerBackend.swift in Sources */,
 				19E2EB24C0D7CC125AC821D9 /* Theme.swift in Sources */,

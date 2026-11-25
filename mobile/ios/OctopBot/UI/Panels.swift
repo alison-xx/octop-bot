@@ -18,6 +18,9 @@ struct HistorySheet: View {
     var body: some View {
         NavigationStack {
             List {
+                if let notice = chat.deletionNotice {
+                    Text(notice).font(.footnote).foregroundStyle(.secondary)
+                }
                 if query.isEmpty {
                     Section {
                         Button {
@@ -32,6 +35,12 @@ struct HistorySheet: View {
                     Section(bucket.title) {
                         ForEach(rows) { conversation in
                             row(conversation)
+                            if let failure = chat.deletionFailures[conversation.id] {
+                                VStack(alignment: .leading) {
+                                    Text(failure).font(.footnote).foregroundStyle(.secondary)
+                                    Button("chat.retryDelete") { Task { await chat.delete(conversation) } }
+                                }
+                            }
                         }
                     }
                 }
@@ -565,7 +574,7 @@ struct SettingsView: View {
 
     private var accountCard: some View {
         HStack(spacing: 14) {
-            CharacterView(look: .chief, size: 56)
+            LynxceAvatar(name: model.accountName, url: model.accountPhotoURL, localImage: model.localAccountImage, size: 56, branded: false)
             VStack(alignment: .leading, spacing: 4) {
                 Text(model.accountName).font(.headline).lineLimit(1)
                 HStack(spacing: 5) {
@@ -710,6 +719,7 @@ final class GitHubStars {
 struct AccountSummary: Equatable {
     var name: String
     var avatarURL: URL?
+    var localImage: Data?
     var tier: String?
     /// Masked Lynxce id, e.g. "138****0000".
     var accountHint: String?
@@ -717,6 +727,7 @@ struct AccountSummary: Equatable {
     var credits: Double?
     var expiring: Double?
     var expiringOn: Date?
+    var signupExpiryDay: String? = nil
     var permanent: Double?
 
     /// Sample data for design screenshots (`-demoAccount YES`, debug builds only).
@@ -739,7 +750,7 @@ struct AccountCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                LynxceAvatar(name: summary.name, url: summary.avatarURL, size: 52)
+                LynxceAvatar(name: summary.name, url: summary.avatarURL, localImage: summary.localImage, size: 52)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
                         Text(verbatim: summary.name).font(.headline).lineLimit(1)
@@ -772,6 +783,9 @@ struct AccountCard: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 }
+            }
+            if let expiry = summary.signupExpiryDay {
+                Text(verbatim: L("account.signupExpiry %@", expiry)).font(.caption).foregroundStyle(Palette.secondary)
             }
             if let openCredits {
                 Button(action: openCredits) {
@@ -824,27 +838,36 @@ struct AccountCard: View {
 struct LynxceAvatar: View {
     let name: String
     let url: URL?
+    var localImage: Data? = nil
     var size: CGFloat = 52
+    var branded = true
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             Group {
-                if let url {
-                    AsyncImage(url: url) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        initial
+                if let localImage, let image = UIImage(data: localImage) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else if let url {
+                    AsyncImage(url: url) { phase in
+                        if case .success(let image) = phase {
+                            image.resizable().scaledToFill()
+                        } else {
+                            initial
+                        }
                     }
+                    .id(url)
                 } else {
                     initial
                 }
             }
             .frame(width: size, height: size)
             .clipShape(Circle())
-            VendorLogo(company: "lynxce", size: size * 0.36)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Palette.background, lineWidth: 2))
-                .offset(x: 3, y: 3)
+            if branded {
+                VendorLogo(company: "lynxce", size: size * 0.36)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Palette.background, lineWidth: 2))
+                    .offset(x: 3, y: 3)
+            }
         }
         .accessibilityHidden(true)
     }
@@ -852,7 +875,7 @@ struct LynxceAvatar: View {
     private var initial: some View {
         ZStack {
             LinearGradient(colors: [Palette.brandButtonTop, Palette.brandButtonBottom], startPoint: .top, endPoint: .bottom)
-            Text(verbatim: String(name.prefix(1)).uppercased())
+            Text(verbatim: String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)))
                 .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
         }

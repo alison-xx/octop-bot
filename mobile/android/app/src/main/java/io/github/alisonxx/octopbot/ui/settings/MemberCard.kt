@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.alisonxx.octopbot.BuildConfig
 import io.github.alisonxx.octopbot.R
+import io.github.alisonxx.octopbot.ui.common.AccountAvatar
 import io.github.alisonxx.octopbot.ui.common.credits
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
 import java.time.LocalDate
@@ -62,7 +63,9 @@ data class AccountSummary(
     val credits: Double? = null,
     val expiring: Double? = null,
     val expiringOn: LocalDate? = null,
+    val signupExpiryDay: String? = null,
     val permanent: Double? = null,
+    val avatarImage: Any? = null,
 ) {
     val member get() = tier != null
 
@@ -109,12 +112,7 @@ fun MemberCard(summary: AccountSummary, onCredits: () -> Unit, onOpen: (String) 
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box {
-                    Box(
-                        Modifier.size(52.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFFEA5A73), Color(0xFFCF3753)))),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(summary.name.take(1).uppercase(), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                    }
+                    AccountAvatar(summary.name, summary.avatarImage, 52.dp)
                     Box(Modifier.align(Alignment.BottomEnd).offset(x = 3.dp, y = 3.dp).clip(CircleShape).background(palette.background).padding(2.dp)) {
                         VendorLogo("lynxce", 16.dp)
                     }
@@ -140,6 +138,9 @@ fun MemberCard(summary: AccountSummary, onCredits: () -> Unit, onOpen: (String) 
                     ).joinToString(" · ")
                     if (line.isNotEmpty()) Text(line, style = MaterialTheme.typography.bodySmall, color = palette.secondary, maxLines = 1)
                 }
+            }
+            summary.signupExpiryDay?.let {
+                Text(stringResource(R.string.signup_credit_expiry, it), style = MaterialTheme.typography.bodySmall, color = palette.secondary)
             }
             summary.credits?.let { total ->
                 Column {

@@ -5,21 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script src="assets/boot.js?v=1"></script>
   <title data-en="Guide · Octop Bot">使用指南 · Octop Bot</title>
-  <meta name="description" content="四步上手 Octop Bot，以及关于团队分工、Goal、云端工作区和安装的常见问题。" data-en-content="Get started with Octop Bot in four steps, with answers about teams, Goals, the cloud workspace and installation.">
+  <meta name="description" content="用一份会议记录开始第一次对话。按步骤提供材料、核对待办、取回文件，并了解本机任务、云电脑接管和手机入口。" data-en-content="Turn meeting notes into an action list. Follow the first task, check the result and learn when to use local files, cloud takeover or a phone.">
   <meta name="theme-color" content="#f7f6f2" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)">
   <meta property="og:type" content="website">
   <meta property="og:title" content="使用指南 · Octop Bot">
-  <meta property="og:description" content="四步上手 Octop Bot，以及关于团队分工、Goal、云端工作区和安装的常见问题。">
+  <meta property="og:description" content="用一份会议记录开始第一次对话。按步骤提供材料、核对待办、取回文件，并了解本机任务、云电脑接管和手机入口。" data-en-content="Turn meeting notes into an action list. Follow the first task, check the result and learn when to use local files, cloud takeover or a phone.">
   <meta property="og:image" content="https://octop-bot.lynxce.cn/assets/art/team.webp">
   <meta property="og:url" content="https://octop-bot.lynxce.cn/guide.html">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="canonical" href="https://octop-bot.lynxce.cn/guide.html">
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="stylesheet" href="assets/site.css?v=19">
-  <script src="assets/auth.js?v=2" defer></script>
-  <script src="assets/site.js?v=17" defer></script>
+  <link rel="stylesheet" href="assets/site.css?v=account-avatar-1">
+  <script src="assets/auth.js?v=4" defer></script>
+  <script src="assets/site.js?v=platform-releases-3" defer></script>
 </head>
 <body>
   <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
@@ -34,7 +34,7 @@
         <div class="nav-more" data-current="1">
           <button type="button" aria-expanded="false" aria-controls="help-menu"><span data-en="Help">帮助</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
           <div class="nav-menu" id="help-menu">
-            <a href="guide.html" aria-current="page"><b data-en="Guide">使用指南</b><small data-en="From install to your first Bot">从安装到第一个 Bot</small></a>
+            <a href="guide.html" aria-current="page"><b data-en="Guide">使用指南</b><small data-en="Try a first task with Chief">跟 Chief 做第一件事</small></a>
             <a href="changelog.html"><b data-en="Changelog">更新日志</b><small data-en="What changed in each release">每个版本改了什么</small></a>
             <a href="guide.html#faq"><b data-en="FAQ">常见问题</b><small data-en="Install, accounts and everyday use">安装、账号和日常使用</small></a>
             <a href="#community" data-community><b data-en="Join the community">加入社群</b><small data-en="The Octop Bot community on WeChat">扫码进 Octop Bot 用户群</small></a>
@@ -60,6 +60,7 @@
       <a href="#community" data-community data-en="Join the community">加入社群</a>
       <a href="https://bot.lynxce.cn" data-en="Web app">网页版</a>
       <div class="gh-stars"><a class="gh-star" href="https://github.com/alison-xx/octop-bot" title="github.com/alison-xx/octop-bot"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop Bot">Octop Bot</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="alison-xx/octop-bot">6</b></span></a><a class="gh-star upstream" href="https://github.com/TencentCloud/Octop" title="github.com/TencentCloud/Octop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop">Octop</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="TencentCloud/Octop">12.4k</b></span></a></div>
+      <a href="https://apps.apple.com/app/id6838257776" data-en="iPhone / iPad on the App Store">从 App Store 下载 iPhone / iPad 版</a>
       <a class="btn btn-primary" href="download.html" data-en="Download Octop Bot">下载 Octop Bot</a>
     </nav>
   </header>
@@ -67,32 +68,32 @@
   <main id="main">
     <section class="page-hero wrap">
       <span class="eyebrow reveal" data-en="Guide">使用指南</span>
-      <h1 class="display reveal" style="--delay:.05s" data-en="Start with Chief.">从 Chief 开始。</h1>
-      <p class="lead reveal" style="--delay:.1s" data-en="Four steps from download to your first finished task, plus answers to the questions people ask most.">从下载到完成第一件事只要四步。常见问题也都整理在这里。</p>
+      <h1 class="display reveal" style="--delay:.05s" data-en="Turn meeting notes into action items.">请 Chief 帮你整理一次会议。</h1>
+      <p class="lead reveal" style="--delay:.1s" data-en="Start with a short set of meeting notes. Ask Chief for an action list, review it, then decide whether you need a dedicated bot for the next meeting.">准备一小段会议记录就够了。先让 Chief 试做一份待办表，再决定哪些工作值得交给专门的 Bot。</p>
     </section>
 
     <section class="wrap">
       <div class="quick">
         <div class="card reveal">
           <span class="num">1</span>
-          <h3 class="h3" data-en="Install">安装客户端</h3>
-          <p data-en="Download the Windows or Mac version and install it.">下载 Windows 或 Mac 版本并安装。</p>
-          <a class="link" href="download.html" data-en="Download →">去下载 →</a>
+          <h3 class="h3" data-en="Choose where to work">选工作地点</h3>
+          <p data-en="Sign in on the web, or install the desktop app to work with local files. Local and hosted chats have separate histories.">直接登录网页版，或安装桌面版处理本机资料。两边分别保存各自的对话。</p>
+          <a class="link" href="https://bot.lynxce.cn" data-en="Open the web app →">打开网页版 →</a>
         </div>
         <div class="card reveal" style="--delay:.05s">
           <span class="num">2</span>
           <h3 class="h3" data-en="Connect a model">连接模型</h3>
-          <p data-en="Choose Get started, then sign in to Lynxce, add an API key or choose a local model.">选择「开始使用」，登录灵策智算、填入 API Key 或选择本机模型。</p>
+          <p data-en="Use your Lynxce account on the web. On desktop you can also use your own API key or a locally running model. Choose a tool-capable model if you want Chief to create a group.">网页版使用灵策账号。桌面版还可以选择自己的 API Key 或已运行的本机模型。需要 Chief 建群时，选支持工具调用的模型。</p>
         </div>
         <div class="card reveal" style="--delay:.1s">
           <span class="num">3</span>
-          <h3 class="h3" data-en="Talk to Chief">和 Chief 说第一句话</h3>
-          <p data-en="Open Chief in the directory and describe the result you want. Not sure? Pick an example.">在通讯录点开 Chief，说出你想要的结果。没想好就选一句示例。</p>
+          <h3 class="h3" data-en="Give Chief the brief">贴上记录和要求</h3>
+          <p data-en="Open Chief in the directory, paste the notes and ask, “Make a table with the action, owner and due date. Mark anything we left open as unconfirmed.”">在通讯录打开 Chief，贴上记录，告诉它「按事项、负责人、截止日期做一张表。没定下来的标为待确认。」</p>
         </div>
         <div class="card reveal" style="--delay:.15s">
           <span class="num">4</span>
-          <h3 class="h3" data-en="Let the team work">让团队接力</h3>
-          <p data-en="Chief creates the bots and the group. @ members, set a Goal and check the result.">Chief 建好成员和群聊。在群里 @ 成员、写下 Goal，最后验收结果。</p>
+          <h3 class="h3" data-en="Check the result">核对并取回结果</h3>
+          <p data-en="Check each name and date against your notes. If you need a file, ask Chief to save the table as a CSV. Open the CSV from the file card, or find it in the bot’s working folder on desktop.">逐行核对姓名和日期。要拿到文件，可以继续说「保存为 CSV 给我」。从文件卡片下载并打开检查。在桌面端，也可以去 Bot 的工作目录找文件。</p>
         </div>
       </div>
     </section>
@@ -119,8 +120,8 @@
         </div>
         <div class="faq reveal">
           <details id="first-chat" data-cat="start">
-            <summary data-en="How do I start my first conversation?">怎样开始第一次对话？</summary>
-            <div class="answer"><p data-en="Open Octop Bot and choose Get started. After you connect a Lynxce account, another provider or a local model, open Chief in the directory. To let Chief build groups for you, pick a model that supports tool calling.">打开 Octop Bot 客户端，选择「开始使用」。连接灵策智算账号、其他云服务或本机模型后，在通讯录点开 Chief。要让 Chief 帮你建群，请选择支持工具调用的模型。</p></div>
+            <summary data-en="Should I start on the web or on desktop?">应该选网页版还是桌面版？</summary>
+            <div class="answer"><p data-en="Sign in with Lynxce in your browser to use cloud bots. Install the desktop app and use a local bot for files or scripts on your machine, or if you want to use a local model.">从浏览器登录灵策即可使用云端 Bot。材料只在这台电脑、需要运行本机脚本，或打算用本机模型时，安装桌面版并创建本机 Bot。</p><p><a class="link" href="download.html#platforms-section" data-en="Choose a version for your device →">按设备选择版本 →</a></p></div>
           </details>
           <details id="roles" data-cat="team">
             <summary data-en="How do I get different bots to split the work?">怎样让不同的 Bot 分工？</summary>
@@ -139,28 +140,32 @@
             <div class="answer"><p data-en="Press Ctrl+K to search the directory, switch to past chats, and type a title or keyword to reopen the conversation. In a chat, use Quote conversation to insert the exact words.">按 Ctrl+K 搜索通讯录，切到「历史私聊」，输入标题或消息关键词即可重开会话。在私聊中还可以用「引用对话」插入某段原话。</p></div>
           </details>
           <details id="offline" data-cat="cloud">
-            <summary data-en="Can bots keep working after I shut down?">关机之后，Bot 还能继续工作吗？</summary>
-            <div class="answer"><p data-en="Local tasks need Octop to keep running. For supported cloud tasks, sign in to the cloud workspace with your Lynxce account. Once the cloud has the task, it keeps going with your computer off, and you can continue on another device.">本机任务需要保持 Octop 服务运行。对于支持的云端任务，可用灵策账号登录「云端工作区」。云端接收任务后，关机也能继续处理，你可以在另一台设备打开会话续聊。</p></div>
+            <summary data-en="Can a task run after I turn my computer off?">关掉自己的电脑后，任务还会运行吗？</summary>
+            <div class="answer"><p data-en="For local tasks, keep your computer awake and Octop running. The server handles tasks accepted by a cloud bot. Return to the cloud conversation if a task is waiting for you to sign in or answer a question.">本机任务需要电脑保持唤醒，Octop 服务也要运行。云端 Bot 已接收的任务由服务器执行。需要你登录网站或回答问题时，回到云端对话处理后再继续。</p></div>
           </details>
           <details id="bring-to-cloud" data-cat="cloud">
-            <summary data-en="What goes to the cloud when I bring a local chat there?">把本机私聊带到云端时，会带上什么？</summary>
-            <div class="answer"><p data-en="Before you import, you can preview up to 20 recent visible messages. Attachments, tool logs and reasoning stay on this computer. Sign in with the same Lynxce account on another device to continue the cloud conversation.">确认导入前，可以预览最近最多 20 条可见文字。附件、工具记录和思考过程留在本机。另一台设备登录同一灵策账号后，就能打开这段云端会话续聊。</p></div>
+            <summary data-en="Why can’t I find my desktop chat on my phone?">为什么在手机上找不到桌面上的这段对话？</summary>
+            <div class="answer"><p data-en="Check the account and server on both devices. A local desktop bot keeps its history on that computer. To continue across devices, use a cloud bot under the same Lynxce account or connect both clients to the same self-hosted server.">先核对登录账号和连接的服务器。本机 Bot 的历史保存在这台电脑上。要在手机和电脑间接着做，使用同一灵策账号的云端 Bot，或让两个客户端连接同一台自建服务器。</p></div>
+          </details>
+          <details id="takeover" data-cat="cloud">
+            <summary data-en="How do I take over to sign in or enter a code?">遇到登录或验证码，怎样接管？</summary>
+            <div class="answer"><p data-en="Open the cloud bot’s computer screen in the web app and choose Take over. Enter your password or code directly on the website. Choose Hand back to bot, return to the conversation and answer any pending question so work can continue.">在网页版打开云端 Bot 的电脑画面，点「接管」，自己在页面完成登录或验证。点「交还给 Bot」后回到对话。如果 Bot 仍在等答复，告诉它已完成，可以继续。密码和验证码直接填在网站里。</p></div>
           </details>
           <details id="where" data-cat="cloud">
-            <summary data-en="Should a task run locally or in the cloud?">一件事该放在本机做，还是交给云端？</summary>
-            <div class="answer"><p data-en="Files, scripts or apps that only exist on this computer: use a local bot. Fixed-time work whose material can be read in the cloud, such as a morning briefing: use a scheduled cloud task. A chat you want to continue on another device: bring it to the cloud.">文件、脚本或应用只在这台电脑上：交给本机 Bot。有固定时间、材料也能在云端读取的工作（比如晨间简报）：交给云端定时任务。想在另一台设备接着聊：把当前私聊带到云端。</p><p data-en="When moving an existing schedule to the cloud, pause the local one first so it does not run twice.">迁移已有定时任务时，先暂停本机计划，避免重复执行。</p></div>
+            <summary data-en="Where should I check a website or edit a local spreadsheet?">核对网页和整理本机表格，分别在哪做？</summary>
+            <div class="answer"><p data-en="To check a registration site, give a cloud bot the URL and the fields to verify in the web app. For a spreadsheet on your computer, give a local desktop bot the file and ask it to save the changes as a new copy.">核对报名网站可以从网页版找云端 Bot，把网址和要查的字段发过去。表格只在本机时，使用桌面端的本机 Bot，发给它要处理的文件，要求把修改另存为新文件。</p></div>
           </details>
           <details id="install" data-cat="install">
             <summary data-en="Which version should I install?">怎样选择和安装客户端？</summary>
             <div class="answer"><p data-en="On Windows x64, install with the EXE wizard, or extract the whole ZIP and double-click Octop Bot.exe inside, keeping the files next to it. On a Mac with Apple silicon, open the DMG, drag Octop Bot to Applications and launch it from there.">Windows x64 可以用 EXE 按向导安装，或完整解压 ZIP 后双击里面的 Octop Bot.exe，并保留同目录的资源文件。使用 Apple 芯片的 Mac 请打开 DMG，将 Octop Bot 拖到「应用程序」文件夹，再从那里启动。</p></div>
           </details>
           <details id="verify" data-cat="install">
-            <summary data-en="How do I check that a download is genuine?">怎样确认安装包没有被篡改？</summary>
-            <div class="answer"><p data-en="Every package on the download page lists its SHA-256 checksum, and each release has a SHA256SUMS.txt file. Compare it with the checksum of the file you downloaded.">下载页的每个安装包都列出了 SHA-256 校验值，每个版本也提供 SHA256SUMS.txt。把它和你下载文件的校验值比对即可。</p><p><a class="link" href="download.html#platforms-section" data-en="Open the download page →">打开下载页 →</a></p></div>
+            <summary data-en="How do I verify a downloaded installer?">怎样核对下载的安装包？</summary>
+            <div class="answer"><p data-en="Match the platform, version and file name on the download page. Compare the published SHA-256 with the hash of your file. Use Get-FileHash in Windows PowerShell or shasum -a 256 on a Mac.">在下载页找到对应系统、版本和文件名，比较页面公布的 SHA-256 与本地文件的校验值。Windows 可使用 PowerShell 的 Get-FileHash，Mac 可使用 shasum -a 256。</p><p><a class="link" href="download.html#platforms-section" data-en="Find your package →">查看安装包 →</a></p></div>
           </details>
           <details id="price" data-cat="start">
-            <summary data-en="Is Octop Bot free?">Octop Bot 收费吗？</summary>
-            <div class="answer"><p data-en="The app is free and open source under the MIT license. Model usage depends on the service you connect: Lynxce and other providers bill on their own terms, and local models cost nothing extra.">客户端免费，并以 MIT 协议开源。模型用量取决于你连接的服务：灵策智算和其他服务商按各自的规则计费，本机模型不额外收费。</p></div>
+            <summary data-en="Which parts cost money?">哪些使用方式会产生费用？</summary>
+            <div class="answer"><p data-en="The app is free and open source. Lynxce models and cloud computers use Lynxce credits. If you use your own API key on desktop, your model provider bills that usage.">客户端免费开源。使用灵策模型或运行云电脑会消耗灵策积分。桌面端使用自己的 API Key 时，模型用量按对应服务商的规则结算。</p><p><a class="link" href="pricing.html" data-en="View pricing and credits →">查看定价和积分说明 →</a></p></div>
           </details>
         </div>
         <p class="empty faq-empty" hidden data-en="No matching questions. Try another keyword, or ask on GitHub.">没有找到相关问题。换个关键词试试，或者到 GitHub 提问。</p>
@@ -183,15 +188,16 @@
       <div class="footer-grid">
         <div class="footer-brand">
           <a class="brand" href="index.html"><img src="assets/app-icon.webp" alt="" width="30" height="30">Octop Bot</a>
-          <p data-en="One sentence, a whole AI team. A free, open-source desktop app.">一句话，组建你的 AI 团队。免费开源的桌面客户端。</p>
+          <p data-en="An open-source AI team led by Chief.">由 Chief 带队的开源 AI 团队。</p>
         </div>
         <div>
           <h4 data-en="Product">产品</h4>
           <ul>
-            <li><a href="features.html" data-en="Features">功能</a>
-        <a href="market.html" data-en="Bot Market">Bot 市场</a></li>
+            <li><a href="features.html" data-en="Features">功能</a></li>
+            <li><a href="market.html" data-en="Bot Market">Bot 市场</a></li>
             <li><a href="pricing.html" data-en="Pricing">定价</a></li>
             <li><a href="download.html" data-en="Download">下载</a></li>
+            <li><a href="https://apps.apple.com/app/id6838257776" data-en="iPhone / iPad · App Store ↗">iPhone / iPad · App Store ↗</a></li>
             <li><a href="https://bot.lynxce.cn" data-en="Web app ↗">网页版 ↗</a></li>
             <li><a href="changelog.html" data-en="Changelog">更新日志</a></li>
           </ul>

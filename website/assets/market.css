@@ -50,7 +50,7 @@
   border-color: var(--line-strong);
   color: var(--ink);
 }
-.m-tab[aria-selected="true"] {
+.m-tab[aria-pressed="true"] {
   background: var(--ink);
   border-color: var(--ink);
   color: var(--on-ink);
@@ -433,8 +433,5 @@ details.m-item[open] summary strong::after {
 @media (max-width: 520px) {
   .m-grid {
     grid-template-columns: 1fr;
-  }
-  .market-bar {
-    top: 60px;
   }
 }
