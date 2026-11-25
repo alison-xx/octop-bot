@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  desktopCapturer,
   dialog,
   ipcMain,
   Menu,
@@ -10,6 +11,7 @@ import {
   protocol,
   screen,
   shell,
+  systemPreferences,
   Tray,
   type MenuItemConstructorOptions,
   type NativeImage,
@@ -119,7 +121,9 @@ import { isWindowOnScreen, presentWindows, shouldKeepWindowOnClose } from "./win
 import { BotOrb } from "./windows/bot-orb";
 import { createRemoteWindow } from "./windows/remote-window";
 import { ServerPicker } from "./windows/server-window";
+import { openWechatLogin } from "./windows/wechat-login";
 import { openWorkbuddyLogin } from "./windows/workbuddy-login";
+import { isMacPermission, requestMacPermission } from "./mac-permissions";
 import { sanitizeBadgeCount, sanitizeNotification, trayTooltip } from "./windows/attention";
 import {
   shouldInstallSystemTray,
@@ -750,10 +754,28 @@ function registerIpcHandlers(): void {
     app.setBadgeCount(total);
     tray?.setToolTip(trayTooltip(productName, total, uiLocale()));
   });
+  ipcMain.handle(IPC_CHANNELS.botWechatLogin, (event, qrUrl: string, redirectUri: string) => {
+    if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" as const });
+    return openWechatLogin(BrowserWindow.fromWebContents(event.sender), app.getLocale().toLowerCase().startsWith("zh"), qrUrl, redirectUri);
+  });
   ipcMain.handle(IPC_CHANNELS.botWorkbuddyLogin, (event): Promise<WorkbuddyLoginResult> => {
     if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" });
     const zh = uiLocale().toLowerCase().startsWith("zh");
     return openWorkbuddyLogin(BrowserWindow.fromWebContents(event.sender), zh);
+  });
+  ipcMain.handle(IPC_CHANNELS.botComputerPermission, (_event, kind: unknown): Promise<boolean> => {
+    if (!botOnly || !isMacPermission(kind)) return Promise.resolve(false);
+    return requestMacPermission(kind, {
+      platform: process.platform,
+      screenStatus: () => systemPreferences.getMediaAccessStatus("screen"),
+      accessibilityTrusted: (prompt) => systemPreferences.isTrustedAccessibilityClient(prompt),
+      touchScreenCapture: () =>
+        desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 1, height: 1 } }),
+      openSettings: (url) => shell.openExternal(url),
+    });
+  });
+  ipcMain.on(IPC_CHANNELS.botRelaunch, () => {
+    if (botOnly) restartApp();
   });
   ipcMain.handle(IPC_CHANNELS.botUseCloud, (_event, accessToken: unknown): boolean => {
     // Only this computer's own page moves the app; a cloud page has no preload.
@@ -1085,6 +1107,10 @@ function openDeepLink(url: string): void {
     return;
   }
   revealAppWindow();
+  if (path === BOT_HOME_PATH) {
+    win.webContents.send(IPC_CHANNELS.botRechargeReturn);
+    return;
+  }
   const theme = resolveWindowChromeTheme(settingsStore.load().themeBackground);
   void win.loadURL(dashboardOrigin ? dashboardEntryUrl(theme.scheme ?? theme.mode, origin, path) : origin + path);
 }

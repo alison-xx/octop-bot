@@ -88,10 +88,12 @@ async def test_bot_cards_and_market_import_hide_raw_errors(env_admin_alice, monk
     assert imported.json()["last_error"] == "Bot 启动失败，请稍后重试。"
     monkeypatch.setattr(server.services.agent_repo, "get", real_get)
 
-    # Bot cards (the owner's own list).
-    agent_id = imported.json()["agent_id"]
-    server.services.agent_repo.set_state(agent_id, "failed", error=raw)
+    # A separate failed Bot keeps the imported Bot's background startup from changing this row.
     alice_id = await resolve_user_id(client, admin_auth, "alice")
+    agent_id = server.services.agent_repo.create(
+        agent_id="failed-card", user_id=alice_id, name="Failed Bot"
+    )
+    server.services.agent_repo.set_state(agent_id, "failed", error=raw)
     cards = list_bot_cards(server.services, alice_id, "")
     card = next(c for c in cards if c["agent_id"] == agent_id)
     assert card["last_error"] == "Bot 启动失败，请稍后重试。"

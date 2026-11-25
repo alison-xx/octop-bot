@@ -647,6 +647,7 @@ function ChatPageInner() {
     reasoningEffort,
     handleReasoningChange,
     conversationMode,
+    threadModesReady,
     handleConversationModeChange,
     hitlPolicy,
     handleHitlPolicyChange,
@@ -664,7 +665,7 @@ function ChatPageInner() {
     composerSession?.conversationMode,
     composerSession?.hitlPolicy,
     composerSession?.sessionMode,
-    composerSession?.owned !== false,
+    !activeThreadId || (!!composerSession && composerSession.owned !== false),
   );
 
   const personalModel =
@@ -737,7 +738,12 @@ function ChatPageInner() {
     decisionSaved: t("chatUsage.decisionSaved"),
   });
 
-  const { resetNavForAgentSwitch, markInitialNavDone } = useChatNavigation({
+  const {
+    resetNavForAgentSwitch,
+    markInitialNavDone,
+    threadMetadataFailed,
+    retryThreadMetadata,
+  } = useChatNavigation({
     routeAgentId,
     threadId,
     resolvedAgentId,
@@ -815,7 +821,10 @@ function ChatPageInner() {
     ],
   );
 
+  const activeThreadReady =
+    !activeThreadId || (!!composerSession && threadModesReady);
   const { handleSend } = useChatSend({
+    activeThreadReady,
     resolvedAgentId,
     activeThreadId,
     selectedModel,
@@ -936,6 +945,33 @@ function ChatPageInner() {
       t,
     ],
   );
+
+  // Octop Bot onboarding: text the owner chose to send with a button elsewhere
+  // ({ autoSend } in router state), sent once when this chat can take a message.
+  const autoSentFor = useRef<string | null>(null);
+  const routedAutoSend = (location.state as { autoSend?: unknown } | null)
+    ?.autoSend;
+  const autoSend =
+    typeof routedAutoSend === "string" &&
+    routedAutoSend.trim() &&
+    autoSentFor.current !== location.key
+      ? routedAutoSend
+      : null;
+  const canAutoSend =
+    agentChatReady && modelsReady && hasChatModel && !isStreaming;
+  useEffect(() => {
+    if (!autoSend || !canAutoSend) return;
+    autoSentFor.current = location.key;
+    navigate(location.pathname, { replace: true, state: {} });
+    wrappedHandleSend(autoSend);
+  }, [
+    autoSend,
+    canAutoSend,
+    wrappedHandleSend,
+    navigate,
+    location.key,
+    location.pathname,
+  ]);
 
   const flushQueuedItem = useCallback(
     (item: QueuedChatItem, ctx: ChatQueueFlushContext): boolean => {
@@ -1720,18 +1756,25 @@ function ChatPageInner() {
               />
             )}
 
-            {historyError && (
+            {(historyError || threadMetadataFailed) && (
               <Alert
                 type="error"
                 showIcon
-                message={t("chat.historyLoadFailed")}
+                message={t(
+                  threadMetadataFailed
+                    ? "chat.threadSettingsLoadFailed"
+                    : "chat.historyLoadFailed",
+                )}
                 action={
                   <Button
                     size="small"
                     loading={
                       historyLoading || historyRefreshing || historyLoadingMore
                     }
-                    onClick={() => void retryHistory()}
+                    onClick={() => {
+                      if (threadMetadataFailed) retryThreadMetadata();
+                      if (historyError) void retryHistory();
+                    }}
                   >
                     {t("chat.historyRetry")}
                   </Button>
@@ -2117,6 +2160,7 @@ function ChatPageInner() {
                 </div>
               </div>
             ) : null}
+            {embedded?.composerTop}
             <ChatInput
               botName={
                 focused
@@ -2145,6 +2189,7 @@ function ChatPageInner() {
               holdSend={membersStillTalking}
               isTeam={isTeamChat}
               disabled={
+                !activeThreadReady ||
                 !agentChatReady ||
                 noAgents ||
                 memoryMaintBlocking ||

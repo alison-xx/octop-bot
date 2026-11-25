@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -48,6 +49,7 @@ import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.app.AppViewModel
 import io.github.alisonxx.octopbot.app.AttachmentFiles
 import io.github.alisonxx.octopbot.app.SessionState
+import io.github.alisonxx.octopbot.net.ServerBackend
 import io.github.alisonxx.octopbot.net.ServerProtocol
 import io.github.alisonxx.octopbot.ui.chat.ChatScreen
 import io.github.alisonxx.octopbot.ui.common.ProvideUiPrefs
@@ -101,7 +103,7 @@ private fun NavHostController.back() {
 }
 
 @Composable
-fun OctopBotApp(model: AppViewModel, openBot: MutableStateFlow<String?>) {
+fun OctopBotApp(model: AppViewModel, openBot: MutableStateFlow<io.github.alisonxx.octopbot.NotificationChat?>) {
     val settings by model.settings.collectAsStateWithLifecycle()
     OctopTheme {
         ProvideUiPrefs(settings) {
@@ -128,15 +130,15 @@ fun OctopBotApp(model: AppViewModel, openBot: MutableStateFlow<String?>) {
                         when (val state = session) {
                             SessionState.Loading -> Unit
                             is SessionState.SignedOut -> SignedOutNav(model, state.notice, state.reopenServer)
-                            is SessionState.Ready -> {
+                            is SessionState.Ready -> key((state.backend as? ServerBackend)?.attachmentScope) {
                                 // Files a Bot links to live on its server; open them with this account's access.
                                 val context = LocalContext.current
                                 val system = LocalUriHandler.current
-                                val files = remember(model, system) {
+                                val files = remember(model, system, state.backend) {
                                     object : UriHandler {
                                         override fun openUri(uri: String) {
                                             if (!ServerProtocol.isWorkspaceDownload(uri)) return system.openUri(uri)
-                                            model.openWorkspaceFile(uri) { file, mime -> AttachmentFiles.openWith(context, file, mime) }
+                                            model.openWorkspaceFile(state.backend as? ServerBackend, uri) { file, mime -> AttachmentFiles.openWith(context, file, mime) }
                                         }
                                     }
                                 }
@@ -185,13 +187,22 @@ private fun SignedOutNav(model: AppViewModel, notice: String?, reopenServer: Boo
 }
 
 @Composable
-private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<String?>) {
+private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<io.github.alisonxx.octopbot.NotificationChat?>) {
     val nav = rememberNavController()
     val pending by openBot.collectAsState()
-    LaunchedEffect(pending) {
-        val bot = pending ?: return@LaunchedEffect
+    val directory by model.bots.collectAsState()
+    LaunchedEffect(pending, directory) {
+        val target = pending ?: return@LaunchedEffect
+        if (directory.isEmpty()) return@LaunchedEffect
+        try {
+            if (model.openNotification(target.botId, target.threadId))
+                nav.navigate(Routes.chat(target.botId)) { popUpTo(Routes.HOME) }
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // An unavailable or removed conversation leaves the signed-in directory on screen.
+        }
         openBot.value = null
-        nav.navigate(Routes.chat(bot)) { popUpTo(Routes.HOME) }
     }
     AskForNotifications(model)
     InstallUpdates(model)

@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Modal, Select, Spin } from "antd";
-import { Moon } from "lucide-react";
+import { Moon, ShieldAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   botComputerApi as api,
   type ComputerApp,
   type ComputerLevel,
+  type ComputerPermission,
   type ComputerState,
 } from "../../api/modules/botComputer";
 import { useDesktopStream } from "../../hooks/useDesktopStream";
 import { apiErrorMessage } from "../../utils/apiError";
+import { getDesktopBridge } from "../../utils/desktopBridge";
 import styles from "./botComputer.module.less";
 
 const LEVELS: ComputerLevel[] = ["off", "view", "background", "foreground"];
@@ -25,8 +27,13 @@ export default function BotComputerCard({ botId }: { botId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [frame, setFrame] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const { status, connect, disconnect } = useDesktopStream();
-  const live = Boolean(state?.available && state.level !== "off");
+  // Missing macOS grants: the screen stream is refused, so ask for them instead of spinning.
+  const needs = state?.available ? state.permissions_needed ?? [] : [];
+  const live = Boolean(
+    state?.available && state.level !== "off" && needs.length === 0,
+  );
 
   useEffect(() => {
     let current = true;
@@ -56,7 +63,7 @@ export default function BotComputerCard({ botId }: { botId: string }) {
       open ? { quality: 70, maxFps: 8 } : { quality: 35, maxFps: 1 },
     );
     return () => disconnect();
-  }, [live, open, connect, disconnect]);
+  }, [live, open, attempt, connect, disconnect]);
 
   useEffect(() => {
     if (!open) return;
@@ -94,6 +101,8 @@ export default function BotComputerCard({ botId }: { botId: string }) {
 
   const summary = !state
     ? ""
+    : needs.length
+    ? t("octopBot.computer.needsPermission")
     : !live
     ? t("octopBot.computer.asleep")
     : state.paused
@@ -102,9 +111,22 @@ export default function BotComputerCard({ botId }: { botId: string }) {
     ? t("octopBot.computer.using", { app: state.active_app })
     : t("octopBot.computer." + state.level);
   const screen = (big: boolean) =>
-    frame ? (
+    needs.length ? (
+      <ShieldAlert size={big ? 22 : 16} className={styles.warn} />
+    ) : frame ? (
       <img className={styles.frame} src={frame} alt="" draggable={false} />
-    ) : live && status !== "error" ? (
+    ) : live && status === "error" ? (
+      big ? (
+        <span className={styles.failed}>
+          {t("octopBot.computer.streamFailed")}
+          <Button size="small" onClick={() => setAttempt((n) => n + 1)}>
+            {t("octopBot.retry")}
+          </Button>
+        </span>
+      ) : (
+        <Moon size={14} />
+      )
+    ) : live ? (
       <Spin size={big ? "default" : "small"} />
     ) : (
       <span className={styles.asleep}>
@@ -139,9 +161,13 @@ export default function BotComputerCard({ botId }: { botId: string }) {
         destroyOnClose
       >
         {error && <Alert type="error" message={error} showIcon />}
-        <div className={styles.view} data-live={live || undefined}>
-          {screen(true)}
-        </div>
+        {needs.length ? (
+          <ComputerPermissions needs={needs} />
+        ) : (
+          <div className={styles.view} data-live={live || undefined}>
+            {screen(true)}
+          </div>
+        )}
         {state && !state.available ? (
           <Alert type="info" message={t("octopBot.computer.unavailable")} />
         ) : (
@@ -195,5 +221,62 @@ export default function BotComputerCard({ botId }: { botId: string }) {
         )}
       </Modal>
     </>
+  );
+}
+
+const PERMISSION_TEXT: Record<ComputerPermission, [string, string]> = {
+  screen_recording: [
+    "octopBot.computer.permScreen",
+    "octopBot.computer.permScreenHint",
+  ],
+  accessibility: [
+    "octopBot.computer.permAccessibility",
+    "octopBot.computer.permAccessibilityHint",
+  ],
+};
+
+/** What macOS still has to allow, with a way to ask for each grant. */
+function ComputerPermissions({ needs }: { needs: ComputerPermission[] }) {
+  const { t } = useTranslation();
+  const bridge = getDesktopBridge();
+  const request = bridge?.requestComputerPermission;
+  const relaunch = bridge?.relaunch;
+  return (
+    <section className={styles.permissions} aria-labelledby="bot-computer-perm">
+      <ShieldAlert size={22} className={styles.warn} aria-hidden="true" />
+      <strong id="bot-computer-perm">{t("octopBot.computer.permTitle")}</strong>
+      <p>
+        {t(
+          request
+            ? "octopBot.computer.permBody"
+            : "octopBot.computer.permManual",
+        )}
+      </p>
+      <ul>
+        {needs.map((kind) => (
+          <li key={kind}>
+            <span>
+              <b>{t(PERMISSION_TEXT[kind][0])}</b>
+              <small>{t(PERMISSION_TEXT[kind][1])}</small>
+            </span>
+            {request && (
+              <Button onClick={() => void request(kind)}>
+                {t("octopBot.computer.permGrant")}
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {needs.includes("screen_recording") && (
+        <p className={styles.relaunch}>
+          {t("octopBot.computer.permRelaunchHint")}
+          {relaunch && (
+            <Button type="primary" onClick={() => relaunch()}>
+              {t("octopBot.computer.permRelaunch")}
+            </Button>
+          )}
+        </p>
+      )}
+    </section>
   );
 }

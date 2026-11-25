@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import re
 from collections.abc import Awaitable, Callable, Coroutine, Mapping
@@ -84,6 +85,7 @@ class _Grant:
     refresh_token: str = field(repr=False)
     # None: not read from Lynxce yet (logins saved before the avatar was kept); "": no avatar.
     avatar_url: str | None = None
+    login_fields: dict[str, Any] = field(default_factory=dict, repr=False)
 
     def status(self) -> CloudAccountStatus:
         return CloudAccountStatus(
@@ -113,7 +115,9 @@ def _load(services: SharedServices, user_id: int) -> _Grant | None:
 def _save(services: SharedServices, user_id: int, grant: _Grant) -> None:
     repo = services.secret_repo
     key = _key(user_id)
-    repo.put(key, encrypt_json(repo, key + ".fernet", asdict(grant)))
+    stored = asdict(grant)
+    stored.pop("login_fields")
+    repo.put(key, encrypt_json(repo, key + ".fernet", stored))
     # The local owner can be removed during an upstream login/refresh. Its deletion
     # transaction clears existing keys; also clear a write that arrived afterwards.
     if services.user_repo.get(user_id) is None:
@@ -280,6 +284,37 @@ def display_name(profile: dict[str, Any]) -> str | None:
     return None
 
 
+def _valid_credits(value: object) -> bool:
+    """A non-negative number no larger than 10**12 (floats must also be finite)."""
+    if type(value) is int:
+        return 0 <= value <= 10**12
+    return type(value) is float and math.isfinite(value) and 0 <= value <= 10**12
+
+
+def _login_fields(data: dict[str, Any]) -> dict[str, Any]:
+    fields: dict[str, Any] = {}
+    if isinstance(data.get("isNewUser"), bool):
+        fields["isNewUser"] = data["isNewUser"]
+    if "signupGrant" in data:
+        grant = data["signupGrant"]
+        if grant is None:
+            fields["signupGrant"] = None
+        elif (
+            isinstance(grant, dict)
+            and _valid_credits(grant.get("credits"))
+            and (
+                grant.get("expiresAt") is None
+                or (isinstance(grant.get("expiresAt"), str) and len(grant["expiresAt"]) <= 64)
+            )
+        ):
+            # A null expiresAt means the grant does not expire.
+            fields["signupGrant"] = {
+                "credits": grant["credits"],
+                "expiresAt": grant.get("expiresAt"),
+            }
+    return fields
+
+
 async def _session_login(path: str, body: dict[str, str]) -> _Grant:
     """Open a Lynxce 'web' session through one of its sign-in endpoints."""
     try:
@@ -290,6 +325,10 @@ async def _session_login(path: str, body: dict[str, str]) -> _Grant:
         if exc.status in {401, 403}:
             raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403) from None
         raise _rejected(exc.status) from None
+    return _grant_from_session(data)
+
+
+def _grant_from_session(data: Any) -> _Grant:
     profile = data.get("user") if isinstance(data, dict) else None
     if (
         not isinstance(profile, dict)
@@ -304,6 +343,7 @@ async def _session_login(path: str, body: dict[str, str]) -> _Grant:
         _token(data, "accessToken"),
         _token(data, "refreshToken"),
         _avatar(profile),
+        _login_fields(data),
     )
 
 
@@ -608,7 +648,13 @@ async def open_refresh_session(refresh_token: str) -> CloudSession:
         raise OctopError.localized(ErrorCode.NETWORK_ERROR)
     renewed = _token(data, "refreshToken") if "refreshToken" in data else refresh_token
     return _Grant(
-        profile["id"], display_name(profile), uuid4().hex, access, renewed, _avatar(profile)
+        profile["id"],
+        display_name(profile),
+        uuid4().hex,
+        access,
+        renewed,
+        _avatar(profile),
+        _login_fields(data),
     )
 
 
@@ -674,12 +720,18 @@ _TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
     # Cloud computers: minutes reserved before running, settled by the second at pause.
     ("POST", "/api/billing/octop-bot/compute/reserve"): {},
     ("POST", "/api/billing/octop-bot/compute/settle"): {},
+    # A CVM computer's disk, prepaid per Beijing day (it is billed even while stopped).
+    ("POST", "/api/billing/octop-bot/compute/disk/charge"): {},
 }
 # Compute billing also proves the caller is the cloud Octop server, not the tenant (who holds
 # their own token and could otherwise settle a running computer at 0 s). The key is shared
 # with Lynxce, set there by the operator, and never leaves this server.
 _SERVICE_KEY_PATHS = frozenset(
-    {"/api/billing/octop-bot/compute/reserve", "/api/billing/octop-bot/compute/settle"}
+    {
+        "/api/billing/octop-bot/compute/reserve",
+        "/api/billing/octop-bot/compute/settle",
+        "/api/billing/octop-bot/compute/disk/charge",
+    }
 )
 
 

@@ -11,6 +11,7 @@ import {
   type UpdateCheckResult,
   type WindowChromeTheme,
   type WorkbuddyLoginResult,
+  type WechatLoginResult,
   type WsRelayEndpoint,
 } from "../shared/ipc-contract";
 
@@ -40,6 +41,9 @@ let botShortcut: ((action: BotShortcut) => void) | null = null;
 let notificationOpen: ((target: string) => void) | null = null;
 let pendingNotificationTarget: string | null = null;
 if (botOnly) {
+  ipcRenderer.on(IPC_CHANNELS.botRechargeReturn, () => {
+    window.dispatchEvent(new Event(IPC_CHANNELS.botRechargeReturn));
+  });
   ipcRenderer.on(IPC_CHANNELS.botShortcut, (_event, action: BotShortcut) => {
     if (botShortcut) botShortcut(action);
     else pendingShortcut = action;
@@ -56,6 +60,7 @@ if (botOnly) {
 
 const bridge = {
   botOnly,
+  supportsRechargeReturn: botOnly,
   showBotOrb() { if (botOnly) ipcRenderer.send(IPC_CHANNELS.showBotOrb); },
   openServerPicker() { if (botOnly) ipcRenderer.send(IPC_CHANNELS.openServerPicker); },
   onBotShortcut(callback: (action: BotShortcut) => void): () => void {
@@ -88,9 +93,22 @@ const bridge = {
     };
   },
   /** Open the WorkBuddy sign-in window; resolves with Lynxce's one-time hand-off code. */
+  wechatLogin(qrUrl: string, redirectUri: string): Promise<WechatLoginResult> {
+    if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" });
+    return ipcRenderer.invoke(IPC_CHANNELS.botWechatLogin, qrUrl, redirectUri);
+  },
   workbuddyLogin(): Promise<WorkbuddyLoginResult> {
     if (!botOnly) return Promise.resolve({ ok: false, reason: "failed" });
     return ipcRenderer.invoke(IPC_CHANNELS.botWorkbuddyLogin);
+  },
+  /** Ask macOS for ``screen_recording`` or ``accessibility``; resolves true when already granted. */
+  requestComputerPermission(kind: "screen_recording" | "accessibility"): Promise<boolean> {
+    if (!botOnly) return Promise.resolve(false);
+    return ipcRenderer.invoke(IPC_CHANNELS.botComputerPermission, kind);
+  },
+  /** Quit and start Octop Bot again. */
+  relaunch(): void {
+    if (botOnly) ipcRenderer.send(IPC_CHANNELS.botRelaunch);
   },
   /** Restart on the Octop Bot cloud, signed in with ``accessToken`` (from the local move). */
   useLynxceCloud(accessToken: string): Promise<boolean> {

@@ -20,6 +20,7 @@ export interface LynxceSignInFormProps {
   /** Shown under the password field (e.g. "the password is not kept"). */
   passwordHint?: ReactNode;
   autoFocus?: boolean;
+  webLayout?: boolean;
   /** Ask Lynxce to text or email a code; resolves to where it went. */
   sendCode: (target: string) => Promise<"phone" | "email">;
   /**
@@ -50,6 +51,7 @@ export default function LynxceSignInForm({
   submitLabel,
   passwordHint,
   autoFocus,
+  webLayout = false,
   sendCode,
   onCode,
   onPassword,
@@ -182,19 +184,49 @@ export default function LynxceSignInForm({
             ? "lynxceSignIn.sentEmail"
             : "lynxceSignIn.sentPhone",
         )
+      : webLayout
+      ? t("botWebLogin.signupHint")
       : t("lynxceSignIn.newAccountHint");
   const hintIsError = missing !== null && missing !== "newPassword";
 
   return (
     <form
-      className={styles.form}
+      className={[styles.form, webLayout && styles.webForm]
+        .filter(Boolean)
+        .join(" ")}
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
     >
-      <label className={styles.srOnly} htmlFor={id("target")}>
+      {webLayout && (
+        <div
+          className={styles.modes}
+          role="group"
+          aria-label={t("botWebLogin.method")}
+        >
+          {(["code", "password"] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              aria-pressed={mode === item}
+              disabled={busy}
+              onClick={() => choose(item)}
+            >
+              {t(
+                item === "code"
+                  ? "botWebLogin.codeMode"
+                  : "botWebLogin.passwordMode",
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+      <label
+        className={webLayout ? styles.label : styles.srOnly}
+        htmlFor={id("target")}
+      >
         {t(mode === "code" ? "lynxceSignIn.target" : "lynxceSignIn.account")}
       </label>
       <Input
@@ -205,7 +237,12 @@ export default function LynxceSignInForm({
         autoComplete="username"
         autoFocus={autoFocus}
         maxLength={200}
-        inputMode={mode === "code" && !email ? "tel" : "email"}
+        inputMode={
+          webLayout ? "text" : mode === "code" && !email ? "tel" : "email"
+        }
+        autoCapitalize="none"
+        spellCheck={false}
+        aria-describedby={id("hint")}
         prefix={
           <TargetIcon
             size={17}
@@ -228,7 +265,10 @@ export default function LynxceSignInForm({
       />
       {mode === "code" ? (
         <>
-          <label className={styles.srOnly} htmlFor={id("code")}>
+          <label
+            className={webLayout ? styles.label : styles.srOnly}
+            htmlFor={id("code")}
+          >
             {t("lynxceSignIn.code")}
           </label>
           <Input
@@ -236,6 +276,7 @@ export default function LynxceSignInForm({
             className={[styles.code, shake("code")].filter(Boolean).join(" ")}
             status={status("code")}
             size="large"
+            aria-describedby={id("hint")}
             autoComplete="one-time-code"
             inputMode="numeric"
             maxLength={6}
@@ -267,7 +308,10 @@ export default function LynxceSignInForm({
         </>
       ) : (
         <>
-          <label className={styles.srOnly} htmlFor={id("password")}>
+          <label
+            className={webLayout ? styles.label : styles.srOnly}
+            htmlFor={id("password")}
+          >
             {t("lynxceSignIn.password")}
           </label>
           <Input.Password
@@ -295,22 +339,25 @@ export default function LynxceSignInForm({
       )}
       <div className={styles.hintRow}>
         <small
+          id={id("hint")}
           className={hintIsError ? styles.error : undefined}
           role={hintIsError ? "alert" : undefined}
         >
           {hint}
         </small>
-        <button
-          type="button"
-          className={styles.switch}
-          onClick={() => choose(mode === "code" ? "password" : "code")}
-        >
-          {t(
-            mode === "code"
-              ? "lynxceSignIn.usePassword"
-              : "lynxceSignIn.useCode",
-          )}
-        </button>
+        {!webLayout && (
+          <button
+            type="button"
+            className={styles.switch}
+            onClick={() => choose(mode === "code" ? "password" : "code")}
+          >
+            {t(
+              mode === "code"
+                ? "lynxceSignIn.usePassword"
+                : "lynxceSignIn.useCode",
+            )}
+          </button>
+        )}
       </div>
       {mode === "code" && askPassword && (
         <div className={styles.newPassword}>
@@ -322,6 +369,7 @@ export default function LynxceSignInForm({
             className={shake("newPassword")}
             status={status("newPassword")}
             size="large"
+            aria-describedby={id("new-password-hint")}
             autoComplete="new-password"
             maxLength={256}
             value={newPassword}
@@ -331,6 +379,7 @@ export default function LynxceSignInForm({
             }}
           />
           <small
+            id={id("new-password-hint")}
             className={missing === "newPassword" ? styles.error : undefined}
           >
             {t("lynxceSignIn.newPasswordHint")}

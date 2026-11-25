@@ -17,6 +17,7 @@ from octop.infra.utils.ssrf_guard import (
     UnsafeOutboundUrl,
     is_public_ip,
     validate_https_url_resolved,
+    validate_public_url_values,
 )
 
 _URL_SUFFIXES = ("url", "endpoint", "proxy")
@@ -70,3 +71,7 @@ async def check_public_endpoints(values: Mapping[str, Any] | None) -> None:
             host = value.strip().rsplit(":", 1)[0] if value.count(":") == 1 else value.strip()
             if not await _host_is_public(host):
                 raise _refused(field)
+        try:
+            await validate_public_url_values(value)
+        except UnsafeOutboundUrl:
+            raise _refused(field) from None

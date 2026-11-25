@@ -45,6 +45,26 @@
       "done": "Done",
       "cannot": "I can't do it"
     },
+    "onboarding_briefing": "Onboarding: this is the owner's first request for a team.\n1. Do not ask questions first. Infer the industry and goal from this message and build a team of 2–3 bots right away. Ask one question only if you cannot tell at all what they want.\n2. Build it with one octop_bot_create_team call: give each bot a short name, a one-line role and concrete role instructions; make the bot best suited to talk with the owner the group admin; use the team's name as team_name.\n3. In this turn do not use computer, browser, file or web tools, and do not start the actual work.\n4. Write first_task as one message the owner can post in the group as is; it must be doable with text alone.\n5. Reply in at most 6 lines: one line saying the team is ready, one line per member with their role, and a last line quoting first_task.",
+    "onboarding_choice": {
+      "industry": "On the first onboarding screen the owner picked this industry: {label}. Build the team for it right away; do not ask which line of work they are in.",
+      "role": "On the first onboarding screen the owner picked this job: {label}. Build a team for its everyday work right away; do not ask what they do."
+    },
+    "onboarding_note": "The owner added: {note}",
+    "onboarding_industries": {
+      "trade": {
+        "name": "Export trade",
+        "roles": "Inquiries and quotes|Product research|Overseas social media"
+      },
+      "store": {
+        "name": "Restaurants and shops",
+        "roles": "Daily store report|Promotions|Review replies"
+      }
+    },
+    "onboarding_hint": {
+      "industry": "Roles in similar Bot market templates, for reference: {hint}.",
+      "role": "What this job usually involves: {hint}"
+    },
     "approval": {
       "title": "Needs your OK",
       "header": "Confirm",
@@ -468,6 +488,9 @@
     "LYNXCE_CODE_TARGET_INVALID": "Enter a valid phone number or email.",
     "LYNXCE_CODE_THROTTLED": "Codes were requested too often. Try again in a moment.",
     "LYNXCE_SIGNUP_PASSWORD_REQUIRED": "This email has no Lynxce account yet. Set a sign-in password (at least 8 characters) to create one, then sign in with the same code.",
+    "LYNXCE_WECHAT_FLOW_EXPIRED": "WeChat sign-in expired. Please try again.",
+    "LYNXCE_WECHAT_FAILED": "WeChat sign-in failed. Please try again.",
+    "LYNXCE_WECHAT_DISABLED": "WeChat sign-in is unavailable.",
     "BOT_CLOUD_REQUEST_REJECTED": "Lynxce Cloud could not complete this action.",
     "BOT_CLOUD_CREDITS_REQUIRED": "You're out of Lynxce credits. Top up at https://admin.lynxce.cn/recharge to continue.",
     "BOT_LYNXCE_DAILY_LIMIT": "Today's Lynxce usage hit its daily limit. It resets at 00:00 UTC. To raise the limit, open your Lynxce account centre at https://admin.lynxce.cn and edit the Octop Bot key.",
@@ -496,8 +519,11 @@
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",
     "LOGIN_LOCKED": "Too many failed sign-in attempts. Try again in {minutes} minutes.",
+    "RATE_LIMITED": "Too many requests. Please try again later.",
     "USERNAME_TAKEN": "Username is already taken.",
     "EMAIL_TAKEN": "Email is already taken.",
+    "BOT_PLAN_UNAVAILABLE": "Plan purchases are not available yet.",
+    "BOT_RECHARGE_RATE_LIMITED": "Too many recharge requests. Try again in a minute.",
     "EMAIL_INVALID": "Invalid email address.",
     "PASSWORD_SAME_AS_OLD": "New password must be different from the current password.",
     "PASSWORD_NOT_SET": "This account signs in through a directory and has no local password to change.",
@@ -634,6 +660,8 @@
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({used}/{quota}).",
     "AGENT_QUOTA_EXCEEDED": "This account has reached its expert limit. Please contact an administrator to raise the limit ({used}/{quota}).",
+    "BOT_COUNT_LIMIT": "This account can have up to {limit} Bots and has reached that. Delete Bots you no longer use, then try again.",
+    "BOT_GROUP_COUNT_LIMIT": "This account can have up to {limit} group chats and has reached that. Delete group chats you no longer use, then try again.",
     "BACKEND_TYPE_NOT_ALLOWED": "This account cannot use backend type {types}.",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
@@ -1419,5 +1447,9 @@
     "summary_dry_run": "{migrated} to migrate, {skipped} skipped, {failed} failed.",
     "dry_run_hint": "Dry run: nothing was written. Run again without --dry-run to apply.",
     "restart_hint": "If `octop run` is running, restart it to load the migrated providers and channels."
+  },
+  "computer_reclaim": {
+    "idle": "Your cloud computer has been idle. In 7 days, on {date}, this computer and the files on its disk will be removed. Your Bot, chats, and files kept in cloud storage (generated/, outbound/, and its context) stay. Use the computer to cancel.",
+    "unpaid": "Your cloud computer disk fees are unpaid. In 7 days, on {date}, this computer and the files on its disk will be removed. Your Bot, chats, and files kept in cloud storage (generated/, outbound/, and its context) stay. Use the computer or pay to cancel."
   }
 }

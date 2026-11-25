@@ -124,6 +124,9 @@ def create_group(
     member_ids: list[str],
     reply_mode: ReplyMode = "admin_first",
 ) -> Group:
+    from octop.infra.agents.bot_limits import assert_group_capacity
+
+    assert_group_capacity(services.repos.user_repo, services.repos.bot_group_repo, user_id)
     members = _roster(services, user_id, admin_id, member_ids)
     group_id = services.repos.bot_group_repo.create(user_id, name, admin_id, members, reply_mode)
     return Group.from_record(group_row(services, user_id, group_id))

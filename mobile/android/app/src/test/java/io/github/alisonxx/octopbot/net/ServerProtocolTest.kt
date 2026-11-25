@@ -6,6 +6,7 @@ import io.github.alisonxx.octopbot.model.MessageStatus
 import io.github.alisonxx.octopbot.model.StreamEvent
 import io.github.alisonxx.octopbot.model.ToolStep
 import io.github.alisonxx.octopbot.model.VoiceSupport
+import io.github.alisonxx.octopbot.store.SavedBackend
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -19,6 +20,100 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class ServerProtocolTest {
+    @Test fun lastSuccessfulServerSelectionSurvivesAStoredLegacyGrant() {
+        assertEquals(SavedBackend.SignedOut, SavedBackend.restore(null, hasLegacy = true, hasServer = true, official = false))
+        assertEquals(SavedBackend.Server, SavedBackend.restore(SavedBackend.Server, hasLegacy = true, hasServer = true, official = false))
+        assertEquals(SavedBackend.Server, SavedBackend.restore(null, hasLegacy = false, hasServer = true, official = false))
+        assertEquals(SavedBackend.Server, SavedBackend.restore(null, hasLegacy = true, hasServer = true, official = true))
+        assertEquals(SavedBackend.Device, SavedBackend.restore(SavedBackend.Device, hasLegacy = true, hasServer = true, official = false))
+        assertEquals(SavedBackend.SignedOut, SavedBackend.restore(SavedBackend.SignedOut, hasLegacy = true, hasServer = true, official = true))
+    }
+
+    @Test fun legacyRecoveryReadsEveryPageAndPreservesIncompleteState() = kotlinx.coroutines.test.runTest {
+        val cursors = mutableListOf<String?>()
+        val complete = ServerProtocol.restoreLegacyPages { cursor ->
+            cursors.add(cursor)
+            Http.parse(if (cursor == null) """{"skipped":0,"next_cursor":"second"}""" else """{"skipped":1,"next_cursor":null}""").jsonObject
+        }
+        assertEquals(listOf(null, "second"), cursors)
+        assertFalse(complete)
+    }
+
+    @Test fun legacyRecoveryRejectsRepeatedCursor() = kotlinx.coroutines.test.runTest {
+        try {
+            ServerProtocol.restoreLegacyPages { Http.parse("""{"skipped":0,"next_cursor":"stuck"}""").jsonObject }
+            fail("Repeated cursors must stop recovery")
+        } catch (_: ApiException) { }
+    }
+
+    @Test fun automaticConversationRequiresPersonalOwnershipAndPrefersActive() {
+        val rows = ServerProtocol.conversations(Http.parse("""[{"thread_id":"shared","owned":false,"is_active":true},{"thread_id":"unknown"},{"thread_id":"recent","owned":true},{"thread_id":"active","owned":true,"is_active":true}]"""), "bot")
+        assertNull(io.github.alisonxx.octopbot.model.ConversationSummary.personalDefault(rows.take(2)))
+        assertEquals("active", io.github.alisonxx.octopbot.model.ConversationSummary.personalDefault(rows)?.id)
+    }
+
+    @Test fun observedQuestionAndReplyPrefixSurviveReconnectAndSavedUserIsNotDuplicated() {
+        val previous = io.github.alisonxx.octopbot.model.ChatMessage("old", MessageRole.Assistant, "previous")
+        val user = io.github.alisonxx.octopbot.model.ChatMessage("u", MessageRole.User, "question")
+        val reply = io.github.alisonxx.octopbot.model.ChatMessage("reply", MessageRole.Assistant, "prefix", status = MessageStatus.Streaming)
+        val current = io.github.alisonxx.octopbot.app.ChatSession.ObservedTurn("turn", previous, mutableListOf(user, reply))
+        assertEquals(listOf(previous, user, reply), current.merged(listOf(previous)))
+        assertEquals(listOf(previous, user, reply), current.merged(listOf(previous, user)))
+        assertEquals(listOf(user), current.committedTail(listOf(previous, user)))
+    }
+
+    @Test fun interruptedSenderUsesPersistentAnchorAndWaitsForItsOwnQuestion() {
+        val mapper = ServerProtocol.FrameMapper(emptyMap())
+        val start = mapper.map(Http.parse("""{"type":"turn.started","turn_id":"run"}""").asObject()!!, "thread")
+        assertEquals(listOf(StreamEvent.TurnStarted("run")), (start as ServerProtocol.FrameMapper.Outcome.Events).events)
+        val previous = io.github.alisonxx.octopbot.model.ChatMessage("old", MessageRole.Assistant, "previous")
+        val user = io.github.alisonxx.octopbot.model.ChatMessage("local-user", MessageRole.User, "question")
+        val partial = io.github.alisonxx.octopbot.model.ChatMessage("local-reply", MessageRole.Assistant, "prefix", status = MessageStatus.Streaming)
+        val turn = io.github.alisonxx.octopbot.app.ChatSession.ObservedTurn("run", previous, mutableListOf(user, partial))
+        val savedUser = user.copy(id = "saved-user")
+        val other = previous.copy(id = "other", text = "previous completed turn")
+        assertFalse(turn.hasCommittedReply(listOf(previous, other, savedUser)))
+        assertEquals("local-reply", turn.merged(listOf(previous, savedUser)).last().id)
+        assertTrue(turn.hasCommittedReply(listOf(previous, savedUser, partial.copy(id = "saved-reply", text = "prefix and complete response"))))
+    }
+
+    @Test fun interruptedDecisionCanFinishInPlaceWithoutAStoredAnswerBubble() {
+        val baseline = io.github.alisonxx.octopbot.model.ChatMessage("saved", MessageRole.Assistant, "Question")
+        val partial = baseline.copy(id = "live", text = "The ans", status = MessageStatus.Streaming)
+        val turn = io.github.alisonxx.octopbot.app.ChatSession.ObservedTurn("run", baseline, mutableListOf(partial), ended = true, resumed = true)
+        assertFalse(turn.hasCommittedReply(listOf(baseline)))
+        assertTrue(turn.hasCommittedReply(listOf(baseline.copy(text = "Question\n\nThe answer"))))
+        assertTrue(turn.hasCommittedReply(listOf(baseline, baseline.copy(id = "new", text = "The answer"))))
+    }
+
+    @Test fun idleBeforeFirstTokenSettlesOnlyAfterHistoryRetries() {
+        val user = io.github.alisonxx.octopbot.model.ChatMessage("q", MessageRole.User, "question")
+        val empty = user.copy(id = "reply", role = MessageRole.Assistant, text = "", status = MessageStatus.Streaming)
+        val turn = io.github.alisonxx.octopbot.app.ChatSession.ObservedTurn("run", null, mutableListOf(user, empty), ended = true)
+        assertFalse(turn.hasCommittedReply(listOf(user)))
+        turn.lastHistoryRetry = true
+        assertTrue(turn.hasCommittedReply(listOf(user)))
+        turn.rows[1] = empty.copy(thinking = "already received")
+        assertFalse(turn.hasCommittedReply(listOf(user)))
+    }
+
+    @Test fun historyPageOverlapRetainsNewestVersionAndOriginalOrder() {
+        val old = Http.parse("""[{"id":"a"},{"history_seq":2,"content":"partial"}]""").asArray()!!
+        val new = Http.parse("""[{"history_seq":2,"content":"finished"},{"id":"b"}]""").asArray()!!
+        val rows = ServerProtocol.joinHistory(old, new)
+        assertEquals(3, rows.size)
+        assertEquals("finished", rows[1].asObject()?.str("content"))
+        assertEquals("b", rows[2].asObject()?.str("id"))
+    }
+
+    @Test fun onlyTheExactCheckoutCallbackIsAccepted() {
+        val url = "octop-bot://recharge/done"
+        assertTrue(io.github.alisonxx.octopbot.isRechargeReturn(url))
+        for (invalid in listOf(null, "$url?paid=true", "$url#order", "$url/", url.replace("done", "other"))) {
+            assertFalse(io.github.alisonxx.octopbot.isRechargeReturn(invalid))
+        }
+    }
+
     @org.junit.Test
     fun computerCreditCodesAreRecognized() {
         org.junit.Assert.assertTrue(ApiException.isCreditsRequired(ApiException.COMPUTER_CREDITS_REQUIRED))
@@ -129,7 +224,7 @@ class ServerProtocolTest {
         fun map(frame: String) = mapper.map(obj(frame), "th1")
         fun events(frame: String) = (map(frame) as ServerProtocol.FrameMapper.Outcome.Events).events
 
-        assertEquals(emptyList<StreamEvent>(), events("""{"type":"turn.started","turn_id":"x","thread_id":"th1"}"""))
+        assertEquals(listOf(StreamEvent.TurnStarted("x")), events("""{"type":"turn.started","turn_id":"x","thread_id":"th1"}"""))
         assertEquals(listOf(StreamEvent.Thinking("plan")), events("""{"type":"reasoning","content":"plan"}"""))
         assertEquals(listOf(StreamEvent.Tool("c1", "Web search", false)), events("""{"type":"tool_call_chunk","id":"c1","name":"web_search","display_name":"Web search"}"""))
         // Argument chunks for the same call don't repeat the step.

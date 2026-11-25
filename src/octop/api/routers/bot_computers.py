@@ -9,11 +9,22 @@ import secrets
 import time
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query, WebSocket
+import anyio
+from fastapi import APIRouter, Depends, Query, Request, WebSocket
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_user, get_server
-from octop.infra.cloud.computers.manager import computer_manager
+from octop.api.common.stream_auth import (
+    StreamSession,
+    Ticket,
+    consume_screen_ticket,
+    issue_screen_ticket,
+)
+from octop.api.deps import _decode, current_user, extract_raw_token, get_server
+from octop.infra.cloud.computers.manager import (
+    DISK_DAILY_CREDITS_PER_GB,
+    computer_manager,
+    disk_billing_enabled,
+)
 from octop.infra.cloud.computers.rfb import RfbClientFilter
 from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.errors import ErrorCode, OctopError
@@ -34,10 +45,8 @@ TAKEOVER_CHECK_SECONDS = 1.0
 # A screen session lives while its screen is open (the relay refreshes it) and a little after.
 SCREEN_SESSION_IDLE_SECONDS = 120
 MAX_PASTE_CHARS = 20_000
-# One-time tickets for the screen WebSocket: ticket -> (agent_id, user_id, expires_at).
-_tickets: dict[str, tuple[str, int, float]] = {}
-# Screen sessions: session -> (agent_id, user_id, expires_at).
-_sessions: dict[str, tuple[str, int, float]] = {}
+_tickets: dict[str, Ticket] = {}
+_sessions: dict[str, Ticket] = {}
 
 
 class ComputerStatus(BaseModel):
@@ -59,6 +68,23 @@ class ComputerStatus(BaseModel):
         "move, drag, scroll, type, key, wait, elements, zoom or command.",
     )
     activity_at: float | None = Field(default=None, description="Unix time of that action.")
+    disk_gb: int = Field(default=0, description="Provider-billed disk size in GB; zero if none.")
+    disk_daily_credits: float = Field(default=0, description="Estimated daily disk fee in credits.")
+    disk_billing: bool = Field(default=False, description="Whether disk billing is enabled.")
+    disk_paid_through: str | None = Field(
+        default=None, description="Last paid Beijing day (YYYY-MM-DD)."
+    )
+    disk_overdue_days: int = Field(
+        default=0, description="Days since the first failed charge, inclusive."
+    )
+
+    reclaim_notified: bool = Field(default=False, description="A reclaim reminder was delivered.")
+    idle_days: int = Field(default=0, description="Complete days since last use.")
+    reclaim_state: Literal["reminded", "pending_reclaim"] | None = Field(
+        default=None,
+        description="Reclaim eligibility; a reminder may be disabled by configuration.",
+    )
+    reclaim_at: float | None = Field(default=None, description="Reclaim deadline as Unix time.")
 
 
 class ComputerGlance(BaseModel):
@@ -80,9 +106,22 @@ def _owned(server: Any, user: User, agent_id: str) -> Any:
 
 def _status(manager: Any, agent_id: str, user_id: int) -> ComputerStatus:
     record = manager.record(agent_id, user_id)
+    size, overdue = manager.disk_status(record)
+    idle_days, reclaim_state, reclaim_at = manager.reclaim_status(record)
+    disk: dict[str, Any] = {
+        "reclaim_notified": record.reminded_at is not None,
+        "idle_days": idle_days,
+        "reclaim_state": reclaim_state,
+        "reclaim_at": reclaim_at,
+        "disk_gb": size,
+        "disk_daily_credits": round(size * DISK_DAILY_CREDITS_PER_GB, 2),
+        "disk_billing": disk_billing_enabled(),
+        "disk_paid_through": record.disk_paid_day or None,
+        "disk_overdue_days": overdue,
+    }
     if record.instance_id is None:
         return ComputerStatus(
-            state="none", spec=record.spec, takeover=record.controlled(time.time())
+            state="none", spec=record.spec, takeover=record.controlled(time.time()), **disk
         )
     last = manager.activity(agent_id)
     return ComputerStatus(
@@ -94,6 +133,7 @@ def _status(manager: Any, agent_id: str, user_id: int) -> ComputerStatus:
         busy=record.running and manager.busy(agent_id),
         activity=last[0] if last else None,
         activity_at=last[1] if last else None,
+        **disk,
     )
 
 
@@ -167,6 +207,16 @@ class ScreenTicket(BaseModel):
     )
 
 
+def _screen_binding(request: Request, server: Any, agent_id: str) -> StreamSession:
+    raw = extract_raw_token(
+        authorization=request.headers.get("authorization"),
+        access_token=request.query_params.get("access_token"),
+    )
+    if not raw:
+        raise OctopError.localized(ErrorCode.MISSING_CREDENTIALS)
+    return StreamSession.from_claims(_decode(server, raw), agent_id=agent_id)
+
+
 @router.post(
     "/{agent_id}/screen",
     summary="Open a Bot's cloud computer screen",
@@ -175,18 +225,20 @@ class ScreenTicket(BaseModel):
     response_model=ScreenTicket,
 )
 async def open_screen(
-    agent_id: str, user: User = Depends(current_user), server: Any = Depends(get_server)
+    agent_id: str,
+    request: Request,
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
 ) -> ScreenTicket:
     manager = _owned(server, user, agent_id)
+    binding = _screen_binding(request, server, agent_id)
     await asyncio.to_thread(manager.ensure_running, agent_id, user.id)
-    now = time.time()
-    for stale in [t for t, (_, _, until) in _tickets.items() if until < now]:
-        _tickets.pop(stale, None)
-    for stale in [s for s, (_, _, until) in _sessions.items() if until < now]:
+    now = time.monotonic()
+    for stale in [key for key, claim in _sessions.items() if claim.expires <= now]:
         _sessions.pop(stale, None)
-    ticket, session = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-    _tickets[ticket] = (agent_id, user.id, now + SCREEN_TICKET_SECONDS)
-    _sessions[session] = (agent_id, user.id, now + SCREEN_SESSION_IDLE_SECONDS)
+    ticket = issue_screen_ticket(_tickets, agent_id, binding)
+    session = secrets.token_urlsafe(32)
+    _sessions[session] = Ticket(agent_id, binding, now + SCREEN_SESSION_IDLE_SECONDS)
     return ScreenTicket(
         ws_path=f"/api/octop-bot/computers/{agent_id}/screen/ws?ticket={ticket}",
         expires_in=SCREEN_TICKET_SECONDS,
@@ -194,20 +246,51 @@ async def open_screen(
     )
 
 
-def _refresh_sessions(agent_id: str, user_id: int) -> None:
-    until = time.time() + SCREEN_SESSION_IDLE_SECONDS
-    for key, (agent, user, _) in list(_sessions.items()):
-        if agent == agent_id and user == user_id:
-            _sessions[key] = (agent, user, until)
+class RenewScreenRequest(BaseModel):
+    session: str = Field(description="Session for the currently open screen.", max_length=128)
 
 
-def _session(session: str) -> tuple[str, int]:
+@router.post(
+    "/{agent_id}/screen/renew",
+    summary="Keep an open screen on the current sign-in",
+    description="Accepts a renewed access token for the same sign-in and screen. "
+    "Does not start a computer or extend its running time.",
+    status_code=204,
+)
+async def renew_screen(
+    agent_id: str,
+    body: RenewScreenRequest,
+    request: Request,
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> None:
+    _owned(server, user, agent_id)
+    claim = _sessions.get(body.session)
+    if (
+        claim is None
+        or claim.expires <= time.monotonic()
+        or claim.purpose != agent_id
+        or not claim.session.renew(_screen_binding(request, server, agent_id))
+    ):
+        raise OctopError.localized(ErrorCode.NOT_FOUND)
+
+
+def _refresh_sessions(agent_id: str, binding: StreamSession) -> None:
+    now = time.monotonic()
+    for key, claim in list(_sessions.items()):
+        if claim.expires <= now:
+            _sessions.pop(key, None)
+        elif claim.purpose == agent_id and claim.session is binding:
+            _sessions[key] = Ticket(agent_id, binding, now + SCREEN_SESSION_IDLE_SECONDS)
+
+
+def _session(session: str, server: Any) -> tuple[str, int]:
     claim = _sessions.get(session)
-    if claim is None or claim[2] < time.time():
+    if claim is None or claim.expires <= time.monotonic() or not claim.session.active(server):
         _sessions.pop(session, None)
         raise OctopError.localized(ErrorCode.NOT_FOUND)
-    _refresh_sessions(claim[0], claim[1])
-    return claim[0], claim[1]
+    _refresh_sessions(claim.purpose, claim.session)
+    return claim.purpose, claim.session.user_id
 
 
 def _session_manager(server: Any) -> Any:
@@ -232,7 +315,7 @@ class PasteRequest(BaseModel):
     status_code=204,
 )
 async def type_text(session: str, body: PasteRequest, server: Any = Depends(get_server)) -> None:
-    agent_id, user_id = _session(session)
+    agent_id, user_id = _session(session, server)
     manager = _session_manager(server)
     await asyncio.to_thread(manager.paste_text, agent_id, user_id, body.text)
 
@@ -248,7 +331,7 @@ class Clipboard(BaseModel):
     response_model=Clipboard,
 )
 async def read_clipboard(session: str, server: Any = Depends(get_server)) -> Clipboard:
-    agent_id, user_id = _session(session)
+    agent_id, user_id = _session(session, server)
     manager = _session_manager(server)
     return Clipboard(text=await asyncio.to_thread(manager.read_clipboard, agent_id, user_id))
 
@@ -256,12 +339,13 @@ async def read_clipboard(session: str, server: Any = Depends(get_server)) -> Cli
 @router.websocket("/{agent_id}/screen/ws")
 async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(default="")) -> None:
     """Relay the browser's noVNC client to the desktop inside the sandbox."""
-    claim = _tickets.pop(ticket, None)
-    if claim is None or claim[0] != agent_id or claim[2] < time.time():
+    server = websocket.app.state.octop_server
+    binding = consume_screen_ticket(_tickets, ticket, agent_id, server)
+    if binding is None:
         await websocket.close(code=4001, reason="invalid ticket")
         return
-    _, user_id, _ = claim
-    server = websocket.app.state.octop_server
+    user_id = binding.user_id
+    websocket.state.stream_session = binding
     manager = computer_manager(server.services) if bot_cloud_enabled() else None
     if manager is None:
         await websocket.close(code=4004, reason="no cloud computers")
@@ -276,7 +360,9 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
     # Only the screen that has the computer hands it back when it closes: one opened while
     # taken over, or one the user typed into. A view-only screen closing (the phone swaps its
     # view-only page for the control page right after taking over) must not undo the takeover.
-    holds = {"control": await asyncio.to_thread(manager.taken_over, agent_id, user_id)}
+    holds = {"control": False}
+    initial = asyncio.create_task(asyncio.to_thread(manager.taken_over, agent_id, user_id))
+    tasks: list[asyncio.Task[None]] = []
 
     async def input_allowed() -> bool:
         # View-only is a client setting; the relay itself holds input back until takeover.
@@ -287,6 +373,7 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
         return bool(control["allowed"])
 
     try:
+        holds["control"] = await asyncio.shield(initial)
         url, headers = await asyncio.to_thread(manager.screen, agent_id, user_id)
         pinned = (
             await asyncio.to_thread(manager.screen_ssl, agent_id, user_id)
@@ -320,6 +407,8 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
                     allowed = await input_allowed()
                     forward, saw_input = gate.feed(data, allow_input=allowed)
                     if saw_input and allowed:
+                        if not await asyncio.to_thread(binding.active, server):
+                            return
                         last_input = time.monotonic()
                         holds["control"] = True
                     if forward:
@@ -328,29 +417,40 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
             async def keep_alive() -> None:
                 while True:
                     await asyncio.sleep(30)
+                    _refresh_sessions(agent_id, binding)
                     awake_since = max(opened, last_input)
                     if time.monotonic() - awake_since >= SCREEN_KEEP_AWAKE_SECONDS:
                         continue  # still shown, but no longer keeps the computer running
-                    _refresh_sessions(agent_id, user_id)
                     await asyncio.to_thread(manager.viewing, agent_id, user_id)
 
             tasks = [asyncio.create_task(job()) for job in (down, up, keep_alive)]
-            _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            for task in pending:
-                task.cancel()
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
     except Exception:  # noqa: BLE001 - the viewer just closes
         logger.warning("screen relay for %s ended with an error", agent_id, exc_info=True)
     finally:
-        # Leaving the screen in control (closed tab, lost network, crash) hands the computer back.
-        # Shielded: the relay task may be cancelled right as the viewer goes away, and a
-        # hand-back skipped then would leave the computer taken over with nobody at the screen.
-        if holds["control"]:
 
-            def hand_back() -> None:
-                if manager.taken_over(agent_id, user_id):
-                    manager.set_takeover(agent_id, user_id, False)
+        async def cleanup() -> None:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            # The first read may still be running when the relay is cancelled.
+            with contextlib.suppress(Exception):
+                holds["control"] |= await initial
+            if holds["control"]:
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(manager.release_takeover_if_held, agent_id, user_id)
+            with contextlib.suppress(Exception):
+                await websocket.close()
 
-            with contextlib.suppress(Exception, asyncio.CancelledError):
-                await asyncio.shield(asyncio.to_thread(hand_back))
-        with contextlib.suppress(Exception):
-            await websocket.close()
+        # Scope shielding and repeated joins also withstand direct Task.cancel().
+        cancelled: asyncio.CancelledError | None = None
+        with anyio.CancelScope(shield=True):
+            cleanup_task = asyncio.create_task(cleanup())
+            while not cleanup_task.done():
+                try:
+                    await asyncio.shield(cleanup_task)
+                except asyncio.CancelledError as exc:
+                    cancelled = exc
+            await cleanup_task
+        if cancelled is not None:
+            raise cancelled

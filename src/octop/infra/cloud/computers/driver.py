@@ -210,6 +210,10 @@ class AgsDriver:
             request.Timeout = self._config.timeout
         self._api().ResumeSandboxInstance(request)
 
+    def disk_gb(self, instance_id: str) -> int:
+        """Billed disk that outlives a pause; AGS keeps none (a paused sandbox costs nothing)."""
+        return 0
+
     def pause(self, instance_id: str) -> None:
         request = self._models().PauseSandboxInstanceRequest()
         request.InstanceId = instance_id

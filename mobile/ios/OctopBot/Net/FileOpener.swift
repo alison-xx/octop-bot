@@ -3,7 +3,18 @@ import QuickLook
 import QuickLookThumbnailing
 import UIKit
 
-extension ServerBackend {
+@MainActor
+protocol AttachmentSource: AnyObject {
+    var attachmentOrigin: URL { get }
+    var attachmentLoginIsCurrent: Bool { get }
+    func attachmentOwner() async throws -> String
+    func fileData(for url: URL) async throws -> Data
+    func fileSize(for url: URL) async -> Int64?
+}
+
+extension ServerBackend: AttachmentSource {
+    var attachmentOrigin: URL { session.baseURL }
+
     /// `/api/agents/{id}/workspace/download?path=…`, the link Octop puts in a reply for a file.
     nonisolated static func isWorkspaceDownload(_ url: URL) -> Bool {
         guard url.host() == nil || url.scheme == nil else { return false }
@@ -54,79 +65,111 @@ extension ServerBackend {
     }
 }
 
-/// Sizes, downloaded copies and thumbnails of the files Bots send, fetched once per link.
-@MainActor
+/// One signed-in session owns its in-flight work and presentations. Disk reuse requires
+/// the same verified login record and server, including when restarting offline.
+@MainActor @Observable
 final class AttachmentStore {
-    static let shared = AttachmentStore()
-
-    /// Thumbnails are only drawn for files up to this size.
     static let thumbnailLimit: Int64 = 20 * 1024 * 1024
+    private(set) var isActive = true
+    var canAccess: Bool { isActive && source?.attachmentLoginIsCurrent == true }
+    @ObservationIgnored private weak var source: (any AttachmentSource)?
+    private let cacheRoot: URL
+    @ObservationIgnored private var owner: Task<String, Error>?
+    @ObservationIgnored private var sizes: [String: Task<Int64?, Never>] = [:]
+    @ObservationIgnored private var files: [String: Task<URL, Error>] = [:]
+    @ObservationIgnored private var thumbnails: [String: Task<UIImage?, Never>] = [:]
+    private let presentations = NSHashTable<UIViewController>.weakObjects()
 
-    private var sizes: [String: Task<Int64?, Never>] = [:]
-    private var files: [String: Task<URL, Error>] = [:]
-    private var thumbnails: [String: Task<UIImage?, Never>] = [:]
-
-    private func key(_ file: FileAttachment, _ server: ServerBackend) -> String { server.session.baseURL.absoluteString + file.url }
-
-    func size(of file: FileAttachment, on server: ServerBackend) async -> Int64? {
-        if let size = file.size { return size }
-        guard file.isWorkspaceDownload, let url = URL(string: file.url) else { return nil }
-        let key = key(file, server)
-        if let task = sizes[key] { return await task.value }
-        let task = Task { await server.fileSize(for: url) }
-        sizes[key] = task
-        return await task.value
+    init(source: any AttachmentSource, cacheRoot: URL = .cachesDirectory) {
+        self.source = source
+        self.cacheRoot = cacheRoot
     }
 
-    /// A local copy under Caches, named like the file so Quick Look and the share sheet show its name.
-    func localFile(_ file: FileAttachment, on server: ServerBackend) async throws -> URL {
-        let key = key(file, server)
-        if let task = files[key] {
-            if let url = try? await task.value, FileManager.default.fileExists(atPath: url.path()) { return url }
-            files[key] = nil
+    func invalidate() {
+        guard isActive else { return }
+        isActive = false
+        owner?.cancel()
+        for task in sizes.values { task.cancel() }
+        for task in files.values { task.cancel() }
+        for task in thumbnails.values { task.cancel() }
+        sizes.removeAll()
+        files.removeAll()
+        thumbnails.removeAll()
+        for controller in presentations.allObjects { controller.dismiss(animated: false) }
+        presentations.removeAllObjects()
+    }
+
+    func present(_ controller: UIViewController) {
+        guard canAccess else { return }
+        presentations.add(controller)
+        FileOpener.present(controller)
+    }
+
+    private func key(_ file: FileAttachment) async throws -> String {
+        guard canAccess, let source else { throw CancellationError() }
+        let task = owner ?? Task { try await source.attachmentOwner() }
+        owner = task
+        let id: String
+        do { id = try await task.value } catch { owner = nil; throw error }
+        guard canAccess else { throw CancellationError() }
+        let data = try JSONEncoder().encode([source.attachmentOrigin.absoluteString, id, file.url])
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func cachedFile(_ file: FileAttachment, key: String) -> URL {
+        cacheRoot.appending(path: "attachments-v2", directoryHint: .isDirectory)
+            .appending(path: key, directoryHint: .isDirectory)
+            .appending(path: Self.safeName(file.name))
+    }
+
+    func size(of file: FileAttachment) async -> Int64? {
+        guard let key = try? await key(file), let source else { return nil }
+        if let size = file.size { return size }
+        if let bytes = try? cachedFile(file, key: key).resourceValues(forKeys: [.fileSizeKey]).fileSize {
+            return Int64(bytes)
         }
-        let folder = Self.folder(for: key)
-        let target = folder.appending(path: Self.safeName(file.name))
-        let task = Task<URL, Error> {
-            if FileManager.default.fileExists(atPath: target.path()) { return target }
-            guard let url = URL(string: file.url) else { throw APIError.network }
-            let data = try await server.fileData(for: url)
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        guard file.isWorkspaceDownload, let url = URL(string: file.url) else { return nil }
+        let task = sizes[key] ?? Task { await source.fileSize(for: url) }
+        sizes[key] = task
+        let value = await task.value
+        return canAccess ? value : nil
+    }
+
+    func localFile(_ file: FileAttachment) async throws -> URL {
+        let key = try await key(file)
+        guard canAccess, let source, let url = URL(string: file.url) else { throw CancellationError() }
+        let target = cachedFile(file, key: key)
+        if FileManager.default.fileExists(atPath: target.path()) { return target }
+        let task = files[key] ?? Task<URL, Error> {
+            let data = try await source.fileData(for: url)
+            try Task.checkCancellation()
+            guard self.canAccess else { throw CancellationError() }
+            try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: target, options: .atomic)
             return target
         }
         files[key] = task
-        do {
-            return try await task.value
-        } catch {
-            files[key] = nil
-            throw error
-        }
+        defer { files[key] = nil }
+        let result = try await task.value
+        guard canAccess else { throw CancellationError() }
+        return result
     }
 
-    /// The first page (or the picture itself) drawn by Quick Look.
-    func thumbnail(_ file: FileAttachment, on server: ServerBackend, size: CGSize, scale: CGFloat) async -> UIImage? {
-        let key = key(file, server)
-        if let task = thumbnails[key] { return await task.value }
-        let task = Task<UIImage?, Never> {
+    func thumbnail(_ file: FileAttachment, size: CGSize, scale: CGFloat) async -> UIImage? {
+        guard let key = try? await key(file) else { return nil }
+        let task = thumbnails[key] ?? Task<UIImage?, Never> {
             if !file.isImage {
                 guard file.kind.hasThumbnail else { return nil }
-                if let bytes = await self.size(of: file, on: server), bytes > Self.thumbnailLimit { return nil }
+                if let bytes = await self.size(of: file), bytes > Self.thumbnailLimit { return nil }
             }
-            guard let local = try? await self.localFile(file, on: server) else { return nil }
+            guard let local = try? await self.localFile(file), self.canAccess else { return nil }
             if file.isImage, let image = UIImage(contentsOfFile: local.path()) { return image }
             let request = QLThumbnailGenerator.Request(fileAt: local, size: size, scale: scale, representationTypes: .thumbnail)
             return try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request).uiImage
         }
         thumbnails[key] = task
-        return await task.value
-    }
-
-    private static func folder(for key: String) -> URL {
-        let digest = SHA256.hash(data: Data(key.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
-        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appending(path: "attachments", directoryHint: .isDirectory)
-            .appending(path: digest, directoryHint: .isDirectory)
+        let value = await task.value
+        return canAccess ? value : nil
     }
 
     nonisolated static func safeName(_ name: String) -> String {
@@ -149,28 +192,29 @@ enum FileOpener {
         let source = PreviewSource(url: local)
         preview.dataSource = source
         objc_setAssociatedObject(preview, &PreviewSource.key, source, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-        present(preview)
+        server.attachments.present(preview)
     }
 
     static func share(_ file: FileAttachment, from server: ServerBackend) async {
         guard let local = await fetch(file, from: server) else { return }
         let sheet = UIActivityViewController(activityItems: [local], applicationActivities: nil)
-        present(sheet)
+        server.attachments.present(sheet)
     }
 
     static func saveToFiles(_ file: FileAttachment, from server: ServerBackend) async {
         guard let local = await fetch(file, from: server) else { return }
-        present(UIDocumentPickerViewController(forExporting: [local], asCopy: true))
+        server.attachments.present(UIDocumentPickerViewController(forExporting: [local], asCopy: true))
     }
 
     private static func fetch(_ file: FileAttachment, from server: ServerBackend) async -> URL? {
         do {
-            return try await AttachmentStore.shared.localFile(file, on: server)
+            return try await server.attachments.localFile(file)
         } catch {
+            guard server.attachments.canAccess, !Task.isCancelled else { return nil }
             Haptics.error()
             let alert = UIAlertController(title: L("file.openFailed"), message: error.localizedDescription, preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: L("common.done"), style: .default))
-            present(alert)
+            server.attachments.present(alert)
             return nil
         }
     }

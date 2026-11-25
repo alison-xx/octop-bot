@@ -53,6 +53,12 @@ interface FloatState {
 export function toggleCloudFloat(botId: string) {
   bus.dispatchEvent(new CustomEvent("toggle", { detail: botId }));
 }
+/** A handoff card can also be shown outside the conversation that owns this float. */
+export function expandForHandoff(botId: string, status: CloudComputerStatus) {
+  return !bus.dispatchEvent(
+    new CustomEvent("handoff", { detail: { botId, status }, cancelable: true }),
+  );
+}
 function announce(state: FloatState) {
   bus.dispatchEvent(new CustomEvent("state", { detail: state }));
 }
@@ -219,6 +225,23 @@ export default function CloudComputerFloat({
     setPinned(false);
     writeStored(`closed.${botId}`, true);
     setMode("hidden");
+  }, [botId]);
+
+  useEffect(() => {
+    const handoff = (event: Event) => {
+      const next = (
+        event as CustomEvent<{ botId: string; status: CloudComputerStatus }>
+      ).detail;
+      if (next.botId !== botId) return;
+      event.preventDefault();
+      setStatus(next.status);
+      setClosed(false);
+      setStartError(null);
+      setStarting(next.status.state !== "running");
+      setMode("expanded");
+    };
+    bus.addEventListener("handoff", handoff);
+    return () => bus.removeEventListener("handoff", handoff);
   }, [botId]);
 
   // The header button: show the float (as the live window) or close it.
@@ -402,7 +425,17 @@ export default function CloudComputerFloat({
             <Monitor size={15} aria-hidden="true" />
           )}
           <span className={styles.dot} aria-hidden="true" />
-          <span className={styles.pillText}>{activity}</span>
+          <span
+            className={`${styles.pillText} ${
+              status?.disk_overdue_days ? styles.overdue : ""
+            }`}
+          >
+            {status?.disk_overdue_days
+              ? t("cloudComputer.diskOverdue", {
+                  days: status.disk_overdue_days,
+                })
+              : activity}
+          </span>
         </button>
         {startError ? (
           <button type="button" className={styles.pillRetry} onClick={open}>
@@ -485,6 +518,7 @@ export default function CloudComputerFloat({
           <div className={styles.view} data-fit={fit || undefined}>
             {screen && (
               <CloudComputerScreen
+                botId={botId}
                 wsPath={screen.ws}
                 interactive={false}
                 session={screen.session}
@@ -506,7 +540,31 @@ export default function CloudComputerFloat({
               </button>
             )}
           </div>
-          <footer className={styles.status}>{activity}</footer>
+          <footer className={styles.status}>
+            <div>{activity}</div>
+            {!!status?.disk_gb && (
+              <div>
+                {t("cloudComputer.diskFee", {
+                  gb: status.disk_gb,
+                  credits: status.disk_daily_credits,
+                })}
+                {!status.disk_billing &&
+                  ` · ${t("cloudComputer.diskBillingOff")}`}
+              </div>
+            )}
+            {status?.reclaim_notified && (
+              <div className={styles.overdue}>
+                {t("cloudComputer.reclaimWarning")}
+              </div>
+            )}
+            {!!status?.disk_overdue_days && (
+              <div className={styles.overdue}>
+                {t("cloudComputer.diskOverdue", {
+                  days: status.disk_overdue_days,
+                })}
+              </div>
+            )}
+          </footer>
           <span
             className={styles.resize}
             data-corner={corner}
@@ -547,12 +605,32 @@ export default function CloudComputerFloat({
         }}
         destroyOnClose
       >
+        {!!status?.disk_gb && (
+          <div>
+            {t("cloudComputer.diskFee", {
+              gb: status.disk_gb,
+              credits: status.disk_daily_credits,
+            })}
+            {!status.disk_billing && ` · ${t("cloudComputer.diskBillingOff")}`}
+          </div>
+        )}
+        {status?.reclaim_notified && (
+          <div className={styles.overdue}>
+            {t("cloudComputer.reclaimWarning")}
+          </div>
+        )}
+        {!!status?.disk_overdue_days && (
+          <div className={styles.overdue}>
+            {t("cloudComputer.diskOverdue", { days: status.disk_overdue_days })}
+          </div>
+        )}
         {screen && (
           <div
             className={styles.big}
             data-control={status?.takeover || undefined}
           >
             <CloudComputerScreen
+              botId={botId}
               wsPath={screen.ws}
               interactive={status?.takeover === true}
               session={screen.session}

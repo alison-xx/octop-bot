@@ -43,6 +43,7 @@ from octop.infra.agents.experts.snapshot_store import (
 )
 from octop.infra.agents.manager import AgentCreateSpec
 from octop.infra.db.repos.published_experts import PublishedExpertRow
+from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.history.trajectory.settings import apply_enable_trajectory
 from octop.infra.users.identity import User
@@ -249,6 +250,8 @@ async def publish_agent_expert(
     task_examples: dict[str, list[str]] | None = None,
 ) -> PublishedExpertRow:
     """Snapshot an owned agent workspace into a globally installable expert template."""
+    if bot_cloud_enabled() and not user.is_admin:
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
     repo = services.published_expert_repo
     existing = repo.get_by_source_agent_id(source.agent_id)
     if existing is not None:
@@ -328,6 +331,8 @@ async def refresh_published_expert(
     task_examples: dict[str, list[str]] | None = None,
 ) -> PublishedExpertRow:
     """Replace a published snapshot using its still-owned source agent workspace."""
+    if bot_cloud_enabled() and not user.is_admin:
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
     row = require_published_expert(services, expert_id)
     assert_can_mutate_published(row, user)
     if row.source_agent_id is None:
@@ -409,6 +414,13 @@ async def install_published_expert(
     may pass their own lists on this request.
     """
     row = require_published_expert(services, expert_id)
+    if bot_cloud_enabled() and user.is_admin:
+        try:
+            author = services.user_repo.get(int(row.created_by))
+        except (ValueError, TypeError):
+            author = None
+        if author is None or author.role != "admin":
+            raise OctopError.localized(ErrorCode.FORBIDDEN)
     repo = _control_files(services)
     staging: Path | None = None
     if repo is not None:

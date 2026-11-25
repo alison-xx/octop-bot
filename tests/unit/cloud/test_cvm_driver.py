@@ -121,6 +121,8 @@ def test_instance_secret_outlives_a_cam_key_rotation() -> None:
     assert rotated.secret_key == "new-secret"
     assert rotated.derive("token") == old.derive("token")
     assert rotated.derive("ca") == old.derive("ca")
+    # Printing or logging the config never shows the secrets.
+    assert "secret-test" not in repr(rotated) and "new-secret" not in repr(rotated)
 
 
 def test_states_map_a_stopped_computer_to_paused() -> None:
@@ -271,3 +273,14 @@ def test_mixed_routes_each_computer_to_the_provider_that_made_it(cvm: Any) -> No
     assert mixed.ssl_context_for(new) is not None
     # The CVM side never asks Tencent Cloud about another provider's id.
     assert cvm_driver.state("old-ags-instance") == "gone"
+
+
+def test_only_cvm_computers_have_a_billed_disk(cvm: Any) -> None:
+    cvm_driver, _fake = cvm
+    ags = Recorder("ags")
+    mixed = MixedDriver(cvm_driver, ags)  # type: ignore[arg-type]
+    new = mixed.start(spec="standard", labels={})
+    assert mixed.disk_gb(new) == 40
+    mixed.disk_gb("old-ags-instance")
+    assert ags.calls[-1][0] == "disk_gb"
+    assert AgsDriver(config=None).disk_gb("old-ags-instance") == 0  # type: ignore[arg-type]

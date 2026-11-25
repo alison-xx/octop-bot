@@ -182,3 +182,27 @@ async def test_guard_unknown_origin_stays_locked_except_admin() -> None:
     assert exc is not None
     assert exc.code == ErrorCode.SKILL_PACKAGE_LOCKED
     assert await _run_guard(manifest, user=_user(1, admin=True)) is None
+
+
+def test_cloud_package_publication_and_install(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.skills import skill_package_store
+
+    store = _store()
+    tenant = _user(7)
+    admin = _user(1, admin=True)
+    row = _row("snapshot")
+    authors = SimpleNamespace(get=lambda uid: SimpleNamespace(role="user"))
+    monkeypatch.setattr(skill_package_store, "bot_cloud_enabled", lambda: True)
+    with pytest.raises(OctopError) as exc:
+        store.assert_can_publish(tenant)
+    assert exc.value.code == ErrorCode.FORBIDDEN
+    store.assert_can_publish(admin)
+    with pytest.raises(OctopError):
+        store.assert_can_mutate(row, tenant)
+    with pytest.raises(OctopError):
+        store.assert_can_install(row, admin, authors)
+    store.assert_can_install(row, tenant, authors)
+    monkeypatch.setattr(skill_package_store, "bot_cloud_enabled", lambda: False)
+    store.assert_can_publish(tenant)
+    store.assert_can_mutate(row, tenant)
+    store.assert_can_install(row, admin, authors)

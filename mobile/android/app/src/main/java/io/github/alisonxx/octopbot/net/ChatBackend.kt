@@ -24,6 +24,7 @@ interface ChatBackend {
     val supportsGroups: Boolean
     /** The person's display name; null when there is none (the UI says "Lynxce user"). */
     val accountName: String?
+    suspend fun accountPhoto(): AccountPhoto? = null
     /** Shown under Settings → Connection. */
     val connectionLabel: String
 
@@ -42,6 +43,7 @@ interface ChatBackend {
      */
     fun send(
         text: String,
+        messageId: String,
         images: List<ImageAttachment>,
         bot: BotProfile,
         conversation: String?,
