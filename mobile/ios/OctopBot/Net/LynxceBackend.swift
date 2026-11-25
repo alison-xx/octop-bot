@@ -298,7 +298,7 @@ final class LynxceBackend: ChatBackend {
         chat.stop(conversation.id)
         try await pending.delete(bot: bot.id, session: conversation.id) {
             do { _ = try await call(.delete, "/api/user/web-chat-sessions/\(id)") }
-            catch let error as APIError where error.status == 404 && !pending.turns(bot: bot.id, session: conversation.id).isEmpty {
+            catch let error as APIError where error.status == 404 && pending.hasRecords(bot: bot.id, session: conversation.id) {
                 // The append never reached Lynxce. Only the device copy needs removal.
             }
         }
@@ -490,13 +490,14 @@ final class LynxceBackend: ChatBackend {
     struct HistorySaveError: LocalizedError {
         var receiptID: String?
         var generationStatus: MessageStatus = .done
+        var isPending: @MainActor () -> Bool = { true }
         var canRetry: @MainActor () -> Bool = { true }
         let retry: @MainActor () async throws -> Void
         var errorDescription: String? { L("chat.historySaveFailed") }
     }
 
     private func saveFailure(_ turn: PendingHistory) -> HistorySaveError {
-        HistorySaveError(receiptID: turn.id.uuidString, generationStatus: turn.status, canRetry: { [pending] in pending.canRetry(turn) }) { [weak self] in
+        HistorySaveError(receiptID: turn.id.uuidString, generationStatus: turn.status, isPending: { [pending] in pending.isPending(turn) }, canRetry: { [pending] in pending.canRetry(turn) }) { [weak self] in
             guard let self else { throw CancellationError() }
             try await self.save(turn)
         }

@@ -29,7 +29,7 @@ final class ChatSession {
     private var saveReceipts: [String: LynxceBackend.HistorySaveError] = [:]
     var unsavedReplies: [String: LynxceBackend.HistorySaveError] {
         guard let historyBackend, historyBackend === app?.backend else { return [:] }
-        return saveReceipts.filter { $0.value.canRetry() }
+        return saveReceipts.filter { $0.value.isPending() }
     }
     private(set) var savingReplies: Set<String> = []
     private var currentRun: UUID?
@@ -333,7 +333,7 @@ final class ChatSession {
 
     func retrySaving(_ id: String) async {
         guard let historyBackend, historyBackend === app?.backend,
-              let failure = unsavedReplies[id], savingReplies.insert(id).inserted else { return }
+              let failure = unsavedReplies[id], failure.canRetry(), savingReplies.insert(id).inserted else { return }
         defer { savingReplies.remove(id) }
         do {
             try await failure.retry()
@@ -366,6 +366,7 @@ final class ChatSession {
 
     /// Re-ask the last question after a failed or unwanted reply.
     func retry() {
+        if let reply = messages.last, unsavedReplies[reply.id] != nil { return }
         guard !isStreaming, pause == nil, let lastUser = messages.lastIndex(where: { $0.role == .user }) else { return }
         let question = messages[lastUser]
         messages.removeSubrange(lastUser...)

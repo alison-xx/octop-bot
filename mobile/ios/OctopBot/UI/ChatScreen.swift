@@ -488,12 +488,12 @@ struct MessageRow: View {
                 } else if message.status == .done && !message.text.isEmpty {
                     ReplyActions(chat: chat, message: message, isLast: isLast && chat.unsavedReplies[message.id] == nil)
                 }
-                if chat.unsavedReplies[message.id] != nil {
+                if let receipt = chat.unsavedReplies[message.id] {
                     HStack {
-                        Text("chat.historySaveFailed").font(.footnote).foregroundStyle(.secondary)
+                        Text(receipt.canRetry() ? LocalizedStringKey("chat.historySaveFailed") : LocalizedStringKey("chat.savingHistory")).font(.footnote).foregroundStyle(.secondary)
                         Button("chat.retrySave") { Task { await chat.retrySaving(message.id) } }
                             .font(.footnote.weight(.semibold))
-                            .disabled(chat.savingReplies.contains(message.id))
+                            .disabled(!receipt.canRetry() || chat.savingReplies.contains(message.id))
                     }
                 }
             }

@@ -108,17 +108,34 @@ struct PendingHistoryStore {
         catch { Self.memoryOnly[directory, default: [:]][turn.id] = turn }
     }
 
-    func put(_ turn: PendingHistory) throws {
+    private func prepareDirectory() throws {
         var folder = directory
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
         try folder.setResourceValues(values)
+    }
+
+    func put(_ turn: PendingHistory) throws {
+        try prepareDirectory()
         try JSONEncoder().encode(turn).write(to: directory.appendingPathComponent(turn.id.uuidString),
                                               options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
     func turns(bot: String, session: String? = nil) -> [PendingHistory] {
+        records(bot: bot, session: session).filter { !isDeleted($0.sessionID) }
+    }
+
+    private func deletionMarker(_ session: String) -> URL {
+        let hash = SHA256.hash(data: Data(session.utf8)).map { String(format: "%02x", $0) }.joined()
+        return directory.appendingPathComponent("delete-" + hash)
+    }
+
+    private func isDeleted(_ session: String) -> Bool {
+        operations.deleted.contains(session) || FileManager.default.fileExists(atPath: deletionMarker(session).path)
+    }
+
+    private func records(bot: String, session: String?) -> [PendingHistory] {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
         let saved = files.compactMap { url -> PendingHistory? in
             guard let data = try? Data(contentsOf: url), let turn = try? JSONDecoder().decode(PendingHistory.self, from: data),
@@ -128,18 +145,21 @@ struct PendingHistoryStore {
         let memory = (Self.memoryOnly[directory] ?? [:]).values.filter {
             $0.botID == bot && (session == nil || $0.sessionID == session)
         }
-        return (saved + memory).filter { !operations.deleted.contains($0.sessionID) }.sorted { $0.startedAt < $1.startedAt }
+        return (saved + memory).sorted { $0.startedAt < $1.startedAt }
     }
 
-    func canRetry(_ turn: PendingHistory) -> Bool {
-        guard operations.writes[turn.id] == nil, !operations.deleting.contains(turn.sessionID),
-              !operations.deleted.contains(turn.sessionID) else { return false }
-        return Self.memoryOnly[directory]?[turn.id] != nil ||
+    func isPending(_ turn: PendingHistory) -> Bool {
+        guard !isDeleted(turn.sessionID) else { return false }
+        return operations.writes[turn.id] != nil || Self.memoryOnly[directory]?[turn.id] != nil ||
             FileManager.default.fileExists(atPath: directory.appendingPathComponent(turn.id.uuidString).path)
     }
 
+    func canRetry(_ turn: PendingHistory) -> Bool {
+        isPending(turn) && operations.writes[turn.id] == nil && !operations.deleting.contains(turn.sessionID)
+    }
+
     func write(_ turn: PendingHistory, append: @escaping @MainActor () async throws -> Void) async throws {
-        guard !operations.deleting.contains(turn.sessionID), !operations.deleted.contains(turn.sessionID) else {
+        guard !operations.deleting.contains(turn.sessionID), !isDeleted(turn.sessionID) else {
             throw CancellationError()
         }
         if let current = operations.writes[turn.id] { return try await current.task.value }
@@ -152,14 +172,26 @@ struct PendingHistoryStore {
         try await task.value
     }
 
+    func hasRecords(bot: String, session: String) -> Bool { !records(bot: bot, session: session).isEmpty }
+
     func delete(bot: String, session: String, request: () async throws -> Void) async throws {
         guard operations.deleting.insert(session).inserted else { throw CancellationError() }
         defer { operations.deleting.remove(session) }
         let active = operations.writes.values.filter { $0.session == session }
         for write in active { _ = await write.task.result }
-        try await request()
+        // Persist deletion intent before the request. A crash after server acknowledgement
+        // must not turn a leftover file back into a retryable append on relaunch.
+        try prepareDirectory()
+        let marker = deletionMarker(session)
+        try Data().write(to: marker, options: .atomic)
+        do { try await request() }
+        catch {
+            try FileManager.default.removeItem(at: marker)
+            throw error
+        }
         operations.deleted.insert(session)
-        for turn in turns(bot: bot, session: session) { try remove(turn) }
+        for turn in records(bot: bot, session: session) { try remove(turn) }
+        try FileManager.default.removeItem(at: marker)
     }
 
     func remove(_ turn: PendingHistory) throws {

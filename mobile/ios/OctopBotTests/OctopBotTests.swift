@@ -655,6 +655,33 @@ final class QueueTests: XCTestCase {
         XCTAssertEqual(chat.messages.last?.status, .done)
     }
 
+    func testRegenerateStaysUnavailableWhileManualHistoryRetryIsInFlight() async throws {
+        let app = AppModel()
+        let backend = FakeBackend()
+        await app.use(backend)
+        let chat = app.session(for: app.bots[0])
+        chat.send("question")
+        let stream = try XCTUnwrap(backend.replies.first)
+        var release: CheckedContinuation<Void, Never>?
+        var acknowledged = false
+        let failure = LynxceBackend.HistorySaveError(isPending: { !acknowledged }, canRetry: { release == nil }) {
+            await withCheckedContinuation { release = $0 }
+            acknowledged = true
+        }
+        stream.yield(.text("answer"))
+        stream.finish(throwing: failure)
+        while chat.isStreaming { await Task.yield() }
+        let id = try XCTUnwrap(chat.unsavedReplies.keys.first)
+        let saving = Task { await chat.retrySaving(id) }
+        while release == nil { await Task.yield() }
+        XCTAssertNotNil(chat.unsavedReplies[id])
+        chat.retry()
+        XCTAssertEqual(backend.sent, ["question"])
+        release?.resume()
+        await saving.value
+        XCTAssertTrue(chat.unsavedReplies.isEmpty)
+    }
+
     func testAccountPhotoBelongsToTheActiveSession() async {
         let app = AppModel()
         let first = FakeBackend()
@@ -1564,6 +1591,10 @@ extension StreamTests {
         }
         while release == nil { await Task.yield() }
         XCTAssertFalse(reopened.canRetry(turn))
+        XCTAssertTrue(reopened.isPending(turn))
+        let failed = PendingHistory(turn: .init(body: [:], user: "later", startedAt: .now, botID: "bot"),
+                                    sessionID: turn.sessionID)
+        store.remember(failed)
         let deleting = Task {
             try await reopened.delete(bot: "bot", session: "thread") { order.append("delete") }
         }
@@ -1573,6 +1604,8 @@ extension StreamTests {
         try await deleting.value
         XCTAssertEqual(order, ["append", "delete"])
         XCTAssertFalse(reopened.canRetry(turn))
+        XCTAssertFalse(reopened.hasRecords(bot: "bot", session: turn.sessionID))
+        XCTAssertFalse(store.isPending(failed))
         store.remember(turn)
         XCTAssertTrue(reopened.turns(bot: "bot", session: "thread").isEmpty)
         do {
