@@ -4,6 +4,7 @@ import UserNotifications
 /// The current Bot's conversations: search, grouped by day, open one, start a new one, swipe to delete.
 struct HistorySheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppModel.self) private var model
     let chat: ChatSession
     @State private var query = ""
     @State private var loaded = false
@@ -29,6 +30,14 @@ struct HistorySheet: View {
                         } label: {
                             Label("chat.new", systemImage: "square.and.pencil").font(.headline)
                         }
+                    }
+                }
+                if model.server?.isOfficialCloud == true, query.isEmpty {
+                    Section {
+                        Button("history.restore") { model.recoverLegacyHistory(force: true) }
+                            .disabled(model.recoveringHistory)
+                        if model.recoveringHistory { ProgressView() }
+                        else if let message = model.historyRecoveryMessage { Text(message).font(.footnote) }
                     }
                 }
                 ForEach(groups, id: \.0) { bucket, rows in

@@ -111,6 +111,68 @@ final class CharacterTests: XCTestCase {
 
 @MainActor
 final class StreamTests: XCTestCase {
+    func testLastSuccessfulServerSelectionSurvivesAStoredLegacyGrant() {
+        typealias Mode = AppModel.SavedBackend
+        XCTAssertEqual(Mode.restore(nil, hasLegacy: true, hasServer: true, official: false), .signedOut)
+        XCTAssertEqual(Mode.restore(.server, hasLegacy: true, hasServer: true, official: false), .server)
+        XCTAssertEqual(Mode.restore(nil, hasLegacy: false, hasServer: true, official: false), .server)
+        XCTAssertEqual(Mode.restore(nil, hasLegacy: true, hasServer: true, official: true), .server)
+        XCTAssertEqual(Mode.restore(.device, hasLegacy: true, hasServer: true, official: false), .device)
+        XCTAssertEqual(Mode.restore(.signedOut, hasLegacy: true, hasServer: true, official: true), .signedOut)
+    }
+
+    func testUpgradeSealsOwnerlessPreviewsOutsideEverySignedInAccount() throws {
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let stored = Data(#"{"chief":{"text":"old preview","date":1}}"#.utf8)
+        defaults.set(stored, forKey: "chat.previews")
+        defaults.set(["chief"], forKey: "chat.unread")
+        AppModel.archiveUnattributedPreviews(defaults)
+        AppModel.archiveUnattributedPreviews(defaults)
+        XCTAssertEqual(defaults.array(forKey: "legacy.unattributedPreviews") as? [Data], [stored])
+        XCTAssertNil(defaults.object(forKey: "chat.previews"))
+        XCTAssertNil(defaults.object(forKey: "chat.unread"))
+    }
+
+    func testLegacyGrantRetirementRequiresTheRecoveredOwnerAndOriginalCredential() {
+        let key = "test.legacy-grant." + UUID().uuidString
+        defer { Keychain.set(nil, for: key) }
+        let a = LynxceBackend.Grant(accountId: "a", accessToken: "old-a", refreshToken: "a1")
+        let b = LynxceBackend.Grant(accountId: "b", accessToken: "b", refreshToken: "b1")
+        let rotated = LynxceBackend.Grant(accountId: "a", accessToken: "new-a", refreshToken: "a2")
+        Keychain.setCodable(a, for: key)
+        for other in ["b", ""] {
+            XCTAssertFalse(LynxceBackend.retireRecoveredGrant(a, owner: other, for: key))
+            XCTAssertEqual(Keychain.codable(LynxceBackend.Grant.self, for: key), a)
+        }
+        for current in [b, rotated] {
+            Keychain.setCodable(current, for: key)
+            XCTAssertFalse(LynxceBackend.retireRecoveredGrant(a, owner: "a", for: key))
+            XCTAssertEqual(Keychain.codable(LynxceBackend.Grant.self, for: key), current)
+        }
+        XCTAssertTrue(LynxceBackend.retireRecoveredGrant(rotated, owner: "a", for: key))
+        XCTAssertNil(Keychain.get(key))
+    }
+
+    func testLegacyRecoveryReadsEveryPageAndReportsPartialRecords() async throws {
+        var cursors: [String?] = []
+        let complete = try await ServerBackend.restoreLegacyPages { cursor in
+            cursors.append(cursor)
+            if cursor == nil { return ["skipped": 0, "next_cursor": "second"] }
+            return ["skipped": 1, "next_cursor": NSNull()]
+        }
+        XCTAssertEqual(cursors, [nil, "second"])
+        XCTAssertFalse(complete)
+    }
+
+    func testLegacyRecoveryStopsOnRepeatedCursor() async {
+        do {
+            _ = try await ServerBackend.restoreLegacyPages { _ in ["skipped": 0, "next_cursor": "stuck"] }
+            XCTFail("Repeated cursors must stop recovery")
+        } catch { XCTAssertTrue(error is APIError) }
+    }
+
     func testCompletionRemainsOpenUntilHistoryIsSaved() async throws {
         var saved = false
         let chat = CompletionChat(stream: { _, _, _, emit in
@@ -1995,5 +2057,165 @@ extension StreamTests {
         XCTAssertFalse(backend.deletionQueued(denied, bot: bot))
         XCTAssertEqual(Set(backend.deletionFailures(for: bot).keys), [denied])
         XCTAssertNotNil(backend.deletionNotice(for: bot))
+    }
+}
+
+@MainActor
+final class AttachmentSessionTests: XCTestCase {
+    private final class MarkerSource: AttachmentSource {
+        let attachmentOrigin: URL
+        let owner: String
+        let data: Data
+        var downloads = 0
+        var verifications = 0
+        var attachmentLoginIsCurrent = true
+        var waitForDownload: (() async -> Void)?
+
+        init(_ owner: String, origin: URL, width: Int) {
+            self.owner = owner
+            self.attachmentOrigin = origin
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            data = UIGraphicsImageRenderer(size: CGSize(width: width, height: 2), format: format).pngData { context in
+                UIColor.blue.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: width, height: 2))
+            }
+        }
+
+        func attachmentOwner() async throws -> String {
+            verifications += 1
+            return owner
+        }
+        func fileSize(for url: URL) async -> Int64? { Int64(data.count) }
+        func fileData(for url: URL) async throws -> Data {
+            downloads += 1
+            await waitForDownload?()
+            return data
+        }
+    }
+
+    func testEachVerifiedAccountAndOriginGetsItsOwnFileSizeAndThumbnail() async throws {
+        let root = URL.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = URL(string: "https://fixture-one.invalid")!
+        let file = FileAttachment(url: "/api/agents/QA/workspace/download?path=marker.png", name: "marker.png")
+        let legacyKey = SHA256.hash(data: Data((url.absoluteString + file.url).utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
+        let legacyDir = root.appending(path: "attachments").appending(path: legacyKey)
+        try FileManager.default.createDirectory(at: legacyDir, withIntermediateDirectories: true)
+        try Data("old local marker".utf8).write(to: legacyDir.appending(path: file.name))
+        let a = MarkerSource("local-a", origin: url, width: 4)
+        let b = MarkerSource("local-b", origin: url, width: 8)
+        let other = MarkerSource("local-a", origin: URL(string: "https://fixture-two.invalid")!, width: 12)
+        var locations = Set<URL>()
+        for (source, width) in [(a, 4), (b, 8), (other, 12)] {
+            let store = AttachmentStore(source: source, cacheRoot: root)
+            let local = try await store.localFile(file)
+            let size = await store.size(of: file)
+            let image = await store.thumbnail(file, size: CGSize(width: 16, height: 16), scale: 1)
+            XCTAssertEqual(try Data(contentsOf: local), source.data)
+            XCTAssertEqual(size, Int64(source.data.count))
+            XCTAssertEqual(image?.cgImage?.width, width)
+            XCTAssertTrue(locations.insert(local).inserted)
+            store.invalidate()
+        }
+        let again = AttachmentStore(source: a, cacheRoot: root)
+        let restored = try await again.localFile(file)
+        XCTAssertTrue(locations.contains(restored))
+        XCTAssertEqual(a.downloads, 1)
+        XCTAssertEqual(a.verifications, 2)
+        XCTAssertEqual(b.verifications, 1)
+        XCTAssertEqual(other.verifications, 1)
+    }
+
+    func testVerifiedLoginRetainsItsAttachmentNamespaceAcrossOfflineRestart() async throws {
+        let key = "qa.attachment." + UUID().uuidString
+        defer { Keychain.set(nil, for: key) }
+        let origin = URL(string: "https://fixture.invalid")!
+        let original = ServerBackend.Session(baseURL: origin, token: "local-marker", displayName: "A", cloud: nil)
+        Keychain.setCodable(original, for: key)
+        let first = ServerBackend(session: original)
+        do {
+            _ = try await first.attachmentNamespace(storedAt: key) { throw URLError(.notConnectedToInternet) }
+            XCTFail("Unverified legacy row obtained a namespace offline")
+        } catch is URLError {}
+        let namespace = try await first.attachmentNamespace(storedAt: key) { 7 }
+        let current = try XCTUnwrap(Keychain.codable(ServerBackend.Session.self, for: key))
+        XCTAssertEqual(current.attachmentIdentity?.accountID, 7)
+        let reopened = ServerBackend(session: current)
+        let offline = try await reopened.attachmentNamespace(storedAt: key) { throw URLError(.notConnectedToInternet) }
+        XCTAssertEqual(offline, namespace)
+
+        let newLogin = ServerBackend.Session(baseURL: origin, token: "second-local-marker", displayName: "A", cloud: nil,
+                                             attachmentIdentity: .init(accountID: 7))
+        Keychain.setCodable(newLogin, for: key)
+        let other = ServerBackend(session: newLogin)
+        let otherNamespace = try await other.attachmentNamespace(storedAt: key) { throw URLError(.notConnectedToInternet) }
+        XCTAssertNotEqual(otherNamespace, namespace)
+        do {
+            _ = try await reopened.attachmentNamespace(storedAt: key) { 7 }
+            XCTFail("Superseded credential reclaimed its namespace")
+        } catch is CancellationError {}
+    }
+
+    func testLateAccountVerificationPreservesTheNewerKeychainRecord() async throws {
+        let key = "qa.attachment." + UUID().uuidString
+        defer { Keychain.set(nil, for: key) }
+        let origin = URL(string: "https://fixture.invalid")!
+        let a = ServerBackend.Session(baseURL: origin, token: "local-a", displayName: "A", cloud: nil)
+        let b = ServerBackend.Session(baseURL: origin, token: "local-b", displayName: "B", cloud: nil,
+                                      attachmentIdentity: .init(accountID: 8))
+        Keychain.setCodable(a, for: key)
+        let source = ServerBackend(session: a)
+        do {
+            _ = try await source.attachmentNamespace(storedAt: key) {
+                Keychain.setCodable(b, for: key)
+                return 7
+            }
+            XCTFail("Old account verification replaced the new login")
+        } catch is CancellationError {}
+        XCTAssertEqual(Keychain.codable(ServerBackend.Session.self, for: key), b)
+    }
+
+    func testEndingSessionDismissesItsVisibleAttachmentController() {
+        final class MarkerController: UIViewController {
+            var dismissed = false
+            override func dismiss(animated flag: Bool, completion: (() -> Void)? = nil) {
+                dismissed = true
+                super.dismiss(animated: flag, completion: completion)
+            }
+        }
+        let source = MarkerSource("preview", origin: URL(string: "https://fixture.invalid")!, width: 4)
+        let store = AttachmentStore(source: source)
+        let preview = MarkerController()
+        store.present(preview)
+        store.invalidate()
+        XCTAssertTrue(preview.dismissed)
+        let next = MarkerController()
+        store.present(next)
+        XCTAssertNil(next.presentingViewController)
+    }
+
+    func testFinishingAFileAfterSigningOutLeavesNoActiveCopy() async throws {
+        let root = URL.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = MarkerSource("late", origin: URL(string: "https://fixture.invalid")!, width: 4)
+        let began = expectation(description: "local marker is ready")
+        var finish: CheckedContinuation<Void, Never>?
+        source.waitForDownload = {
+            await withCheckedContinuation { waiter in finish = waiter; began.fulfill() }
+        }
+        let store = AttachmentStore(source: source, cacheRoot: root)
+        let file = FileAttachment(url: "/api/agents/QA/workspace/download?path=marker.png", name: "marker.png")
+        let work = Task { try await store.localFile(file) }
+        await fulfillment(of: [began], timeout: 3)
+        store.invalidate()
+        finish?.resume()
+        do { _ = try await work.value; XCTFail("Ended session returned its download") } catch is CancellationError {}
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.path()))
+        XCTAssertFalse(store.isActive)
+        let image = await store.thumbnail(file, size: CGSize(width: 16, height: 16), scale: 1)
+        let size = await store.size(of: file)
+        XCTAssertNil(image)
+        XCTAssertNil(size)
     }
 }

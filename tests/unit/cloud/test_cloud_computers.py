@@ -1253,9 +1253,11 @@ async def test_background_handoff_pauses_only_its_wake_once(sole_computer, resum
 
 
 @pytest.mark.parametrize(
-    "foreign", ["same_thread", "file", "takeover", "viewer", "glance", "screen"]
+    "foreign", ["same_thread", "file", "model_screen", "takeover", "viewer", "glance", "screen"]
 )
 def test_other_activity_permanently_relinquishes_handoff(sole_computer, foreign, monkeypatch):
+    from contextvars import Context
+
     from octop.infra.cloud.computers.handoff import (
         background_computer_turn,
         pause_background_computer,
@@ -1267,9 +1269,19 @@ def test_other_activity_permanently_relinquishes_handoff(sole_computer, foreign,
         if foreign == "same_thread":
             with background_computer_turn(u, "bot", "thread"):
                 m.run("bot", u, "another turn", 5)
+        elif foreign == "model_screen":
+            assert (
+                Context().run(
+                    m.model_screen,
+                    "bot",
+                    u,
+                    "taken",
+                    lambda *_: "frame",
+                    lambda *_: ("review", True),
+                )
+                == "frame"
+            )
         elif foreign == "file":
-            from contextvars import Context
-
             Context().run(m.write, "bot", u, "other.txt", b"other")
         elif foreign == "takeover":
             m.set_takeover("bot", u, True)
@@ -1482,3 +1494,53 @@ def test_provider_state_must_still_be_running_at_handoff(sole_computer):
         instance = m.ensure_running("bot", u)
         driver.states[instance] = "paused"
         assert not pause_background_computer() and ("pause", instance) not in driver.calls
+
+
+def test_model_checks_handback_before_another_action(setup: Any) -> None:
+    manager, _, _, _ = setup
+    manager.ensure_running("bot1", 7)
+    manager.set_takeover("bot1", 7, True)
+
+    def work(*args: Any) -> str:
+        return "action"
+
+    def review(*args: Any) -> tuple[str, bool]:
+        return "still private", False
+
+    assert manager.model_screen("bot1", 7, "taken", work, review) == "taken"
+    manager.release_takeover_if_held("bot1", 7)
+    assert manager.model_screen("bot1", 7, "taken", work, review) == "still private"
+    assert manager.record("bot1", 7).check_handoff_frame
+    assert manager.model_screen("bot1", 7, "taken", work, lambda *_: ("checked", True)) == "checked"
+    assert manager.model_screen("bot1", 7, "taken", work, review) == "action"
+
+
+@pytest.mark.parametrize("expiry_observer", ["viewing", "model_screen", "tick"])
+def test_expired_control_and_reclaimed_control_each_require_review(
+    setup: Any, expiry_observer: str
+) -> None:
+    manager, _, _, clock = setup
+    manager.ensure_running("bot1", 7)
+    manager.set_takeover("bot1", 7, True)
+    clock.now += computers.VIEWER_GRACE_SECONDS + 1
+
+    def observe() -> str:
+        return manager.model_screen(
+            "bot1", 7, "human control", lambda *_: "ordinary frame", lambda *_: ("review", True)
+        )
+
+    if expiry_observer == "viewing":
+        manager.viewing("bot1", 7)
+    elif expiry_observer == "tick":
+        manager.tick()
+    assert observe() == "review"
+    assert not manager.record("bot1", 7).takeover
+    manager.viewing("bot1", 7)
+    assert observe() == "ordinary frame"
+
+    manager.set_takeover("bot1", 7, True)
+    assert observe() == "human control"
+    manager.release_takeover_if_held("bot1", 7)
+    assert manager.record("bot1", 7).check_handoff_frame
+    assert observe() == "review"
+    assert observe() == "ordinary frame"

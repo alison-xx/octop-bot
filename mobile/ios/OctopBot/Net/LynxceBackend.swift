@@ -46,6 +46,13 @@ final class LynxceBackend: ChatBackend {
         Keychain.codable(Grant.self, for: grantKey).map { LynxceBackend(grant: $0) }
     }
 
+    /// The upgrade may retire only the exact direct-login credential captured before recovery.
+    @discardableResult
+    static func retireRecoveredGrant(_ grant: Grant, owner: String, for key: String = grantKey) -> Bool {
+        guard !owner.isEmpty, grant.accountId == owner else { return false }
+        return Keychain.replace(grant, with: nil, for: key)
+    }
+
     static func signIn(account: String, password: String) async throws -> LynxceBackend {
         try signedIn(try await call(.post, "/api/auth/password-login", json: ["account": account, "password": password]))
     }

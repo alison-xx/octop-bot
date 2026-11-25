@@ -38,6 +38,20 @@ import java.util.UUID
 
 /** Pure Octop server wire mapping (no I/O), shared by [ServerBackend] and unit tests. */
 object ServerProtocol {
+    suspend fun restoreLegacyPages(fetch: suspend (String?) -> JsonObject): Boolean {
+        var cursor: String? = null
+        val seen = mutableSetOf<String>()
+        var complete = true
+        while (true) {
+            val page = fetch(cursor)
+            val skipped = page.long("skipped") ?: throw ApiException.badResponse()
+            if (skipped > 0) complete = false
+            if (page["next_cursor"] == kotlinx.serialization.json.JsonNull) return complete
+            cursor = page.str("next_cursor")?.takeIf { it.isNotEmpty() && seen.add(it) } ?: throw ApiException.badResponse()
+        }
+    }
+
+
     fun rechargeBody(account: String, need: Double? = null, reason: String? = null) = buildJsonObject {
         put("source", "cloud")
         put("expected_account_id", account)

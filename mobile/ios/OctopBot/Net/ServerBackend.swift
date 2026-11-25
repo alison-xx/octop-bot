@@ -2,6 +2,17 @@ import Foundation
 
 /// A self-hosted Octop Bot server (NAS / Docker web build): its Bots, tools, memory and groups.
 final class ServerBackend: ChatBackend {
+    struct AttachmentIdentity: Codable, Equatable {
+        let accountID: Int
+        let namespace: UUID
+
+        init?(accountID: Int?) {
+            guard let accountID, accountID > 0 else { return nil }
+            self.accountID = accountID
+            namespace = UUID()
+        }
+    }
+
     struct Session: Codable, Equatable {
         var baseURL: URL
         var token: String
@@ -9,6 +20,7 @@ final class ServerBackend: ChatBackend {
         /// Octop Bot cloud (bot.lynxce.cn): signed in with Lynxce, which it keeps for the wallet.
         var cloud: Bool?
         var signupExpiryDay: String? = nil
+        var attachmentIdentity: AttachmentIdentity? = nil
     }
 
     /// Octop Bot cloud, run by Lynxce.
@@ -16,6 +28,7 @@ final class ServerBackend: ChatBackend {
     var isCloud: Bool { session.cloud == true }
 
     private static let sessionKey = "server.session"
+    private(set) lazy var attachments = AttachmentStore(source: self)
     private(set) var session: Session
     var signupCredits: Double?
     var signupExpiryDay: String? { session.signupExpiryDay }
@@ -34,6 +47,37 @@ final class ServerBackend: ChatBackend {
 
     static func restore() -> ServerBackend? {
         Keychain.codable(Session.self, for: sessionKey).map { ServerBackend(session: $0) }
+    }
+
+    var attachmentLoginIsCurrent: Bool { Keychain.codable(Session.self, for: Self.sessionKey) == session }
+
+    func attachmentOwner() async throws -> String {
+        try await attachmentNamespace(storedAt: Self.sessionKey) {
+            // This identity-only probe must not rotate a credential while accounts are switching.
+            let request = try HTTP.request(self.url("/api/auth/me"), method: .get, headers: self.authHeaders)
+            let (bytes, response) = try await HTTP.data(for: request, delegate: NoAPIRedirect())
+            guard response.statusCode == 200,
+                  let me = try JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+                  let id = me["id"] as? Int else { throw APIError.network }
+            return id
+        }
+    }
+
+    /// A new sign-in receives a distinct namespace. Upgrade an old Keychain row only after
+    /// this session has authenticated its account; a later cold start can then work offline.
+    func attachmentNamespace(storedAt key: String, verify: () async throws -> Int) async throws -> String {
+        guard attachments.isActive, Keychain.codable(Session.self, for: key) == session else { throw CancellationError() }
+        if let known = session.attachmentIdentity { return known.namespace.uuidString }
+        let account = try await verify()
+        guard attachments.isActive, Keychain.codable(Session.self, for: key) == session else { throw CancellationError() }
+        if let known = session.attachmentIdentity { return known.namespace.uuidString }
+        guard let identity = AttachmentIdentity(accountID: account) else { throw APIError.network }
+        var next = session
+        next.attachmentIdentity = identity
+        guard Keychain.replace(session, with: next, for: key),
+              Keychain.codable(Session.self, for: key) == next else { throw APIError.network }
+        session = next
+        return identity.namespace.uuidString
     }
 
     // MARK: Sign-in
@@ -154,7 +198,8 @@ final class ServerBackend: ChatBackend {
         let name = displayName(user)
         // Octop Bot cloud says so in its sign-in response; it then also serves the Lynxce wallet.
         let session = Session(baseURL: base, token: token, displayName: name, cloud: body["cloud"] as? Bool == true ? true : nil,
-                              signupExpiryDay: body["cloud"] as? Bool == true ? signupExpiryDayUTC(body) : nil)
+                              signupExpiryDay: body["cloud"] as? Bool == true ? signupExpiryDayUTC(body) : nil,
+                              attachmentIdentity: AttachmentIdentity(accountID: user?["id"] as? Int))
         Keychain.setCodable(session, for: sessionKey)
         let backend = ServerBackend(session: session)
         backend.signupCredits = backend.isCloud ? newSignupCredits(body) : nil
@@ -226,6 +271,60 @@ final class ServerBackend: ChatBackend {
     ) async throws -> Any {
         let data = try await raw(method, path, query: query, json: body, form: form, timeout: timeout)
         return data.isEmpty ? NSNull() : ((try? JSONSerialization.jsonObject(with: data)) ?? NSNull())
+    }
+
+    var isOfficialCloud: Bool { isCloud && session.baseURL.standardized == Self.lynxceCloud.standardized }
+
+    private var verifiedHistoryOwner: String?
+
+    func rememberedThread(bot: String) async -> String? {
+        guard isOfficialCloud, let owner = try? await legacyHistoryOwner() else { return nil }
+        return UserDefaults.standard.string(forKey: "cloud.thread." + owner + "." + bot)
+    }
+
+    func rememberThread(_ thread: String?, bot: String) {
+        guard let owner = verifiedHistoryOwner else { return }
+        UserDefaults.standard.set(thread, forKey: "cloud.thread." + owner + "." + bot)
+    }
+
+    func legacyHistoryOwner(refresh: Bool = false) async throws -> String {
+        if !refresh, let verifiedHistoryOwner { return verifiedHistoryOwner }
+        guard isOfficialCloud, let profile = try await json(.get, "/api/octop-bot/cloud/account") as? [String: Any],
+              profile["connected"] as? Bool == true, let owner = profile["account_id"] as? String, !owner.isEmpty else {
+            throw APIError(kind: .server, status: 502, message: nil)
+        }
+        verifiedHistoryOwner = owner
+        return owner
+    }
+
+    func restoreLegacyHistory() async throws -> Bool {
+        try await Self.restoreLegacyPages { cursor in
+            let body = cursor.map { ["cursor": $0] } ?? [:]
+            guard let page = try await self.json(.post, "/api/octop-bot/cloud/legacy-conversations/restore", json: body) as? [String: Any] else {
+                throw APIError(kind: .server, status: 502, message: nil)
+            }
+            return page
+        }
+    }
+
+    static func restoreLegacyPages(_ fetch: (String?) async throws -> [String: Any]) async throws -> Bool {
+        var cursor: String?
+        var seen = Set<String>()
+        var complete = true
+        repeat {
+            try Task.checkCancellation()
+            let page = try await fetch(cursor)
+            guard let skipped = page["skipped"] as? Int, let next = page["next_cursor"] else {
+                throw APIError(kind: .server, status: 502, message: nil)
+            }
+            if skipped > 0 { complete = false }
+            if next is NSNull { break }
+            guard let value = next as? String, !value.isEmpty, seen.insert(value).inserted else {
+                throw APIError(kind: .server, status: 502, message: nil)
+            }
+            cursor = value
+        } while true
+        return complete
     }
 
     // MARK: Directory
@@ -808,6 +907,7 @@ final class ServerBackend: ChatBackend {
     func registerPush(token: String) async {}
 
     func signOut() async {
+        attachments.invalidate()
         for socket in sockets.values { socket.cancel(with: .goingAway, reason: nil) }
         Keychain.replace(session, with: nil, for: Self.sessionKey)
         _ = try? await raw(.post, "/api/auth/logout")

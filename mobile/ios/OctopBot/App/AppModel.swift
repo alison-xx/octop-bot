@@ -14,7 +14,11 @@ final class AppModel {
     }
 
     var phase: Phase = .launching
-    private(set) var backend: ChatBackend?
+    private(set) var backend: ChatBackend? {
+        willSet {
+            if backend !== newValue { (backend as? ServerBackend)?.attachments.invalidate() }
+        }
+    }
     var bots: [BotProfile] = []
     var groups: [GroupSummary] = []
     /// The Bot opened most recently; voice mode talks to it.
@@ -67,6 +71,12 @@ final class AppModel {
             if notifyOnReply { Notifier.requestPermission() }
         }
     }
+    struct NotificationChat: Hashable {
+        let botId: String
+        let threadId: String
+    }
+
+    var notificationChat: NotificationChat?
     var pushToken: String?
 
     init() {
@@ -167,22 +177,114 @@ final class AppModel {
         return chief + others.map(\.element)
     }
 
+    private var recoveryTask: Task<Void, Never>?
+    private(set) var recoveringHistory = false
+    private(set) var historyRecoveryMessage: String?
+
+    func recoverLegacyHistory(force: Bool = false) {
+        guard let server, server.isOfficialCloud, !recoveringHistory else { return }
+        let legacyGrant = LynxceBackend.restore()?.grant
+        recoveringHistory = true
+        recoveryTask = Task {
+            defer { if self.server === server { recoveringHistory = false } }
+            do {
+                let owner = try await server.legacyHistoryOwner()
+                let key = "cloud.legacyHistory.completed." + owner
+                guard self.server === server, !Task.isCancelled,
+                      force || legacyGrant?.accountId == owner || !UserDefaults.standard.bool(forKey: key) else { return }
+                let complete = try await server.restoreLegacyHistory()
+                guard self.server === server, !Task.isCancelled else { return }
+                if complete, let legacyGrant, legacyGrant.accountId == owner {
+                    let confirmedOwner = try await server.legacyHistoryOwner(refresh: true)
+                    guard self.server === server, !Task.isCancelled, confirmedOwner == owner else { return }
+                    LynxceBackend.retireRecoveredGrant(legacyGrant, owner: confirmedOwner)
+                }
+                UserDefaults.standard.set(complete, forKey: key)
+                historyRecoveryMessage = L(complete ? "history.restored" : "history.restoreIncomplete")
+                for chat in Array(sessions.values) { await chat.reloadConversations() }
+            } catch {
+                if self.server === server, !Task.isCancelled { historyRecoveryMessage = L("history.restoreRetry") }
+            }
+        }
+    }
+
+    private func stopHistoryRecovery() {
+        recoveryTask?.cancel()
+        recoveryTask = nil
+        recoveringHistory = false
+        historyRecoveryMessage = nil
+    }
+
+    static func archiveUnattributedPreviews(_ defaults: UserDefaults) {
+        // 1.0.0 stored previews across accounts without an owner. Keep the original bytes on
+        // this device, isolated from each signed-in cloud account and its recovered threads.
+        if let data = defaults.data(forKey: "chat.previews") {
+            var copies = defaults.array(forKey: "legacy.unattributedPreviews") as? [Data] ?? []
+            if !copies.contains(data) { copies.append(data) }
+            defaults.set(copies, forKey: "legacy.unattributedPreviews")
+        }
+        defaults.removeObject(forKey: "chat.previews")
+        defaults.removeObject(forKey: "chat.unread")
+    }
+
+    enum SavedBackend: String, Codable {
+        case server, device, signedOut
+
+        static func restore(_ selected: Self?, hasLegacy: Bool, hasServer: Bool, official: Bool) -> Self {
+            if let selected { return selected }
+            if hasLegacy { return official ? .server : .signedOut }
+            return hasServer ? .server : .device
+        }
+    }
+
+    private static let backendSelectionKey = "session.selectedBackend"
+
     func start() async {
-        if let restored: ChatBackend = LynxceBackend.restore() ?? ServerBackend.restore() ?? DeviceBackend.restore() {
-            await use(restored)
+        let selected = Keychain.codable(SavedBackend.self, for: Self.backendSelectionKey)
+        let legacy = LynxceBackend.restore()
+        let server = ServerBackend.restore()
+        let restored: ChatBackend?
+        switch SavedBackend.restore(selected, hasLegacy: legacy != nil, hasServer: server != nil, official: server?.isOfficialCloud == true) {
+        case .server: restored = server
+        case .device: restored = DeviceBackend.restore()
+        case .signedOut: restored = nil
+        }
+        if let restored {
+            await use(restored, rememberSelection: false)
         } else {
+            if selected == nil && legacy != nil {
+                Self.archiveUnattributedPreviews(.standard)
+                previews = [:]
+                unread = []
+                lastBotId = nil
+                signedOutNotice = L("history.reauthenticate")
+            }
             phase = .signedOut
         }
     }
 
-    func use(_ backend: ChatBackend) async {
+    func use(_ backend: ChatBackend, rememberSelection: Bool = true) async {
         CreditStore.shared.clearCatalog()
+        if rememberSelection {
+            if backend is ServerBackend { Keychain.setCodable(SavedBackend.server, for: Self.backendSelectionKey) }
+            if backend is DeviceBackend { Keychain.setCodable(SavedBackend.device, for: Self.backendSelectionKey) }
+        }
         photoRefresh?.cancel()
+        stopHistoryRecovery()
+        for session in sessions.values { session.cancel() }
+        if self.backend != nil, self.backend !== backend {
+            previews = [:]
+            unread = []
+            lastBotId = nil
+            UserDefaults.standard.removeObject(forKey: "chat.previews")
+            UserDefaults.standard.removeObject(forKey: "chat.unread")
+        }
         self.backend = backend
         CreditStore.shared.start(
             account: { [weak self] in self?.creditAccount },
             credited: { [weak self] in await self?.refreshBalance() }
         )
+        recoverLegacyHistory()
         sessions = [:]
         accountName = backend.accountName
         accountPhotoURL = nil
@@ -439,8 +541,12 @@ final class AppModel {
 
     func signOut() async {
         CreditStore.shared.clearCatalog()
+        Keychain.setCodable(SavedBackend.signedOut, for: Self.backendSelectionKey)
         photoRefresh?.cancel()
         photoRefresh = nil
+        notificationChat = nil
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        stopHistoryRecovery()
         for session in sessions.values { session.cancel() }
         sessions = [:]
         let leaving = backend
@@ -483,10 +589,11 @@ enum Notifier {
     }
 
     /// Tell the user a reply landed while they were away.
-    static func replyFinished(bot: String, text: String) {
+    static func replyFinished(bot: BotProfile, threadId: String?, text: String) {
         guard UIApplication.shared.applicationState != .active else { return }
         let content = UNMutableNotificationContent()
-        content.title = bot
+        content.title = bot.name
+        if let threadId { content.userInfo = ["agent_id": bot.id, "thread_id": threadId] }
         content.body = String(Speaker.plain(text).split(separator: "\n").first ?? "").prefix(160).description
         content.sound = .default
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
