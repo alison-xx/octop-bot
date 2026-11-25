@@ -552,4 +552,9 @@
     <string name="signup_credit_notice">%1$s trial credits have been added for use in Octop.</string>
     <string name="signup_credit_expiry">Trial credit expiry: %1$s (UTC)</string>
     <string name="signup_credit_notice_until">%1$s trial credits added for use in Octop. Expires on %2$s (UTC).</string>
+    <string name="history_reauthenticate">Sign in to Octop Bot Cloud to recover conversations saved under your Lynxce account.</string>
+    <string name="history_restore">Recover earlier conversations</string>
+    <string name="history_restored">Earlier conversations are now available.</string>
+    <string name="history_restore_incomplete">Some earlier records could not be recovered. You can try again.</string>
+    <string name="history_restore_retry">Recovery could not finish. Try again in Conversations.</string>
 </resources>

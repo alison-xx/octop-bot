@@ -19,6 +19,8 @@ import io.github.alisonxx.octopbot.store.AppStore
 import io.github.alisonxx.octopbot.store.ServerSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -80,12 +82,19 @@ class ServerBackend(
     }).build()
     private val slowClient = client.withReadTimeout(900)
 
+    private val renewalLock = Mutex()
+
     private fun adoptRenewedToken(response: Response) {
         val renewed = response.header("X-Octop-Access-Token")?.takeIf { it.isNotBlank() } ?: return
-        if (renewed == session.token) return
-        session = session.copy(token = renewed)
-        val saved = session
-        background.launch { store.setServerSession(saved) }
+        val requested = response.request.header("Authorization") ?: return
+        background.launch {
+            renewalLock.withLock {
+                val previous = session
+                if (requested != "Bearer ${previous.token}" || previous.token == renewed) return@withLock
+                val next = previous.copy(token = renewed)
+                if (store.replaceServerSession(previous, next)) session = next
+            }
+        }
     }
 
     companion object {
@@ -240,6 +249,31 @@ class ServerBackend(
             raw("GET", local.first, local.second, http = client.newBuilder().followRedirects(false).build())
         }.getOrNull()
         return photo.copy(localImage = bytes)
+    }
+
+    val isOfficialCloud: Boolean get() = isCloud && baseUrl.trimEnd('/') == ServerProtocol.LYNXCE_CLOUD.trimEnd('/')
+
+    @Volatile private var verifiedHistoryOwner: String? = null
+
+    suspend fun rememberedThread(bot: String): String? =
+        if (isOfficialCloud) store.rememberedThread(legacyHistoryOwner(), bot) else null
+
+    fun rememberThread(bot: String, thread: String?) {
+        verifiedHistoryOwner?.let { store.rememberThread(it, bot, thread) }
+    }
+
+    suspend fun legacyHistoryOwner(): String {
+        verifiedHistoryOwner?.let { return it }
+        if (!isOfficialCloud) throw ApiException.badResponse()
+        val profile = json("GET", "/api/octop-bot/cloud/account").asObject() ?: throw ApiException.badResponse()
+        return profile.str("account_id")?.takeIf { it.isNotEmpty() && profile.bool("connected") == true }?.also { verifiedHistoryOwner = it }
+            ?: throw ApiException.badResponse()
+    }
+
+    suspend fun restoreLegacyHistory(): Boolean = ServerProtocol.restoreLegacyPages { cursor ->
+        call("POST", "/api/octop-bot/cloud/legacy-conversations/restore", buildJsonObject {
+            cursor?.let { put("cursor", it) }
+        }).asObject() ?: throw ApiException.badResponse()
     }
 
     // Lynxce wallet (Octop Bot cloud only)

@@ -64,6 +64,7 @@ final class ChatSession {
         older = nil
         isLoading = false
         conversationId = nil
+        app?.server?.rememberThread(nil, bot: bot.id)
         messages = []
         pause = nil
         error = nil
@@ -71,7 +72,7 @@ final class ChatSession {
 
     func reloadConversations() async {
         guard let backend = app?.backend else { return }
-        if let rows = try? await backend.conversations(for: bot) { conversations = rows }
+        if let rows = try? await backend.conversations(for: bot), app?.backend === backend { conversations = rows }
     }
 
     /// Restore the latest server thread on the first visit; keep an explicitly empty new chat.
@@ -79,11 +80,12 @@ final class ChatSession {
         let first = !visited
         visited = true
         let revision = historyRevision
+        let saved = first ? await app?.server?.rememberedThread(bot: bot.id) : nil
         await reloadConversations()
         guard revision == historyRevision, !isStreaming, !isLoading else { return }
         if let id = conversationId, let row = conversations.first(where: { $0.id == id }) {
             await open(row)
-        } else if first, conversationId == nil, messages.isEmpty, let row = conversations.first {
+        } else if first, conversationId == nil, messages.isEmpty, let row = conversations.first(where: { $0.id == saved }) ?? conversations.first {
             await open(row)
         }
     }
@@ -100,6 +102,7 @@ final class ChatSession {
             pause = nil
         }
         conversationId = conversation.id
+        app?.server?.rememberThread(conversation.id, bot: bot.id)
         error = nil
         isLoading = true
         defer { if historyRevision == revision { isLoading = false } }
@@ -344,6 +347,7 @@ final class ChatSession {
                     guard currentRun == run, !Task.isCancelled else { return }
                     apply(event, to: replyId)
                 }
+                guard currentRun == run, !Task.isCancelled, app?.backend === backend else { return }
                 update(replyId) { $0.status = .done }
                 removeEmptyReply(replyId)
                 // Paused only for device reads: the phone answers by itself and the reply goes on.
@@ -351,7 +355,7 @@ final class ChatSession {
                     let text = messages.first { $0.id == replyId }?.text ?? ""
                     let summary = text.isEmpty ? (pause?.questions.first?.question ?? pause.map { _ in L("hitl.title") } ?? "") : text
                     app?.recordPreview(summary, for: bot)
-                    if app?.notifyOnReply == true, !summary.isEmpty { Notifier.replyFinished(bot: bot.name, text: summary) }
+                    if app?.notifyOnReply == true, !summary.isEmpty { Notifier.replyFinished(bot: bot, threadId: conversationId, text: summary) }
                     if let onReply {
                         onReply(text)
                     } else if app?.readAloud == true, !text.isEmpty {
@@ -390,6 +394,7 @@ final class ChatSession {
         switch event {
         case .conversation(let created):
             conversationId = created
+            app?.server?.rememberThread(created, bot: bot.id)
         case .text(let delta):
             update(id) { $0.text += delta }
         case .thinking(let delta):

@@ -19,6 +19,23 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class ServerProtocolTest {
+    @Test fun legacyRecoveryReadsEveryPageAndPreservesIncompleteState() = kotlinx.coroutines.test.runTest {
+        val cursors = mutableListOf<String?>()
+        val complete = ServerProtocol.restoreLegacyPages { cursor ->
+            cursors.add(cursor)
+            Http.parse(if (cursor == null) """{"skipped":0,"next_cursor":"second"}""" else """{"skipped":1,"next_cursor":null}""").jsonObject
+        }
+        assertEquals(listOf(null, "second"), cursors)
+        assertFalse(complete)
+    }
+
+    @Test fun legacyRecoveryRejectsRepeatedCursor() = kotlinx.coroutines.test.runTest {
+        try {
+            ServerProtocol.restoreLegacyPages { Http.parse("""{"skipped":0,"next_cursor":"stuck"}""").jsonObject }
+            fail("Repeated cursors must stop recovery")
+        } catch (_: ApiException) { }
+    }
+
     @Test fun historyPageOverlapRetainsNewestVersionAndOriginalOrder() {
         val old = Http.parse("""[{"id":"a"},{"history_seq":2,"content":"partial"}]""").asArray()!!
         val new = Http.parse("""[{"history_seq":2,"content":"finished"},{"id":"b"}]""").asArray()!!

@@ -86,6 +86,7 @@ data class BotPreview(val text: String, val at: Long, val unread: Boolean = fals
 /** App preferences in DataStore; tokens are sealed with [SecretBox] before they touch disk. */
 class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
     private val store = context.applicationContext.dataStore
+    private val threadPreferences = context.applicationContext.getSharedPreferences("cloud-threads", Context.MODE_PRIVATE)
     private val walletPreferences = context.applicationContext.getSharedPreferences("wallet_warnings", Context.MODE_PRIVATE)
 
     private object Keys {
@@ -152,8 +153,45 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
 
     suspend fun serverSession(): ServerSession? =
         sealed(Keys.server)?.let { Http.json.decodeFromString(ServerSession.serializer(), it) }
+    suspend fun replaceServerSession(expected: ServerSession, next: ServerSession): Boolean =
+        replaceGrant(Keys.server, ServerSession.serializer(), expected, next)
+
+    suspend fun replaceLynxceGrant(expected: LynxceGrant, next: LynxceGrant): Boolean =
+        replaceGrant(Keys.lynxce, LynxceGrant.serializer(), expected, next)
+
+    private suspend fun <T> replaceGrant(key: Preferences.Key<String>, serializer: kotlinx.serialization.KSerializer<T>, expected: T, next: T): Boolean {
+        var replaced = false
+        store.edit { prefs ->
+            val value = prefs[key]?.let(box::open) ?: return@edit
+            if (Http.json.decodeFromString(serializer, value) == expected) {
+                prefs[key] = box.seal(Http.json.encodeToString(serializer, next))
+                replaced = true
+            }
+        }
+        return replaced
+    }
+
     suspend fun setServerSession(session: ServerSession?) =
         seal(Keys.server, session?.let { Http.json.encodeToString(ServerSession.serializer(), it) })
+
+    /** The 1.0.0 preview cache has no owner. Preserve it on-device without displaying it as anyone's history. */
+    suspend fun archiveLegacyPreviews() = store.edit { prefs ->
+        val archive = androidx.datastore.preferences.core.stringSetPreferencesKey("legacy.unattributedPreviews")
+        prefs[Keys.previews]?.let { prefs[archive] = prefs[archive].orEmpty() + it }
+        prefs.remove(Keys.previews)
+        prefs.remove(Keys.directory)
+        prefs.remove(Keys.lastBot)
+    }
+
+    fun rememberedThread(owner: String, bot: String): String? = threadPreferences.getString("$owner.$bot", null)
+    fun rememberThread(owner: String, bot: String, thread: String?) = threadPreferences.edit().putString("$owner.$bot", thread).apply()
+
+    suspend fun legacyHistoryComplete(owner: String) =
+        store.data.first()[booleanPreferencesKey("legacyHistory.completed." + owner)] == true
+
+    suspend fun setLegacyHistoryComplete(owner: String, complete: Boolean) = store.edit {
+        it[booleanPreferencesKey("legacyHistory.completed." + owner)] = complete
+    }
 
     suspend fun sessionBots(): Map<String, String> = decode(Keys.sessionBots, stringMap) ?: emptyMap()
     suspend fun updateSessionBots(change: (MutableMap<String, String>) -> Unit) = store.edit { prefs ->

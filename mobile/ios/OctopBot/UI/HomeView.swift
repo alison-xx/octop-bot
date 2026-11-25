@@ -45,6 +45,21 @@ struct HomeView: View {
                 }
             }
         }
+        .task(id: model.notificationChat) {
+            guard let target = model.notificationChat, let server = model.server else { return }
+            // Check the current signed-in directory, including after a cold start or account switch.
+            if model.bots.isEmpty { await model.refresh() }
+            guard model.server === server, model.notificationChat == target else { return }
+            guard let bot = model.bots.first(where: { $0.id == target.botId }),
+                  let rows = try? await server.conversations(for: bot),
+                  let row = rows.first(where: { $0.id == target.threadId }),
+                  model.server === server, model.notificationChat == target else { return }
+            await model.session(for: bot).open(row)
+            guard !Task.isCancelled, model.server === server, model.notificationChat == target else { return }
+            if sizeClass == .regular { selection = .bot(bot.id) }
+            else { path = NavigationPath([Route.bot(bot.id)]) }
+            model.notificationChat = nil
+        }
         .onChange(of: scenePhase) { _, phase in
             // Bots, looks and groups may have changed on the desktop while we were away.
             if phase == .active {
