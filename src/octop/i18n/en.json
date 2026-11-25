@@ -948,6 +948,7 @@
       "custom": "Custom"
     },
     "waiting": {
+      "repeated_takeover": "Two runs in a row needed you to take over. You can connect the service or pause this schedule in the Bot’s scheduled tasks.",
       "needs_you": "The scheduled task “{name}” needs you. Open this Bot's chat to continue (within 24 hours).",
       "still": "The scheduled task “{name}” is still waiting for you from its last run, so this run was skipped."
     }

@@ -24,7 +24,7 @@ class InboxItem:
     scheduled: bool
 
 
-def _classify(record: HitlPendingRecord) -> tuple[Kind, str]:
+def classify_handoff(record: HitlPendingRecord) -> tuple[Kind, str]:
     first: dict[str, Any] = record.action_requests[0] if record.action_requests else {}
     raw = first.get("args")
     args: dict[str, Any] = raw if isinstance(raw, dict) else {}
@@ -44,7 +44,7 @@ def _classify(record: HitlPendingRecord) -> tuple[Kind, str]:
 def inbox(store: HitlPendingStore, user_id: int) -> list[InboxItem]:
     items: list[InboxItem] = []
     for record in store.pending_for_user(user_id):
-        kind, text = _classify(record)
+        kind, text = classify_handoff(record)
         items.append(
             InboxItem(
                 pending_id=record.pending_id,

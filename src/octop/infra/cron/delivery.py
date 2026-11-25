@@ -12,6 +12,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from octop.i18n import tr
 from octop.infra.agents.security.hitl_session import HitlSessionPolicy, ephemeral_hitl_policy
 from octop.infra.agents.turn_resources import attach_turn_knowledge, resolve_turn_mcp
+from octop.infra.bot_tasks.inbox import classify_handoff
 from octop.infra.cron.script_run import ScriptRunError, run_cron_script
 from octop.infra.cron.session_target import pinned_thread_id
 from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
@@ -144,12 +145,15 @@ class CronDeliveryService:
             else:
                 await self._bind_latest_thread(session_key)
             session = self._gateway.require_session(command.agent_id, session_key)
+            previous_takeover = await asyncio.to_thread(
+                self._repos.cron_repo.consume_takeover_marker, command.cron_id
+            )
             if command.task_type == "text":
                 await self._publish_fixed(command, session, command.prompt)
             elif command.task_type == "script":
                 await self._deliver_script(command, session)
             else:
-                await self._deliver_agent(command, session)
+                await self._deliver_agent(command, session, previous_takeover)
 
         await self._gateway.run_in_session(
             command.agent_id,
@@ -278,6 +282,7 @@ class CronDeliveryService:
         self,
         command: CronDeliveryCommand,
         session: SessionRow,
+        previous_takeover: bool,
     ) -> None:
         request = await self._build_agent_request(command, session)
         if command.allow_all:
@@ -318,7 +323,7 @@ class CronDeliveryService:
                         raw = chunk.get("request")
                         pause = raw if isinstance(raw, dict) else {}
             if pause is not None:
-                await self._wait_for_user(command, session, pause)
+                await self._wait_for_user(command, session, pause, previous_takeover)
             outbound = strip_thinking("".join(parts)).strip()
             if not outbound:
                 raise RuntimeError("cron agent run produced no visible response")
@@ -368,11 +373,13 @@ class CronDeliveryService:
         command: CronDeliveryCommand,
         session: SessionRow,
         request: dict[str, Any],
+        previous_takeover: bool,
     ) -> None:
         """Leave the run's card answerable for a day, tell the user, and stop without failing."""
         hitl = self._hitl()
+        suggest_alternative = False
         if hitl is not None and request:
-            hitl.register_from_request(
+            record = hitl.register_from_request(
                 normalize_hitl_request(request),
                 ctx=HitlStreamContext(
                     thread_id=session.thread_id,
@@ -384,10 +391,17 @@ class CronDeliveryService:
                 origin=cron_origin(command.cron_id),
                 ttl_seconds=WAIT_FOR_USER_SECONDS,
             )
+            if classify_handoff(record)[0] == "takeover":
+                await asyncio.to_thread(self._repos.cron_repo.record_takeover, command.cron_id)
+                suggest_alternative = previous_takeover
         text = self._waiting_text(command, session.user_id, session.channel_type, "needs_you")
         detail = pause_summary(request)
         if detail:
             text = f"{text}\n{detail}"
+        if suggest_alternative:
+            text += "\n" + self._waiting_text(
+                command, session.user_id, session.channel_type, "repeated_takeover"
+            )
         if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD:
             # The card itself is already in the conversation; a notification points at it.
             await self._notify_best_effort(session, command.agent_id, text)

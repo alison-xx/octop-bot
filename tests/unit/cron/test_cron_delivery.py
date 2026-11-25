@@ -1047,3 +1047,54 @@ async def test_an_im_scheduled_run_that_needs_the_user_says_so_in_the_chat() -> 
         await service.deliver(_command(task_type="agent", prompt="查账单"))
     text = gateway.push_session_text.await_args.args[1]
     assert "需要你处理" in text and "请登录招商银行网银" in text
+
+
+@pytest.mark.asyncio
+async def test_only_consecutive_actual_takeovers_suggest_pausing(tmp_path: Path) -> None:
+    from copy import deepcopy
+
+    from octop.infra.db.repos.cron import CronJobRepo
+
+    db, session = _seed_dashboard_thread(tmp_path, thread_id="thr1")
+    cron = CronJobRepo(db)
+    job = cron.create(
+        cron_id="j1",
+        agent_id="a1",
+        user_id=1,
+        trigger="interval:60",
+        prompt="样例",
+        session_key=session.session_key,
+    )
+    takeover = deepcopy(_TAKEOVER)
+    takeover["action_requests"][0]["args"]["cloud_computer"] = "a1"
+    cards = iter([takeover, takeover, _TAKEOVER, takeover])
+
+    async def stream(_agent: str, _request: dict):
+        yield {"type": "hitl_required", "request": next(cards)}
+
+    service, gateway, store = _waiting_service(stream)
+    service._repos.cron_repo = cron
+    command = _command(cron_id=job, task_type="agent")
+    try:
+        for index in range(4):
+            with pytest.raises(CronWaitingForUser) as waiting:
+                await service.deliver(command)
+            assert ("连续两次" in str(waiting.value)) == (index == 1)
+            record = store.resolve_pending_for_thread("thr1", agent_id="a1", user_id=1)
+            assert record is not None
+            if index == 0:
+                with pytest.raises(CronWaitingForUser, match="还在等你"):
+                    await service.deliver(command)
+                # Reloading service and repository handles preserves the marker.
+                service = CronDeliveryService(
+                    gateway=gateway, agent_manager=service._agent_manager, repos=service._repos
+                )
+                service._repos.cron_repo = CronJobRepo(db)
+            store.mark_resolved(record.pending_id, "approved")
+        assert cron.get(job).enabled
+        cron.delete(job)
+        assert not cron.consume_takeover_marker(job)
+        cron.record_takeover(job)
+        assert not cron.consume_takeover_marker(job)
+    finally:
+        db.close()
