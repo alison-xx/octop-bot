@@ -13,7 +13,12 @@ from fastapi.responses import JSONResponse, Response
 from octop.api.common.agent import agent_is_shared, require_agent_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.deps import current_user, get_server
-from octop.api.routers.chat.models import ForkThreadBody, RebindSessionBody, RenameThreadBody
+from octop.api.routers.chat.models import (
+    BotTaskStatus,
+    ForkThreadBody,
+    RebindSessionBody,
+    RenameThreadBody,
+)
 from octop.api.routers.chat.serialize import (
     HISTORY_DEFAULT_LIMIT,
     _backfill_thread_projection,
@@ -27,6 +32,7 @@ from octop.infra.agents.threads.context_breakdown import SEGMENT_KEYS, compute_c
 from octop.infra.agents.threads.fork import fork_dashboard_thread
 from octop.infra.agents.workspace.dir import agent_facing_workspace_dir_from_config
 from octop.infra.bot_groups.turns import show_room_requests
+from octop.infra.bot_tasks.store import TaskStore
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
 from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages, thread_visible_to
@@ -225,6 +231,7 @@ def _require_thread(
 async def list_threads(
     agent_id: str,
     limit: int = 50,
+    offset: Annotated[int, Query(ge=0, description="Number of directory rows to skip.")] = 0,
     include_bot_groups: Annotated[
         bool,
         Query(description="Also list this Bot's work threads in Octop Bot groups."),
@@ -245,6 +252,7 @@ async def list_threads(
         agent_id=agent_id,
         user_id=effective_uid,
         limit=limit,
+        offset=offset,
         include_bot_groups=include_bot_groups,
     )
     bound = thread_registry.get_bound_thread_id(
@@ -458,12 +466,38 @@ async def get_thread_context_usage(
     }
 
 
+@router.get(
+    "/agents/{agent_id}/threads/{thread_id}/task-statuses",
+    summary="Read current task card statuses",
+    description="Returns the signed-in owner's recent task statuses, including interruptions after the last tool output.",
+)
+def read_task_statuses(
+    agent_id: str,
+    thread_id: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> list[BotTaskStatus]:
+    _require_thread(server, agent_id, thread_id, user, None, write=True)
+    return [
+        BotTaskStatus.model_validate(task, from_attributes=True)
+        for task in TaskStore(server.services.settings_repo).tasks(thread_id)
+    ]
+
+
 @router.get("/agents/{agent_id}/threads/{thread_id}/history", summary="Thread history")
 async def get_thread_history(
     agent_id: str,
     thread_id: str,
     limit: int = HISTORY_DEFAULT_LIMIT,
     offset: int = 0,
+    cursor: Annotated[
+        int | None,
+        Query(
+            gt=0,
+            le=2**63 - 1,
+            description="Read older messages before the previous page’s next_cursor. Takes precedence over offset.",
+        ),
+    ] = None,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
@@ -476,7 +510,8 @@ async def get_thread_history(
     """
     row = _require_thread(server, agent_id, thread_id, user, as_user)
     page_limit = _clamp_history_limit(limit)
-    page_offset = max(0, offset)
+    page_offset = 0 if cursor is not None else max(0, offset)
+    next_cursor = None
     projection_repo = server.services.thread_message_repo
     projection_status = projection_repo.projection_status(thread_id)
     history_loading = projection_status != "ready"
@@ -507,12 +542,13 @@ async def get_thread_history(
             else "pending"
         )
     else:
-        messages, has_more = _load_projected_thread_messages(
+        messages, has_more, next_cursor = _load_projected_thread_messages(
             server,
             agent_id,
             thread_id,
             page_limit,
             offset=page_offset,
+            before_seq=cursor,
             user=user,
         )
     effective_uid = as_user if as_user is not None else user.id
@@ -532,7 +568,7 @@ async def get_thread_history(
         "has_more": has_more,
         "limit": page_limit,
         "offset": page_offset,
-        "next_cursor": None,
+        "next_cursor": next_cursor,
         "history_loading": history_loading,
         "history_status": projection_status,
         "history_retry_after_ms": 1500 if history_loading else 0,

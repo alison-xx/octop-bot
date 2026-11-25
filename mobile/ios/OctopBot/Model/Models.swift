@@ -57,6 +57,12 @@ struct ConversationSummary: Identifiable, Hashable {
     var title: String
     var updatedAt: Date?
     var botId: String?
+    var owned: Bool? = nil
+    var active = false
+
+    static func personalDefault(_ rows: [Self]) -> Self? {
+        rows.first { $0.owned == true && $0.active } ?? rows.first { $0.owned == true }
+    }
 }
 
 enum MessageRole: String, Codable { case user, assistant, system }
@@ -100,6 +106,7 @@ struct ChatMessage: Identifiable, Hashable {
 /// Incremental output of one reply.
 enum StreamEvent {
     case conversation(String)
+    case turnStarted(String)
     case text(String)
     case thinking(String)
     case tool(id: String, name: String, done: Bool)
@@ -107,6 +114,7 @@ enum StreamEvent {
     case attachment(FileAttachment)
     /// The turn paused for a question or an approval (server mode).
     case pause(HitlPause)
+    case savingHistory
     case done
 }
 
@@ -198,6 +206,7 @@ protocol ChatBackend: AnyObject {
     /// Stream one reply. The first event may be `.conversation` with the id of a newly created conversation.
     func send(
         _ text: String,
+        messageId: String,
         images: [Data],
         to bot: BotProfile,
         conversation: String?,

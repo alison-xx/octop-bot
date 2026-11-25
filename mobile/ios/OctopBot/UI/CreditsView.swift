@@ -45,6 +45,7 @@ struct CreditsView: View {
         async let usage: Void = loadUsage()
         if hasWallet && CreditPurchases.inApp { await store.load() }
         _ = await (balance, usage)
+        if hasWallet { await store.flush() }
     }
 
     private func loadUsage() async {
@@ -126,11 +127,8 @@ struct CreditsView: View {
             case .idle, .loading:
                 HStack { Spacer(); ProgressView(); Spacer() }
             case .unavailable:
-                // Not a dead end: the same wallet can be topped up on the website or the desktop app.
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("credits.unavailable").foregroundStyle(Palette.secondary)
-                    Text("credits.elsewhere").font(.footnote).foregroundStyle(Palette.secondary)
-                }
+                Text("credits.unavailable").foregroundStyle(Palette.secondary)
+                Button("common.retry") { Task { await store.load() } }
             case .failed(let message):
                 VStack(alignment: .leading, spacing: 8) {
                     Text(message).foregroundStyle(.red).font(.footnote)
@@ -181,11 +179,17 @@ struct CreditsView: View {
 
     private func buy(_ offer: CreditStore.Offer) async {
         notice = nil
-        switch await store.buy(offer) {
+        let account = model.creditAccount
+        let outcome = await store.buy(offer)
+        guard model.creditAccount === account else { return }
+        switch outcome {
         case .credited:
             Haptics.success()
             noticeIsError = false
             notice = L("credits.done")
+        case .recorded:
+            noticeIsError = false
+            notice = L("credits.recorded")
         case .pending:
             noticeIsError = false
             notice = L("credits.pending")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections import defaultdict, deque
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.messages import ToolMessage
@@ -76,21 +77,31 @@ class TaskArchive:
             and session.agent_id == self.agent
         )
 
+    def _checkpoint_key(self, thread: str, checkpoint: str) -> str:
+        return f"octop_bot:task_step:{self.owner}:{self.agent}:{thread}:{checkpoint}"
+
     def read_tool(self, store: TaskStore) -> StructuredTool:
         def task_read_step(checkpoint: str, config: RunnableConfig) -> str:
             """Read the saved step named by its checkpoint in this private conversation."""
             thread = str((config.get("configurable") or {}).get("thread_id") or "")
             if _TASK_ID.fullmatch(checkpoint) and self._private_thread(thread):
-                for task in store.tasks(thread):
-                    if _TASK_ID.fullmatch(task.id) and any(
-                        step.checkpoint == checkpoint for step in task.steps
-                    ):
-                        record = self.workspace.read_text(
-                            f".octop/tasks/{task.id}/steps/{checkpoint}.md"
-                        )
-                        if record:
-                            return record
-                        break
+                task_id = self.repos.settings_repo.get(self._checkpoint_key(thread, checkpoint))
+                if task_id is None:
+                    # Snapshots written before the index are still bound by their stored steps.
+                    task_id = next(
+                        (
+                            task.id
+                            for task in store.tasks(thread)
+                            if any(step.checkpoint == checkpoint for step in task.steps)
+                        ),
+                        None,
+                    )
+                if task_id and _TASK_ID.fullmatch(task_id):
+                    record = self.workspace.read_text(
+                        f".octop/tasks/{task_id}/steps/{checkpoint}.md"
+                    )
+                    if record:
+                        return record
             return tr("botTaskArchive.unavailable", self.locale)
 
         return StructuredTool.from_function(task_read_step)
@@ -132,7 +143,11 @@ class TaskArchive:
                 if not isinstance(raw, list) or len(raw) > MAX_TASK_STEPS:
                     return
                 steps = []
-                for index, item in enumerate(raw):
+                previous: dict[str, deque[str]] = defaultdict(deque)
+                for old in task.steps:
+                    if old.checkpoint and _TASK_ID.fullmatch(old.checkpoint):
+                        previous[old.content].append(old.checkpoint)
+                for item in raw:
                     if (
                         not isinstance(item, dict)
                         or not isinstance(item.get("content"), str)
@@ -140,13 +155,15 @@ class TaskArchive:
                     ):
                         return
                     step = TaskStep(content=item["content"][:500], status=item["status"])
-                    if (
-                        index < len(task.steps)
-                        and task.steps[index].content == step.content
-                        and task.steps[index].status == step.status
-                    ):
-                        step.checkpoint = task.steps[index].checkpoint
+                    if step.status == "completed" and previous[step.content]:
+                        step.checkpoint = previous[step.content].popleft()
                     steps.append(step)
+                # Preserve ownership of legacy checkpoints before replacing their last reference.
+                for remaining in previous.values():
+                    for checkpoint in remaining:
+                        self.repos.settings_repo.set(
+                            self._checkpoint_key(thread, checkpoint), task.id
+                        )
                 task.steps = steps
                 store.save(thread, task)
             try:
@@ -158,6 +175,9 @@ class TaskArchive:
                             self.workspace.write_text(
                                 f"{directory}/steps/{checkpoint}.md",
                                 f"# {step.content}\n\n{record}",
+                            )
+                            self.repos.settings_repo.set(
+                                self._checkpoint_key(thread, checkpoint), task.id
                             )
                             step.checkpoint = checkpoint
                             store.save(thread, task)

@@ -70,6 +70,8 @@ import {
 } from "../../../utils/teamAgent";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { accountDisplayName } from "../utils/accountDisplayName";
+import { LynxceAccountAvatar } from "../../../components/LynxceAccountAvatar";
+import { useLynxceAccount } from "../../../context/LynxceAccountContext";
 import { ProfileAvatar } from "../../Admin/Users/ProfileAvatar";
 import {
   extractAskQuestions,
@@ -585,6 +587,7 @@ function MessageBubble({
   const botOnly = isBotClient();
   const quoteMessage = useContext(QuoteMessageContext);
   const user = useCurrentUser();
+  const lynxceAccount = useLynxceAccount();
   const isOwnMessage =
     message.author == null ||
     (user != null && message.author.userId === user.id);
@@ -635,7 +638,10 @@ function MessageBubble({
   const avatarProfileId = isTeamHostSpeaker
     ? activeAgent?.agent_id
     : speakerId || shareFace?.name;
-  const userName = authorName || accountDisplayName(user);
+  const userName =
+    (isOwnMessage && lynxceAccount?.display_name) ||
+    authorName ||
+    accountDisplayName(user);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
@@ -830,12 +836,21 @@ function MessageBubble({
       <MessageSender
         name={userName}
         avatar={
-          <ProfileAvatar
-            url={userAvatarUrl}
-            icon={userAvatarIcon}
-            kind="user"
-            className={styles.msgUserAvatar}
-          />
+          isOwnMessage && lynxceAccount ? (
+            <LynxceAccountAvatar
+              key={lynxceAccount.account_id}
+              name={userName}
+              url={lynxceAccount.avatar_url}
+              className={styles.msgUserAvatar}
+            />
+          ) : (
+            <ProfileAvatar
+              url={userAvatarUrl}
+              icon={userAvatarIcon}
+              kind="user"
+              className={styles.msgUserAvatar}
+            />
+          )
         }
       />
     </Tooltip>

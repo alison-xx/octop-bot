@@ -518,6 +518,7 @@ export default function CloudComputerFloat({
           <div className={styles.view} data-fit={fit || undefined}>
             {screen && (
               <CloudComputerScreen
+                botId={botId}
                 wsPath={screen.ws}
                 interactive={false}
                 session={screen.session}
@@ -629,6 +630,7 @@ export default function CloudComputerFloat({
             data-control={status?.takeover || undefined}
           >
             <CloudComputerScreen
+              botId={botId}
               wsPath={screen.ws}
               interactive={status?.takeover === true}
               session={screen.session}

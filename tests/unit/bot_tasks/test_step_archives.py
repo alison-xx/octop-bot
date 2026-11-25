@@ -84,5 +84,32 @@ def test_private_task_checkpoints_survive_reopening(tmp_path: Path, chat_type: s
         assert "核对行数" in restored_task(task)
         restored = fresh.running("thread")
         assert restored and restored.steps == task.steps
+        original = task.steps[0].checkpoint
+        assert original
+        plan = [
+            {"content": "准备样例", "status": "completed"},
+            {"content": "核对行数", "status": "completed"},
+        ]
+
+        def update(todos):
+            archive.observe(fresh, "thread", "write_todos", Command(update={"todos": todos}))
+
+        update(plan)
+        inserted = fresh.running("thread")
+        assert inserted and inserted.steps[1].checkpoint == original
+        first = inserted.steps[0].checkpoint
+        update(list(reversed(plan)))
+        reordered = fresh.running("thread")
+        assert reordered and [s.checkpoint for s in reordered.steps] == [original, first]
+        # Exercise an old task whose original step predates the membership index.
+        repos.settings_repo.delete(archive._checkpoint_key("thread", original))
+        update([plan[0]])
+        reopened = TaskArchive(ws, repos, "sample", 1, "zh").read_tool(
+            TaskStore(repos.settings_repo)
+        )
+        assert (
+            reopened.invoke({"checkpoint": original}, {"configurable": {"thread_id": "thread"}})
+            == saved
+        )
     finally:
         db.close()

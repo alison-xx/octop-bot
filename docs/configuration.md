@@ -352,3 +352,7 @@ leaves the source archive in place so the data can be recovered and migration re
 Stop the old server before upgrading an installation with a v2 archive. Keep checkpoint
 retention disabled if the old server must run with the new Harness before migration.
 Restore a system backup containing a v2 archive with the offline backup CLI, then start Octop.
+
+`OCTOP_WS_QUERY_TOKEN` defaults to `1`, allowing legacy JWT query parameters on
+streaming endpoints and `access_token` on HTTP requests. Set it to `0` after
+clients have moved to streaming tickets and authorization headers.

@@ -61,6 +61,10 @@ class Task(BaseModel):
     steps: list[TaskStep] = Field(default_factory=list, max_length=MAX_TASK_STEPS)
     assumptions: list[str] = Field(default_factory=list, max_length=10)
     budget: Budget
+    silence_retry_used: bool = False
+    steps_used: int = Field(default=0, ge=0)
+    # Hashes avoid recording command arguments or error output in the task report.
+    failed_calls: dict[str, tuple[str, int]] = Field(default_factory=dict)
     started_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
     finished_at: float | None = None
@@ -72,6 +76,12 @@ class Task(BaseModel):
     reviews: int = 0
     review: str = Field(default="", max_length=1000)
     deliverables: list[Deliverable] = Field(default_factory=list, max_length=30)
+
+    def budget_exhausted(self, now: float) -> bool:
+        return (
+            self.steps_used >= self.budget.steps
+            or now - self.started_at >= self.budget.minutes * 60
+        )
 
     def unchecked(self) -> list[int]:
         """1-based numbers of criteria still without a verdict."""
@@ -86,4 +96,10 @@ class Task(BaseModel):
         )
 
     def verdict(self) -> TaskStatus:
-        return "done" if all(c.status == "passed" for c in self.criteria) else "partial"
+        return (
+            "done"
+            if not self.open_issues
+            and self.criteria
+            and all(c.status == "passed" for c in self.criteria)
+            else "partial"
+        )

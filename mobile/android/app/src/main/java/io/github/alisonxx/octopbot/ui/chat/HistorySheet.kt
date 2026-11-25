@@ -57,6 +57,9 @@ import java.time.ZoneId
 fun HistorySheet(
     conversations: List<ConversationSummary>,
     currentId: String?,
+    onRecover: (() -> Unit)?,
+    recovering: Boolean,
+    recoveryMessage: String?,
     onNewChat: () -> Unit,
     onOpen: (ConversationSummary) -> Unit,
     onDelete: (ConversationSummary) -> Unit,
@@ -74,6 +77,14 @@ fun HistorySheet(
         contentColor = palette.text,
     ) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+            if (onRecover != null && query.isEmpty()) {
+                androidx.compose.material3.TextButton(onClick = onRecover, enabled = !recovering) {
+                    Text(stringResource(R.string.history_restore))
+                    if (recovering) androidx.compose.material3.CircularProgressIndicator(Modifier.size(16.dp))
+                }
+                if (recoveryMessage != null) Text(recoveryMessage, Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall)
+            }
+
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
