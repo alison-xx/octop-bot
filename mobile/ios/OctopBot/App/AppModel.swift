@@ -14,7 +14,11 @@ final class AppModel {
     }
 
     var phase: Phase = .launching
-    private(set) var backend: ChatBackend?
+    private(set) var backend: ChatBackend? {
+        willSet {
+            if backend !== newValue { (backend as? ServerBackend)?.attachments.invalidate() }
+        }
+    }
     var bots: [BotProfile] = []
     var groups: [GroupSummary] = []
     /// The Bot opened most recently; voice mode talks to it.
