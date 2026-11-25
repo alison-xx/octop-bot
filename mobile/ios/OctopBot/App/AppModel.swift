@@ -24,6 +24,7 @@ final class AppModel {
     var models: [ModelOption] = []
     /// The signed-in person's display name (never an internal username or account id).
     private(set) var accountName = ""
+    private(set) var accountPhotoURL: URL?
 
     /// The Lynxce wallet balance as shown: loading, failed (retry), or the number of credits.
     enum Balance: Equatable { case loading, failed, value(Double) }
@@ -135,7 +136,7 @@ final class AppModel {
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "demoAccount") { return .demo }
         #endif
-        return AccountSummary(name: accountName, credits: credits, signupExpiryDay: creditAccount?.signupExpiryDay)
+        return AccountSummary(name: accountName, avatarURL: accountPhotoURL, credits: credits, signupExpiryDay: creditAccount?.signupExpiryDay)
     }
 
     var credits: Double? {
@@ -176,6 +177,7 @@ final class AppModel {
         self.backend = backend
         sessions = [:]
         accountName = backend.accountName
+        accountPhotoURL = nil
         signedOutNotice = nil
         balance = creditAccount == nil ? nil : .loading
         walletAccount = nil
@@ -280,8 +282,17 @@ final class AppModel {
         }
         if let server {
             groups = (try? await server.groups()) ?? groups
-            await server.refreshProfile()
-            accountName = server.accountName
+            if !server.isCloud {
+                await server.refreshProfile()
+                guard self.backend === backend else { return }
+                accountName = server.accountName
+            }
+        }
+        let photo = await backend.accountPhoto()
+        guard self.backend === backend else { return }
+        if let photo {
+            accountName = photo.name ?? backend.accountName
+            accountPhotoURL = photo.url
         }
         models = (try? await backend.models()) ?? []
         await refreshServerKeys()
@@ -425,6 +436,7 @@ final class AppModel {
         walletAccount = nil
         lowBalanceDismissed = false
         accountName = ""
+        accountPhotoURL = nil
         // Previews belong to the account that wrote them.
         previews = [:]
         unread = []

@@ -225,6 +225,11 @@ class ServerBackend(
         http: OkHttpClient = client,
     ): JsonElement = Http.parse(raw(method, path, query, body, http).decodeToString())
 
+    override suspend fun accountPhoto(): AccountPhoto? {
+        if (!isCloud) return null
+        return json("GET", "/api/octop-bot/cloud/account").asObject()?.let(AccountPhoto::cloud)
+    }
+
     // Lynxce wallet (Octop Bot cloud only)
 
     @Volatile private var walletAccount: String? = null

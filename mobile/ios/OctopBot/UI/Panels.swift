@@ -565,7 +565,7 @@ struct SettingsView: View {
 
     private var accountCard: some View {
         HStack(spacing: 14) {
-            CharacterView(look: .chief, size: 56)
+            LynxceAvatar(name: model.accountName, url: model.accountPhotoURL, size: 56, branded: false)
             VStack(alignment: .leading, spacing: 4) {
                 Text(model.accountName).font(.headline).lineLimit(1)
                 HStack(spacing: 5) {
@@ -829,26 +829,32 @@ struct LynxceAvatar: View {
     let name: String
     let url: URL?
     var size: CGFloat = 52
+    var branded = true
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             Group {
                 if let url {
-                    AsyncImage(url: url) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        initial
+                    AsyncImage(url: url) { phase in
+                        if case .success(let image) = phase {
+                            image.resizable().scaledToFill()
+                        } else {
+                            initial
+                        }
                     }
+                    .id(url)
                 } else {
                     initial
                 }
             }
             .frame(width: size, height: size)
             .clipShape(Circle())
-            VendorLogo(company: "lynxce", size: size * 0.36)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Palette.background, lineWidth: 2))
-                .offset(x: 3, y: 3)
+            if branded {
+                VendorLogo(company: "lynxce", size: size * 0.36)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Palette.background, lineWidth: 2))
+                    .offset(x: 3, y: 3)
+            }
         }
         .accessibilityHidden(true)
     }
@@ -856,7 +862,7 @@ struct LynxceAvatar: View {
     private var initial: some View {
         ZStack {
             LinearGradient(colors: [Palette.brandButtonTop, Palette.brandButtonBottom], startPoint: .top, endPoint: .bottom)
-            Text(verbatim: String(name.prefix(1)).uppercased())
+            Text(verbatim: String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)))
                 .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
         }

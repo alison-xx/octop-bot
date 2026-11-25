@@ -75,8 +75,6 @@ import io.github.alisonxx.octopbot.app.AppLocale
 import io.github.alisonxx.octopbot.app.AppViewModel
 import io.github.alisonxx.octopbot.app.BalanceState
 import io.github.alisonxx.octopbot.app.SessionState
-import io.github.alisonxx.octopbot.character.BotCharacter
-import io.github.alisonxx.octopbot.model.Look
 import io.github.alisonxx.octopbot.model.ModelOption
 import io.github.alisonxx.octopbot.net.DeviceBackend
 import io.github.alisonxx.octopbot.net.ServerBackend
@@ -87,6 +85,7 @@ import io.github.alisonxx.octopbot.store.UserSettings
 import io.github.alisonxx.octopbot.ui.common.BackButton
 import io.github.alisonxx.octopbot.ui.common.BalanceText
 import io.github.alisonxx.octopbot.ui.common.LowBalanceColor
+import io.github.alisonxx.octopbot.ui.common.AccountAvatar
 import io.github.alisonxx.octopbot.ui.common.accountName
 import io.github.alisonxx.octopbot.ui.common.credits
 import io.github.alisonxx.octopbot.ui.common.modeLabel
@@ -175,6 +174,8 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
     val session by model.session.collectAsStateWithLifecycle()
     val backend = (session as? SessionState.Ready)?.backend ?: return
     val balance by model.balance.collectAsStateWithLifecycle()
+    val photo by model.accountPhoto.collectAsStateWithLifecycle()
+    val name = photo?.name ?: accountName(backend)
     val models by model.models.collectAsStateWithLifecycle()
     val settings by model.settings.collectAsStateWithLifecycle()
     val update by model.update.collectAsStateWithLifecycle()
@@ -232,10 +233,10 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
     }
     Settings(
         state = SettingsState(
-            accountName = accountName(backend),
+            accountName = name,
             balance = balance,
             account = AccountSummary.demo(context) ?: if (model.creditAccount != null) {
-                AccountSummary(accountName(backend), credits = (balance as? BalanceState.Value)?.credits, signupExpiryDay = model.creditAccount?.signupExpiryDay)
+                AccountSummary(name, avatarUrl = photo?.url, credits = (balance as? BalanceState.Value)?.credits, signupExpiryDay = model.creditAccount?.signupExpiryDay)
             } else null,
             lynxce = backend.definesBotsLocally,
             wallet = model.creditAccount != null,
@@ -593,7 +594,7 @@ private fun AccountCard(name: String, connection: String, balance: BalanceState?
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BotCharacter(Look.chief, 56.dp, seed = "chief")
+        AccountAvatar(name, null, 56.dp)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)

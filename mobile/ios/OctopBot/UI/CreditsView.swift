@@ -307,7 +307,7 @@ struct HomeAccountRow: View {
     var body: some View {
         Button(action: open) {
             HStack(spacing: 12) {
-                CharacterView(look: .chief, size: 34)
+                LynxceAvatar(name: model.accountName, url: model.accountPhotoURL, size: 34, branded: false)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(model.accountName).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(1)
                     Label(model.modeLabel, systemImage: model.modeSymbol)

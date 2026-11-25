@@ -17,6 +17,18 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class LynxceProtocolTest {
+    @Test fun accountPhotoMatchesTheCurrentAccountAndUsesHttpsPhotosOnly() {
+        val direct = Http.parse("""{"id":"a","displayName":"  林一 ","avatarUrl":"https://photos.example/a"}""").jsonObject
+        assertEquals(AccountPhoto("林一", "https://photos.example/a"), AccountPhoto.direct(direct, "a"))
+        assertNull(AccountPhoto.direct(direct, "b"))
+        fun cloud(json: String) = AccountPhoto.cloud(Http.parse(json).jsonObject)
+        assertEquals(AccountPhoto("Zoe", null), cloud("""{"connected":true,"display_name":"Zoe","avatar_url":"file:///tmp/photo"}"""))
+        assertNull(cloud("""{"connected":false,"avatar_url":"https://photos.example/b"}""").url)
+        assertEquals("https://photos.example/b", cloud("""{"connected":true,"avatar_url":"https://photos.example/b"}""").url)
+        assertEquals("林", io.github.alisonxx.octopbot.ui.common.accountInitial("  林一 "))
+        assertEquals("🐙", io.github.alisonxx.octopbot.ui.common.accountInitial("🐙 Zoe"))
+    }
+
     @Test fun signupNoticeUsesOnlyPositiveCreditsIssuedToANewAccount() {
         fun credits(json: String) = newSignupCredits(Http.parse(json).jsonObject)
         assertEquals(125.5, credits("""{"isNewUser":true,"signupGrant":{"credits":125.5}}""")!!, 0.0)

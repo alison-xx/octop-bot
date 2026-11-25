@@ -177,6 +177,11 @@ final class ServerBackend: ChatBackend {
         return true
     }
 
+    func accountPhoto() async -> AccountPhoto? {
+        guard isCloud, let profile = try? await json(.get, "/api/octop-bot/cloud/account") as? [String: Any] else { return nil }
+        return AccountPhoto.cloud(profile)
+    }
+
     private static func anonymous(_ base: URL, _ method: HTTPMethod, _ path: String, json: Any? = nil) async throws -> [String: Any] {
         let request = try HTTP.request(base.appending(path: path), method: method, json: json)
         let (data, response) = try await HTTP.data(for: request)

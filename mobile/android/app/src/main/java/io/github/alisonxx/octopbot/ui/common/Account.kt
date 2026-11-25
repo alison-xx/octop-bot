@@ -4,6 +4,17 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.sp
+import coil3.compose.SubcomposeAsyncImage
+import java.text.BreakIterator
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -23,6 +34,32 @@ import io.github.alisonxx.octopbot.net.LynxceBackend
 import io.github.alisonxx.octopbot.net.LynxceProtocol
 import io.github.alisonxx.octopbot.net.ServerBackend
 import io.github.alisonxx.octopbot.ui.theme.LocalPalette
+
+internal fun accountInitial(name: String): String {
+    val trimmed = name.trim()
+    if (trimmed.isEmpty()) return ""
+    val boundary = BreakIterator.getCharacterInstance().apply { setText(trimmed) }.next()
+    return trimmed.substring(0, boundary)
+}
+
+@Composable
+fun AccountAvatar(name: String, url: String?, size: Dp) {
+    val initial = @Composable {
+        Box(Modifier.size(size).background(Color(0xFFCF3753)), contentAlignment = Alignment.Center) {
+            Text(accountInitial(name), color = Color.White, fontSize = (size.value * 0.42f).sp)
+        }
+    }
+    Box(Modifier.size(size).clip(CircleShape)) {
+        if (url == null) initial() else SubcomposeAsyncImage(
+            model = url,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(size),
+            loading = { initial() },
+            error = { initial() },
+        )
+    }
+}
 
 /** Balance text under 100 credits. */
 val LowBalanceColor = Color(0xFFFF9F0A)

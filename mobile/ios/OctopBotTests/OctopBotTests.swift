@@ -467,6 +467,8 @@ final class TimeTests: XCTestCase {
 private final class FakeBackend: ChatBackend {
     var supportsGroups: Bool { false }
     var accountName: String { "tester" }
+    var photo: AccountPhoto?
+    func accountPhoto() async -> AccountPhoto? { photo }
     var sent: [String] = []
     var replies: [AsyncThrowingStream<StreamEvent, Error>.Continuation] = []
 
@@ -488,6 +490,30 @@ private final class FakeBackend: ChatBackend {
 
 @MainActor
 final class QueueTests: XCTestCase {
+    func testAccountPhotoBelongsToTheActiveSession() async {
+        let app = AppModel()
+        let first = FakeBackend()
+        first.photo = AccountPhoto.direct(["id": "a", "displayName": "  林一 ", "avatarUrl": "https://photos.example/a"], accountId: "a")
+        await app.use(first)
+        XCTAssertEqual(app.accountSummary.name, "林一")
+        XCTAssertEqual(app.accountSummary.avatarURL?.host, "photos.example")
+        XCTAssertNil(AccountPhoto.direct(["id": "a", "avatarUrl": "https://photos.example/a"], accountId: "b"))
+
+        let next = FakeBackend()
+        next.photo = AccountPhoto.cloud(["connected": true, "display_name": "Zoe", "avatar_url": "file:///private/a"])
+        await app.use(next)
+        XCTAssertEqual(app.accountSummary.name, "Zoe")
+        XCTAssertNil(app.accountSummary.avatarURL)
+        next.photo = AccountPhoto.cloud(["connected": true, "display_name": "Zoe", "avatar_url": "https://photos.example/b"])
+        await app.refresh()
+        XCTAssertEqual(app.accountSummary.avatarURL?.path, "/b")
+        next.photo = AccountPhoto.cloud(["connected": false, "avatar_url": "https://photos.example/b"])
+        await app.refresh()
+        XCTAssertNil(app.accountSummary.avatarURL)
+        await app.signOut()
+        XCTAssertNil(app.accountPhotoURL)
+    }
+
     func testPreparingAndFailedBotsDoNotSend() async {
         let app = AppModel()
         let backend = FakeBackend()
