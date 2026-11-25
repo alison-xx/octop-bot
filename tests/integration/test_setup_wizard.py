@@ -106,11 +106,15 @@ async def test_initial_admin_requires_password_while_the_gate_is_on(env: Any) ->
     assert r.json()["error"]["code"] == "SLASH_BAD_ARGS"
 
 
+@pytest.mark.parametrize("random_part", ["A" * 43, "0" * 43], ids=["no-digit", "no-letter"])
 async def test_initial_admin_without_password_when_the_gate_is_off(
     tmp_octop_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    random_part: str,
 ) -> None:
     """Desktop builds: the client sends no password; the minted JWT is the session."""
     write_octop_config(tmp_octop_home, require_setup_password=False)
+    monkeypatch.setattr("octop.api.routers.setup.token_urlsafe", lambda n: random_part)
 
     async with octop_client(tmp_octop_home) as (c, srv):
         tok = (await c.post("/api/setup/begin")).json()["wizard_token"]
