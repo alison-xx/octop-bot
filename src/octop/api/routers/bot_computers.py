@@ -20,6 +20,7 @@ from octop.api.common.screen_sessions import (
 )
 from octop.api.common.stream_auth import StreamSession
 from octop.api.deps import _decode, current_user, extract_raw_token, get_server
+from octop.infra.auth.tokens import PURPOSE_ACCESS
 from octop.infra.cloud.computers.manager import (
     DISK_DAILY_CREDITS_PER_GB,
     computer_manager,
@@ -232,11 +233,13 @@ async def open_screen(
     session_transport: Transport = Header(
         default="path",
         alias="X-Octop-Screen-Transport",
-        description="Desktop clients request header. Existing phone clients use path.",
+        description="Scoped sign-ins always use header. Ordinary phone sign-ins default to path.",
     ),
 ) -> ScreenTicket:
     manager = _owned(server, user, agent_id)
     binding = _screen_binding(request, server, agent_id)
+    if binding.purpose != PURPOSE_ACCESS:
+        session_transport = "header"
     await asyncio.to_thread(manager.ensure_running, agent_id, user.id)
     response.headers["Cache-Control"] = "no-store"
     ticket, session = _screen_sessions.issue(agent_id, binding, session_transport)

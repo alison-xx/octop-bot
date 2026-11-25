@@ -1230,8 +1230,9 @@ async def test_tenant_group_member_builds_in_its_room(
         assert unbounded.value.code == _Code.FORBIDDEN
 
 
+@pytest.mark.parametrize("transport", ["path", "header"])
 async def test_signed_in_screen_renewal_keeps_its_original_deadline(
-    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, transport: str
 ) -> None:
     import websockets
 
@@ -1260,12 +1261,12 @@ async def test_signed_in_screen_renewal_keeps_its_original_deadline(
         agent_id = bot.agent_id
         path = f"/api/octop-bot/computers/{agent_id}/screen"
         auth = {"Authorization": f"Bearer {token}"}
-        opened = await client.post(path, headers={**auth, "X-Octop-Screen-Transport": "header"})
+        options = {"X-Octop-Screen-Transport": "header"} if transport == "header" else {}
+        opened = await client.post(path, headers={**auth, **options})
         assert opened.status_code == 200
         ticket = opened.json()
-        assert (ticket["session_transport"], ticket["session_expires_in"]) == ("header", 1800)
+        assert (ticket["session_transport"], ticket["session_expires_in"]) == (transport, 1800)
         header = {"X-Octop-Screen-Session": ticket["session"]}
-        clipboard = "/api/octop-bot/screen-sessions/clipboard"
         # Exercise the regular sliding renewal response with a shortened test threshold.
         monkeypatch.setattr(deps, "_SLIDING_RENEW_REMAINING_FRACTION", 1.1)
         await asyncio.sleep(1.01)
@@ -1274,17 +1275,22 @@ async def test_signed_in_screen_renewal_keeps_its_original_deadline(
         next_token = credential.headers[deps.ACCESS_TOKEN_RESPONSE_HEADER]
         assert next_token != token
         renewed_auth = {"Authorization": f"Bearer {next_token}"}
+        if transport == "header":
+            clipboard = "/api/octop-bot/screen-sessions/clipboard"
+            renewal = {"headers": {**renewed_auth, **header}}
+        else:
+            clipboard = f"/api/octop-bot/screen-sessions/{ticket['session']}/clipboard"
+            header = {}
+            renewal = {"headers": renewed_auth, "json": {"session": ticket["session"]}}
         registry = bot_computers._screen_sessions
         deadline = registry.sessions[ticket["session"]].expires_at
         manager.takeover = True
         async with ws_connect(client._octop_app, ticket["ws_path"]):
-            renewed = await client.post(path + "/renew", headers={**renewed_auth, **header})
+            renewed = await client.post(path + "/renew", **renewal)
             assert renewed.status_code == 204
             assert registry.sessions[ticket["session"]].expires_at == deadline
             assert (await client.get(clipboard, headers=header)).json() == {"text": "联调样例"}
         assert manager.handed_back
         assert (await client.get(clipboard, headers=header)).status_code == 404
-        assert (
-            await client.post(path + "/renew", headers={**renewed_auth, **header})
-        ).status_code == 404
+        assert (await client.post(path + "/renew", **renewal)).status_code == 404
         assert starts == [(agent_id, uid)]
