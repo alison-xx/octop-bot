@@ -9427,6 +9427,8 @@
       "skipped": "跳过"
     },
     "review": "独立复核",
+    "reviewIssues": "独立复核发现仍有待解决的问题。",
+    "reviewUnverified": "独立复核未给出明确结论。",
     "showReview": "展开复核结论",
     "hideReview": "收起",
     "deliverables": "产物",

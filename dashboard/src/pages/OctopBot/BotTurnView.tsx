@@ -194,7 +194,7 @@ export default function BotTurnView({
       const finished =
         tool?.name === "task_finish" ? parseTaskOutput(tool.output) : null;
       return finished && finished.status !== "running" ? (
-        <BotTaskReport task={finished} />
+        <BotTaskReport task={finished} agentId={speakerId} />
       ) : null;
     }
     if (tool?.name === ASK_USER_TOOL_NAME) {

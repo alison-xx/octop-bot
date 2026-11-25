@@ -161,18 +161,24 @@ def test_a_review_sub_agent_is_recorded_on_a_deep_task(monkeypatch: pytest.Monke
         return Command(
             update={
                 "messages": [
-                    ToolMessage(content="1. met: 表格 42 行。2. not met: 缺折扣", tool_call_id="c1")
+                    ToolMessage(
+                        content="1. met: 表格 42 行。2. not met: 缺折扣\n**Verdict: 有问题**",
+                        tool_call_id="c1",
+                    )
                 ]
             }
         )
 
     def sub_agent(description: str) -> Any:
-        return SimpleNamespace(
+        return watchdog.ToolCallRequest(
+            tool=None,
+            state={},
+            runtime=None,
             tool_call={
                 "name": "task",
                 "id": "c1",
                 "args": {"description": description, "subagent_type": "general-purpose"},
-            }
+            },
         )
 
     middleware.wrap_tool_call(sub_agent("Collect prices from three sites"), reviewer)
@@ -180,7 +186,54 @@ def test_a_review_sub_agent_is_recorded_on_a_deep_task(monkeypatch: pytest.Monke
     middleware.wrap_tool_call(sub_agent("Review: check each criterion"), reviewer)
     reviewed = store.running("thr1")
     assert reviewed.reviews == 1 and reviewed.reviewed_at is not None
-    assert reviewed.review.startswith("1. met")
+    assert reviewed.review.startswith("1. met") and reviewed.review_status == "issues"
+
+    def incomplete(request: Any) -> ToolMessage:
+        assert "PASS or ISSUES" in request.tool_call["args"]["description"]
+        return ToolMessage(content='{"name":"ls","arguments":{}}', tool_call_id="c1")
+
+    middleware.wrap_tool_call(sub_agent("Review: follow up"), incomplete)
+    fresh = store.running("thr1")
+    assert fresh.reviews == 2 and fresh.review_status == "unverified"
+    fresh.criteria = [Criterion(text="验收项", status="passed", evidence="已测")]
+    assert fresh.verdict() == "partial"
+    refused = middleware.wrap_tool_call(
+        sub_agent("Review: repeat"), lambda _: pytest.fail("third invocation")
+    )
+    assert refused.status == "error"
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_the_review_applies_only_to_the_verified_revision(
+    monkeypatch: pytest.MonkeyPatch, changed: bool
+) -> None:
+    middleware, store, task = _setup(monkeypatch, steps=50)
+    task.tier = "deep"
+    task.criteria = [Criterion(text="Rows verified", status="passed", evidence="Two rows")]
+    store.save("thr1", task)
+    request = watchdog.ToolCallRequest(
+        tool=None,
+        state={},
+        runtime=None,
+        tool_call={
+            "name": "task",
+            "args": {"description": "Review: check table"},
+            "id": "c1",
+            "type": "tool_call",
+        },
+    )
+
+    def reviewer(_: Any) -> ToolMessage:
+        if changed:
+            revised = store.running("thr1")
+            revised.criteria[0].evidence = "Three rows in the new revision"
+            store.save("thr1", revised)
+        return ToolMessage(content="Two rows matched.\n- ** verdict**: 通过", tool_call_id="c1")
+
+    middleware.wrap_tool_call(request, reviewer)
+    result = store.running("thr1")
+    assert result.review_status == ("unverified" if changed else "passed")
+    assert result.verdict() == ("partial" if changed else "done")
 
 
 def test_a_task_dropped_by_compaction_is_put_back_in_the_prompt(
@@ -280,3 +333,40 @@ def test_delivered_files_are_kept_on_the_task_with_versions(
     delivered = store.running("thr1").deliverables
     assert [(d.name, d.version) for d in delivered] == [("价格对比.csv", 1), ("价格对比.csv", 2)]
     assert delivered[0].facts == [{"k": "rows", "n": 1}] and delivered[0].size > 0
+
+
+@pytest.mark.parametrize("available", [False, True])
+def test_office_delivery_requires_a_preview_for_the_exact_revision(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any, available: bool
+) -> None:
+    import hashlib
+    import io
+    import zipfile
+
+    from octop.infra.cloud.computers.office import OfficePreviewError
+
+    _, store, _ = _setup(monkeypatch)
+    sample = io.BytesIO()
+    with zipfile.ZipFile(sample, "w") as archive:
+        archive.writestr("word/document.xml", "<document>样例甲有五件</document>".encode())
+    doc = sample.getvalue()
+    preview = "outbound/office-previews/" + hashlib.sha256(doc).hexdigest() + ".jpg"
+
+    def check(path: str, digest: str) -> tuple[int, str]:
+        assert path == "验收清单.docx" and digest == hashlib.sha256(doc).hexdigest()
+        if not available:
+            raise OfficePreviewError("Could not open the sample.")
+        return 2, preview
+
+    middleware = watchdog.BotTaskMiddleware(store, office_preview=check)
+    result = middleware.wrap_tool_call(
+        _call("send_file_to_user"), _sent(tmp_path, "验收清单.docx", doc)
+    )
+    delivered = store.running("thr1").deliverables
+    if available:
+        assert result.status == "success"
+        assert result.content[0]["office_preview_path"] == preview
+        assert delivered[0].preview == preview and {"k": "pages", "n": 2} in delivered[0].facts
+    else:
+        assert result.status == "error" and "Could not open the sample" in result.content
+        assert delivered == []

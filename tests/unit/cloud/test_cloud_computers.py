@@ -1195,3 +1195,24 @@ def test_unpaid_use_cancels_and_starts_a_new_warning_cycle(
     clock.now += 15 * 86400
     manager.tick()
     assert sent == ["bot", "bot"]
+
+
+def test_office_inspection_only_borrows_the_current_unattended_instance(setup: Any) -> None:
+    from octop.infra.cloud.computers.office import OfficePreviewError
+
+    manager, driver, billing, _clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1")
+    with pytest.raises(OfficePreviewError, match="handed back"):
+        computer.office_preview("generated/report.docx", "abc")
+    assert driver.calls == [] and billing.reserved == []
+    instance = manager.ensure_running("bot1", 7)
+    manager.set_takeover("bot1", 7, True)
+    with pytest.raises(OfficePreviewError, match="handed back"):
+        computer.office_preview("generated/report.docx", "abc")
+    manager.set_takeover("bot1", 7, False)
+    assert manager.use("bot1", 7, lambda _, current: current, start=False) == instance
+    manager.pause("bot1", 7)
+    before = list(driver.calls)
+    with pytest.raises(OfficePreviewError, match="handed back"):
+        computer.office_preview("generated/report.docx", "abc")
+    assert driver.calls == before and len(billing.reserved) == 1

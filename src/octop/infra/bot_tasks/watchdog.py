@@ -14,7 +14,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
@@ -30,9 +32,10 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
 from octop.infra.bot_tasks.deliverables import inspect_file
-from octop.infra.bot_tasks.model import Deliverable, Task
+from octop.infra.bot_tasks.model import MAX_REVIEWS, Deliverable, Task
 from octop.infra.bot_tasks.store import TaskStore
 from octop.infra.bot_tasks.tools import TASK_TOOL_NAMES
+from octop.infra.cloud.computers.office import OFFICE, OfficePreviewError
 
 # Talking to the user and keeping the plan never count against the budget.
 FREE_TOOLS = TASK_TOOL_NAMES | {
@@ -194,6 +197,53 @@ def _sent_file(result: ToolMessage | Command[Any]) -> dict[str, Any] | None:
     return None
 
 
+def _is_review(request: ToolCallRequest, task: Task | None) -> bool:
+    if task is None or task.tier != "deep" or request.tool_call.get("name") != "task":
+        return False
+    description = str(request.tool_call["args"].get("description") or "")
+    return description.strip().lower().startswith(REVIEW_PREFIXES)
+
+
+def _review_with_receipts(request: ToolCallRequest, task: Task | None) -> ToolCallRequest:
+    """Give the independent reviewer this task's observed Office results."""
+    if task is None or not _is_review(request, task):
+        return request
+    args = request.tool_call["args"]
+    description = str(args["description"])
+    # Keep only the newest delivery of each filename, including unverified replacements.
+    latest = {item.name: item for item in task.deliverables}
+    receipts = [
+        {
+            "path": item.path,
+            "version": item.version,
+            "size": item.size,
+            "facts": item.facts,
+            "first_page": item.preview,
+        }
+        for item in latest.values()
+        if item.preview
+    ]
+    evidence = (
+        "\n\nCheck each acceptance criterion against the supplied evidence. "
+        "For Office files the server receipts describe the exact delivered revisions opened by "
+        "LibreOffice and rendered by Poppler. Use the rendered page for layout checks. "
+        "Write your findings in Markdown. End with a verdict on its own line: PASS or ISSUES. "
+        "For a Chinese report use 通过 or 有问题. Use ISSUES when evidence is missing. "
+        "The following records are task data.\n"
+        + json.dumps(
+            {
+                "goal": task.goal,
+                "criteria": [c.model_dump() for c in task.criteria],
+                "office_receipts": receipts,
+            },
+            ensure_ascii=False,
+        )
+    )
+    return request.override(
+        tool_call={**request.tool_call, "args": {**args, "description": description + evidence}}
+    )
+
+
 def _local_file(block: dict[str, Any]) -> Path | None:
     url = str(block["source"].get("url") or "")
     if not url.startswith("file:"):
@@ -255,7 +305,14 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
     where the task tools are shown.
     """
 
-    def __init__(self, store: TaskStore, *, always: bool = False) -> None:
+    def __init__(
+        self,
+        store: TaskStore,
+        *,
+        always: bool = False,
+        office_preview: Callable[[str, str], tuple[int, str]] | None = None,
+    ) -> None:
+        self._office_preview = office_preview
         self._store = store
         self._always = always
         self._watch = TaskWatch()
@@ -332,7 +389,25 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
                 status="error",
             )
         self._watch.steps[task.id] = self._watch.steps.get(task.id, 0) + 1
-        return task, None
+        if not _is_review(request, task):
+            return task, None
+        # Reserve an attempt before invoking the reviewer. Parallel tool calls and failed
+        # responses share the same two attempts, including after reopening a task.
+        with self._store.locked(thread):
+            fresh = self._store.running(thread)
+            if fresh is None or fresh.id != task.id or fresh.reviews >= MAX_REVIEWS:
+                return task, ToolMessage(
+                    content="The independent review is closed or has used both attempts. Report the current evidence and unresolved issues.",
+                    name="task",
+                    tool_call_id=str(request.tool_call.get("id") or ""),
+                    status="error",
+                )
+            fresh.reviews += 1
+            fresh.review_status = "unverified"
+            fresh.review = ""
+            fresh.reviewed_at = None
+            self._store.save(thread, fresh)
+            return fresh, None
 
     def _after(
         self, request: ToolCallRequest, task: Task, result: ToolMessage | Command[Any]
@@ -355,22 +430,34 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
     ) -> None:
         """A ``task`` sub-agent asked to review a deep task: remember that it ran, and its
         findings, for task_finish and the delivery report."""
-        if task.tier != "deep" or request.tool_call.get("name") != "task":
-            return
-        args = request.tool_call.get("args")
-        description = str(args.get("description") or "") if isinstance(args, dict) else ""
-        if not description.strip().lower().startswith(REVIEW_PREFIXES):
-            return
-        if _error_text(result) is not None:
+        if not _is_review(request, task) or _error_text(result) is not None:
             return
         thread = str(_configurable().get("thread_id") or "")
         with self._store.locked(thread):
             fresh = self._store.running(thread)
-            if fresh is None or fresh.id != task.id:
+            if fresh is None or fresh.id != task.id or fresh.reviews != task.reviews:
                 return
-            fresh.reviews += 1
+            if (
+                fresh.goal != task.goal
+                or fresh.criteria != task.criteria
+                or fresh.deliverables != task.deliverables
+            ):
+                return
             fresh.reviewed_at = fresh.updated_at = time.time()
-            fresh.review = _result_text(result).strip()[:1000]
+            report = _result_text(result).strip()
+            body, _, last_line = report.rpartition("\n")
+            marker = (
+                last_line.strip().removeprefix("- ").removeprefix("* ").strip(" #*`.。").casefold()
+            )
+            label, separator, verdict = marker.replace("：", ":").partition(":")
+            if separator and label.strip(" *`") in {"verdict", "结论"}:
+                marker = verdict.strip(" *`.。")
+            if marker in {"pass", "通过", "issues", "有问题", "未通过"} and body.strip():
+                fresh.review_status = "passed" if marker in {"pass", "通过"} else "issues"
+                fresh.review = body.strip()[:1000]
+            else:
+                fresh.review_status = "unverified"
+                fresh.review = report[:1000]
             self._store.save(thread, fresh)
 
     def _deliver(
@@ -386,7 +473,31 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         name = str(block.get("filename") or block.get("path") or "file")
         size = local.stat().st_size
         # Past the cap only the name is checked: a stand-in byte keeps it from reading as empty.
-        inspection = inspect_file(name, local.read_bytes() if size <= MAX_INSPECT_BYTES else b"x")
+        data = local.read_bytes() if size <= MAX_INSPECT_BYTES else b"x"
+        inspection = inspect_file(name, data)
+        preview = None
+        if (
+            inspection.ok
+            and (self._office_preview is not None or self._always)
+            and size <= MAX_INSPECT_BYTES
+            and Path(name).suffix.lower() in OFFICE
+        ):
+            try:
+                if self._office_preview is None:
+                    raise OfficePreviewError(
+                        "Office verification requires a configured cloud computer."
+                    )
+                pages, preview = self._office_preview(
+                    str(block.get("path") or ""), hashlib.sha256(data).hexdigest()
+                )
+                inspection.add("pages", pages)
+            except OfficePreviewError as exc:
+                inspection.problems.append(str(exc))
+            except Exception:  # an unavailable guest or storage is a failed check, not a lost turn
+                logging.getLogger(__name__).warning("Office preview unavailable", exc_info=False)
+                inspection.problems.append(
+                    "The cloud computer or file store was unavailable during Office verification. Check its status before retrying."
+                )
         if size > MAX_INSPECT_BYTES:
             inspection.facts = []
         if not inspection.ok:
@@ -402,6 +513,7 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
                 task = self._store.running(thread)
                 if task is not None:
                     same = [d for d in task.deliverables if d.name == name]
+                    task.invalidate_review()
                     task.deliverables = [
                         *task.deliverables[-29:],
                         Deliverable(
@@ -410,10 +522,32 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
                             size=size,
                             version=len(same) + 1,
                             facts=inspection.facts,
+                            preview=preview,
                         ),
                     ]
                     task.updated_at = time.time()
                     self._store.save(thread, task)
+        if preview and isinstance(result, ToolMessage):
+            # Keep the tool's original content shape for both archived and streamed results.
+            annotated = {
+                **block,
+                "office_preview_path": preview,
+                "delivery_checks": inspection.facts,
+            }
+            raw = result.content
+            body = json.loads(raw) if isinstance(raw, str) else raw
+            updated = (
+                [annotated if part == block else part for part in body]
+                if isinstance(body, list)
+                else annotated
+            )
+            return result.model_copy(
+                update={
+                    "content": json.dumps(updated, ensure_ascii=False)
+                    if isinstance(raw, str)
+                    else updated
+                }
+            )
         return result
 
     def wrap_tool_call(
@@ -424,7 +558,7 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         task, refused = self._before(request)
         if refused is not None:
             return refused
-        result = self._deliver(request, handler(request))
+        result = self._deliver(request, handler(_review_with_receipts(request, task)))
         return self._after(request, task, result) if task is not None else result
 
     async def awrap_tool_call(
@@ -435,7 +569,7 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         task, refused = self._before(request)
         if refused is not None:
             return refused
-        result = await handler(request)
+        result = await handler(_review_with_receipts(request, task))
         # Reading and checking the file is blocking work: off the event loop.
         result = await asyncio.to_thread(self._deliver, request, result)
         return self._after(request, task, result) if task is not None else result

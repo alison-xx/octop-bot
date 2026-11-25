@@ -9427,6 +9427,8 @@
       "skipped": "Skipped"
     },
     "review": "Independent review",
+    "reviewIssues": "The reviewer reported unresolved issues.",
+    "reviewUnverified": "The reviewer returned no conclusive assessment.",
     "showReview": "Show the review",
     "hideReview": "Hide",
     "deliverables": "Deliverables",

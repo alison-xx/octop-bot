@@ -22,6 +22,7 @@ the store afterwards (``SHARED_DIRS``). Deleting a file on one side does not del
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import posixpath
 import shlex
@@ -38,8 +39,9 @@ from deepagents.backends.protocol import (
 )
 from deepagents.backends.sandbox import BaseSandbox
 
-from octop.infra.cloud.computers.driver import WORKSPACE
-from octop.infra.cloud.computers.manager import WAKE_COMMAND_TIMEOUT
+from octop.infra.cloud.computers.driver import WORKSPACE, ComputerDriver
+from octop.infra.cloud.computers.manager import WAKE_COMMAND_TIMEOUT, ComputerUnavailable
+from octop.infra.cloud.computers.office import OfficePreviewError, guest_preview
 from octop.infra.errors import ErrorCode, OctopError
 
 if TYPE_CHECKING:
@@ -168,6 +170,41 @@ class CloudComputer(BaseSandbox):
         self._sync_lock = threading.Lock()
         if store is not None:
             manager.on_wake(agent_id, self._on_wake)
+
+    def office_preview(self, path: str, digest: str) -> tuple[int, str]:
+        """Verify a delivered revision and keep its thumbnail in this Bot's workspace."""
+        mapped = self._map_path(path)
+        key = self._to_virtual_path(mapped)
+        if mapped == WORKSPACE or (
+            on_store(key) and not key.startswith((*SHARED_DIRS, "/inbound/"))
+        ):
+            raise OfficePreviewError(
+                "Save the Office deliverable in generated/ or outbound/ and send it again."
+            )
+        preview = f"/outbound/office-previews/{digest}.jpg"
+
+        def check(driver: ComputerDriver, instance: str) -> tuple[int, str]:
+            stored = None
+            if self._store is not None and self._stored(key):
+                item = self._store.download_files([key])[0]
+                stored = item.content
+                if stored is None or hashlib.sha256(stored).hexdigest() != digest:
+                    raise OfficePreviewError(
+                        "The saved document changed. Send the current revision again."
+                    )
+            pages, jpeg = guest_preview(driver, instance, mapped, digest, stored)
+            if self._store is None:
+                driver.write(instance, self._map_path(preview), jpeg)
+            elif self._store.upload_files([(preview, jpeg)])[0].error:
+                raise OfficePreviewError("The document opened, but its preview could not be saved.")
+            return pages, preview.lstrip("/")
+
+        try:
+            return self._manager.use(self._agent_id, self._user_id, check, start=False)
+        except ComputerUnavailable as exc:
+            raise OfficePreviewError(
+                "Office verification needs a running cloud computer handed back by the user."
+            ) from exc
 
     def _stored(self, path: str | None) -> bool:
         return self._store is not None and on_store(path)

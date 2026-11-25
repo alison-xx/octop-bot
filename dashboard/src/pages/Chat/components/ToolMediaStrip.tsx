@@ -7,6 +7,7 @@ import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
 import {
   needsAuthBlobFetch,
   type ToolMediaItem,
+  type ToolFileItem,
 } from "../../../utils/toolMediaBlocks";
 import { MessageFileCard } from "./MessageFileCard";
 import styles from "../index.module.less";
@@ -115,7 +116,7 @@ export function ToolMediaStrip({
 }: {
   images: ToolMediaItem[];
   videos: ToolMediaItem[];
-  files?: Array<{ url: string; filename?: string }>;
+  files?: ToolFileItem[];
   agentId?: string | null;
   /** Octop Bot: larger images and file cards with a visual preview. */
   rich?: boolean;
@@ -134,7 +135,7 @@ export function ToolMediaStrip({
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
-    }) as Array<{ url: string; filename?: string; mimeType?: string }>;
+    }) as Array<ToolFileItem & { mimeType?: string }>;
     return (
       <div className={styles.toolMediaStrip}>
         <div className={styles.messageFiles}>
@@ -143,6 +144,7 @@ export function ToolMediaStrip({
               key={`${file.url}-${idx}`}
               url={file.url}
               filename={file.filename}
+              thumbnailUrl={file.thumbnailUrl}
               mediaType={file.mimeType}
               agentId={agentId}
               rich
@@ -180,6 +182,7 @@ export function ToolMediaStrip({
               key={`${file.url}-${idx}`}
               url={file.url}
               filename={file.filename}
+              thumbnailUrl={file.thumbnailUrl}
               agentId={agentId}
               rich={rich}
             />

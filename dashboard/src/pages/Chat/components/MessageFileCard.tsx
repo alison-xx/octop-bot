@@ -42,6 +42,7 @@ export function MessageFileCard({
   agentId,
   workspacePath,
   mediaType,
+  thumbnailUrl,
   rich,
 }: {
   url: string;
@@ -49,6 +50,7 @@ export function MessageFileCard({
   agentId?: string | null;
   workspacePath?: string;
   mediaType?: string;
+  thumbnailUrl?: string;
   rich?: boolean;
 }) {
   const { t } = useTranslation();
@@ -111,6 +113,7 @@ export function MessageFileCard({
       mime={mediaType}
       size={size}
       previewUrl={rich ? url : undefined}
+      thumbnailUrl={rich ? thumbnailUrl : undefined}
       onOpen={previewable ? openPreview : undefined}
       onDownload={() => void handleDownload()}
       downloading={loading}

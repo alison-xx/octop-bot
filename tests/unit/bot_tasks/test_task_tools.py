@@ -184,3 +184,32 @@ def test_checks_sent_together_keep_every_verdict(kit: Any) -> None:
     for worker in workers:
         worker.join()
     assert [c.status for c in store.running("thr1").criteria] == ["passed"] * 3
+
+
+def test_finishing_with_declared_issues_is_partial(kit: Any) -> None:
+    tools, _ = kit
+    tools["task_plan"].invoke({"goal": "Prepare the table", "criteria": ["Rows verified"]})
+    tools["task_check"].invoke({"criterion": 1, "status": "passed", "evidence": "Two rows"})
+    result = tools["task_finish"].invoke(
+        {"summary": "Table checked", "open_issues": ["Delivery pending"]}
+    )
+    assert json.loads(result)["task"]["status"] == "partial"
+
+
+def test_new_evidence_after_last_review_requires_a_partial_report(kit: Any) -> None:
+    tools, store = kit
+    tools["task_plan"].invoke(
+        {"goal": "Check the table", "tier": "deep", "criteria": ["Rows checked"]}
+    )
+    tools["task_check"].invoke({"criterion": 1, "status": "passed", "evidence": "Two rows"})
+    task = store.running("thr1")
+    task.reviews = 2
+    task.review_status = "passed"
+    task.reviewed_at = task.checked_at
+    store.save("thr1", task)
+    tools["task_check"].invoke(
+        {"criterion": 1, "status": "passed", "evidence": "Updated table, three rows"}
+    )
+    result = json.loads(tools["task_finish"].invoke({"summary": "Updated table checked"}))["task"]
+    assert result["status"] == "partial" and result["review_status"] == "unverified"
+    assert result["reviews"] == 2

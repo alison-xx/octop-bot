@@ -352,6 +352,10 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return box["value"]  # type: ignore[no-any-return]
 
 
+class ComputerUnavailable(OSError):
+    """The requested existing instance cannot currently accept Bot work."""
+
+
 class ComputerManager:
     def __init__(
         self,
@@ -1062,17 +1066,30 @@ class ComputerManager:
         work: Callable[[ComputerDriver, str], T],
         *,
         seed: Seeder | None = None,
+        start: bool = True,
     ) -> T:
-        """Do something on the running computer (computer use); it counts as busy meanwhile."""
-        instance = self.ensure_running(agent_id, user_id, seed)
-        with self._guard:
-            self._busy[agent_id] = self._busy.get(agent_id, 0) + 1
+        """Use one instance. An inspection may only borrow an already running computer."""
+        with self._lock(agent_id):
+            if start:
+                instance = self.ensure_running(agent_id, user_id, seed)
+            else:
+                record = self.record(agent_id, user_id)
+                if not record.running or not record.instance_id or record.controlled(self._clock()):
+                    raise ComputerUnavailable(
+                        "The cloud computer is paused or under human control."
+                    )
+                instance = record.instance_id
+            with self._guard:
+                self._busy[agent_id] = self._busy.get(agent_id, 0) + 1
         try:
             return work(self._driver, instance)
         finally:
             with self._guard:
                 self._busy[agent_id] -= 1
-            self.touch(agent_id, user_id)
+            with self._lock(agent_id):
+                record = self.record(agent_id, user_id)
+                if record.running and record.instance_id == instance:
+                    self.touch(agent_id, user_id)
 
     def write(
         self, agent_id: str, user_id: int, path: str, data: bytes, *, seed: Seeder | None = None

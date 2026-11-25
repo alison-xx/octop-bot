@@ -3,12 +3,13 @@ import type { AssistantTurnSplit } from "../pages/Chat/utils/messageContent";
 import {
   collectToolMediaFromToolData,
   type ToolMediaItem,
+  type ToolFileItem,
 } from "./toolMediaBlocks";
 
 export type TurnToolMedia = {
   images: ToolMediaItem[];
   videos: ToolMediaItem[];
-  files: Array<{ url: string; filename?: string }>;
+  files: ToolFileItem[];
 };
 
 export function collectTurnToolMedia(
@@ -17,7 +18,7 @@ export function collectTurnToolMedia(
 ): TurnToolMedia {
   const images: ToolMediaItem[] = [];
   const videos: ToolMediaItem[] = [];
-  const files: Array<{ url: string; filename?: string }> = [];
+  const files: ToolFileItem[] = [];
 
   for (const msg of split?.tools ?? []) {
     const owner = msg.speakerAgentId?.trim() || agentId;

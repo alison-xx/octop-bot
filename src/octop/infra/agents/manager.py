@@ -5241,7 +5241,13 @@ class AgentManager:
 
                 workspace_tools.extend(chief_tools(self, services, row.agent_id, row.user_id))
             agent_middleware.append(BotWorkspaceTools(workspace_tools, anywhere))
-            agent_middleware.append(BotTaskMiddleware(tasks, always=tenant))
+            agent_middleware.append(
+                BotTaskMiddleware(
+                    tasks,
+                    always=tenant,
+                    office_preview=getattr(ws.backend, "office_preview", None) if tenant else None,
+                )
+            )
             if computer_tools:
                 from octop.infra.cloud.computers.computer_use import ComputerBriefing
 
