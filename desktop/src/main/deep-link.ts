@@ -1,11 +1,14 @@
 /** `octop-bot://` links from the website, e.g. "Import into Octop Bot" on the Bot market. */
 
+import { BOT_HOME_PATH } from "../shared/product";
+
 export const DEEP_LINK_SCHEME = "octop-bot";
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** The Bot client path a link opens, or null for anything we don't handle. */
 export function deepLinkPath(url: string): string | null {
+  if (url === "octop-bot://recharge/done") return BOT_HOME_PATH;
   let parsed: URL;
   try {
     parsed = new URL(url);

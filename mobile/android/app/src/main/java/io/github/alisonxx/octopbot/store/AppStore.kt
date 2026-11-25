@@ -45,7 +45,29 @@ data class ServerSession(
     /** Octop Bot cloud (bot.lynxce.cn), which keeps the Lynxce wallet for this account. */
     val cloud: Boolean = false,
     val signupExpiryDay: String? = null,
+    /** Random local attachment namespace assigned after this server login succeeded. */
+    val attachmentCacheId: String? = null,
 )
+
+/** Upgrade the encrypted row inside one DataStore edit, sharing its ordering with login and logout. */
+internal suspend fun restoreServerSession(
+    store: DataStore<Preferences>,
+    key: Preferences.Key<String>,
+    open: (String) -> String?,
+    seal: (String) -> String,
+): ServerSession? {
+    var restored: ServerSession? = null
+    store.edit { prefs ->
+        val plain = prefs[key]?.let(open) ?: return@edit
+        val session = Http.json.decodeFromString(ServerSession.serializer(), plain)
+        restored = if (session.attachmentCacheId == null) {
+            val upgraded = session.copy(attachmentCacheId = UUID.randomUUID().toString())
+            prefs[key] = seal(Http.json.encodeToString(ServerSession.serializer(), upgraded))
+            upgraded
+        } else session
+    }
+    return restored
+}
 
 data class UserSettings(
     val readAloud: Boolean = false,
@@ -83,14 +105,28 @@ data class DirectoryCache(val bots: List<BotProfile>, val groups: List<GroupSumm
 @Serializable
 data class BotPreview(val text: String, val at: Long, val unread: Boolean = false)
 
+enum class SavedBackend {
+    Server, Device, SignedOut;
+
+    companion object {
+        fun restore(selected: SavedBackend?, hasLegacy: Boolean, hasServer: Boolean, official: Boolean): SavedBackend {
+            if (selected != null) return selected
+            if (hasLegacy) return if (official) Server else SignedOut
+            return if (hasServer) Server else Device
+        }
+    }
+}
+
 /** App preferences in DataStore; tokens are sealed with [SecretBox] before they touch disk. */
 class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
     private val store = context.applicationContext.dataStore
+    private val threadPreferences = context.applicationContext.getSharedPreferences("cloud-threads", Context.MODE_PRIVATE)
     private val walletPreferences = context.applicationContext.getSharedPreferences("wallet_warnings", Context.MODE_PRIVATE)
 
     private object Keys {
         val lynxce = stringPreferencesKey("lynxce.grant")
         val server = stringPreferencesKey("server.session")
+        val selectedBackend = stringPreferencesKey("session.selectedBackend")
         val sessionBots = stringPreferencesKey("lynxce.sessionBots")
         val customBots = stringPreferencesKey("localBots.custom")
         val lookOverrides = stringPreferencesKey("localBots.looks")
@@ -150,10 +186,52 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
     suspend fun setLynxceGrant(grant: LynxceGrant?) =
         seal(Keys.lynxce, grant?.let { Http.json.encodeToString(LynxceGrant.serializer(), it) })
 
+    suspend fun selectedBackend(): SavedBackend? =
+        store.data.first()[Keys.selectedBackend]?.let { value -> SavedBackend.entries.firstOrNull { it.name == value } }
+
+    suspend fun selectBackend(backend: SavedBackend) = store.edit { it[Keys.selectedBackend] = backend.name }
+
     suspend fun serverSession(): ServerSession? =
-        sealed(Keys.server)?.let { Http.json.decodeFromString(ServerSession.serializer(), it) }
+        restoreServerSession(store, Keys.server, box::open, box::seal)
+    suspend fun replaceServerSession(expected: ServerSession, next: ServerSession): Boolean =
+        replaceGrant(Keys.server, ServerSession.serializer(), expected, next)
+
+    suspend fun replaceLynxceGrant(expected: LynxceGrant, next: LynxceGrant): Boolean =
+        replaceGrant(Keys.lynxce, LynxceGrant.serializer(), expected, next)
+
+    private suspend fun <T> replaceGrant(key: Preferences.Key<String>, serializer: kotlinx.serialization.KSerializer<T>, expected: T, next: T): Boolean {
+        var replaced = false
+        store.edit { prefs ->
+            val value = prefs[key]?.let(box::open) ?: return@edit
+            if (Http.json.decodeFromString(serializer, value) == expected) {
+                prefs[key] = box.seal(Http.json.encodeToString(serializer, next))
+                replaced = true
+            }
+        }
+        return replaced
+    }
+
     suspend fun setServerSession(session: ServerSession?) =
         seal(Keys.server, session?.let { Http.json.encodeToString(ServerSession.serializer(), it) })
+
+    /** The 1.0.0 preview cache has no owner. Preserve it on-device without displaying it as anyone's history. */
+    suspend fun archiveLegacyPreviews() = store.edit { prefs ->
+        val archive = androidx.datastore.preferences.core.stringSetPreferencesKey("legacy.unattributedPreviews")
+        prefs[Keys.previews]?.let { prefs[archive] = prefs[archive].orEmpty() + it }
+        prefs.remove(Keys.previews)
+        prefs.remove(Keys.directory)
+        prefs.remove(Keys.lastBot)
+    }
+
+    fun rememberedThread(owner: String, bot: String): String? = threadPreferences.getString("$owner.$bot", null)
+    fun rememberThread(owner: String, bot: String, thread: String?) = threadPreferences.edit().putString("$owner.$bot", thread).apply()
+
+    suspend fun legacyHistoryComplete(owner: String) =
+        store.data.first()[booleanPreferencesKey("legacyHistory.completed." + owner)] == true
+
+    suspend fun setLegacyHistoryComplete(owner: String, complete: Boolean) = store.edit {
+        it[booleanPreferencesKey("legacyHistory.completed." + owner)] = complete
+    }
 
     suspend fun sessionBots(): Map<String, String> = decode(Keys.sessionBots, stringMap) ?: emptyMap()
     suspend fun updateSessionBots(change: (MutableMap<String, String>) -> Unit) = store.edit { prefs ->
@@ -215,15 +293,6 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
     fun dismissLowBalance(wallet: String, at: Long = System.currentTimeMillis()) {
         walletPreferences.edit().putLong(wallet, at).apply()
         lowBalanceDismissed.value = lowBalanceDismissed.value + (wallet to at)
-    }
-
-    /** Forget what belongs to the signed-in account: tokens and caches. Settings toggles stay. */
-    suspend fun clearAccount() {
-        store.edit {
-            it.remove(Keys.lynxce)
-            it.remove(Keys.server)
-        }
-        clearCaches()
     }
 
     /** Settings → Storage: reply previews and unread marks. Sign-in, the directory and the last server stay. */

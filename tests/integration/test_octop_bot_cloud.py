@@ -1156,6 +1156,7 @@ async def test_tenant_connector_and_channel_addresses_are_public(
             ("gitea", {"base_url": "http://172.17.0.1:3000", "token": "x"}),
             ("ragflow", {"base_url": "https://100.100.100.200/", "api_key": "x"}),
             ("obsidian-cli", {"binary_path": "/bin/sh"}),
+            ("gitea", {"note": "http://10.0.0.1/x"}),
         ):
             for path in ("/api/connectors/test-credentials", "/api/connector-instances"):
                 got = await client.post(
@@ -1174,6 +1175,13 @@ async def test_tenant_connector_and_channel_addresses_are_public(
             json={"kind": "mqtt", "name": "m", "config": {"host": "127.0.0.1"}},
         )
         assert channel.status_code == 400, channel.text
+        channel = await client.post(
+            f"/api/agents/{bot.agent_id}/channels",
+            headers=auth,
+            json={"kind": "mqtt", "name": "m", "config": {"note": "http://10.0.0.1/x"}},
+        )
+        assert channel.status_code == 400, channel.text
+        assert channel.json()["error"]["code"] == "ENDPOINT_NOT_ALLOWED"
 
 
 async def test_tenant_group_member_builds_in_its_room(

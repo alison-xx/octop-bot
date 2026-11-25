@@ -63,8 +63,10 @@ function ThreadHistory({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const listPending = useRef(false);
   useEffect(() => {
     let current = true;
+    listPending.current = true;
     setLoading(true);
     setError("");
     void octopThreadsApi
@@ -76,12 +78,29 @@ function ThreadHistory({
         if (current) setError(apiErrorMessage(e, t("octopBot.failed"), t));
       })
       .finally(() => {
-        if (current) setLoading(false);
+        if (current) {
+          listPending.current = false;
+          setLoading(false);
+        }
       });
     return () => {
       current = false;
     };
   }, [agentId, limit, t, attempt]);
+  useEffect(() => {
+    const refresh = () => {
+      if (!listPending.current && document.visibilityState === "visible")
+        setAttempt((n) => n + 1);
+    };
+    const timer = window.setInterval(refresh, 20000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
   return (
     <Drawer open onClose={onClose} title={t("octopBot.history")}>
       <p>{t("botDirectory.privateHistoryHelp")}</p>
@@ -101,7 +120,8 @@ function ThreadHistory({
         />
       )}
       <List
-        loading={loading}
+        loading={loading && rows.length === 0}
+        rowKey="thread_id"
         dataSource={rows.slice(0, limit)}
         renderItem={(row) => (
           <List.Item>
@@ -478,7 +498,11 @@ export default function BotChat({
         />
       )}
       {panel === "history" && (
-        <ThreadHistory agentId={bot.agent_id} onClose={() => setPanel(null)} />
+        <ThreadHistory
+          key={bot.agent_id}
+          agentId={bot.agent_id}
+          onClose={() => setPanel(null)}
+        />
       )}
       {panel === "appearance" && (
         <AppearanceModal

@@ -4,7 +4,7 @@ import UIKit
 /// Signed in with a personal Lynxce (灵策智算) account: chat goes straight to the Lynxce model gateway and
 /// conversations sync through Lynxce web-chat sessions, so they also appear in Octop Bot on the desktop.
 final class LynxceBackend: ChatBackend {
-    struct Grant: Codable {
+    struct Grant: Codable, Equatable {
         var accountId: String
         var displayName: String?
         var accessToken: String
@@ -20,6 +20,10 @@ final class LynxceBackend: ChatBackend {
     private(set) var grant: Grant
     var signupCredits: Double?
     var signupExpiryDay: String? { grant.signupExpiryDay }
+    private let pending: PendingHistoryStore
+    private let session: URLSession
+    private var signedOut = false
+    private var deletionErrors: [String: (bot: String, message: String)] = [:]
     private let bots: LocalBots
     private var refreshing: Task<Grant, Error>?
 
@@ -30,13 +34,23 @@ final class LynxceBackend: ChatBackend {
         return name.isEmpty ? L("account.genericName") : name
     }
 
-    init(grant: Grant, bots: LocalBots = .shared) {
+    init(grant: Grant, bots: LocalBots = .shared, historyRoot: URL = .applicationSupportDirectory,
+         session: URLSession = HTTP.session) {
+        self.session = session
+        pending = PendingHistoryStore(origin: Self.origin, account: grant.accountId, root: historyRoot)
         self.grant = grant
         self.bots = bots
     }
 
     static func restore() -> LynxceBackend? {
         Keychain.codable(Grant.self, for: grantKey).map { LynxceBackend(grant: $0) }
+    }
+
+    /// The upgrade may retire only the exact direct-login credential captured before recovery.
+    @discardableResult
+    static func retireRecoveredGrant(_ grant: Grant, owner: String, for key: String = grantKey) -> Bool {
+        guard !owner.isEmpty, grant.accountId == owner else { return false }
+        return Keychain.replace(grant, with: nil, for: key)
     }
 
     static func signIn(account: String, password: String) async throws -> LynxceBackend {
@@ -161,10 +175,11 @@ final class LynxceBackend: ChatBackend {
 
     private static func call(
         _ method: HTTPMethod, _ path: String, bearer: String? = nil,
-        query: [String: String] = [:], json: Any? = nil, form: [FormPart]? = nil, iap: Bool = false
+        query: [String: String] = [:], json: Any? = nil, form: [FormPart]? = nil, iap: Bool = false,
+        session: URLSession = HTTP.session
     ) async throws -> Any {
         let request = try HTTP.request(url(path, query: query), method: method, headers: headers(bearer, iap: iap), json: json, form: form)
-        let (data, response) = try await HTTP.data(for: request)
+        let (data, response) = try await HTTP.data(for: request, using: session, delegate: NoAPIRedirect())
         return try unwrap(data, status: response.statusCode)
     }
 
@@ -174,36 +189,43 @@ final class LynxceBackend: ChatBackend {
         iap: Bool = false
     ) async throws -> Any {
         do {
-            return try await Self.call(method, path, bearer: grant.accessToken, query: query, json: json, form: form, iap: iap)
+            return try await Self.call(method, path, bearer: grant.accessToken, query: query, json: json, form: form, iap: iap, session: session)
         } catch let error as APIError where error.kind == .unauthorized {
             let fresh = try await refreshed()
-            return try await Self.call(method, path, bearer: fresh.accessToken, query: query, json: json, form: form, iap: iap)
+            return try await Self.call(method, path, bearer: fresh.accessToken, query: query, json: json, form: form, iap: iap, session: session)
         }
     }
 
     private func refreshed() async throws -> Grant {
+        guard !signedOut else { throw CancellationError() }
         if let refreshing { return try await refreshing.value }
         let current = grant
         let task = Task { () throws -> Grant in
-            let data = try await Self.call(.post, "/api/auth/refresh", json: ["refreshToken": current.refreshToken])
+            let data = try await Self.call(.post, "/api/auth/refresh", json: ["refreshToken": current.refreshToken], session: session)
             guard let body = data as? [String: Any], let access = body["accessToken"] as? String else {
                 throw APIError(kind: .unauthorized, status: 401, message: nil)
             }
             var next = current
             next.accessToken = access
             if let refresh = body["refreshToken"] as? String { next.refreshToken = refresh }
+            guard Keychain.replace(current, with: next, for: Self.grantKey) else { throw CancellationError() }
+            self.grant = next
             return next
         }
         refreshing = task
         defer { refreshing = nil }
         do {
-            let next = try await task.value
-            grant = next
-            Keychain.setCodable(next, for: Self.grantKey)
-            return next
+            return try await task.value
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw APIError(kind: .unauthorized, status: 401, message: nil)
         }
+    }
+
+    func accountPhoto() async -> AccountPhoto? {
+        guard let profile = try? await call(.get, "/api/user/profile") as? [String: Any] else { return nil }
+        return AccountPhoto.direct(profile, accountId: grant.accountId)
     }
 
     // MARK: Bots and conversations
@@ -215,12 +237,33 @@ final class LynxceBackend: ChatBackend {
         set { UserDefaults.standard.set(newValue, forKey: "lynxce.sessionBots") }
     }
 
+    func deletionFailures(for bot: BotProfile) -> [String: String] {
+        deletionErrors.filter { $0.value.bot == bot.id }.mapValues { $0.message }
+    }
+
+    func deletionQueued(_ session: String, bot: BotProfile) -> Bool {
+        pending.interruptedDeletions(bot: bot.id).contains(session)
+    }
+
+    func deletionNotice(for bot: BotProfile) -> String? {
+        pending.interruptedDeletions(bot: bot.id).isEmpty ? nil : L("chat.deletionQueued")
+    }
+
     func conversations(for bot: BotProfile) async throws -> [ConversationSummary] {
-        let data = try await call(.get, "/api/user/web-chat-sessions", query: ["limit": "50"])
+        for session in pending.interruptedDeletions(bot: bot.id) where session.hasPrefix(Self.sessionPrefix) {
+            guard !signedOut else { throw CancellationError() }
+            try? await deleteHistory(session: session, bot: bot.id)
+        }
+        let data: Any
+        do { data = try await call(.get, "/api/user/web-chat-sessions", query: ["limit": "50"]) }
+        catch {
+            guard !pending.turns(bot: bot.id).isEmpty else { throw error }
+            data = NSNull()
+        }
         let items = (data as? [String: Any])?["items"] as? [[String: Any]] ?? []
         let owners = sessionBots
-        return items.compactMap { item in
-            guard let id = item["id"] as? String, id.hasPrefix(Self.sessionPrefix) else { return nil }
+        var rows: [ConversationSummary] = items.compactMap { item in
+            guard let id = item["id"] as? String, id.hasPrefix(Self.sessionPrefix), !pending.isDeleted(id) else { return nil }
             let owner = owners[id] ?? LocalBots.chiefId
             guard owner == bot.id else { return nil }
             return ConversationSummary(
@@ -230,13 +273,23 @@ final class LynxceBackend: ChatBackend {
                 botId: owner
             )
         }
+        for turn in pending.turns(bot: bot.id).reversed() where !rows.contains(where: { $0.id == turn.sessionID }) {
+            rows.append(ConversationSummary(id: turn.sessionID, title: turn.title, updatedAt: ISO8601.parse(turn.finishedAt), botId: bot.id))
+        }
+        return rows.sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
     }
 
     func messages(in conversation: ConversationSummary, bot: BotProfile) async throws -> [ChatMessage] {
         let id = conversation.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? conversation.id
-        let data = try await call(.get, "/api/user/web-chat-sessions/\(id)")
+        let atRequest = pending.turns(bot: bot.id, session: conversation.id)
+        let data: Any
+        do { data = try await call(.get, "/api/user/web-chat-sessions/\(id)") }
+        catch {
+            guard !atRequest.isEmpty || !pending.turns(bot: bot.id, session: conversation.id).isEmpty else { throw error }
+            data = NSNull()
+        }
         let items = (data as? [String: Any])?["items"] as? [[String: Any]] ?? []
-        return items.compactMap { item in
+        var rows: [ChatMessage] = items.compactMap { item in
             guard let role = (item["role"] as? String).flatMap(MessageRole.init(rawValue:)), role != .system else { return nil }
             var message = ChatMessage(role: role, text: Self.stripRole(item["content"] as? String ?? ""))
             message.thinking = item["thinking"] as? String ?? ""
@@ -244,6 +297,16 @@ final class LynxceBackend: ChatBackend {
             if item["status"] as? String == "failed" { message.status = .failed(L("chat.failed")) }
             return message
         }
+        // A write can be acknowledged after this GET reads the server but before it returns.
+        let current = pending.turns(bot: bot.id, session: conversation.id)
+        let known = Set(current.map(\.id))
+        for turn in atRequest where !known.contains(turn.id) { turn.overlay(on: &rows) }
+        for turn in current { turn.overlay(on: &rows) }
+        return rows.sorted { $0.createdAt < $1.createdAt }
+    }
+
+    func pendingSaves(bot: String, session: String) -> [String: HistorySaveError] {
+        Dictionary(uniqueKeysWithValues: pending.turns(bot: bot, session: session).map { ($0.id.uuidString, saveFailure($0)) })
     }
 
     /// Desktop Bot tags the user's first message with a role block; hide it on the phone too.
@@ -253,9 +316,33 @@ final class LynxceBackend: ChatBackend {
     }
 
     func deleteConversation(_ conversation: ConversationSummary, bot: BotProfile) async throws {
-        let id = conversation.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? conversation.id
-        _ = try await call(.delete, "/api/user/web-chat-sessions/\(id)")
-        sessionBots[conversation.id] = nil
+        try await deleteHistory(session: conversation.id, bot: bot.id)
+    }
+
+    private func deletedConversation() -> AsyncThrowingStream<StreamEvent, Error> {
+        AsyncThrowingStream { $0.finish(throwing: APIError(kind: .rejected, status: 409, message: L("chat.deletionInProgress"))) }
+    }
+
+    private func deleteHistory(session: String, bot: String) async throws {
+        guard !signedOut else { throw CancellationError() }
+        let id = session.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session
+        chat.stop(session)
+        do {
+            try await pending.delete(bot: bot, session: session) {
+                guard !signedOut else { throw CancellationError() }
+                do { _ = try await call(.delete, "/api/user/web-chat-sessions/\(id)") }
+                catch let error as APIError where error.status == 404 {
+                    // Lynxce already has no copy.
+                }
+            }
+            deletionErrors[session] = nil
+        } catch {
+            if !(error is CancellationError), !pending.interruptedDeletions(bot: bot).contains(session) {
+                deletionErrors[session] = (bot, error.localizedDescription)
+            }
+            throw error
+        }
+        sessionBots[session] = nil
     }
 
     func models() async throws -> [ModelOption] {
@@ -273,22 +360,30 @@ final class LynxceBackend: ChatBackend {
     // MARK: Chat
 
     private lazy var chat = CompletionChat(
-        stream: { [unowned self] turn, body, calls, onEvent in
+        stream: { [weak self] turn, body, calls, onEvent in
+            guard let self else { throw CancellationError() }
             if let endpoint = turn.endpoint {
                 try await CompletionChat.streamEndpoint(endpoint, body, calls: &calls, onEvent: onEvent)
             } else {
                 try await streamCompletion(body, calls: &calls, onEvent: onEvent)
             }
         },
-        finished: { [unowned self] turn, sessionId in
-            await sync(sessionId: sessionId, user: turn.user, startedAt: turn.startedAt, answer: turn.answer, thinking: turn.thinking, model: turn.model)
+        finished: { [weak self, pending] turn, sessionId in
+            let receipt = PendingHistory(turn: turn, sessionID: sessionId)
+            // Journal first: the account or visible thread may change during the POST.
+            // Even if the device is full, still try the server and retain the in-memory retry.
+            pending.remember(receipt)
+            guard let self else { throw CancellationError() }
+            do { try await self.save(receipt) }
+            catch { throw self.saveFailure(receipt) }
         }
     )
 
     func send(
-        _ text: String, images: [Data], to bot: BotProfile, conversation: String?,
+        _ text: String, messageId: String, images: [Data], to bot: BotProfile, conversation: String?,
         history: [ChatMessage], model: String?
     ) -> AsyncThrowingStream<StreamEvent, Error> {
+        if let conversation, pending.isDeleted(conversation) { return deletedConversation() }
         let sessionId = conversation ?? Self.sessionPrefix + UUID().uuidString.lowercased()
         // A model the user picked on this phone (their own key, a local server) wins over Lynxce's.
         let endpoint = PhoneModels.shared.endpoint()
@@ -297,15 +392,16 @@ final class LynxceBackend: ChatBackend {
         let body = Self.chatBody(
             text: text, images: images, bot: bot, history: history, sessionId: sessionId, model: model, tools: tools
         )
-        let turn = CompletionChat.Turn(body: body, user: text, startedAt: Date(), model: model, endpoint: endpoint)
-        let announce: (() -> Void)? = conversation == nil ? { [unowned self] in sessionBots[sessionId] = bot.id } : nil
+        let turn = CompletionChat.Turn(body: body, user: text, startedAt: Date(), model: model, endpoint: endpoint, botID: bot.id)
+        let announce: (() -> Void)? = conversation == nil ? { [weak self] in self?.sessionBots[sessionId] = bot.id } : nil
         return chat.start(turn, sessionId: sessionId, announce: announce)
     }
 
     func resume(
         _ pause: HitlPause, decisions: [[String: Any]], conversation: String, bot: BotProfile
     ) -> AsyncThrowingStream<StreamEvent, Error> {
-        chat.resume(pause, decisions: decisions, conversation: conversation)
+        guard !pending.isDeleted(conversation) else { return deletedConversation() }
+        return chat.resume(pause, decisions: decisions, conversation: conversation)
     }
 
     func openPause(in conversation: ConversationSummary) -> HitlPause? { nil }
@@ -375,7 +471,7 @@ final class LynxceBackend: ChatBackend {
             request.timeoutInterval = 300
             let (bytes, response): (URLSession.AsyncBytes, URLResponse)
             do {
-                (bytes, response) = try await HTTP.session.bytes(for: request)
+                (bytes, response) = try await HTTP.session.bytes(for: request, delegate: NoAPIRedirect())
             } catch {
                 if Task.isCancelled { throw CancellationError() }
                 throw APIError.network
@@ -433,23 +529,29 @@ final class LynxceBackend: ChatBackend {
         return tags.contains { $0 == APIError.creditsRequired.lowercased() || $0.contains("insufficient") }
     }
 
-    /// Append the finished turn to the synced Lynxce session (idempotent on the server).
-    private func sync(sessionId: String, user: String, startedAt: Date, answer: String, thinking: String, model: String?) async {
-        var items: [[String: Any]] = [["role": "user", "content": String(user.prefix(20_000)), "createdAt": ISO8601.string(startedAt)]]
-        let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            var reply: [String: Any] = ["role": "assistant", "content": String(trimmed.prefix(40_000)), "createdAt": ISO8601.string(.now)]
-            if !thinking.isEmpty { reply["thinking"] = String(thinking.prefix(20_000)) }
-            if let model { reply["model"] = model }
-            items.append(reply)
+    struct HistorySaveError: LocalizedError {
+        var receiptID: String?
+        var generationStatus: MessageStatus = .done
+        var isPending: @MainActor () -> Bool = { true }
+        var canRetry: @MainActor () -> Bool = { true }
+        let retry: @MainActor () async throws -> Void
+        var errorDescription: String? { L("chat.historySaveFailed") }
+    }
+
+    private func saveFailure(_ turn: PendingHistory) -> HistorySaveError {
+        HistorySaveError(receiptID: turn.id.uuidString, generationStatus: turn.status, isPending: { [pending] in pending.isPending(turn) }, canRetry: { [pending] in pending.canRetry(turn) }) { [weak self] in
+            guard let self else { throw CancellationError() }
+            try await self.save(turn)
         }
-        let title = String(user.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
-        let id = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
-        _ = try? await call(.post, "/api/user/web-chat-sessions/\(id)/items", json: [
-            "title": title.isEmpty ? "Octop Bot" : title,
-            "model": model ?? "auto",
-            "items": items,
-        ])
+    }
+
+    private func save(_ turn: PendingHistory) async throws {
+        guard !signedOut else { throw CancellationError() }
+        let id = turn.sessionID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? turn.sessionID
+        try await pending.write(turn) { [self] in
+            guard !signedOut else { throw CancellationError() }
+            _ = try await call(.post, "/api/user/web-chat-sessions/\(id)/items", json: turn.body)
+        }
     }
 
     func stop(conversation: String, bot: BotProfile) async {
@@ -554,8 +656,8 @@ final class LynxceBackend: ChatBackend {
     }
 
     /// Report a StoreKit transaction; Lynxce verifies it with Apple and credits the wallet once.
-    func submitTransaction(_ signedTransaction: String) async throws {
-        _ = try await call(.post, "/api/billing/apple/transactions", json: ["signedTransaction": signedTransaction], iap: true)
+    func submitTransaction(_ signedTransaction: String) async throws -> CreditReceipt {
+        try CreditReceipt(await call(.post, "/api/billing/apple/transactions", json: ["signedTransaction": signedTransaction], iap: true))
     }
 
     /// App Store rule 5.1.1(v): accounts created in the app can be deleted in the app. Lynxce keeps a
@@ -566,8 +668,9 @@ final class LynxceBackend: ChatBackend {
     }
 
     func signOut() async {
+        signedOut = true
         chat.cancelAll()
+        Keychain.replace(grant, with: nil, for: Self.grantKey)
         _ = try? await Self.call(.post, "/api/auth/logout", bearer: grant.accessToken, json: [:])
-        Keychain.set(nil, for: Self.grantKey)
     }
 }

@@ -476,4 +476,10 @@ async def _sign_in(
         if user is None:
             _failures.setdefault(ip, []).append(time.time())
             raise OctopError.localized(ErrorCode.LYNXCE_OWNER_MISMATCH, status=403)
-    return _issue(server, user, "auth.lynxce_login")
+        previous_avatar = binding.avatar_url if binding else None
+        avatar = previous_avatar if identity.avatar_url is None else identity.avatar_url or None
+        if avatar != previous_avatar:
+            await asyncio.to_thread(bind_owner, settings, identity.account_id, user.id, avatar)
+    issued = _issue(server, user, "auth.lynxce_login")
+    issued["user"]["avatar_url"] = avatar
+    return issued

@@ -18,10 +18,10 @@
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="preload" href="data/pricing.json?v=2" as="fetch" crossorigin>
-  <link rel="stylesheet" href="assets/site.css?v=21">
-  <script src="assets/auth.js?v=3" defer></script>
-  <script src="assets/site.js?v=account-public-1" defer></script>
-  <script src="assets/pricing.js?v=10" defer></script>
+  <link rel="stylesheet" href="assets/site.css?v=account-avatar-1">
+  <script src="assets/auth.js?v=4" defer></script>
+  <script src="assets/site.js?v=platform-releases-3" defer></script>
+  <script src="assets/pricing.js?v=11" defer></script>
 </head>
 <body>
   <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
@@ -145,6 +145,7 @@
         <button type="button" data-tab="image" aria-pressed="false" data-en="Images">作图</button>
         <button type="button" data-tab="video" aria-pressed="false" data-en="Video">视频</button>
       </div>
+      <p class="muted" id="catalog-source" aria-live="polite"></p>
       <div class="model-table"><table><thead><tr id="model-head"></tr></thead><tbody id="model-body"></tbody></table></div>
     </section>
 

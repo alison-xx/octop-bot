@@ -55,7 +55,8 @@ import {
 import BotAboutPanel from "./BotAboutPanel";
 import { formatCredits, useLynxceCredits } from "./useLynxceCredits";
 import { useBotServerInfo } from "./useBotServerInfo";
-import { accountInitials } from "../Chat/utils/accountDisplayName";
+import { LynxceAccountAvatar } from "../../components/LynxceAccountAvatar";
+import { useLynxceAccount } from "../../context/LynxceAccountContext";
 import styles from "./index.module.less";
 import settings from "./BotClientSettings.module.less";
 import ModelName from "./ModelName";
@@ -64,8 +65,6 @@ import type { OwnKeyList } from "../../api/modules/ownModelKeys";
 import sourcesUi from "./modelSources.module.less";
 import menuStyles from "./accountMenu.module.less";
 import lynxceLogo from "../../assets/providers/lynxce.png";
-import { botCloudApi } from "../../api/modules/botCloud";
-import { ProfileAvatar } from "../Admin/Users/ProfileAvatar";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
 
 type SettingsTab =
@@ -128,24 +127,7 @@ export default function BotClientSettings() {
   const account = useLynxceStatus(!web);
   const credits = useLynxceCredits();
   const cloudEdition = useBotServerInfo()?.edition === "cloud";
-  const [cloudAccount, setCloudAccount] = useState<{
-    display_name: string | null;
-    account_id: string | null;
-    avatar_url?: string | null;
-  } | null>(null);
-  useEffect(() => {
-    if (web) return;
-    let active = true;
-    botCloudApi
-      .account()
-      .then((result) => {
-        if (active && result.connected) setCloudAccount(result);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [web]);
+  const cloudAccount = useLynxceAccount();
   const displayName =
     cloudAccount?.display_name ||
     cloudAccount?.account_id ||
@@ -404,19 +386,15 @@ export default function BotClientSettings() {
                 <div className={menuStyles.cardWho}>
                   <span className={menuStyles.avatarWrap} data-size="large">
                     {lynxceSignedIn || cloudEdition ? (
-                      cloudAccount?.avatar_url ||
-                      user?.avatar_url ||
-                      user?.avatar_icon ? (
-                        <ProfileAvatar
-                          className={menuStyles.avatar}
-                          url={cloudAccount?.avatar_url || user?.avatar_url}
-                          icon={user?.avatar_icon}
-                        />
-                      ) : (
-                        <span className={menuStyles.avatar}>
-                          {accountInitials(displayName)}
-                        </span>
-                      )
+                      <LynxceAccountAvatar
+                        key={cloudAccount?.account_id}
+                        name={displayName}
+                        url={
+                          cloudAccount
+                            ? cloudAccount.avatar_url
+                            : user?.avatar_url
+                        }
+                      />
                     ) : (
                       <span className={menuStyles.avatar} data-chief>
                         <BotCharacter

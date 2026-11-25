@@ -531,6 +531,10 @@ class UserManager:
         self._services.audit_repo.write(actor=row.username, action="auth.login")
         return user
 
+    def revoke_sessions(self, user_id: int) -> None:
+        """Invalidate the user's existing access sessions."""
+        self._services.user_repo.bump_session_version(user_id)
+
     async def change_password(self, username: str, old: str, new: str) -> None:
         row = self._services.user_repo.get_by_username(username)
         if row is None:

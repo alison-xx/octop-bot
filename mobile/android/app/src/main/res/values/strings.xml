@@ -98,6 +98,7 @@
     <string name="chat_failed">Reply failed</string>
     <string name="chat_read_aloud">Read aloud</string>
     <string name="chat_retry">Retry</string>
+    <string name="chat_load_earlier">Load earlier messages</string>
     <string name="chat_jump_latest">Jump to latest</string>
     <string name="chat_listening">Listening…</string>
     <string-array name="suggestions_default">
@@ -138,6 +139,7 @@
     <!-- Bot picker and editor -->
     <string name="bot_new">New Bot</string>
     <string name="bot_edit">Edit look</string>
+    <string name="home_no_match">No matching bots or groups</string>
     <string name="home_search">Search</string>
     <string name="bot_edit_title">Edit Bot</string>
     <string name="bot_name">Name</string>
@@ -548,7 +550,13 @@
     <string name="bot_preparing">Getting ready…</string>
     <string name="bot_preparing_chat">This Bot is getting ready…</string>
     <string name="bot_start_failed">Couldn\'t start</string>
+    <string name="checkout_balance_increased">Balance increased by %1$s credits. Current balance: %2$s.</string>
     <string name="signup_credit_notice">%1$s trial credits have been added for use in Octop.</string>
     <string name="signup_credit_expiry">Trial credit expiry: %1$s (UTC)</string>
     <string name="signup_credit_notice_until">%1$s trial credits added for use in Octop. Expires on %2$s (UTC).</string>
+    <string name="history_reauthenticate">Sign in to Octop Bot Cloud to recover conversations saved under your Lynxce account.</string>
+    <string name="history_restore">Recover earlier conversations</string>
+    <string name="history_restored">Earlier conversations are now available.</string>
+    <string name="history_restore_incomplete">Some earlier records could not be recovered. You can try again.</string>
+    <string name="history_restore_retry">Recovery could not finish. Try again in Conversations.</string>
 </resources>

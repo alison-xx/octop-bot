@@ -9,9 +9,42 @@ protocol CreditAccount: AnyObject {
     func wallet() async throws -> Wallet
     func creditPacks() async throws -> (packs: [LynxceBackend.CreditPack], enabled: Bool)
     func purchaseIntent(packId: String) async throws -> (productId: String, accountToken: UUID)
-    func submitTransaction(_ signedTransaction: String) async throws
+    func submitTransaction(_ signedTransaction: String) async throws -> CreditReceipt
     /// Delete the Lynxce account; returns the cooling-off days when the server says.
     func requestDeletion() async throws -> Int?
+}
+
+/// Lynxce returns the identifiers it verified against Apple's signed transaction.
+struct CreditReceipt {
+    enum Result { case credited, recorded, reversed, suppressed, retry }
+    let transactionId: String
+    let productId: String
+    let result: Result
+
+    init(_ data: Any) throws {
+        guard let body = data as? [String: Any],
+              let transactionId = body["transactionId"] as? String,
+              let productId = body["productId"] as? String,
+              let outcome = body["outcome"] as? [String: Any],
+              let status = outcome["status"] as? String
+        else { throw APIError(kind: .server, status: 502, message: nil) }
+        self.transactionId = transactionId
+        self.productId = productId
+        guard let order = outcome["orderId"] as? String, !order.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            result = .retry
+            return
+        }
+        switch status {
+        case "fulfilled":
+            result = outcome["creditsSuppressed"] is String ? .suppressed : .credited
+        case "duplicate":
+            result = .recorded
+        case "revoked":
+            result = .reversed
+        default:
+            result = .retry
+        }
+    }
 }
 
 /// Only a new-account login can issue a signup grant. Restored sessions never replay it.
@@ -56,6 +89,15 @@ extension ServerBackend: CreditAccount {
         guard isCloud else { throw APIError(kind: .rejected, status: 404, message: nil) }
     }
 
+    /// A user-selected server can identify itself as cloud, but only the official service
+    /// may issue Apple account tokens and acknowledge delivery of a signed transaction.
+    var supportsAppStorePurchases: Bool {
+        let url = session.baseURL
+        return isCloud && url.scheme?.lowercased() == "https" && url.host()?.lowercased() == Self.lynxceCloud.host()
+            && (url.port == nil || url.port == 443) && url.user() == nil && url.password() == nil
+            && (url.path().isEmpty || url.path() == "/") && url.query() == nil && url.fragment() == nil
+    }
+
     func wallet() async throws -> Wallet {
         try requireCloud()
         guard let body = try await json(.get, "/api/octop-bot/wallet", query: ["source": "cloud"]) as? [String: Any],
@@ -66,18 +108,18 @@ extension ServerBackend: CreditAccount {
     }
 
     func creditPacks() async throws -> (packs: [LynxceBackend.CreditPack], enabled: Bool) {
-        try requireCloud()
+        guard supportsAppStorePurchases else { return ([], false) }
         return LynxceBackend.creditPacks(from: try await json(.get, "/api/octop-bot/wallet/packs"))
     }
 
     func purchaseIntent(packId: String) async throws -> (productId: String, accountToken: UUID) {
-        try requireCloud()
+        guard supportsAppStorePurchases else { throw APIError(kind: .rejected, status: 403, message: nil) }
         return try LynxceBackend.intent(from: try await json(.post, "/api/octop-bot/wallet/apple/intent", json: ["package_id": packId]))
     }
 
-    func submitTransaction(_ signedTransaction: String) async throws {
-        try requireCloud()
-        _ = try await json(.post, "/api/octop-bot/wallet/apple/transaction", json: ["signed_transaction": signedTransaction])
+    func submitTransaction(_ signedTransaction: String) async throws -> CreditReceipt {
+        guard supportsAppStorePurchases else { throw APIError(kind: .rejected, status: 403, message: nil) }
+        return try CreditReceipt(await json(.post, "/api/octop-bot/wallet/apple/transaction", json: ["signed_transaction": signedTransaction]))
     }
 
     func requestDeletion() async throws -> Int? {
