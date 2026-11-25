@@ -2945,6 +2945,7 @@
     "toolUiDockedOpen": "Open side panel",
     "pluginUiNotInstalled": "This plugin is not installed on this machine. Showing the returned data only.",
     "loadEarlierMessages": "Load earlier messages",
+    "threadSettingsLoadFailed": "Unable to load this conversation’s settings. Retry to continue chatting.",
     "historyLoadFailed": "History could not be loaded. Existing messages have been kept. Please retry.",
     "historyRetry": "Retry",
     "creatingSession": "Creating session…",

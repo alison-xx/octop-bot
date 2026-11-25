@@ -70,7 +70,7 @@ export function useChatComposerResources(
   stickyModel?: string | null,
   stickyReasoningMode?: "auto" | "enabled" | "disabled" | null,
   stickyReasoningEffort?: string | null,
-  stickyConversationMode?: ConversationMode | null,
+  stickyConversationMode?: string | null,
   stickyHitlPolicy?: HitlSessionPolicy | null,
   stickySessionMode?: string | null,
   persistThreadSettings = true,
@@ -237,13 +237,12 @@ export function useChatComposerResources(
     conversationOverrides,
   ]);
 
+  const restoredConversationMode = isNewSession
+    ? expertDefaultMode
+    : parseConversationMode(stickyConversationMode);
   useEffect(() => {
-    setConversationMode(
-      isNewSession
-        ? expertDefaultMode
-        : parseConversationMode(stickyConversationMode),
-    );
-  }, [isNewSession, stickyConversationMode, activeThreadId, expertDefaultMode]);
+    setConversationMode(restoredConversationMode);
+  }, [activeThreadId, restoredConversationMode]);
 
   useEffect(() => {
     setHitlPolicy(
@@ -263,21 +262,13 @@ export function useChatComposerResources(
     sessionModes[0]?.id ||
     "";
 
+  const restoredSessionMode =
+    expert?.kind === "managed"
+      ? (!isNewSession && stickySessionMode?.trim()) || expertSessionMode
+      : "";
   useEffect(() => {
-    if (expert?.kind !== "managed") {
-      setSessionMode("");
-      return;
-    }
-    const sticky =
-      !isNewSession && stickySessionMode ? stickySessionMode.trim() : "";
-    setSessionMode(sticky || expertSessionMode);
-  }, [
-    expert?.kind,
-    isNewSession,
-    stickySessionMode,
-    activeThreadId,
-    expertSessionMode,
-  ]);
+    setSessionMode(restoredSessionMode);
+  }, [activeThreadId, restoredSessionMode]);
 
   useEffect(() => {
     if (agentsLoading) return;
@@ -743,6 +734,9 @@ export function useChatComposerResources(
     reasoningEffort,
     handleReasoningChange,
     conversationMode,
+    threadModesReady:
+      conversationMode === restoredConversationMode &&
+      sessionMode === restoredSessionMode,
     handleConversationModeChange,
     hitlPolicy,
     handleHitlPolicyChange,

@@ -5,6 +5,39 @@ import i18n from "i18next";
 import { useChatSend } from "./useChatSend";
 
 describe("workspace model routing", () => {
+  it.each(["ask", "plan"] as const)(
+    "waits for the deep thread before sending in %s mode",
+    (mode) => {
+      const sendMessage = vi.fn();
+      const { result, rerender } = renderHook(
+        ({ ready }) =>
+          useChatSend({
+            activeThreadReady: ready,
+            activeThreadId: "older",
+            resolvedAgentId: "agent",
+            conversationMode: ready ? mode : "craft",
+            selectedModel: null,
+            selectedConnectors: ["saved-connector"],
+            selectedKnowledgeBaseIds: [],
+            reasoningMode: "auto",
+            reasoningEffort: null,
+            defaultModel: null,
+            sendMessage,
+            createSession: vi.fn(),
+            t: i18n.t,
+          }),
+        { initialProps: { ready: false }, wrapper: MemoryRouter },
+      );
+      expect(result.current.handleSend("continue")).toBe(false);
+      expect(sendMessage).not.toHaveBeenCalled();
+      rerender({ ready: true });
+      expect(result.current.handleSend("continue")).toBe(true);
+      expect(sendMessage.mock.calls[0][4]).toBe("older");
+      expect(sendMessage.mock.calls[0][6]).toEqual([]);
+      expect(sendMessage.mock.calls[0][12]).toBe(mode);
+    },
+  );
+
   it.each([true, false])(
     "honors the active source for new and previously queued sends (personal account: %s)",
     (personal) => {
