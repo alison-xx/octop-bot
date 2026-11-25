@@ -606,27 +606,33 @@
   }
 
   loadPlans();
-  // The local snapshot supplies estimates without waiting for the cross-origin catalog.
-  const localCatalog = getJson("data/pricing-catalog.json").then((body) => {
-    catalog = body.data;
-    updateEstimates();
-  }).catch(() => {});
-
-  async function showRates() {
-    ratesVisible = true;
-    await localCatalog;
-    renderRates();
+  function showCatalog(data, fromLive) {
+    if (liveCatalog && !fromLive) return;
+    if (![data?.textModels, data?.imageModels, data?.videoModels].every((rows) => Array.isArray(rows) && rows.every((r) => typeof r?.modelId === "string"))) return;
+    if (!data.textModels.every((r) => [r.description, r.pricingDescription].every((v) => v == null || typeof v === "string"))) return;
+    const previous = catalog;
+    catalog = data;
+    liveCatalog = fromLive;
     try {
-      const live = await getJson(CATALOG_URL, 5000);
-      if (live?.code === 0 && Array.isArray(live.data?.textModels)) {
-        liveCatalog = true;
-        catalog = live.data;
-        updateEstimates();
-        renderRates();
-      }
+      updateEstimates();
+      renderRates();
     } catch {
-      // The local snapshot remains available.
+      catalog = previous;
+      liveCatalog = false;
+      updateEstimates();
+      renderRates();
     }
+  }
+
+  // The snapshot supplies estimates immediately. Once the table is visible, either source may finish first.
+  getJson("data/pricing-catalog.json").then((body) => showCatalog(body.data, false)).catch(() => {});
+
+  function showRates() {
+    ratesVisible = true;
+    renderRates();
+    getJson(CATALOG_URL, 5000).then((body) => {
+      if (body?.code === 0) showCatalog(body.data, true);
+    }).catch(() => {});
   }
   if ("IntersectionObserver" in window) {
     const observer = new IntersectionObserver(([entry]) => {
