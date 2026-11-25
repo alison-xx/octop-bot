@@ -213,6 +213,77 @@
     "missingCode": "请输入 6 位验证码",
     "missingPassword": "请输入密码"
   },
+  "botPreview": {
+    "workspace": "Bot 工作区预览",
+    "newChat": "新建会话",
+    "rooms": "示例群聊",
+    "team": "我的团队",
+    "signIn": "登录",
+    "scenarios": "切换演示场景",
+    "demo": "示例演示",
+    "previous": "上一个场景",
+    "play": "继续轮播",
+    "pause": "暂停轮播",
+    "next": "下一个场景",
+    "computer": "云电脑 · 屏幕预览",
+    "openComputer": "接管云电脑",
+    "composer": "给团队发消息…",
+    "scenes": {
+      "retail": {
+        "title": "电商经营复盘",
+        "agent": "数据分析 Bot",
+        "question": "这周退货最多的是哪款？明天先改什么？",
+        "dispatch": "我让数据分析 Bot 在云电脑里汇总了本周退货单。",
+        "answer": "轻量外套退货 24 件，其中 15 件反馈尺码偏小。建议先在详情页补一张实测尺码表。",
+        "file": "退货复盘.xlsx",
+        "sheet": "本周退货原因汇总",
+        "rows": "商品|退货件数|主要原因\n轻量外套|24|尺码偏小 · 15 件\n通勤托特包|11|色差 · 6 件\n帆布鞋|8|鞋面偏硬 · 4 件",
+        "result": "查看退货复盘表",
+        "nextStep": "明天先给轻量外套补尺码表。下周复盘时，单独看这款因尺码退货的占比有没有降。"
+      },
+      "sales": {
+        "title": "销售跟进晨会",
+        "agent": "销售助理 Bot",
+        "question": "今天先回哪三条询盘？把下一步也列出来。",
+        "dispatch": "我让销售助理按样品确认、报价和交期排了优先级。",
+        "answer": "先联系 Northline，他们今天要确认 300 套订单的交期。另两条询盘分别需要补报价和确认规格。",
+        "file": "询盘跟进.xlsx",
+        "sheet": "今日优先跟进",
+        "rows": "客户|当前阶段|下一步\nNorthline|样品确认|回复 300 套交期\nAtlas Studio|二次报价|补阶梯报价\nMori Supply|规格确认|发送尺寸图",
+        "result": "查看跟进清单",
+        "nextStep": "我把三家的待回复问题放进了同一张清单，上午跟进时按这个顺序就行。"
+      },
+      "launch": {
+        "title": "新品上线协作",
+        "agent": "项目协调 Bot",
+        "question": "周五上线还有什么会卡住？给我负责人和截止时间。",
+        "dispatch": "我请项目协调 Bot 对了一遍上线清单和各组依赖。",
+        "answer": "有两项会影响上线：支付回归要等测试数据，英文版落地页还缺两张图。都已标出负责人和最晚时间。",
+        "file": "上线检查表.xlsx",
+        "sheet": "周五上线 · 依赖检查",
+        "rows": "事项|负责人|最晚完成\n支付回归|测试组|周三 15:00\n落地页配图|设计组|周四 12:00\n版本说明|产品组|已完成",
+        "result": "查看上线检查表",
+        "nextStep": "先请测试组在周三 15:00 前确认支付回归，再请设计组周四中午前交图。两项都完成后就可以复核上线。"
+      }
+    }
+  },
+  "botWebLogin": {
+    "notReady": "待开通",
+    "checking": "检查中",
+    "title": "登录 Octop Bot",
+    "submit": "登录",
+    "intro": "使用灵策账号，继续与云端 Bot 对话。",
+    "method": "登录方式",
+    "codeMode": "验证码登录",
+    "passwordMode": "密码登录",
+    "signupHint": "首次使用的手机号或邮箱将在验证后注册。",
+    "cancelled": "已取消授权，可以重新登录或选择其他方式。",
+    "expired": "这次授权已失效，请从本页重新登录。",
+    "unavailable": "暂时无法连接授权服务，请使用验证码或密码登录。",
+    "waiting": "正在连接授权服务…",
+    "bindFailed": "绑定未完成，请核对验证码；过期后请重新扫码。",
+    "sendFailed": "验证码发送失败，请稍后重试。"
+  },
   "botOnboarding": {
     "chiefName": "Chief",
     "desktopBody": "Chief 是你的八爪鱼助手，可以帮你组建 Bot 团队、分工协作。连接一个聊天模型就能开始，不需要注册本机账号。",
@@ -482,6 +553,14 @@
       "appearanceHint": "选择界面的显示主题。",
       "languageHint": "选择界面使用的语言。"
     }
+  },
+  "computerPlacement": {
+    "default": "默认执行位置",
+    "turn": "这条消息在哪做",
+    "auto": "自动",
+    "cloud": "云电脑",
+    "local": "这台电脑",
+    "failed": "设置保存失败。"
   },
   "octopBot": {
     "ask": {
@@ -871,8 +950,11 @@
     "NOT_FOUND": "未找到。",
     "USER_DISABLED": "账号已禁用。",
     "LOGIN_LOCKED": "登录失败次数过多，请 {{minutes}} 分钟后再试。",
+    "RATE_LIMITED": "请求过于频繁，请稍后再试。",
     "USERNAME_TAKEN": "用户名已被占用。",
     "EMAIL_TAKEN": "邮箱已被占用。",
+    "BOT_PLAN_UNAVAILABLE": "暂不支持购买会员套餐。",
+    "BOT_RECHARGE_RATE_LIMITED": "充值请求太频繁，请稍后再试。",
     "EMAIL_INVALID": "邮箱格式不正确。",
     "PASSWORD_SAME_AS_OLD": "新密码不能与当前密码相同。",
     "PASSWORD_NOT_SET": "该账号通过目录服务登录，没有可修改的本地密码。",
@@ -2874,6 +2956,7 @@
     "toolUiDockedOpen": "打开侧栏",
     "pluginUiNotInstalled": "本机未安装该插件，仅展示数据",
     "loadEarlierMessages": "加载更早的消息",
+    "threadSettingsLoadFailed": "会话设置加载失败，请重试后继续聊天。",
     "historyLoadFailed": "历史记录加载失败，已显示的消息仍然保留。请重试。",
     "historyRetry": "重试",
     "creatingSession": "正在创建会话，请稍候",
@@ -9169,6 +9252,7 @@
     "download": "下载 {{name}}"
   },
   "botCredits": {
+    "balanceIncreased": "余额增加了 {{added}} 积分，当前余额 {{value}}。",
     "title": "积分与充值",
     "menu": "积分与充值",
     "menuHint": "余额、充值和用量",
@@ -9329,6 +9413,8 @@
     }
   },
   "botTask": {
+    "redoStep": "从这一步重做",
+    "redoDraft": "请从「{{step}}」这一步重做。用 task_read_step 读取步骤记录，编号是 {{checkpoint}}。核对目前的结果，再决定需要重做的部分。任何对外操作都请重新向我确认。",
     "label": "任务：{{goal}}",
     "deep": "深度",
     "steps": "{{done}}/{{total}} 步",
@@ -9360,8 +9446,14 @@
     "hideReview": "收起",
     "deliverables": "产物",
     "checked": "已检查：{{facts}}",
-    "opens": "能打开",
+    "noCheckRecord": "暂无检查记录",
+    "openFailed": "无法打开 {{name}}，本次未交付。",
+    "checkFailed": "{{name}} 未通过检查，本次未交付。",
     "fact": {
+      "filenameOnly": "仅文件名",
+      "nonempty": "文件非空",
+      "validJson": "JSON 格式有效",
+      "opened": "LibreOffice 已打开",
       "pages": "{{count}} 页",
       "rows": "{{count}} 行数据",
       "sheets": "{{count}} 个工作表",

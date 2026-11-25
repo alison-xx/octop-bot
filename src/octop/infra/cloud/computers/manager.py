@@ -23,6 +23,7 @@ from datetime import date, datetime, timedelta, timezone
 from datetime import time as daytime
 from typing import TYPE_CHECKING, Any, Literal
 
+from octop.infra.cloud.computers import DiskBalanceInsufficient
 from octop.infra.cloud.computers.driver import AgsConfig, AgsDriver, ComputerDriver, Spec
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -169,6 +170,8 @@ class ComputerRecord:
     # The user has the mouse and keyboard; the Bot waits until it is handed back. It only
     # holds while the screen is watched (see ``controlled``).
     takeover: bool = False
+    # The next model-visible frame after human input must be checked for password controls.
+    check_handoff_frame: bool = False
     # Last time someone was watching the screen; a watched computer is not idle.
     viewed_at: float = 0.0
     unsettled: list[Unsettled] = field(default_factory=list)
@@ -177,12 +180,22 @@ class ComputerRecord:
     # The Beijing day the disk is paid for, and when to retry a disk charge that failed.
     disk_paid_day: str = ""
     disk_failed_day: str = ""
+    disk_insufficient_day: str = ""  # Last day Lynxce confirmed insufficient credits.
     disk_retry_at: float = 0.0
     reminded_at: float | None = None
     reclaim_reason: Literal["idle", "unpaid"] | None = None
     reclaim_at: float | None = None
     reclaim_seen_at: float | None = None
     reclaim_unpaid_since: str = ""
+
+    def clear_disk_arrears(self) -> None:
+        self.disk_failed_day = ""
+        self.disk_insufficient_day = ""
+        self.reclaim_unpaid_since = ""
+        if self.reclaim_reason == "unpaid":
+            self.reminded_at = None
+            self.reclaim_reason = None
+            self.reclaim_at = None
 
     def controlled(self, now: float) -> bool:
         """Taken over and still watched: a closed tab or a phone that left hands it back."""
@@ -191,6 +204,7 @@ class ComputerRecord:
     @classmethod
     def load(cls, raw: str) -> ComputerRecord:
         data = json.loads(raw)
+        data.setdefault("check_handoff_frame", bool(data.get("takeover")))
         data["reservations"] = [Reservation(**r) for r in data.get("reservations", [])]
         data["unsettled"] = [
             Unsettled(
@@ -199,7 +213,11 @@ class ComputerRecord:
             for u in data.get("unsettled", [])
         ]
         known = set(cls.__dataclass_fields__)
-        return cls(**{k: v for k, v in data.items() if k in known})
+        record = cls(**{k: v for k, v in data.items() if k in known})
+        if "disk_insufficient_day" not in data:
+            # Older records counted upstream and authentication errors as unpaid days.
+            record.clear_disk_arrears()
+        return record
 
     def dump(self) -> str:
         return json.dumps(asdict(self))
@@ -450,11 +468,17 @@ class ComputerManager:
         idle_days = max(0, int((now - last) // 86400)) if last else 0
         if not record.instance_id:
             return idle_days, None, None
-        if record.reminded_at is not None and record.reclaim_at is not None:
+        confirmed_today = self._unpaid_confirmed(record, now)
+        if record.reclaim_reason == "unpaid" and disk_billing_enabled() and not confirmed_today:
+            # A day rollover can precede the next scheduled debit. Preserve the actual notice
+            # and require a fresh balance decision before the reaper can act on its deadline.
+            return idle_days, None, None
+        valid_notice = record.reclaim_reason != "unpaid" or confirmed_today
+        if valid_notice and record.reminded_at is not None and record.reclaim_at is not None:
             state = "pending_reclaim" if now >= record.reclaim_at else "reminded"
             return idle_days, state, record.reclaim_at
         failed_day = record.reclaim_unpaid_since or record.disk_failed_day
-        if failed_day:
+        if confirmed_today and failed_day:
             first = date.fromisoformat(failed_day)
             overdue = (date.fromisoformat(beijing_day(now)) - first).days + 1
             if overdue >= 23:
@@ -464,8 +488,14 @@ class ComputerManager:
                 return idle_days, "pending_reclaim" if now >= deadline else "reminded", deadline
         if not record.running and last and idle_days >= 30:
             deadline = last + 37 * 86400
+            if not valid_notice:
+                deadline = max(deadline, now + 7 * 86400)
             return idle_days, "pending_reclaim" if now >= deadline else "reminded", deadline
         return idle_days, None, None
+
+    @staticmethod
+    def _unpaid_confirmed(record: ComputerRecord, now: float) -> bool:
+        return disk_billing_enabled() and record.disk_insufficient_day == beijing_day(now)
 
     def _reclaim_tick(self, agent_id: str, user_id: int, now: float) -> None:
         with self._lock(agent_id):
@@ -475,11 +505,20 @@ class ComputerManager:
             if not record.active_at and not record.started_at and record.reclaim_seen_at is None:
                 record.reclaim_seen_at = now
                 self._save(record)
+            if record.reclaim_reason == "unpaid" and not disk_billing_enabled():
+                # An idle reclaim needs its own delivered warning and full grace period.
+                self._cancel_reclaim(record)
+                self._save(record)
             _, state, deadline = self.reclaim_status(record)
             if not reclaim_enabled() or state is None:
                 return
             if record.reminded_at is not None:
                 if state == "pending_reclaim" and not self._busy.get(agent_id, 0):
+                    if record.reclaim_reason == "unpaid":
+                        # Wait for a balance decision at or after the reclaim deadline.
+                        last_check = record.disk_retry_at - DISK_RETRY_SECONDS
+                        if not disk_billing_enabled() or deadline is None or last_check < deadline:
+                            return
                     self._release(agent_id, user_id)
                 return
             failed_day = record.reclaim_unpaid_since or record.disk_failed_day
@@ -488,7 +527,9 @@ class ComputerManager:
                 if failed_day
                 else 0
             )
-            record.reclaim_reason = "unpaid" if overdue >= 23 else "idle"
+            record.reclaim_reason = (
+                "unpaid" if self._unpaid_confirmed(record, now) and overdue >= 23 else "idle"
+            )
             # A delayed reaper or unavailable notification must still allow seven days.
             deadline = max(deadline or now, now + 7 * 86400)
         # Delivery runs on the server event loop; never hold the computer lock while waiting.
@@ -842,8 +883,8 @@ class ComputerManager:
         if record.instance_id and self._driver.state(record.instance_id) == "gone":
             self._lost(record.agent_id, record.user_id)
             return
-        if record.takeover and not record.controlled(now):
-            self.set_takeover(record.agent_id, record.user_id, False)  # no one is watching
+        if record.takeover:
+            record = self._viewer_record(record.agent_id, record.user_id)
         busy = self._busy.get(record.agent_id, 0) > 0
         watched = now - record.viewed_at < VIEWER_GRACE_SECONDS
         if not (busy or watched) and now - record.active_at >= IDLE_PAUSE_SECONDS:
@@ -892,17 +933,18 @@ class ComputerManager:
                 return
             try:
                 self._billing.charge_disk(record, day, size)
-            except Exception:  # noqa: BLE001 - out of credits (402), unpriced (503) or Lynxce down
+            except Exception as exc:  # noqa: BLE001 - retry transient billing failures as well
                 logger.info("disk of computer %s not paid for %s; retrying later", agent_id, day)
-                record.disk_failed_day = record.disk_failed_day or day
+                if isinstance(exc, DiskBalanceInsufficient):
+                    record.disk_failed_day = record.disk_failed_day or day
+                    record.disk_insufficient_day = day
+                else:
+                    record.clear_disk_arrears()
                 record.disk_retry_at = now + DISK_RETRY_SECONDS
                 self._save(record)
                 return
-            if record.reclaim_reason == "unpaid":
-                self._cancel_reclaim(record)
-            record.reclaim_unpaid_since = ""
+            record.clear_disk_arrears()
             record.disk_paid_day = day
-            record.disk_failed_day = ""
             record.disk_retry_at = 0.0
             self._save(record)
 
@@ -1001,9 +1043,21 @@ class ComputerManager:
         self.viewing(agent_id, user_id)
         return self._driver.screen(instance)
 
-    def viewing(self, agent_id: str, user_id: int) -> None:
+    def _viewer_record(self, agent_id: str, user_id: int) -> ComputerRecord:
+        """Read the current lease and finalize an expired handback under the device lock."""
         with self._lock(agent_id):
             record = self.record(agent_id, user_id)
+            now = self._clock()
+            if record.takeover and not record.controlled(now):
+                record.takeover = False
+                record.check_handoff_frame = True
+                record.active_at = now
+                self._save(record)
+            return record
+
+    def viewing(self, agent_id: str, user_id: int) -> None:
+        with self._lock(agent_id):
+            record = self._viewer_record(agent_id, user_id)
             record.viewed_at = record.active_at = self._clock()
             self._cancel_reclaim(record, used=True)
             self._save(record)
@@ -1011,6 +1065,7 @@ class ComputerManager:
     def set_takeover(self, agent_id: str, user_id: int, active: bool) -> ComputerRecord:
         with self._lock(agent_id):
             record = self.record(agent_id, user_id)
+            record.check_handoff_frame |= active or record.takeover
             record.takeover = active
             record.active_at = self._clock()
             self._cancel_reclaim(record, used=True)
@@ -1025,27 +1080,55 @@ class ComputerManager:
             record = self.record(agent_id, user_id)
             if record.takeover:
                 record.takeover = False
+                record.check_handoff_frame = True
                 record.active_at = self._clock()
                 self._save(record)
 
+    def model_screen[T](
+        self,
+        agent_id: str,
+        user_id: int,
+        taken_over: str,
+        work: Callable[[ComputerDriver, str], T],
+        review: Callable[[ComputerDriver, str], tuple[T, bool]],
+    ) -> T | str:
+        """Serialize the model's observation with human takeover and handback."""
+
+        def observe(driver: ComputerDriver, instance: str) -> T | str:
+            with self._lock(agent_id):
+                record = self._viewer_record(agent_id, user_id)
+                if record.takeover:
+                    return taken_over
+                if record.check_handoff_frame:
+                    result, clear = review(driver, instance)
+                    if clear:
+                        record.check_handoff_frame = False
+                        self._save(record)
+                    return result
+                return work(driver, instance)
+
+        return self.use(agent_id, user_id, observe)
+
     def taken_over(self, agent_id: str, user_id: int) -> bool:
-        return self.record(agent_id, user_id).controlled(self._clock())
+        return self._viewer_record(agent_id, user_id).takeover
 
     def _controlled(self, agent_id: str, user_id: int) -> str:
         """The instance the user has taken over; typing and the clipboard need takeover."""
-        record = self.record(agent_id, user_id)
-        if not (record.controlled(self._clock()) and record.running and record.instance_id):
+        record = self._viewer_record(agent_id, user_id)
+        if not (record.takeover and record.running and record.instance_id):
             raise OctopError.localized(ErrorCode.BOT_COMPUTER_NOT_TAKEN_OVER)
         return record.instance_id
 
     def paste_text(self, agent_id: str, user_id: int, text: str) -> None:
-        self._driver.paste_text(self._controlled(agent_id, user_id), text)
-        self.viewing(agent_id, user_id)
+        with self._lock(agent_id):
+            self._driver.paste_text(self._controlled(agent_id, user_id), text)
+            self.viewing(agent_id, user_id)
 
     def read_clipboard(self, agent_id: str, user_id: int) -> str:
-        text = self._driver.read_clipboard(self._controlled(agent_id, user_id))
-        self.viewing(agent_id, user_id)
-        return text
+        with self._lock(agent_id):
+            text = self._driver.read_clipboard(self._controlled(agent_id, user_id))
+            self.viewing(agent_id, user_id)
+            return text
 
     def close(self) -> None:
         """Stop the reaper (server shutdown): it must not touch a closed database."""

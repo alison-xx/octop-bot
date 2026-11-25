@@ -90,6 +90,7 @@ export interface OctopDesktopBridge {
     callback: (action: "search" | "newChat" | "cloud") => void,
   ) => () => void;
   botOnly?: boolean;
+  supportsRechargeReturn?: boolean;
   onOpenBotSettings?: (callback: () => void) => () => void;
   /** OS notification plus dock bounce / taskbar flash. Absent on older shells. */
   notify?: (note: {

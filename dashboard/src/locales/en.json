@@ -213,6 +213,77 @@
     "missingCode": "Enter the 6-digit code",
     "missingPassword": "Enter your password"
   },
+  "botPreview": {
+    "workspace": "Bot workspace preview",
+    "newChat": "New conversation",
+    "rooms": "Demo conversations",
+    "team": "My team",
+    "signIn": "Sign in",
+    "scenarios": "Demo scenarios",
+    "demo": "Demo",
+    "previous": "Previous scenario",
+    "play": "Resume slideshow",
+    "pause": "Pause slideshow",
+    "next": "Next scenario",
+    "computer": "Cloud computer · Preview",
+    "openComputer": "Take control",
+    "composer": "Message the team…",
+    "scenes": {
+      "retail": {
+        "title": "Retail performance",
+        "agent": "Data analyst",
+        "question": "Which product had the most returns? What should we fix first?",
+        "dispatch": "I asked our analyst to summarize the week’s returns on the cloud computer.",
+        "answer": "The lightweight jacket had 24 returns. Fifteen shoppers said it ran small. Add actual garment measurements to the product page first.",
+        "file": "Returns.xlsx",
+        "sheet": "Weekly returns by product",
+        "rows": "Product|Returns|Top reason\nLight jacket|24|Runs small · 15\nCity tote|11|Color mismatch · 6\nCanvas shoes|8|Stiff upper · 4",
+        "result": "View returns report",
+        "nextStep": "Add measured sizes to the jacket page tomorrow. In next week’s review, check whether sizing accounts for a smaller share of its returns."
+      },
+      "sales": {
+        "title": "Sales stand-up",
+        "agent": "Sales assistant",
+        "question": "Which three leads should I reply to today, and what does each need?",
+        "dispatch": "Our sales assistant sorted the inquiries by sample, pricing and delivery decisions.",
+        "answer": "Contact Northline first. They need delivery dates for 300 sample kits today. Atlas needs a revised quote and Mori needs dimensions.",
+        "file": "Leads.xlsx",
+        "sheet": "Today’s follow-ups",
+        "rows": "Customer|Stage|Next step\nNorthline|Samples|Confirm delivery\nAtlas Studio|Pricing|Send volume quote\nMori Supply|Specs|Send dimensions",
+        "result": "View follow-up list",
+        "nextStep": "The three open questions are in the follow-up list, in calling order for this morning."
+      },
+      "launch": {
+        "title": "Launch coordination",
+        "agent": "Project coordinator",
+        "question": "What could block Friday’s launch? Give me owners and deadlines.",
+        "dispatch": "I asked our project coordinator to check the release dependencies.",
+        "answer": "Two items need attention. Payment QA is waiting on test data, and the English landing page still needs two images. Owners and deadlines are in the checklist.",
+        "file": "Launch.xlsx",
+        "sheet": "Friday launch dependencies",
+        "rows": "Item|Owner|Due\nPayment QA|QA team|Wed 15:00\nPage images|Design|Thu 12:00\nRelease notes|Product|Complete",
+        "result": "View launch checklist",
+        "nextStep": "Ask QA to confirm payment checks by Wednesday at 15:00, then get the artwork from Design by noon Thursday. Review launch readiness once both arrive."
+      }
+    }
+  },
+  "botWebLogin": {
+    "notReady": "Unavailable",
+    "checking": "Checking",
+    "title": "Sign in to Octop Bot",
+    "submit": "Sign in",
+    "intro": "Use your Lynxce account to continue your conversations with your bots.",
+    "method": "Sign-in method",
+    "codeMode": "Verification code",
+    "passwordMode": "Password",
+    "signupHint": "New phone numbers and emails are registered after verification.",
+    "cancelled": "Authorization cancelled. Try again or choose another sign-in method.",
+    "expired": "This authorization has expired. Start again from this page.",
+    "unavailable": "The provider is unavailable. Use a verification code or password to sign in.",
+    "waiting": "Connecting to the sign-in service…",
+    "bindFailed": "Could not link your number. Check the code or scan again if it expired.",
+    "sendFailed": "Could not send the code. Please try again."
+  },
   "botOnboarding": {
     "chiefName": "Chief",
     "desktopBody": "Chief is your octopus assistant. It builds a Bot team and splits up the work. Connect a chat model to start — no local account needed.",
@@ -482,6 +553,14 @@
       "appearanceHint": "Choose the interface theme.",
       "languageHint": "Choose the interface language."
     }
+  },
+  "computerPlacement": {
+    "default": "Default computer",
+    "turn": "Use for this message",
+    "auto": "Automatic",
+    "cloud": "Cloud computer",
+    "local": "My computer",
+    "failed": "Could not save this setting."
   },
   "octopBot": {
     "ask": {
@@ -871,8 +950,11 @@
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",
     "LOGIN_LOCKED": "Too many failed sign-in attempts. Try again in {{minutes}} minutes.",
+    "RATE_LIMITED": "Too many requests. Please try again later.",
     "USERNAME_TAKEN": "Username is already taken.",
     "EMAIL_TAKEN": "Email is already taken.",
+    "BOT_PLAN_UNAVAILABLE": "Plan purchases are not available yet.",
+    "BOT_RECHARGE_RATE_LIMITED": "Too many recharge requests. Try again in a minute.",
     "EMAIL_INVALID": "Invalid email address.",
     "PASSWORD_SAME_AS_OLD": "New password must be different from the current password.",
     "PASSWORD_NOT_SET": "This account signs in through a directory and has no local password to change.",
@@ -2874,6 +2956,7 @@
     "toolUiDockedOpen": "Open side panel",
     "pluginUiNotInstalled": "This plugin is not installed on this machine. Showing the returned data only.",
     "loadEarlierMessages": "Load earlier messages",
+    "threadSettingsLoadFailed": "Unable to load this conversation’s settings. Retry to continue chatting.",
     "historyLoadFailed": "History could not be loaded. Existing messages have been kept. Please retry.",
     "historyRetry": "Retry",
     "creatingSession": "Creating session…",
@@ -9169,6 +9252,7 @@
     "download": "Download {{name}}"
   },
   "botCredits": {
+    "balanceIncreased": "Balance increased by {{added}} credits. Current balance: {{value}}.",
     "title": "Credits",
     "menu": "Credits",
     "menuHint": "Balance, top-up and usage",
@@ -9329,6 +9413,8 @@
     }
   },
   "botTask": {
+    "redoStep": "Redo from this step",
+    "redoDraft": "Resume from “{{step}}”. Use task_read_step with checkpoint {{checkpoint}} to read its saved record. Verify the current result and ask again before any external action.",
     "label": "Task: {{goal}}",
     "deep": "Deep",
     "steps": "{{done}}/{{total}} steps",
@@ -9360,8 +9446,14 @@
     "hideReview": "Hide",
     "deliverables": "Deliverables",
     "checked": "Checked: {{facts}}",
-    "opens": "opens",
+    "noCheckRecord": "No check recorded",
+    "openFailed": "Could not open {{name}}. This version was not delivered.",
+    "checkFailed": "{{name}} failed its delivery check. This version was not delivered.",
     "fact": {
+      "filenameOnly": "filename only",
+      "nonempty": "file is nonempty",
+      "validJson": "valid JSON",
+      "opened": "opened in LibreOffice",
       "pages": "{{count}} pages",
       "rows": "{{count}} data rows",
       "sheets": "{{count}} sheets",

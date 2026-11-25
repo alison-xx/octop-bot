@@ -341,6 +341,7 @@ async def replace_skill_package_mounts(
         if package_row is None:
             raise OctopError.localized(ErrorCode.SKILL_PACKAGE_NOT_FOUND, locale)
         store.assert_can_view(package_row, user)
+        store.assert_can_install(package_row, user, server.services.user_repo)
     await server.app_runtime.agent_registry.persist_skill_package_ids(agent_id, package_ids)
     return {"package_ids": package_ids}
 
@@ -401,7 +402,6 @@ async def copy_skill_package_to_workspace(
     user: Any = Depends(require_permission("skill_packages")),
     server: Any = Depends(get_server),
 ) -> dict[str, list[str]]:
-    ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
     store = _skill_package_store(server)
     package_row = store.repo.get(package_id)
     if package_row is None:
@@ -410,7 +410,10 @@ async def copy_skill_package_to_workspace(
             resolve_request_locale(request),
         )
     store.assert_can_copy(package_row, user)
+    store.assert_can_install(package_row, user, server.services.user_repo)
     _assert_skill_package_group(server, user, package_row, resolve_request_locale(request))
+    # Checked before the agent is started for the copy.
+    ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
     try:
         requested_slugs = list(
             dict.fromkeys(validate_skill_slug(slug) for slug in body.skill_slugs)

@@ -61,7 +61,7 @@ final class DeviceBackend: ChatBackend {
     )
 
     func send(
-        _ text: String, images: [Data], to bot: BotProfile, conversation: String?,
+        _ text: String, messageId: String, images: [Data], to bot: BotProfile, conversation: String?,
         history: [ChatMessage], model: String?
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         let sessionId = conversation ?? "device-" + UUID().uuidString.lowercased()

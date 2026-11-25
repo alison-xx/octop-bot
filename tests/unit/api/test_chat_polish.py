@@ -300,7 +300,9 @@ def test_load_projected_falls_back_to_created_at() -> None:
             thread_message_repo=SimpleNamespace(page=lambda *_a, **_k: ([row], False))
         )
     )
-    messages, has_more = _load_projected_thread_messages(server, "agent", "thread", 25, user=None)
+    messages, has_more, _ = _load_projected_thread_messages(
+        server, "agent", "thread", 25, user=None
+    )
     assert has_more is False
     assert messages[0]["timestamp"] == 1_700_000_000_000
 

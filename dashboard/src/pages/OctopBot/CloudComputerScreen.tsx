@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { botCloudComputerApi } from "../../api/modules/botCloudComputer";
+import { ACCESS_TOKEN_RENEWED_EVENT, getAuthToken } from "../../api/request";
 import { apiErrorMessage } from "../../utils/apiError";
 import CloudComputerInputBar from "./CloudComputerInputBar";
 import styles from "./cloudComputerScreen.module.less";
@@ -34,11 +35,13 @@ const COPY_SETTLE_MS = 400;
 export default function CloudComputerScreen({
   wsPath,
   interactive,
+  botId,
   session = "",
 }: {
   wsPath: string;
   interactive: boolean;
   session?: string;
+  botId?: string;
 }) {
   const { t } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
@@ -49,6 +52,28 @@ export default function CloudComputerScreen({
   const [note, setNote] = useState("");
   // Read when the client is created: takeover may land while noVNC is still loading.
   const interactiveRef = useRef(interactive);
+
+  useEffect(() => {
+    if (!botId || !session) return;
+    let lastToken = "";
+    // The viewer can stay open across sliding login renewals. Only a changed
+    // sign-in credential needs sending; this never starts or resumes a computer.
+    const renew = () => {
+      const token = getAuthToken();
+      if (!token || token === lastToken) return;
+      lastToken = token;
+      void botCloudComputerApi.renewScreen(botId, session).catch(() => {
+        if (lastToken === token) lastToken = "";
+      });
+    };
+    renew();
+    window.addEventListener(ACCESS_TOKEN_RENEWED_EVENT, renew);
+    window.addEventListener("storage", renew);
+    return () => {
+      window.removeEventListener(ACCESS_TOKEN_RENEWED_EVENT, renew);
+      window.removeEventListener("storage", renew);
+    };
+  }, [botId, session]);
 
   useEffect(() => {
     let cancelled = false;

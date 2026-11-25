@@ -41,6 +41,9 @@ let botShortcut: ((action: BotShortcut) => void) | null = null;
 let notificationOpen: ((target: string) => void) | null = null;
 let pendingNotificationTarget: string | null = null;
 if (botOnly) {
+  ipcRenderer.on(IPC_CHANNELS.botRechargeReturn, () => {
+    window.dispatchEvent(new Event(IPC_CHANNELS.botRechargeReturn));
+  });
   ipcRenderer.on(IPC_CHANNELS.botShortcut, (_event, action: BotShortcut) => {
     if (botShortcut) botShortcut(action);
     else pendingShortcut = action;
@@ -57,6 +60,7 @@ if (botOnly) {
 
 const bridge = {
   botOnly,
+  supportsRechargeReturn: botOnly,
   showBotOrb() { if (botOnly) ipcRenderer.send(IPC_CHANNELS.showBotOrb); },
   openServerPicker() { if (botOnly) ipcRenderer.send(IPC_CHANNELS.openServerPicker); },
   onBotShortcut(callback: (action: BotShortcut) => void): () => void {

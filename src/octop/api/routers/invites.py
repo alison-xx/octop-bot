@@ -267,6 +267,7 @@ async def redeem_invite(
         ttl_seconds=ttl,
         mfa_version=mfa_version,
         password_version=password_version,
+        session_version=int(row.session_version) if row is not None else 0,
     )
     return {
         "access_token": token,

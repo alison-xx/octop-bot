@@ -52,6 +52,7 @@ class ChatQueueTest {
         override suspend fun models() = emptyList<ModelOption>()
         override fun send(
             text: String,
+            messageId: String,
             images: List<ImageAttachment>,
             bot: BotProfile,
             conversation: String?,

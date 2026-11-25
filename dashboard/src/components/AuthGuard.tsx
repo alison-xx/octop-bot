@@ -9,6 +9,8 @@ import { CurrentUserProvider } from "../hooks/useCurrentUser";
 import { useTheme } from "../context/ThemeContext";
 import BootOfflinePanel from "./BootOfflinePanel";
 import BrandLoading from "./BrandLoading";
+import { isBotClient } from "../utils/desktopBridge";
+import { LynxceAccountProvider } from "../context/LynxceAccountContext";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -143,7 +145,11 @@ export default function AuthGuard({ children }: AuthGuardProps) {
 
   return (
     <CurrentUserProvider user={user} setUser={setUser}>
-      {children}
+      {isBotClient() ? (
+        <LynxceAccountProvider key={user?.id}>{children}</LynxceAccountProvider>
+      ) : (
+        children
+      )}
     </CurrentUserProvider>
   );
 }

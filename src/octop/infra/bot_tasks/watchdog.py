@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import time
 from collections.abc import Awaitable, Callable
@@ -24,21 +25,26 @@ from urllib.parse import urlparse
 from urllib.request import url2pathname
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.config import get_config
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
+from octop.i18n import tr
+from octop.infra.bot_tasks.archives import TaskArchive
 from octop.infra.bot_tasks.deliverables import inspect_file
 from octop.infra.bot_tasks.model import Deliverable, Task
+from octop.infra.bot_tasks.model_silence import ModelSilence, watch_model_output
 from octop.infra.bot_tasks.store import TaskStore
 from octop.infra.bot_tasks.tools import TASK_TOOL_NAMES
+from octop.infra.utils.locale import resolve_user_locale
 
 # Talking to the user and keeping the plan never count against the budget.
 FREE_TOOLS = TASK_TOOL_NAMES | {
     "ask_user_question",
     "write_todos",
     "request_takeover",
+    "wait_for_local_device",
     "request_approval",
 }
 # Tools that do real work; reading and looking around never need a plan.
@@ -72,7 +78,7 @@ BUDGET_NEAR = (
 )
 BUDGET_SPENT = (
     "Refused: this task has used its whole {what} budget ({limit}). Call task_finish with what "
-    "is done and what is not, or ask the user (ask_user_question) whether to continue."
+    "is done and what is not, or use task_extend_budget to ask for new total limits."
 )
 PLAN_FIRST = (
     "Not run yet: this is real work (writing files, running commands or using the screen), so "
@@ -146,9 +152,10 @@ def restored_task(task: Task) -> str:
         proof = f" - {item.evidence}" if item.evidence else ""
         lines.append(f"{number}. [{item.status}] {item.text}{proof}")
     assumptions = "\nAssumptions: " + "; ".join(task.assumptions) if task.assumptions else ""
+    progress = "\n".join(f"- [{step.status}] {step.content}" for step in task.steps)
     return RESTORED.format(
         goal=task.goal, tier=task.tier, criteria="\n".join(lines), assumptions=assumptions
-    )
+    ) + ("\n" + progress if progress else "")
 
 
 def _user_turn(messages: list[BaseMessage]) -> str:
@@ -209,16 +216,14 @@ def _error_text(result: ToolMessage | Command[Any]) -> str | None:
 
 
 class TaskWatch:
-    """Per-process counters for running tasks (a restart forgets them, which is harmless)."""
+    """Warn about the durable task budget and repeated errors on this run."""
 
     def __init__(self) -> None:
-        self.steps: dict[str, int] = {}
         self.warned: set[str] = set()
-        self.errors: dict[str, dict[str, int]] = {}
 
     def spent(self, task: Task, now: float) -> tuple[str, str] | None:
         """(what, limit) when a budget is used up, else None."""
-        if self.steps.get(task.id, 0) >= task.budget.steps:
+        if task.steps_used >= task.budget.steps:
             return "step", f"{task.budget.steps} steps"
         if now - task.started_at >= task.budget.minutes * 60:
             return "time", f"{task.budget.minutes} minutes"
@@ -227,7 +232,7 @@ class TaskWatch:
     def near(self, task: Task, now: float) -> str | None:
         if task.id in self.warned:
             return None
-        steps = self.steps.get(task.id, 0)
+        steps = task.steps_used
         minutes = (now - task.started_at) / 60
         if steps >= WARN_AT * task.budget.steps:
             self.warned.add(task.id)
@@ -241,11 +246,11 @@ class TaskWatch:
             )
         return None
 
-    def failed(self, task: Task, tool: str, error: str) -> int:
-        seen = self.errors.setdefault(task.id, {})
-        key = f"{tool}\n{error}"
-        seen[key] = seen.get(key, 0) + 1
-        return seen[key]
+
+def _call_key(request: ToolCallRequest) -> str:
+    call = request.tool_call
+    payload = json.dumps([call.get("name"), call.get("args")], sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 class BotTaskMiddleware(AgentMiddleware[Any, Any]):
@@ -255,7 +260,18 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
     where the task tools are shown.
     """
 
-    def __init__(self, store: TaskStore, *, always: bool = False) -> None:
+    def __init__(
+        self,
+        store: TaskStore,
+        *,
+        always: bool = False,
+        archive: TaskArchive | None = None,
+        user_repo: object | None = None,
+        owner: int = 0,
+    ) -> None:
+        self._users = user_repo
+        self._owner = owner
+        self._archive = archive
         self._store = store
         self._always = always
         self._watch = TaskWatch()
@@ -267,9 +283,9 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
     def _active(self) -> bool:
         return self._always or _configurable().get("octop_bot_browser") is True
 
-    def _brief(self, request: ModelRequest[Any]) -> ModelRequest[Any]:
+    def _brief(self, request: ModelRequest[Any]) -> tuple[ModelRequest[Any], Task | None]:
         if not self._active():
-            return request
+            return request, None
         text = BRIEFING
         thread = str(_configurable().get("thread_id") or "")
         turn = _user_turn(list(request.messages))
@@ -285,19 +301,52 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
             list(request.system_message.content_blocks) if request.system_message else []
         )
         blocks.append({"type": "text", "text": f"\n\n{text}" if blocks else text})
-        return request.override(system_message=SystemMessage(content_blocks=blocks))
+        return request.override(system_message=SystemMessage(content_blocks=blocks)), task
 
     def wrap_model_call(
         self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], ModelResponse[Any]]
     ) -> ModelResponse[Any]:
-        return handler(self._brief(request))
+        briefed, _ = self._brief(request)
+        return handler(briefed)
 
     async def awrap_model_call(
         self,
         request: ModelRequest[Any],
         handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
     ) -> ModelResponse[Any]:
-        return await handler(self._brief(request))
+        briefed, task = await asyncio.to_thread(self._brief, request)
+        if task is None:
+            return await handler(briefed)
+        thread = str(_configurable().get("thread_id") or "")
+        # Provider-executed tools can have side effects before their result reaches us.
+        # Only retry inference for ordinary client-executed tool definitions.
+        may_retry = all(not isinstance(tool, dict) for tool in briefed.tools)
+        while True:
+            try:
+                return await watch_model_output(lambda: handler(briefed))
+            except ModelSilence:
+                stopped = await asyncio.to_thread(self._silence, thread, task.id, may_retry)
+                if stopped:
+                    return ModelResponse(result=[AIMessage(content=stopped)])
+
+    def _silence(self, thread: str, task_id: str, may_retry: bool) -> str:
+        locale = resolve_user_locale(user_repo=self._users, user_id=self._owner)
+        message = tr("bot_tasks.model_silence", locale)
+        with self._store.locked(thread):
+            task = self._store.running(thread)
+            if task is None or task.id != task_id:
+                return message
+            now = time.time()
+            task.updated_at = now
+            if may_retry and not task.silence_retry_used and not task.budget_exhausted(now):
+                task.silence_retry_used = True
+                self._store.save(thread, task)
+                return ""
+            task.status = "stopped"
+            task.summary = message
+            task.finished_at = now
+            self._store.save(thread, task)
+            return message
 
     # -- tool calls -------------------------------------------------------------
 
@@ -306,32 +355,45 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         if name in FREE_TOOLS or not self._active():
             return None, None
         thread = str(_configurable().get("thread_id") or "")
-        task = self._store.running(thread) if thread else None
-        if task is None:
-            if (
-                name in WORK_TOOLS
-                and thread
-                and thread not in self._asked
-                and "task_plan" not in _sibling_calls(request)
-            ):
-                self._asked.add(thread)
-                return None, ToolMessage(
-                    content=PLAN_FIRST,
+        if not thread:
+            return None, None
+        with self._store.locked(thread):
+            task = self._store.running(thread)
+            if task is None:
+                if (
+                    name in WORK_TOOLS
+                    and thread
+                    and thread not in self._asked
+                    and "task_plan" not in _sibling_calls(request)
+                ):
+                    self._asked.add(thread)
+                    return None, ToolMessage(
+                        content=PLAN_FIRST,
+                        name=name,
+                        tool_call_id=str(request.tool_call.get("id") or ""),
+                        status="error",
+                    )
+                return None, None
+            spent = self._watch.spent(task, time.time())
+            if spent:
+                what, limit = spent
+                return task, ToolMessage(
+                    content=BUDGET_SPENT.format(what=what, limit=limit),
                     name=name,
                     tool_call_id=str(request.tool_call.get("id") or ""),
                     status="error",
                 )
-            return None, None
-        spent = self._watch.spent(task, time.time())
-        if spent:
-            what, limit = spent
-            return task, ToolMessage(
-                content=BUDGET_SPENT.format(what=what, limit=limit),
-                name=name,
-                tool_call_id=str(request.tool_call.get("id") or ""),
-                status="error",
-            )
-        self._watch.steps[task.id] = self._watch.steps.get(task.id, 0) + 1
+            failure = task.failed_calls.get(_call_key(request))
+            if failure and failure[1] >= SAME_ERROR_LIMIT:
+                return task, ToolMessage(
+                    content=SAME_ERROR.format(tool=name, count=failure[1]),
+                    name=name,
+                    tool_call_id=str(request.tool_call.get("id") or ""),
+                    status="error",
+                )
+            task.steps_used += 1
+            task.updated_at = time.time()
+            self._store.save(thread, task)
         return task, None
 
     def _after(
@@ -340,11 +402,24 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         self._note_review(request, task, result)
         notes: list[str] = []
         error = _error_text(result)
-        if error is not None:
-            name = str(request.tool_call.get("name") or "")
-            count = self._watch.failed(task, name, error)
-            if count >= SAME_ERROR_LIMIT:
-                notes.append(SAME_ERROR.format(tool=name, count=count))
+        key = _call_key(request)
+        if error is not None or key in task.failed_calls:
+            thread = str(_configurable().get("thread_id") or "")
+            with self._store.locked(thread):
+                current = self._store.running(thread)
+                if current is not None and current.id == task.id:
+                    if error is None:
+                        current.failed_calls.pop(key, None)
+                    else:
+                        digest = hashlib.sha256(error.encode()).hexdigest()
+                        last, count = current.failed_calls.get(key, ("", 0))
+                        count = count + 1 if last == digest else 1
+                        current.failed_calls[key] = (digest, count)
+                        if count >= SAME_ERROR_LIMIT:
+                            notes.append(
+                                SAME_ERROR.format(tool=request.tool_call.get("name"), count=count)
+                            )
+                    self._store.save(thread, current)
         near = self._watch.near(task, time.time())
         if near:
             notes.append(near)
@@ -385,10 +460,34 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
             return result
         name = str(block.get("filename") or block.get("path") or "file")
         size = local.stat().st_size
-        # Past the cap only the name is checked: a stand-in byte keeps it from reading as empty.
-        inspection = inspect_file(name, local.read_bytes() if size <= MAX_INSPECT_BYTES else b"x")
-        if size > MAX_INSPECT_BYTES:
-            inspection.facts = []
+        inspection = inspect_file(name, local.read_bytes() if size <= MAX_INSPECT_BYTES else None)
+        thread = str(_configurable().get("thread_id") or "")
+        if thread:
+            with self._store.locked(thread):
+                task = self._store.running(thread)
+                if task is not None:
+                    display_name = name[:300]
+                    task.delivery_failures.pop(display_name, None)
+                    if not inspection.ok:
+                        if len(task.delivery_failures) >= 30:
+                            del task.delivery_failures[next(iter(task.delivery_failures))]
+                        task.delivery_failures[display_name] = (
+                            "open" if inspection.open_failed else "validation"
+                        )
+                    else:
+                        same = [d for d in task.deliverables if d.name == display_name]
+                        task.deliverables = [
+                            *task.deliverables[-29:],
+                            Deliverable(
+                                name=display_name,
+                                path=str(block.get("path") or name)[:1000],
+                                size=size,
+                                version=max((d.version for d in same), default=0) + 1,
+                                facts=inspection.facts,
+                            ),
+                        ]
+                    task.updated_at = time.time()
+                    self._store.save(thread, task)
         if not inspection.ok:
             return ToolMessage(
                 content=NOT_SENT.format(problems="; ".join(inspection.problems)),
@@ -396,24 +495,19 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
                 tool_call_id=str(request.tool_call.get("id") or ""),
                 status="error",
             )
-        thread = str(_configurable().get("thread_id") or "")
-        if thread:
-            with self._store.locked(thread):
-                task = self._store.running(thread)
-                if task is not None:
-                    same = [d for d in task.deliverables if d.name == name]
-                    task.deliverables = [
-                        *task.deliverables[-29:],
-                        Deliverable(
-                            name=name[:300],
-                            path=str(block.get("path") or name)[:1000],
-                            size=size,
-                            version=len(same) + 1,
-                            facts=inspection.facts,
-                        ),
-                    ]
-                    task.updated_at = time.time()
-                    self._store.save(thread, task)
+        return result
+
+    def _after_delivery(
+        self, request: ToolCallRequest, result: ToolMessage | Command[Any]
+    ) -> ToolMessage | Command[Any]:
+        result = self._deliver(request, result)
+        if self._archive is not None and self._active():
+            self._archive.observe(
+                self._store,
+                str(_configurable().get("thread_id") or ""),
+                str(request.tool_call.get("name") or ""),
+                result,
+            )
         return result
 
     def wrap_tool_call(
@@ -424,7 +518,7 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         task, refused = self._before(request)
         if refused is not None:
             return refused
-        result = self._deliver(request, handler(request))
+        result = self._after_delivery(request, handler(request))
         return self._after(request, task, result) if task is not None else result
 
     async def awrap_tool_call(
@@ -432,10 +526,14 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
     ) -> ToolMessage | Command[Any]:
-        task, refused = self._before(request)
+        task, refused = await asyncio.to_thread(self._before, request)
         if refused is not None:
             return refused
         result = await handler(request)
         # Reading and checking the file is blocking work: off the event loop.
-        result = await asyncio.to_thread(self._deliver, request, result)
-        return self._after(request, task, result) if task is not None else result
+        result = await asyncio.to_thread(self._after_delivery, request, result)
+        return (
+            await asyncio.to_thread(self._after, request, task, result)
+            if task is not None
+            else result
+        )

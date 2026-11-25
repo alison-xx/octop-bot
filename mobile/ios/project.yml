@@ -44,12 +44,32 @@ targets:
         SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/OctopBot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/OctopBot"
         BUNDLE_LOADER: "$(TEST_HOST)"
+  OctopBotStoreKitSetupTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: OctopBotStoreKitSetupTests
+      - path: OctopBotTests/CreditPacks.storekit
+        buildPhase: resources
+    dependencies:
+      - target: OctopBot
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cn.lynxce.octopbot.storekitsetup
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/OctopBot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/OctopBot"
+        BUNDLE_LOADER: "$(TEST_HOST)"
 schemes:
   OctopBot:
     build:
       targets:
         OctopBot: all
+        OctopBotStoreKitSetupTests: [test]
         OctopBotTests: [test]
+    run:
+      storeKitConfiguration: OctopBotTests/CreditPacks.storekit
     test:
       targets:
+        - OctopBotStoreKitSetupTests
         - OctopBotTests

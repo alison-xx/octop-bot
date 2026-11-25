@@ -352,11 +352,15 @@ def tenant_workspace_path(path: str, roots: Iterable[str | Path]) -> str:
     is kept for the caller's guard to reject.
     """
     text = path.strip().replace("\\", "/")
-    for root in (*roots, COMPUTER_WORKSPACE):
+    # Previously saved attachment cards can still point into this workspace's cache.
+    for root in roots:
         base = str(root).replace("\\", "/").rstrip("/")
+        if base and text.startswith(base + "/.harness-materialize/"):
+            return text[len(base + "/.harness-materialize/") :]
         if base and (text == base or text.startswith(base + "/")):
-            text = text[len(base) :]
-            break
+            return text[len(base) :].lstrip("/") or "."
+    if text == COMPUTER_WORKSPACE or text.startswith(COMPUTER_WORKSPACE + "/"):
+        text = text[len(COMPUTER_WORKSPACE) :]
     return text.lstrip("/") or "."
 
 

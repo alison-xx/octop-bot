@@ -35,6 +35,7 @@ import {
   type WorkbuddyLoginResult,
   type BotUpdateStatus,
 } from "../shared/ipc-contract";
+import { connectLocalDevice, disconnectLocalDevice } from "./local-device/connection";
 import { resolveAppVersion } from "./app-version";
 import { BOT_HOME_PATH, BOT_PRODUCT_NAME, isBotProduct } from "../shared/product";
 import { desktopLog, installDesktopLog } from "./log/desktop-log";
@@ -1107,6 +1108,10 @@ function openDeepLink(url: string): void {
     return;
   }
   revealAppWindow();
+  if (path === BOT_HOME_PATH) {
+    win.webContents.send(IPC_CHANNELS.botRechargeReturn);
+    return;
+  }
   const theme = resolveWindowChromeTheme(settingsStore.load().themeBackground);
   void win.loadURL(dashboardOrigin ? dashboardEntryUrl(theme.scheme ?? theme.mode, origin, path) : origin + path);
 }
@@ -1351,6 +1356,15 @@ function serverMenuItems(): MenuItemConstructorOptions[] {
           checked: current === LYNXCE_CLOUD_ORIGIN,
           click: () => serverPicker?.switchTo(LYNXCE_CLOUD_ORIGIN),
         },
+        ...(current === LYNXCE_CLOUD_ORIGIN ? [
+          { label: zh ? "连接本机文件夹…" : "Connect a local folder…", click: () => {
+            const win = BrowserWindow.getFocusedWindow();
+            if (win) void connectLocalDevice(win, zh).catch((error: Error) => dialog.showErrorBox(
+              zh ? "本机连接" : "Desktop connection", error.message,
+            ));
+          } },
+          { label: zh ? "断开本机连接" : "Disconnect this desktop", click: disconnectLocalDevice },
+        ] : []),
         ...recent.filter((origin) => origin !== LYNXCE_CLOUD_ORIGIN).map((origin): MenuItemConstructorOptions => ({
           label: new URL(origin).host,
           type: "radio",
