@@ -68,6 +68,9 @@ class Task(BaseModel):
     reviews: int = 0
     review: str = Field(default="", max_length=1000)
     deliverables: list[Deliverable] = Field(default_factory=list, max_length=30)
+    delivery_failures: dict[str, Literal["open", "validation"]] = Field(
+        default_factory=dict, max_length=30
+    )
 
     def budget_exhausted(self, now: float) -> bool:
         return (

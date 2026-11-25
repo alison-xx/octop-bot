@@ -34,7 +34,11 @@ export interface BotDeliverableFact {
     | "chars"
     | "lines"
     | "files"
-    | "pixels";
+    | "pixels"
+    | "filenameOnly"
+    | "nonempty"
+    | "validJson"
+    | "opened";
   n: number;
   w?: number;
   h?: number;
@@ -45,7 +49,7 @@ export interface BotDeliverable {
   path: string;
   size: number;
   version: number;
-  facts: BotDeliverableFact[];
+  facts?: BotDeliverableFact[];
   at: number;
 }
 
@@ -67,6 +71,7 @@ export interface BotTask {
   review?: string;
   /** Files handed to the user during the task, after they passed the checks. */
   deliverables?: BotDeliverable[];
+  delivery_failures?: Record<string, "open" | "validation">;
 }
 
 export interface BotTaskEntry {

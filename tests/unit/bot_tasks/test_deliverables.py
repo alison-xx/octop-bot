@@ -51,8 +51,15 @@ def test_what_was_checked_is_returned_as_data_for_the_client() -> None:
         {"ppt/slides/slide1.xml": "<a:t>封面</a:t>", "ppt/slides/slide2.xml": "<a:t>结论</a:t>"}
     )
     assert inspect_file("汇报.pptx", deck).facts == [{"k": "slides", "n": 2}]
-    pdf = b"%PDF-1.7\n1 0 obj << /Type /Pages >>\n2 0 obj << /Type /Page >>\n3 0 obj << /Type /Page >>"
-    assert inspect_file("报告.pdf", pdf).facts == [{"k": "pages", "n": 2}]
+    from pypdf import PdfWriter
+
+    pdf = io.BytesIO()
+    writer = PdfWriter()
+    for _ in range(2):
+        writer.add_blank_page(width=100, height=100)
+    writer.write(pdf)
+    assert inspect_file("报告.pdf", pdf.getvalue()).facts == [{"k": "pages", "n": 2}]
+    assert not inspect_file("报告.pdf", pdf.getvalue()[:50]).ok
 
 
 def test_real_images_report_their_size() -> None:
@@ -63,3 +70,9 @@ def test_real_images_report_their_size() -> None:
     assert inspect_file("截图.png", out.getvalue()).facts == [
         {"k": "pixels", "n": 1200, "w": 40, "h": 30}
     ]
+
+
+def test_checks_distinguish_name_bytes_and_parsed_content() -> None:
+    assert inspect_file("report.json", None).facts == [{"k": "filenameOnly", "n": 1}]
+    assert inspect_file("report.bin", b"example").facts == [{"k": "nonempty", "n": 1}]
+    assert inspect_file("report.json", b'{"count": 4}').facts == [{"k": "validJson", "n": 1}]

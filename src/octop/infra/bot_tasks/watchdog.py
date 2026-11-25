@@ -456,10 +456,34 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
             return result
         name = str(block.get("filename") or block.get("path") or "file")
         size = local.stat().st_size
-        # Past the cap only the name is checked: a stand-in byte keeps it from reading as empty.
-        inspection = inspect_file(name, local.read_bytes() if size <= MAX_INSPECT_BYTES else b"x")
-        if size > MAX_INSPECT_BYTES:
-            inspection.facts = []
+        inspection = inspect_file(name, local.read_bytes() if size <= MAX_INSPECT_BYTES else None)
+        thread = str(_configurable().get("thread_id") or "")
+        if thread:
+            with self._store.locked(thread):
+                task = self._store.running(thread)
+                if task is not None:
+                    display_name = name[:300]
+                    task.delivery_failures.pop(display_name, None)
+                    if not inspection.ok:
+                        if len(task.delivery_failures) >= 30:
+                            del task.delivery_failures[next(iter(task.delivery_failures))]
+                        task.delivery_failures[display_name] = (
+                            "open" if inspection.open_failed else "validation"
+                        )
+                    else:
+                        same = [d for d in task.deliverables if d.name == display_name]
+                        task.deliverables = [
+                            *task.deliverables[-29:],
+                            Deliverable(
+                                name=display_name,
+                                path=str(block.get("path") or name)[:1000],
+                                size=size,
+                                version=max((d.version for d in same), default=0) + 1,
+                                facts=inspection.facts,
+                            ),
+                        ]
+                    task.updated_at = time.time()
+                    self._store.save(thread, task)
         if not inspection.ok:
             return ToolMessage(
                 content=NOT_SENT.format(problems="; ".join(inspection.problems)),
@@ -467,24 +491,6 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
                 tool_call_id=str(request.tool_call.get("id") or ""),
                 status="error",
             )
-        thread = str(_configurable().get("thread_id") or "")
-        if thread:
-            with self._store.locked(thread):
-                task = self._store.running(thread)
-                if task is not None:
-                    same = [d for d in task.deliverables if d.name == name]
-                    task.deliverables = [
-                        *task.deliverables[-29:],
-                        Deliverable(
-                            name=name[:300],
-                            path=str(block.get("path") or name)[:1000],
-                            size=size,
-                            version=len(same) + 1,
-                            facts=inspection.facts,
-                        ),
-                    ]
-                    task.updated_at = time.time()
-                    self._store.save(thread, task)
         return result
 
     def wrap_tool_call(
