@@ -598,6 +598,12 @@
         }
       }
     },
+    "chat.older": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Load earlier messages" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "加载更早的消息" } }
+      }
+    },
     "chat.attach": {
       "localizations": {
         "en": {

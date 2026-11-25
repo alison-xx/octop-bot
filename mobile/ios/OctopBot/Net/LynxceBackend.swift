@@ -375,7 +375,7 @@ final class LynxceBackend: ChatBackend {
     )
 
     func send(
-        _ text: String, images: [Data], to bot: BotProfile, conversation: String?,
+        _ text: String, messageId: String, images: [Data], to bot: BotProfile, conversation: String?,
         history: [ChatMessage], model: String?
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         if let conversation, pending.isDeleted(conversation) { return deletedConversation() }

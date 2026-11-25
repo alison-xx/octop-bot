@@ -32,7 +32,6 @@ struct ChatScreen: View {
             Composer(chat: chat)
         }
         .animation(.snappy, value: chat.pause)
-        .animation(.snappy, value: chat.isStreaming)
         .animation(.snappy, value: model.showsLowBalanceBanner)
         .background(Palette.background.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
@@ -49,7 +48,13 @@ struct ChatScreen: View {
         .onChange(of: LocalBots.shared.custom.map(\.id)) { _, ids in
             if chat.bot.isLocal && !ids.contains(chat.bot.id) { dismiss() }
         }
-        .task { await chat.reloadConversations() }
+        .task(id: scenePhase == .active) {
+            if scenePhase == .active { await chat.showConversation() }
+        }
+        .task(id: scenePhase == .active && !chat.isStreaming ? chat.conversationId : nil) {
+            guard scenePhase == .active, !chat.isStreaming, let id = chat.conversationId else { return }
+            await chat.observe(id)
+        }
         // Polls only while this chat is open and the app is in front (the screen is never streamed in the background).
         .task(id: scenePhase == .active) {
             guard scenePhase == .active, !chat.bot.isLocal, let server = model.server, server.isCloud else { return }
@@ -149,6 +154,16 @@ struct ConversationView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 18) {
+                            if chat.older != nil {
+                                Button {
+                                    guard let anchor = chat.messages.first?.id else { return }
+                                    Task {
+                                        await chat.loadOlder()
+                                        proxy.scrollTo(anchor, anchor: .top)
+                                    }
+                                } label: { Label("chat.older", systemImage: "arrow.up") }
+                                .disabled(chat.isStreaming || chat.loadingOlder)
+                            }
                             ForEach(Array(chat.messages.enumerated()), id: \.element.id) { index, message in
                                 let previous = index > 0 ? chat.messages[index - 1].createdAt : nil
                                 if TimeLabel.needsSeparator(message.createdAt, after: previous) {
@@ -172,12 +187,12 @@ struct ConversationView: View {
                     }
                     .scrollDismissesKeyboard(.interactively)
                     .defaultScrollAnchor(.bottom)
-                    .onChange(of: chat.messages.last?.text) {
-                        // Follow the stream only while the reader is at the end.
+                    // Reflow only moves the bottom when the user is following it. Avoid animating each token.
+                    .onChange(of: chat.messages.last?.id) {
                         if atBottom { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
-                    .onChange(of: chat.messages.count + chat.queued.count) {
-                        withAnimation(.snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
+                    .onChange(of: chat.queued.last?.id) {
+                        if atBottom { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
                     .overlay(alignment: .bottom) {
                         if !atBottom {
@@ -197,7 +212,7 @@ struct ConversationView: View {
                             .accessibilityLabel(Text("chat.jumpToLatest"))
                         }
                     }
-                    .animation(.snappy, value: atBottom)
+
                 }
             }
         }
@@ -462,7 +477,12 @@ struct MessageRow: View {
                     FlowChips(tools: message.tools)
                 }
                 if !message.text.isEmpty {
-                    MarkdownText(text: message.text).foregroundStyle(Palette.text)
+                    if message.status == .streaming {
+                        Text(verbatim: message.text).lineSpacing(3).foregroundStyle(Palette.text)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        MarkdownText(text: message.text).foregroundStyle(Palette.text)
+                    }
                 } else if message.status == .streaming && message.thinking.isEmpty && message.tools.isEmpty {
                     TypingDots()
                 }

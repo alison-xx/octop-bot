@@ -87,6 +87,7 @@
     <string name="chat_failed">回复失败</string>
     <string name="chat_read_aloud">朗读</string>
     <string name="chat_retry">重试</string>
+    <string name="chat_load_earlier">加载更早的消息</string>
     <string name="chat_jump_latest">回到最新</string>
     <string name="chat_listening">正在听…</string>
     <string-array name="suggestions_default">

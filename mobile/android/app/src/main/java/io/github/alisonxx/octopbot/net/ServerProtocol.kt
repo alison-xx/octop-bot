@@ -192,7 +192,7 @@ object ServerProtocol {
             val id = row.str("thread_id") ?: return@mapNotNull null
             if (row.bool("has_messages") == false) return@mapNotNull null
             val updated = Times.parseIso(row.str("last_active")) ?: row.double("last_active")?.let(Times::epochMillis)
-            ConversationSummary(id, row.str("title")?.trim().orEmpty(), updated, botId)
+            ConversationSummary(id, row.str("title")?.trim().orEmpty(), updated, botId, row.bool("owned"), row.bool("is_active") == true)
         }.sortedByDescending { it.updatedAt ?: 0L }
 
     /** `GET /api/i18n/tools` → tool name → label in the request's language. */
@@ -206,6 +206,16 @@ object ServerProtocol {
         /** `hitl_pending`: a question or approval still open in this thread. */
         val pending: HitlRequest? = null,
     )
+
+    fun historyKey(row: JsonElement): String? = row.asObject()?.let { obj ->
+        obj.long("history_seq")?.let { "seq:$it" } ?: obj.idString("id")
+    }
+
+    fun joinHistory(earlier: JsonArray, later: JsonArray): JsonArray {
+        val ids = later.mapNotNull(::historyKey).toSet()
+        val overlap = earlier.indexOfFirst { historyKey(it) in ids }
+        return JsonArray((if (overlap < 0) earlier else earlier.take(overlap)) + later)
+    }
 
     fun historyPage(body: JsonElement, toolLabels: Map<String, String> = emptyMap(), agentId: String? = null): HistoryPage {
         val obj = body.asObject() ?: return HistoryPage(emptyList(), false, 0)
@@ -281,7 +291,7 @@ object ServerProtocol {
             }
             if (text.isEmpty() && thinking.isEmpty() && tools.isEmpty() && images.isEmpty() && files.isEmpty()) continue
             out += ChatMessage(
-                id = row.idString("id") ?: UUID.randomUUID().toString(),
+                id = row.idString("id") ?: row.long("history_seq")?.let { "history-$it" } ?: UUID.randomUUID().toString(),
                 role = role,
                 text = text.toString(),
                 thinking = thinking.toString(),
@@ -366,7 +376,7 @@ object ServerProtocol {
     }
 
     /** [deviceTools]: the phone's tools that are on (PROTOCOL §C); sent on every turn so the server can drop them. */
-    fun userTurn(threadId: String, text: String, content: JsonElement, model: String?, deviceTools: List<String> = emptyList()): JsonObject = buildJsonObject {
+    fun userTurn(threadId: String, text: String, content: JsonElement, model: String?, deviceTools: List<String> = emptyList(), messageId: String = UUID.randomUUID().toString()): JsonObject = buildJsonObject {
         put("type", "user_turn")
         put("thread_id", threadId)
         put("text", text)
@@ -374,7 +384,7 @@ object ServerProtocol {
             addJsonObject {
                 put("role", "user")
                 put("content", content)
-                put("id", UUID.randomUUID().toString())
+                put("id", messageId)
             }
         }
         model?.let { put("model", it) }
@@ -522,6 +532,7 @@ object ServerProtocol {
             val frameThread = frame.str("thread_id")
             if (frameThread != null && frameThread != threadId) return Outcome.Events(emptyList())
             return when (frame.str("type")) {
+                "turn.started", "turn.resumed" -> Outcome.Events(listOfNotNull(frame.str("turn_id")?.let(StreamEvent::TurnStarted)))
                 "token" -> text(frame) { StreamEvent.Text(it) }
                 "reasoning" -> text(frame) { StreamEvent.Thinking(it) }
                 "tool_call_chunk" -> {

@@ -98,6 +98,7 @@
     <string name="chat_failed">Reply failed</string>
     <string name="chat_read_aloud">Read aloud</string>
     <string name="chat_retry">Retry</string>
+    <string name="chat_load_earlier">Load earlier messages</string>
     <string name="chat_jump_latest">Jump to latest</string>
     <string name="chat_listening">Listening…</string>
     <string-array name="suggestions_default">

@@ -603,10 +603,15 @@ private final class FakeBackend: ChatBackend {
     var replies: [AsyncThrowingStream<StreamEvent, Error>.Continuation] = []
 
     func bots() async throws -> [BotProfile] { [BotProfile(id: "b", name: "B", look: .fallback, isChief: true)] }
-    func conversations(for bot: BotProfile) async throws -> [ConversationSummary] { [] }
+    var listFailures = 0
+    var directory: [ConversationSummary] = []
+    func conversations(for bot: BotProfile) async throws -> [ConversationSummary] {
+        if listFailures > 0 { listFailures -= 1; throw APIError.network }
+        return directory
+    }
     func messages(in conversation: ConversationSummary, bot: BotProfile) async throws -> [ChatMessage] { [] }
     func models() async throws -> [ModelOption] { [] }
-    func send(_ text: String, images: [Data], to bot: BotProfile, conversation: String?, history: [ChatMessage], model: String?) -> AsyncThrowingStream<StreamEvent, Error> {
+    func send(_ text: String, messageId: String, images: [Data], to bot: BotProfile, conversation: String?, history: [ChatMessage], model: String?) -> AsyncThrowingStream<StreamEvent, Error> {
         sent.append(text)
         return AsyncThrowingStream { replies.append($0) }
     }
@@ -620,6 +625,90 @@ private final class FakeBackend: ChatBackend {
 
 @MainActor
 final class QueueTests: XCTestCase {
+    func testPersonalDefaultSkipsSharedAndUnknownOwnershipAndPrefersActivePersonalThread() {
+        func row(_ id: String, _ owned: Bool?, _ active: Bool) -> ConversationSummary {
+            ConversationSummary(id: id, title: "", updatedAt: nil, botId: nil, owned: owned, active: active)
+        }
+        let shared = row("shared", false, true), old = row("unknown", nil, true)
+        XCTAssertNil(ConversationSummary.personalDefault([shared, old]))
+        let recent = row("recent", true, false), active = row("active", true, true)
+        XCTAssertEqual(ConversationSummary.personalDefault([shared, recent, active])?.id, active.id)
+    }
+
+    func testUncommittedObservedRowsSurviveAHistoryReadAndDoNotDuplicateTheSavedUser() {
+        let previous = ChatMessage(id: "old", role: .assistant, text: "previous")
+        let user = ChatMessage(id: "u", role: .user, text: "question")
+        let partial = ChatMessage(id: "reply", role: .assistant, text: "prefix", status: .streaming)
+        let current = ChatSession.ObservedTurn(id: "turn", anchor: previous, rows: [user, partial])
+        XCTAssertEqual(current.merged([previous]).map(\.id), ["old", "u", "reply"])
+        XCTAssertEqual(current.merged([previous, user]).map(\.id), ["old", "u", "reply"])
+        XCTAssertTrue(current.committedTail([previous, user]).allSatisfy { $0.role != .assistant })
+        XCTAssertEqual(current.committedTail([previous, user, partial]).map(\.id), ["u", "reply"])
+    }
+
+    func testFirstDirectoryFailureRetriesButExplicitlyNewChatRemainsEmpty() async throws {
+        let app = AppModel(), backend = FakeBackend()
+        await app.use(backend)
+        let bot = try XCTUnwrap(app.bots.first)
+        let session = app.session(for: bot)
+        backend.directory = [.init(id: "only", title: "Saved", updatedAt: nil, botId: bot.id)]
+        backend.listFailures = 1
+        await session.showConversation()
+        XCTAssertNil(session.conversationId)
+        await session.showConversation()
+        XCTAssertEqual(session.conversationId, "only")
+        session.newChat()
+        await session.showConversation()
+        XCTAssertNil(session.conversationId)
+    }
+
+    func testInterruptedSenderUsesTheDurableAnchorAndCompletesOnItsOwnUserTurn() throws {
+        var mapper = ServerFrameMapper()
+        guard case .events(let events) = try mapper.map(["type": "turn.started", "turn_id": "run"]),
+              case .turnStarted("run")? = events.first else { return XCTFail("Missing sender turn ID") }
+        let prior = ChatMessage(id: "prior", role: .assistant, text: "previous")
+        let question = ChatMessage(id: "local-user", role: .user, text: "question")
+        let partial = ChatMessage(id: "local-reply", role: .assistant, text: "prefix", status: .streaming)
+        let turn = ChatSession.ObservedTurn(id: "run", anchor: prior, rows: [question, partial])
+        let other = ChatMessage(id: "other", role: .assistant, text: "previous completed turn")
+        let savedUser = ChatMessage(id: "saved-user", role: .user, text: "question")
+        let savedReply = ChatMessage(id: "saved-reply", role: .assistant, text: "prefix and complete response")
+        XCTAssertFalse(turn.hasCommittedReply([prior, other, savedUser]))
+        XCTAssertEqual(turn.merged([prior, savedUser]).last?.id, "local-reply")
+        XCTAssertTrue(turn.hasCommittedReply([prior, savedUser, savedReply]))
+    }
+
+    func testInterruptedDecisionCompletesWithoutAPersistedAnswerBubble() {
+        let baseline = ChatMessage(id: "saved", role: .assistant, text: "Question")
+        let partial = ChatMessage(id: "live", role: .assistant, text: "The ans", status: .streaming)
+        let turn = ChatSession.ObservedTurn(id: "run", anchor: baseline, rows: [partial], ended: true, resumed: true)
+        XCTAssertFalse(turn.hasCommittedReply([baseline]))
+        var extended = baseline
+        extended.text += "\n\nThe answer"
+        XCTAssertTrue(turn.hasCommittedReply([extended]))
+        XCTAssertTrue(turn.hasCommittedReply([baseline, ChatMessage(id: "new", role: .assistant, text: "The answer")]))
+    }
+
+    func testIdleBeforeFirstTokenSettlesEmptyPlaceholderOnlyAfterHistoryRetries() {
+        let user = ChatMessage(id: "q", role: .user, text: "question")
+        let empty = ChatMessage(id: "reply", role: .assistant, text: "", status: .streaming)
+        var turn = ChatSession.ObservedTurn(id: "run", anchor: nil, rows: [user, empty], ended: true)
+        XCTAssertFalse(turn.hasCommittedReply([user]))
+        turn.lastHistoryRetry = true
+        XCTAssertTrue(turn.hasCommittedReply([user]))
+        turn.rows[1].thinking = "already received"
+        XCTAssertFalse(turn.hasCommittedReply([user]))
+    }
+
+    func testHistoryPageOverlapPreservesOrderAndReplacesTheCurrentVersion() {
+        let old: [[String: Any]] = [["id": "a"], ["history_seq": 2, "content": "partial"]]
+        let new: [[String: Any]] = [["history_seq": 2, "content": "finished"], ["id": "b"]]
+        let rows = ChatSession.joinHistory(older: old, newer: new)
+        XCTAssertEqual(rows.count, 3)
+        XCTAssertEqual(rows[1]["content"] as? String, "finished")
+        XCTAssertEqual(rows[2]["id"] as? String, "b")
+    }
+
     func testRetryHistorySaveKeepsReplyAndDoesNotRunModelAgain() async throws {
         let app = AppModel()
         let backend = FakeBackend()
@@ -1592,7 +1681,7 @@ extension StreamTests {
         let backend = LynxceBackend(grant: .init(accountId: "A", accessToken: "synthetic", refreshToken: "synthetic"), historyRoot: root)
         let bot = BotProfile(id: "bot", name: "qa", look: .fallback, isChief: true)
         XCTAssertNotNil(backend.deletionNotice(for: bot))
-        let stream = backend.send("new", images: [], to: bot, conversation: turn.sessionID, history: [], model: nil)
+        let stream = backend.send("new", messageId: "qa-pending-delete", images: [], to: bot, conversation: turn.sessionID, history: [], model: nil)
         do {
             for try await _ in stream { XCTFail("Model dispatch must wait for deletion") }
             XCTFail("Expected pending deletion")
