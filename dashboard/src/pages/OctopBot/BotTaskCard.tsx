@@ -132,7 +132,7 @@ function Deliverables({
     <ul className={styles.deliverables}>
       {[...latest.values()].map((item) => {
         const thumbnailUrl = officeThumbnailUrl(agentId, item.preview);
-        const facts = item.facts.map((fact) =>
+        const facts = (item.facts ?? []).map((fact) =>
           t(`botTask.fact.${fact.k}`, { count: fact.n, w: fact.w, h: fact.h }),
         );
         return (
@@ -160,11 +160,9 @@ function Deliverables({
               <small className={styles.evidence}>
                 {[
                   formatFileSize(item.size),
-                  t("botTask.checked", {
-                    facts: facts.length
-                      ? facts.join(" · ")
-                      : t("botTask.opens"),
-                  }),
+                  facts.length
+                    ? t("botTask.checked", { facts: facts.join(" · ") })
+                    : t("botTask.noCheckRecord"),
                 ].join(" · ")}
               </small>
             </span>
@@ -311,6 +309,13 @@ export function BotTaskReport({
           <Deliverables items={task.deliverables ?? []} agentId={agentId} />
         </>
       )}
+      {Object.entries(task.delivery_failures ?? {}).map(([name, reason]) => (
+        <p key={name} className={styles.evidence}>
+          {t(reason === "open" ? "botTask.openFailed" : "botTask.checkFailed", {
+            name,
+          })}
+        </p>
+      ))}
       <h4 className={styles.sectionTitle}>{t("botTask.acceptance")}</h4>
       <Criteria criteria={task.criteria} />
       {task.open_issues.length > 0 && (

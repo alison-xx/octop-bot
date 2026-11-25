@@ -30,7 +30,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_user, get_server, sign_token
+from octop.api.deps import _decode, current_user, extract_raw_token, get_server, sign_token
 from octop.infra.auth.tokens import PURPOSE_ACCESS
 from octop.infra.desktop import desktop_shell_enabled
 from octop.infra.errors import ErrorCode, OctopError
@@ -147,7 +147,15 @@ async def register_device(
     second machine (or a reinstall) takes over and the old token stops working.
     """
     _require_desktop_loopback(request)
+    raw = extract_raw_token(
+        authorization=request.headers.get("authorization"),
+        access_token=request.query_params.get("access_token"),
+    )
+    assert raw is not None
+    claims = _decode(server, raw)
     payload = {
+        "auth_time": int(claims.get("auth_time", claims["iat"])),
+        "session_version": int(claims.get("sv", 0)),
         "v": 1,
         "user_id": int(user.id),
         "hash": _digest(body.device_token),
@@ -193,6 +201,13 @@ async def device_token(
     secret = server.services.secret_repo.get("jwt")
     ttl = int(server.services.config.access_token_ttl_seconds)
     row = server.services.user_repo.get(user.id)
+    auth_time = int(stored.get("auth_time", stored.get("created_at", 0)))
+    if (
+        row is None
+        or int(stored.get("session_version", 0)) != row.session_version
+        or time.time() >= auth_time + 30 * 86400
+    ):
+        raise OctopError(ErrorCode.AUTH_FAILED, "device session expired")
     mfa_version = int(row.mfa_version) if row is not None else 0
     password_version = int(row.password_version) if row is not None else 0
     token = sign_token(
@@ -204,6 +219,8 @@ async def device_token(
         ttl_seconds=ttl,
         mfa_version=mfa_version,
         password_version=password_version,
+        session_version=int(row.session_version) if row is not None else 0,
+        auth_time=auth_time,
     )
     _failures.pop(host, None)
     logger.info("desktop device session renewed for %s", user.username)

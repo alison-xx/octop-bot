@@ -250,3 +250,78 @@ async def test_middleware_localizes_auth_errors_by_accept_language(client) -> No
     assert r.status_code == 401
     assert r.json()["error"]["code"] == "TOKEN_EXPIRED"
     assert r.json()["error"]["message"] == "登录已过期，请重新登录。"
+
+
+async def test_logout_revokes_and_query_switch(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    c, _srv, home = client
+    await bootstrap_admin(c, home)
+    token = await login(c)
+    assert (await c.get("/api/auth/me", params={"access_token": token})).status_code == 200
+    monkeypatch.setenv("OCTOP_WS_QUERY_TOKEN", "0")
+    assert (await c.get("/api/auth/me", params={"access_token": token})).status_code == 401
+    assert (await c.post("/api/auth/logout-all", headers=bearer(token))).status_code == 204
+    assert (await c.get("/api/auth/me", headers=bearer(token))).status_code == 401
+    fresh = await login(c)
+    assert (await c.get("/api/auth/me", headers=bearer(fresh))).status_code == 200
+
+
+async def test_session_cap_and_renewal_claim(client) -> None:
+    import time
+
+    c, srv, home = client
+    await bootstrap_admin(c, home)
+    token = await login(c)
+    secret = srv.services.secret_repo.get("jwt")
+    user = srv.user_manager.get("admin")
+    assert user is not None and secret is not None
+    now = int(time.time())
+    expired = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        auth_time=now - 30 * 86400,
+    )
+    assert (await c.get("/api/auth/me", headers=bearer(expired))).status_code == 401
+    short = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=60,
+        auth_time=now - 86400,
+    )
+    response = await c.get("/api/auth/me", headers=bearer(short))
+    assert response.status_code == 200
+    assert (
+        decode_token(secret, response.headers[ACCESS_TOKEN_RESPONSE_HEADER])["auth_time"]
+        == now - 86400
+    )
+    assert decode_token(secret, token)["sv"] == 0
+
+
+async def test_ticket_issue_rate_and_purpose(client) -> None:
+    from octop.api.common.stream_auth import consume_ticket
+    from octop.infra.errors import OctopError
+
+    c, srv, home = client
+    await bootstrap_admin(c, home)
+    token = await login(c)
+    response = await c.post(
+        "/api/auth/ws-ticket", headers=bearer(token), json={"purpose": "chat_ws"}
+    )
+    assert response.status_code == 200
+    ticket = response.json()["ticket"]
+    with pytest.raises(OctopError):
+        consume_ticket(srv, ticket, "voice")
+    with pytest.raises(OctopError):
+        consume_ticket(srv, ticket, "chat_ws")
+    for _ in range(59):
+        assert (
+            await c.post("/api/auth/ws-ticket", headers=bearer(token), json={"purpose": "chat_ws"})
+        ).status_code == 200
+    assert (
+        await c.post("/api/auth/ws-ticket", headers=bearer(token), json={"purpose": "chat_ws"})
+    ).status_code == 429

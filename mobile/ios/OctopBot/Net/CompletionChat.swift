@@ -12,6 +12,8 @@ final class CompletionChat {
         var model: String?
         /// Set when the phone calls the model itself rather than through Lynxce.
         var endpoint: ModelEndpoint?
+        var botID = ""
+        var generationError: Error?
         var answer = ""
         var thinking = ""
         var rounds = 0
@@ -23,12 +25,12 @@ final class CompletionChat {
     static let maxToolRounds = 6
 
     private let stream: Stream
-    private let finished: (_ turn: Turn, _ sessionId: String) async -> Void
-    private var running: [String: Task<Void, Never>] = [:]
+    private let finished: (_ turn: Turn, _ sessionId: String) async throws -> Void
+    private var running: [String: (id: UUID, task: Task<Void, Never>)] = [:]
     /// Turns waiting on device tools the phone runs (PROTOCOL.md §C), by conversation.
     private var loops: [String: Turn] = [:]
 
-    init(stream: @escaping Stream, finished: @escaping (Turn, String) async -> Void) {
+    init(stream: @escaping Stream, finished: @escaping (Turn, String) async throws -> Void) {
         self.stream = stream
         self.finished = finished
     }
@@ -47,40 +49,43 @@ final class CompletionChat {
     }
 
     func stop(_ conversation: String) {
-        running[conversation]?.cancel()
+        running[conversation]?.task.cancel()
     }
 
     func cancelAll() {
-        for task in running.values { task.cancel() }
+        for run in running.values { run.task.cancel() }
     }
 
     /// Stream completions until the model answers without tool calls, or pauses for the phone's tools.
     private func run(_ start: Turn, sessionId: String, announce: (() -> Void)?) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
+            let id = UUID()
             let task = Task {
                 var turn = start
                 if let announce {
                     announce()
                     continuation.yield(.conversation(sessionId))
                 }
+                var streamError: Error?
                 do {
+                    try Task.checkCancellation()
                     while true {
                         var calls = ToolCallAccumulator()
                         var text = ""
                         if turn.rounds >= Self.maxToolRounds { turn.body["tools"] = nil; turn.body["tool_choice"] = nil }
                         var body = turn.body
-                        var thinking = ""
                         try await streamWithToolFallback(turn, &body, calls: &calls) { event in
                             switch event {
-                            case .text(let delta): text += delta
-                            case .thinking(let delta): thinking += delta
+                            case .text(let delta):
+                                text += delta
+                                turn.answer += delta
+                            case .thinking(let delta): turn.thinking += delta
                             default: break
                             }
                             continuation.yield(event)
                         }
-                        turn.thinking += thinking
+                        try Task.checkCancellation()
                         turn.body = body
-                        turn.answer += text
                         let made = calls.calls
                         guard !made.isEmpty else { break }
                         turn.rounds += 1
@@ -102,19 +107,32 @@ final class CompletionChat {
                         // The chat answers the pause (at once for reads) and `resume` carries on.
                         continuation.yield(.done)
                         continuation.finish()
-                        running[sessionId] = nil
+                        if running[sessionId]?.id == id { running[sessionId] = nil }
                         return
                     }
+                } catch {
+                    streamError = error
+                }
+                // Stopping generation cannot undo the history write for the answer already delivered.
+                if running[sessionId]?.id == id { running[sessionId] = nil }
+                turn.generationError = streamError
+                continuation.yield(.savingHistory)
+                do {
+                    try await Task { try await finished(turn, sessionId) }.value
+                } catch {
+                    if error is LynxceBackend.HistorySaveError || streamError == nil || streamError is CancellationError { streamError = error }
+                }
+                if let streamError {
+                    continuation.finish(throwing: streamError)
+                } else {
                     continuation.yield(.done)
                     continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
                 }
-                await finished(turn, sessionId)
-                running[sessionId] = nil
             }
-            running[sessionId] = task
-            continuation.onTermination = { _ in task.cancel() }
+            running[sessionId] = (id, task)
+            continuation.onTermination = { reason in
+                if case .cancelled = reason { task.cancel() }
+            }
         }
     }
 

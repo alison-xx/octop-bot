@@ -394,15 +394,19 @@ def _load_projected_thread_messages(
     *,
     user: Any,
     offset: int = 0,
+    before_seq: int | None = None,
     include_tool_media: bool = True,
-) -> tuple[list[dict[str, Any]], bool]:
+) -> tuple[list[dict[str, Any]], bool, str | None]:
     """Read one page without touching the agent checkpoint database."""
     repo = server.services.thread_message_repo
     rows, has_more = repo.page(
         thread_id,
         limit=limit,
         offset=offset,
+        before_seq=before_seq,
     )
+    # Use the scanned boundary even when every visible entry is a legacy stream copy.
+    next_cursor = str(rows[0].seq) if has_more and rows else None
     rows = drop_stream_copies(rows, lambda seq: repo.turn_rows_before(thread_id, seq))
     out: list[dict[str, Any]] = []
     for row in rows:
@@ -423,10 +427,11 @@ def _load_projected_thread_messages(
             fallback_created_at=row.created_at,
         )
         if entry is not None:
+            entry["history_seq"] = row.seq
             out.append(entry)
-    if not include_tool_media:
-        return out, has_more
-    return _enrich_history_tool_media(out, agent_id=agent_id), has_more
+    if include_tool_media:
+        out = _enrich_history_tool_media(out, agent_id=agent_id)
+    return out, has_more, next_cursor
 
 
 async def _backfill_thread_projection(

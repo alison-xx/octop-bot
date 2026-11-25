@@ -36,6 +36,18 @@ class Upstream:
         self.counts[path] += 1
         if path == "/api/auth/logout":
             return httpx.Response(200, json={"code": 0, "data": {}})
+        if path == "/api/user/profile":
+            account = req.headers["authorization"].removeprefix("Bearer access-")
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "id": "id-" + account,
+                        "avatarUrl": "https://cdn.avatars.test/owner.jpg",
+                    },
+                },
+            )
         body = json.loads(req.content)
         self.bodies[path] = body
         if path in {"/api/auth/phone-code", "/api/auth/email-code"}:
@@ -124,6 +136,11 @@ async def test_web_code_sign_in_claims_a_fresh_instance(
         assert ok.json()["user"]["username"] == "owner"
         binding = owner_binding(srv.services.settings_repo)
         assert binding is not None and binding.account_id == "id-13800000000"
+        assert binding.avatar_url == "https://cdn.avatars.test/owner.jpg"
+        me = await client.get(
+            "/api/auth/me", headers={"Authorization": "Bearer " + ok.json()["access_token"]}
+        )
+        assert me.json()["avatar_url"] == binding.avatar_url
         assert upstream.counts["/api/auth/logout"] == 1
 
         other = await client.post(CODE_LOGIN, json={"target": "x@y.cn", "code": "123456"})

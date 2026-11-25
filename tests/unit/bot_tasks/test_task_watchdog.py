@@ -64,10 +64,19 @@ def test_the_step_budget_warns_at_80_percent_then_refuses_work(
 
 
 def test_the_same_failure_three_times_gets_a_note(monkeypatch: pytest.MonkeyPatch) -> None:
-    middleware, _store, _task = _setup(monkeypatch, steps=50)
+    middleware, store, _task = _setup(monkeypatch, steps=50)
     results = [str(middleware.wrap_tool_call(_call(), _fail).content) for _ in range(3)]
     assert "failed the same way" not in results[1]
     assert "`execute` has now failed the same way 3 times" in results[2]
+    restarted = watchdog.BotTaskMiddleware(store)
+
+    def unexpected(_: Any) -> Any:
+        pytest.fail("the same failed call must not be executed again")
+
+    assert restarted.wrap_tool_call(_call(), unexpected).status == "error"
+    other = _call()
+    other.tool_call["args"] = {"path": "corrected.txt"}
+    assert restarted.wrap_tool_call(other, _ok).status == "success"
 
 
 def test_the_note_reaches_a_tool_that_returns_a_command(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -322,17 +331,154 @@ def test_a_file_that_fails_the_checks_never_reaches_the_user(
     assert store.running("thr1").deliverables == []
 
 
+def test_failed_revision_is_reported_until_the_file_is_delivered(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    from io import BytesIO
+
+    from pypdf import PdfWriter
+
+    middleware, store, _task = _setup(monkeypatch)
+    name = "quarterly-report.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    valid = BytesIO()
+    writer.write(valid)
+    for data, expected in [
+        (valid.getvalue(), {}),
+        (b"", {name: "validation"}),
+        (b"%PDF", {name: "open"}),
+        (valid.getvalue(), {}),
+    ]:
+        result = middleware.wrap_tool_call(_call("send_file_to_user"), _sent(tmp_path, name, data))
+        saved = store.running("thr1")
+        assert saved.delivery_failures == expected
+        if expected:
+            assert result.status == "error"
+            assert [d.version for d in saved.deliverables] == [1]
+    assert [d.version for d in saved.deliverables] == [1, 2]
+
+
 def test_delivered_files_are_kept_on_the_task_with_versions(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
-    middleware, store, _task = _setup(monkeypatch)
+    middleware, store, _task = _setup(monkeypatch, steps=60)
     send = _sent(tmp_path, "价格对比.csv", "公司,价格\nA,1\n".encode())
-    for _ in range(2):
+    for _ in range(33):
         result = middleware.wrap_tool_call(_call("send_file_to_user"), send)
         assert result.status != "error"
     delivered = store.running("thr1").deliverables
-    assert [(d.name, d.version) for d in delivered] == [("价格对比.csv", 1), ("价格对比.csv", 2)]
+    assert [(d.name, d.version) for d in delivered] == [("价格对比.csv", v) for v in range(4, 34)]
     assert delivered[0].facts == [{"k": "rows", "n": 1}] and delivered[0].size > 0
+
+
+def test_reopening_the_task_does_not_grant_a_fresh_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    old, store, _task = _setup(monkeypatch, steps=1)
+    assert old.wrap_tool_call(_call(), _ok).status == "success"
+    reopened = watchdog.BotTaskMiddleware(store, always=True)
+    assert reopened.wrap_tool_call(_call(), _ok).status == "error"
+    assert store.running("thr1").steps_used == 1
+
+
+@pytest.mark.asyncio
+async def test_model_silence_retries_inference_once_then_preserves_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    from langchain.agents.middleware import ModelRequest
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    from octop.infra.bot_tasks import model_silence
+
+    middleware, store, task = _setup(monkeypatch)
+    task.criteria = [Criterion(text="one", status="passed", evidence="receipt")]
+    store.save("thr1", task)
+    model = FakeListChatModel(responses=["ok"])
+    request = ModelRequest(model=model, messages=[], tools=[])
+    attempts = []
+    monkeypatch.setattr(model_silence, "SILENT_SECONDS", 0.04)
+
+    async def silent(_: Any) -> Any:
+        try:
+            await asyncio.Event().wait()
+        finally:
+            attempts.append("cancelled")
+
+    result = await middleware.awrap_model_call(request, silent)
+    assert attempts == ["cancelled", "cancelled"]
+    saved = store.tasks("thr1")[-1]
+    assert saved.silence_retry_used and saved.status == "stopped"
+    assert saved.criteria == task.criteria
+    assert result.result[0].content == saved.summary
+
+
+@pytest.mark.asyncio
+async def test_streaming_tokens_extend_model_idle_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    from octop.infra.bot_tasks import model_silence
+
+    monkeypatch.setattr(model_silence, "SILENT_SECONDS", 0.2)
+    model = FakeListChatModel(responses=["abcdef"], sleep=0.05)
+
+    async def tokens() -> str:
+        return "".join([str(chunk.content) async for chunk in model.astream("sample")])
+
+    assert await model_silence.watch_model_output(tokens) == "abcdef"
+
+
+@pytest.mark.asyncio
+async def test_provider_timeouts_and_user_cancellation_are_not_silence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    from octop.infra.bot_tasks import model_silence
+
+    async def immediately_raises(exc: BaseException) -> None:
+        raise exc
+
+    with pytest.raises(TimeoutError, match="upstream"):
+        await model_silence.watch_model_output(lambda: immediately_raises(TimeoutError("upstream")))
+    with pytest.raises(asyncio.CancelledError):
+        await model_silence.watch_model_output(lambda: immediately_raises(asyncio.CancelledError()))
+
+
+def test_owner_can_read_persisted_card_status_after_model_silence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import Mock
+
+    from octop.api.routers.chat import history
+
+    middleware, store, task = _setup(monkeypatch)
+    middleware._silence("thr1", task.id, False)
+    server = Mock()
+    server.services.settings_repo = store._settings
+    server.app_runtime.gateway.thread_registry.get_thread.return_value = SimpleNamespace(
+        agent_id="bot", user_id=2
+    )
+    monkeypatch.setattr(history, "require_agent_row", Mock())
+    result = history.read_task_statuses("bot", "thr1", SimpleNamespace(id=2), server)
+    assert [(item.id, item.status) for item in result] == [(task.id, "stopped")]
+    assert set(result[0].model_dump()) == {"id", "status", "summary", "updated_at", "finished_at"}
+
+
+def test_large_delivery_only_checks_its_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    middleware, store, _task = _setup(monkeypatch)
+    monkeypatch.setattr(watchdog, "MAX_INSPECT_BYTES", 4)
+    result = middleware.wrap_tool_call(
+        _call("send_file_to_user"), _sent(tmp_path, "价格对比.csv", b"name,value\nA,42\n")
+    )
+    assert result.status == "success"
+    assert store.running("thr1").deliverables[0].facts == [{"k": "filenameOnly", "n": 1}]
+    refused = middleware.wrap_tool_call(
+        _call("send_file_to_user"), _sent(tmp_path, "output.csv", b"name,value\nA,42\n")
+    )
+    assert refused.status == "error"
 
 
 @pytest.mark.parametrize("available", [False, True])
@@ -366,7 +512,9 @@ def test_office_delivery_requires_a_preview_for_the_exact_revision(
     if available:
         assert result.status == "success"
         assert result.content[0]["office_preview_path"] == preview
-        assert delivered[0].preview == preview and {"k": "pages", "n": 2} in delivered[0].facts
+        assert delivered[0].preview == preview
+        assert {"k": "pages", "n": 2} in delivered[0].facts
+        assert {"k": "opened", "n": 1} in delivered[0].facts
     else:
         assert result.status == "error" and "Could not open the sample" in result.content
         assert delivered == []

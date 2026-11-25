@@ -104,8 +104,9 @@ class LynxceBackend(
         }
         val body = data.asObject()
         val access = body?.str("accessToken") ?: throw ApiException(ApiException.Kind.Unauthorized, 401)
-        grant = grant.copy(accessToken = access, refreshToken = body.str("refreshToken") ?: grant.refreshToken)
-        store.setLynxceGrant(grant)
+        val next = grant.copy(accessToken = access, refreshToken = body.str("refreshToken") ?: grant.refreshToken)
+        if (!store.replaceLynxceGrant(grant, next)) throw ApiException(ApiException.Kind.Unauthorized, 401)
+        grant = next
         grant
     }
 

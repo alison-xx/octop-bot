@@ -37,7 +37,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,6 +57,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.key
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -171,7 +174,7 @@ class CloudFloatState(val server: ServerBackend, val botId: String, context: Con
             if (mode == Mode.Card && !pinned && now - since > IDLE_TO_PILL_MILLIS) mode = Mode.Pill
             if (mode == Mode.Hidden && !closed) mode = Mode.Pill
         }
-        if (mode != Mode.Hidden || expanded) {
+        if (mode == Mode.Card && !expanded) {
             val glance = runCatching { server.glance(botId) }.getOrNull() ?: return
             window = glance.window
             glance.thumbnail?.let { bytes -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { thumbnail = it } }
@@ -205,6 +208,7 @@ class CloudFloatState(val server: ServerBackend, val botId: String, context: Con
     }
 
     fun open() {
+        pinned = true
         pillOnly = false
         mode = Mode.Card
     }
@@ -306,7 +310,7 @@ private fun Card(state: CloudFloatState, botName: String) {
             .background(palette.raised)
             .then(glow(state, palette.accent, shape)),
     ) {
-        Row(Modifier.fillMaxWidth().height(40.dp).padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.Computer, contentDescription = null, modifier = Modifier.size(16.dp), tint = palette.text)
             Column(Modifier.weight(1f).padding(start = 6.dp)) {
                 Text(state.window ?: botName, style = MaterialTheme.typography.labelMedium, color = palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -391,7 +395,7 @@ private fun Pill(state: CloudFloatState) {
 
 @Composable
 private fun SmallIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: Int, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(32.dp)) {
+    IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
         Icon(icon, contentDescription = stringResource(label), modifier = Modifier.size(16.dp), tint = LocalPalette.current.text)
     }
 }
@@ -419,6 +423,7 @@ fun CloudScreenDialog(state: CloudFloatState, botName: String) {
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableIntStateOf(0) }
     var working by remember { mutableStateOf(false) }
+    var controlError by remember { mutableStateOf<String?>(null) }
     val takenOver = state.status?.takeover == true
     // Starts or resumes the computer when it is off; shows "starting…" meanwhile and a retry on failure.
     LaunchedEffect(attempt) {
@@ -434,9 +439,9 @@ fun CloudScreenDialog(state: CloudFloatState, botName: String) {
         onDismissRequest = { state.expanded = false },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        Column(Modifier.fillMaxSize().background(Color(0xFF0E0F13))) {
+        Column(Modifier.fillMaxSize().background(Color(0xFF0E0F13)).safeDrawingPadding().imePadding()) {
             Row(
-                Modifier.fillMaxWidth().background(palette.background).statusBarsPadding().padding(horizontal = 6.dp, vertical = 4.dp),
+                Modifier.fillMaxWidth().background(palette.background).padding(horizontal = 6.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = { state.expanded = false }) {
@@ -454,12 +459,18 @@ fun CloudScreenDialog(state: CloudFloatState, botName: String) {
                     onClick = {
                         working = true
                         scope.launch {
-                            if (runCatching { state.server.setTakeover(state.botId, !takenOver) }.isSuccess) {
+                            controlError = null
+                            try {
+                                state.server.setTakeover(state.botId, !takenOver)
                                 state.refresh()
-                                url = null
                                 attempt++
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (failure: Exception) {
+                                controlError = resources.describe(failure)
+                            } finally {
+                                working = false
                             }
-                            working = false
                         }
                     },
                 ) {
@@ -468,11 +479,18 @@ fun CloudScreenDialog(state: CloudFloatState, botName: String) {
                     Text(stringResource(if (takenOver) R.string.computer_hand_back else R.string.computer_take_over))
                 }
             }
+            if (url != null) error?.let {
+                Column(Modifier.padding(horizontal = 16.dp)) {
+                    Text(it, color = Color.White)
+                    Button(onClick = { attempt++ }) { Text(stringResource(R.string.chat_retry)) }
+                }
+            }
+            controlError?.let { Text(it, color = Color.White, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) }
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 val page = url
                 val failure = error
                 when {
-                    page != null -> ScreenWebView(page)
+                    page != null -> key(page) { ScreenWebView(page) }
                     failure != null -> Column(Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(failure, color = Color.White, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(12.dp))
@@ -511,7 +529,7 @@ private fun ScreenWebView(url: String) {
                 loadUrl(url)
             }
         },
-        update = { view -> if (view.url != url) view.loadUrl(url) },
+        // A new ticket creates a new view. Page redirects never reload a consumed ticket.
         onRelease = { it.destroy() },
         modifier = Modifier.fillMaxSize(),
     )

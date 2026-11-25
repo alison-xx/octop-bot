@@ -284,3 +284,13 @@ class HitlResumeBody(BaseModel):
                     msg = f"decision 'message' exceeds {_MAX_DECISION_MESSAGE_CHARS} characters"
                     raise ValueError(msg)
         return value
+
+
+class BotTaskStatus(BaseModel):
+    """Persisted task state that can change after the last tool result."""
+
+    id: str
+    status: Literal["running", "done", "partial", "stopped"]
+    summary: str
+    updated_at: float
+    finished_at: float | None
