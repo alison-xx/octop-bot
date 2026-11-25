@@ -57,7 +57,6 @@ WORKBUDDY_SESSION_PATH = "/api/oauth/workbuddy/session"
 # Lynxce's WorkBuddy hand-off code: "wb-handoff." + base64url payload + "." + HMAC-SHA256.
 _HANDOFF = re.compile(r"wb-handoff\.[A-Za-z0-9_-]{16,1024}\.[A-Za-z0-9_-]{43}")
 _READS = {
-    "/api/user/profile": set(),
     "/api/user/quota": set(),
     "/api/user/cloud-work/capabilities": set(),
     "/api/user/cloud-work/tasks": {"sessionId"},
@@ -707,6 +706,8 @@ _MODEL_KEY_CALLS = frozenset(
 )
 # What cloud mode may do with a tenant's stored Lynxce session, besides request_cloud.
 _TENANT_CALLS: dict[tuple[str, str], dict[str, str]] = {
+    # Legacy history restore confirms the stored upstream account before reading its sessions.
+    ("GET", "/api/user/profile"): {},
     ("POST", "/api/user/personal-api-keys"): {},
     # This server's own model keys only: listed and revoked before a replacement is minted.
     ("GET", "/api/user/personal-api-keys"): {},

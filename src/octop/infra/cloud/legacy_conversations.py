@@ -167,7 +167,7 @@ async def restore_page(
         )
 
     async with AsyncFileLock(services.paths.root / f".legacy-conversations-{owner}.lock"):
-        profile = await read("/api/user/profile")
+        profile = await lynxce_cloud.tenant_call(services, owner, "GET", "/api/user/profile")
         if not isinstance(profile, dict) or profile.get("id") != account:
             raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
         params: dict[str, str | int] = {"limit": 5}

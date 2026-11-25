@@ -1288,12 +1288,15 @@ async def test_legacy_mobile_history_restores_per_account_without_replacing_clou
         },
     )
     reads: list[tuple[str, str]] = []
+    profile_id: str | None = None
 
     def respond(req: httpx.Request) -> httpx.Response:
         route = req.url.path
         account = req.headers.get("Authorization", "").removeprefix("Bearer access-")
         if route == "/api/user/profile":
-            return httpx.Response(200, json={"code": 0, "data": {"id": "lx-" + account}})
+            return httpx.Response(
+                200, json={"code": 0, "data": {"id": profile_id or "lx-" + account}}
+            )
         if route == sessions or route.startswith(sessions + "/"):
             assert req.method == "GET" and account in (account_a, account_b)
             reads.append((account, route))
@@ -1425,5 +1428,10 @@ async def test_legacy_mobile_history_restores_per_account_without_replacing_clou
             tid,
         }
         assert server.services.thread_message_repo.head(tid) == len(items)
+        profile_id = "outdated-account-binding"
+        prior_reads = list(reads)
+        mismatch = await client.post(path, headers=alice, json={})
+        assert mismatch.json()["error"]["code"] == "BOT_CLOUD_ACCOUNT_REQUIRED"
+        assert reads == prior_reads
     assert reads.count((account_a, sessions + "/" + sid)) == 2
     assert not unplanned
