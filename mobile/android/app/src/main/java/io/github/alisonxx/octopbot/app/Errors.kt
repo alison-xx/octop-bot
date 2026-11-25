@@ -3,6 +3,9 @@ package io.github.alisonxx.octopbot.app
 import android.content.res.Resources
 import io.github.alisonxx.octopbot.R
 import io.github.alisonxx.octopbot.net.ApiException
+import io.github.alisonxx.octopbot.net.CreditScenario
+import io.github.alisonxx.octopbot.net.creditScenario
+import io.github.alisonxx.octopbot.net.LynxceProtocol
 import io.github.alisonxx.octopbot.net.ModelSourceException
 import io.github.alisonxx.octopbot.net.ModelSourceException.Reason
 
@@ -11,7 +14,8 @@ fun Resources.describe(error: Throwable): String {
     (error as? ModelSourceException)?.let { return describeModelSource(it) }
     val api = error as? ApiException ?: return getString(R.string.error_network)
     // The server's out-of-credits text carries a URL a snackbar can't open; the chat card links it instead.
-    if (api.kind == ApiException.Kind.Credits) return getString(R.string.error_credits)
+    if (api.kind == ApiException.Kind.Credits) return creditScenario(api.code, api.details)?.let { creditScenarioMessage(it) } ?: getString(R.string.error_credits)
+    if (api.code == "insufficient_balance") return getString(R.string.error_provider_balance)
     if (api.kind == ApiException.Kind.DailyLimit) return getString(R.string.error_daily_limit)
     if (api.code == ApiException.COMPUTER_OFF) return getString(R.string.computer_file_off)
     if (api.code == ApiException.COMPUTER_BUSY) return getString(R.string.computer_busy)
@@ -39,3 +43,15 @@ fun Resources.describeModelSource(error: ModelSourceException): String = when (e
     Reason.KeyRejected -> getString(R.string.models_error_key_rejected)
     Reason.Quota -> listOfNotNull(getString(R.string.models_error_quota), error.detail).joinToString(" ")
 }
+
+fun Resources.creditScenarioMessage(scenario: CreditScenario): String = getString(
+    when (scenario.type) {
+        "text" -> R.string.chat_credits_text
+        "image" -> R.string.chat_credits_image
+        "video" -> R.string.chat_credits_video
+        "computer" -> R.string.chat_credits_computer
+        else -> R.string.chat_credits_paused
+    },
+    LynxceProtocol.formatCredits(scenario.need),
+    LynxceProtocol.formatCredits(scenario.balance),
+)

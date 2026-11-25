@@ -11,6 +11,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { IPC_CHANNELS, type BotShortcut } from "../../shared/ipc-contract";
 import { desktopLog } from "../log/desktop-log";
+import { uiLocale } from "../ui-locale";
 
 const size = 64;
 type OrbAction = BotShortcut | "resume" | "settings";
@@ -131,7 +132,7 @@ export class BotOrb {
       height: size,
       title:
         "Octop Bot · " +
-        (app.getLocale().startsWith("zh") ? "悬浮球" : "Floating button"),
+        (uiLocale().startsWith("zh") ? "悬浮球" : "Floating button"),
       show: false,
       frame: false,
       transparent: true,
@@ -171,7 +172,7 @@ export class BotOrb {
   }
 
   private menu(win: BrowserWindow): void {
-    const zh = app.getLocale().toLowerCase().startsWith("zh");
+    const zh = uiLocale().toLowerCase().startsWith("zh");
     const item = (label: string, action: OrbAction) => ({
       label,
       click: () => this.run(action),
@@ -181,7 +182,6 @@ export class BotOrb {
       item(zh ? "新建对话" : "New chat", "newChat"),
       item(zh ? "搜索团队和会话" : "Search team and chats", "search"),
       { type: "separator" },
-      item(zh ? "云端工作区" : "Cloud workspace", "cloud"),
       item(zh ? "账号与模型" : "Account and models", "settings"),
       { type: "separator" },
       {

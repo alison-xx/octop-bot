@@ -1,5 +1,6 @@
 """The service credential and operational computer lifecycle."""
 
+import asyncio
 import hashlib
 import time
 from pathlib import Path
@@ -75,6 +76,19 @@ async def test_ops_auth(
         assert (await client.get(BASE + "/summary", headers=HEADERS)).status_code == 200
         monkeypatch.setenv("OCTOP_BOT_CLOUD", "0")
         assert (await client.get(BASE + "/summary", headers=HEADERS)).status_code == 404
+
+
+async def test_daily_quota_reserves_each_slot_once(
+    tmp_octop_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(ops, "DELETE_DISK_DAILY_LIMIT", 2)
+    async with octop_client(tmp_octop_home) as (_, server):
+        service = ops.OpsService(server.services)
+        results = await asyncio.gather(
+            *(asyncio.to_thread(service._reserve_delete, "test:daily-quota") for _ in range(5))
+        )
+        assert results.count(True) == 2
+        assert server.services.settings_repo.get("test:daily-quota") == "2"
 
 
 async def test_ops_computers(

@@ -501,6 +501,10 @@ class OctopServer:
         from octop.infra.desktop import bot_cloud_enabled  # noqa: PLC0415
 
         if bot_cloud_enabled():
+            # Octop Bot cloud: agent fetches reach public addresses only.
+            from octop.infra.cloud.bot_cloud import fetch_guard  # noqa: PLC0415
+
+            fetch_guard.install()
             # Octop Bot cloud: each tenant Bot's computer, if Tencent Cloud AGS is configured.
             from octop.infra.cloud.computers.manager import computer_manager  # noqa: PLC0415
 

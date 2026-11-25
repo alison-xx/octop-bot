@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { BrowserWindow, ipcMain, net, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 
-import { normalizeServerAddress, probeServer, type ServerChoiceStore } from "../server/server-choice";
+import { isLoopbackHost, normalizeServerAddress, probeServer, type ServerChoiceStore } from "../server/server-choice";
 
 /**
  * "Connect to a server": a small shell page that checks an address and, when an
@@ -14,7 +14,8 @@ export class ServerPicker {
   private readonly restart: () => void;
   private readonly icon: string | undefined;
 
-  constructor(options: { store: ServerChoiceStore; restart: () => void; icon?: string }) {
+  /** `allowLoopback`: development runs may point at a test server on this computer. */
+  constructor(options: { store: ServerChoiceStore; restart: () => void; icon?: string; allowLoopback: boolean }) {
     this.store = options.store;
     this.restart = options.restart;
     this.icon = options.icon;
@@ -25,6 +26,9 @@ export class ServerPicker {
       if (!own(event)) return { ok: false, reason: "invalid" };
       const checked = normalizeServerAddress(typeof address === "string" ? address : "");
       if (!checked.ok) return checked;
+      if (!options.allowLoopback && isLoopbackHost(new URL(checked.origin).hostname)) {
+        return { ok: false, reason: "loopback" };
+      }
       const probed = await probeServer(checked.origin, (url, init) => net.fetch(url, init));
       if (!probed.ok) return probed;
       this.switchTo(checked.origin);

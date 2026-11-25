@@ -366,6 +366,7 @@ def test_capacity_errors_are_told_apart() -> None:
         raise RuntimeError("no zone has a SA9.LARGE8 available") from sold_out
     except RuntimeError as wrapped:
         assert computers.capacity_full(wrapped)
+        assert computers.error_codes(wrapped) == ["ResourcesSoldOut.SpecifiedInstanceType"]
     assert computers.capacity_full(TencentCloudSDKException("LimitExceeded.InstanceQuota"))
 
 

@@ -182,6 +182,15 @@ class OpsService:
             ).decode()
         return {"items": page, "nextCursor": next_cursor}
 
+    def _reserve_delete(self, counter: str) -> bool:
+        settings = self.services.settings_repo
+        while True:
+            current = settings.get_or_insert(counter, "0")
+            if int(current) >= DELETE_DISK_DAILY_LIMIT:
+                return False
+            if settings.replace_if_current(counter, current, str(int(current) + 1)):
+                return True
+
     def write(
         self, computer_id: str, operator: dict[str, str], *, delete: bool
     ) -> dict[str, Any] | None:
@@ -201,16 +210,14 @@ class OpsService:
                 item = self.item(record, self.accounts())
                 if delete:
                     counter = "octop_bot:ops:deletes:" + beijing_day(time.time())
-                    done = int(self.services.settings_repo.get(counter) or 0)
-                    if done >= DELETE_DISK_DAILY_LIMIT:
+                    if not self._reserve_delete(counter):
                         logger.warning(
                             "ops delete-disk limit reached (%s today); refused %s by %s",
-                            done,
+                            DELETE_DISK_DAILY_LIMIT,
                             computer_id,
                             operator["operatorId"],
                         )
                         raise OpsLimitReached
-                    self.services.settings_repo.set(counter, str(done + 1))
                     manager._release(computer_id, record.user_id)
                     item.update(
                         status="stopped", reclaimState="reclaimed", reclaimAt=iso(time.time())

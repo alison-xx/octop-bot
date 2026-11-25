@@ -74,7 +74,7 @@ class ChatQueueTest {
     }
 
     private class Host(override val backend: ChatBackend) : ChatHost {
-        private val bot = BotProfile("b", "Bot", look = Look.fallback)
+        var bot = BotProfile("b", "Bot", look = Look.fallback)
         override fun bot(id: String) = bot
         override suspend fun model(): String? = null
         override fun replyStarted(botId: String) = Unit
@@ -84,6 +84,22 @@ class ChatQueueTest {
             failures += error
         }
         override val hitlTexts = HitlTexts("decide", "closed", { "Approved: $it" }, { "Declined: $it" })
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun preparingAndFailedBotsDoNotSend() = runTest {
+        val backend = Backend()
+        val host = Host(backend)
+        val chat = ChatSession("b", this, host)
+        host.bot = host.bot.copy(preparing = true)
+        chat.send("preparing", emptyList())
+        host.bot = host.bot.copy(preparing = false, state = "failed")
+        chat.send("failed", emptyList())
+        runCurrent()
+        assertTrue(backend.sent.isEmpty())
+        assertTrue(chat.state.value.messages.isEmpty())
+        assertTrue(chat.state.value.queued.isEmpty())
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

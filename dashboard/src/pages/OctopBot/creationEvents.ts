@@ -24,8 +24,51 @@ function json(text?: string): unknown {
   }
 }
 
+/** Chief's one-call team: a receipt for each new bot, then for its group. */
+function teamChanges(output: unknown, args: unknown): WorkspaceChange[] {
+  if (
+    !output ||
+    typeof output !== "object" ||
+    !("bot_ids" in output) ||
+    !Array.isArray(output.bot_ids) ||
+    !args ||
+    typeof args !== "object" ||
+    !("bots" in args) ||
+    !Array.isArray(args.bots)
+  )
+    return [];
+  const specs: unknown[] = args.bots;
+  const ids = output.bot_ids.filter(
+    (id): id is string => typeof id === "string" && Boolean(id),
+  );
+  const changes: WorkspaceChange[] = ids.flatMap((id, index) => {
+    const spec = specs[index];
+    const name =
+      spec && typeof spec === "object" && "name" in spec
+        ? String(spec.name).trim()
+        : "";
+    return name ? [{ kind: "bot" as const, id, name, memberIds: [id] }] : [];
+  });
+  if (
+    "group_id" in output &&
+    typeof output.group_id === "string" &&
+    output.group_id &&
+    "name" in output &&
+    typeof output.name === "string"
+  )
+    changes.push({
+      kind: "group",
+      id: output.group_id,
+      name: output.name,
+      memberIds: ids,
+    });
+  return changes;
+}
+
 /** Show a receipt only for a confirmed change to the workspace. */
-function workspaceChange(message: ChatMessage): WorkspaceChange | null {
+function workspaceChange(
+  message: ChatMessage,
+): WorkspaceChange | WorkspaceChange[] | null {
   const tool = message.toolData;
   if (
     message.status !== "done" ||
@@ -64,6 +107,10 @@ function workspaceChange(message: ChatMessage): WorkspaceChange | null {
       name,
       action: result.action,
     };
+  }
+  if (tool.name === "octop_bot_create_team") {
+    const changes = teamChanges(json(tool.output), json(tool.arguments));
+    return changes.length ? changes : null;
   }
   if (tool.name === "octop_bot_create") {
     const args = json(tool.arguments);
@@ -108,14 +155,15 @@ export function separateCreations(messages: ChatMessage[], enabled: boolean) {
   const created: WorkspaceChange[] = [];
   if (!enabled) return { remaining: messages, created };
   const remaining = messages.filter((message) => {
-    const event = workspaceChange(message);
-    if (!event) return true;
-    if (
-      !created.some(
-        (entry) => entry.kind === event.kind && entry.id === event.id,
+    const change = workspaceChange(message);
+    if (!change) return true;
+    for (const event of Array.isArray(change) ? change : [change])
+      if (
+        !created.some(
+          (entry) => entry.kind === event.kind && entry.id === event.id,
+        )
       )
-    )
-      created.push(event);
+        created.push(event);
     return false;
   });
   return { remaining, created };

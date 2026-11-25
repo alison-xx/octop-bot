@@ -414,6 +414,11 @@ export default function CloudComputerFloat({
               : activity}
           </span>
         </button>
+        {startError ? (
+          <button type="button" className={styles.pillRetry} onClick={open}>
+            {t("cloudComputer.float.retry")}
+          </button>
+        ) : null}
         <button
           type="button"
           className={styles.pillClose}

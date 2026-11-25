@@ -1504,12 +1504,16 @@ a.card:hover,
 
 /* ---------- Pricing page ---------- */
 .price-tabs {
+  position: relative;
+  max-width: 100%;
   display: inline-flex;
   padding: 4px;
   border-radius: 14px;
   background: var(--bg-soft);
 }
 .price-tabs button {
+  position: relative;
+  min-height: 40px;
   padding: 8px 20px;
   border: 0;
   border-radius: 11px;
@@ -1520,16 +1524,46 @@ a.card:hover,
   cursor: pointer;
 }
 .price-tabs button[aria-selected="true"] {
-  background: var(--surface);
   color: var(--ink);
   font-weight: 600;
+}
+.segment-indicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 1px;
+  border-radius: calc(11px / var(--indicator-scale, 1)) / 11px;
+  background: var(--surface);
   box-shadow: var(--shadow-sm);
+  transform-origin: left center;
+  pointer-events: none;
+}
+.segment-indicator.ready {
+  transition: transform 220ms cubic-bezier(.2,.8,.2,1);
+}
+.price-tabs button:focus-visible,
+.cycle button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+@keyframes pricing-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.pricing-enter {
+  animation: pricing-enter 220ms cubic-bezier(.2,.8,.2,1);
+}
+@media (max-width: 560px) {
+  .price-tabs { display: flex; width: 100%; }
+  .price-tabs button { flex: 1; min-width: 0; padding-inline: 4px; font-size: 13px; }
 }
 .cycle-wrap {
   display: flex;
   justify-content: center;
 }
 .cycle {
+  position: relative;
   display: inline-flex;
   padding: 4px;
   border: 1px solid var(--line);
@@ -1537,6 +1571,8 @@ a.card:hover,
   background: var(--surface);
 }
 .cycle button {
+  position: relative;
+  min-height: 40px;
   padding: 7px 16px;
   border: 0;
   border-radius: 999px;
@@ -1546,8 +1582,14 @@ a.card:hover,
   color: var(--ink-2);
   cursor: pointer;
 }
-.cycle button[aria-pressed="true"] {
+.cycle .segment-indicator {
+  top: 3px;
+  bottom: 3px;
+  border-radius: calc(20px / var(--indicator-scale, 1)) / 20px;
   background: var(--ink);
+  box-shadow: none;
+}
+.cycle button[aria-pressed="true"] {
   color: var(--on-ink);
 }
 .cycle em {
@@ -1858,25 +1900,69 @@ a.card:hover,
   font-weight: 600;
   color: var(--ink-3);
 }
-.model-table td.model-name {
+.model-table .model-cell {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
 }
 .model-icon {
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  justify-content: center;
   width: 20px;
   height: 20px;
+  overflow: hidden;
   border-radius: 5px;
+}
+.model-icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 .model-icon.letter {
-  display: inline-grid;
-  place-items: center;
   background: var(--bg-soft);
   font-size: 11px;
   font-weight: 700;
   color: var(--ink-2);
+}
+:root[data-theme="dark"] .model-icon.dark-mark {
+  background: #fff;
+}
+:root[data-theme="dark"] .model-icon.dark-mark img {
+  width: 72%;
+  height: 72%;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .model-icon.dark-mark {
+    background: #fff;
+  }
+  :root:not([data-theme="light"]) .model-icon.dark-mark img {
+    width: 72%;
+    height: 72%;
+  }
+}
+.model-lines {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.model-lines button {
+  padding: 2px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.model-lines button[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
 }
 .model-table td.num {
   font-variant-numeric: tabular-nums;
@@ -2496,3 +2582,38 @@ dialog.modal.community .community-card img {
 body {
   transition: opacity 0.2s;
 }
+
+/* Sign-in */
+/* Sign-in stage and form */
+.login-layout { display: grid; grid-template-columns: minmax(380px, 45%) minmax(0, 1fr); gap: 24px; min-height: calc(100vh - 126px); padding-block: 18px 40px; }
+.login-stage { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: center; border-radius: 24px; padding: 48px clamp(28px, 4vw, 56px) 32px; color: #fff; background: radial-gradient(80% 60% at 80% 10%, #ffd6aa8c, transparent 60%), radial-gradient(70% 60% at 0% 100%, #7828788c, transparent 60%), linear-gradient(160deg, #ff8e9f, #e85d75 45%, #b3305a); }
+:root[data-theme="dark"] .login-stage { background: radial-gradient(80% 60% at 80% 10%, #ff967847, transparent 60%), radial-gradient(70% 60% at 0% 100%, #5a1e6e99, transparent 60%), linear-gradient(160deg, #6a2337, #4a1a2c 50%, #24111d); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .login-stage { background: radial-gradient(80% 60% at 80% 10%, #ff967847, transparent 60%), radial-gradient(70% 60% at 0% 100%, #5a1e6e99, transparent 60%), linear-gradient(160deg, #6a2337, #4a1a2c 50%, #24111d); } }
+.login-stage::after { content: ""; position: absolute; inset: 0; background-image: radial-gradient(#ffffff29 1px, transparent 1px); background-size: 22px 22px; mask-image: linear-gradient(180deg, transparent, #000 40%, transparent); pointer-events: none; }
+.login-stage > * { position: relative; z-index: 1; }
+.login-stage .login-chief { width: clamp(140px, 15vw, 200px); filter: drop-shadow(0 18px 30px #3c001459); }
+.login-stage h2 { margin: 16px 0 0; font-size: clamp(30px, 3vw, 42px); line-height: 1.15; letter-spacing: -.03em; }
+.login-stage p { margin: 12px 0 0; opacity: .88; }
+.login-chips { display: grid; gap: 10px; margin-top: 22px; }
+.login-chips div { padding: 11px 14px; border: 1px solid #ffffff38; border-radius: 14px; background: #ffffff24; font-size: 14px; }
+.login-team { display: flex; align-items: center; gap: 14px; margin-top: 26px; padding: 8px 18px 8px 8px; border: 1px solid #ffffff38; border-radius: 999px; background: #ffffff21; font-size: 13px; }
+.login-stack { display: flex; padding-left: 10px; }
+.login-avatar { width: 36px; height: 36px; margin-left: -10px; opacity: .82; }
+.login-avatar img { width: 100%; height: 100%; object-fit: cover; border: 2px solid white; border-radius: 50%; background: white; }
+.login-avatar.on { position: relative; z-index: 1; opacity: 1; transform: scale(1.14); }
+.login-avatar.on::after { content: ""; position: absolute; right: 0; bottom: 0; width: 10px; height: 10px; border: 2px solid white; border-radius: 50%; background: #3ddc84; }
+.login-form { max-width: 420px; width: 100%; margin: auto; padding: 24px 0; }
+.login-form form { display: grid; gap: 12px; }
+.login-form input { width: 100%; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: inherit; }
+.login-code { display: flex; gap: 8px; }
+.login-code button, .login-switch { background: none; border: 0; color: inherit; cursor: pointer; }
+.login-code button { flex: none; }
+.login-other { display: flex; gap: 12px; }
+.login-other button { flex: 1; padding: 12px; background: transparent; color: inherit; border: 1px solid var(--line); border-radius: 10px; }
+.login-other img { width: 24px; height: 24px; object-fit: contain; vertical-align: middle; margin-right: 8px; }
+.login-legal { font-size: 13px; }
+.login-form [role=alert] { color: #bd3a3a; }
+.login-switch { padding: 12px 0; }
+@media (max-width: 760px) { .login-layout { grid-template-columns: 1fr; gap: 8px; min-height: 0; padding-block: 0 40px; } .login-stage { padding: 22px; flex-direction: row; align-items: center; justify-content: flex-start; gap: 14px; border-radius: 20px; } .login-stage .login-chief { width: 76px; flex: none; } .login-stage h2 { margin: 0; font-size: 22px; } .login-stage p, .login-chips, .login-team { display: none; } }
+
+.auth-nav{position:relative}.auth-nav summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}.auth-avatar{width:30px;height:30px;border-radius:50%;background:#7463dc;color:#fff;display:grid;place-items:center;overflow:hidden}.auth-avatar img{width:100%;height:100%;object-fit:cover}.auth-menu{position:absolute;z-index:20;right:0;min-width:130px;padding:10px;background:var(--surface,#fff);box-shadow:0 8px 24px #0002;border-radius:10px}.auth-menu a,.auth-menu button{display:block;padding:8px;border:0;background:none;color:inherit;white-space:nowrap}.mobile-nav .auth-menu{position:static;box-shadow:none}

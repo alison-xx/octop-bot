@@ -258,7 +258,7 @@ abstract class PhoneChat(
                         LynxceProtocol.parseChunk(event.data, calls)
                     } catch (error: ApiException) {
                         // A vendor's quota is not the Lynxce wallet: never show the top-up card for it.
-                        if (vendor) throw ApiException(ApiException.Kind.Server, error.status, error.message) else throw error
+                        if (vendor) throw ApiException(ApiException.Kind.Server, error.status, error.message, error.code) else throw error
                     }
                     for (item in parsed) onEvent(item)
                     if (vendor && ModelSourcesProtocol.finishReason(event.data) != null) completed = true

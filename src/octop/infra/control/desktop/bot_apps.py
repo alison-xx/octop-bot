@@ -7,11 +7,13 @@ import hashlib
 import importlib
 import importlib.util
 import os
+import sys
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from octop.infra.control.desktop.setup import desktop_status
 from octop.infra.db.services import RepoBundle
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
@@ -60,6 +62,9 @@ class ComputerState(ComputerPolicy):
     available: bool
     paused: bool
     active_app: str | None
+    # macOS privacy grants this app still lacks ("screen_recording", "accessibility").
+    # Without them the screen stream is refused and the Bot cannot use any window.
+    permissions_needed: list[str] = Field(default_factory=list)
 
 
 class NativeWindows:
@@ -167,6 +172,13 @@ class BotComputer:
         return importlib.util.find_spec("cua_driver") is not None
 
     @staticmethod
+    def permissions_needed() -> list[str]:
+        """Missing macOS grants, probed without prompting; none elsewhere."""
+        if sys.platform != "darwin":
+            return []
+        return list(desktop_status().permissions_needed)
+
+    @staticmethod
     def key(repos: RepoBundle, owner: int, bot: str) -> str:
         row = repos.agent_repo.get(bot)
         if row is None or row.user_id != owner or row.kind != "expert" or row.is_shared:
@@ -198,6 +210,7 @@ class BotComputer:
         return ComputerState(
             **policy.model_dump(),
             available=self.available(),
+            permissions_needed=self.permissions_needed() if self.available() else [],
             paused=bool(repos.settings_repo.get(key + ":pause")),
             active_app=active_app,
         )

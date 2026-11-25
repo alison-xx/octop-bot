@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import re
 from types import SimpleNamespace
 from typing import Any
@@ -41,12 +43,13 @@ class FakeCvm:
         self.runs: list[Any] = []
         self.calls: list[tuple[str, Any]] = []
         self.sold_out: set[str] = set()
+        self.refusal = "ResourceInsufficient.SpecifiedInstanceType"
         self.instances: dict[str, Any] = {}
 
     def RunInstances(self, req: Any) -> Any:  # noqa: N802 - SDK method name
         self.runs.append(req)
         if req.Placement.Zone in self.sold_out:
-            raise TencentCloudSDKException("ResourceInsufficient.SpecifiedInstanceType", "sold out")
+            raise TencentCloudSDKException(self.refusal, "sold out")
         instance_id = f"ins-{len(self.runs)}"
         self.instances[instance_id] = SimpleNamespace(
             InstanceId=instance_id,
@@ -106,6 +109,22 @@ def test_config_needs_the_network_and_image() -> None:
     assert config.region == "ap-guangzhou"
 
 
+def test_instance_secret_outlives_a_cam_key_rotation() -> None:
+    old = CvmConfig.from_env(ENV)
+    assert old is not None
+    expected = hmac.new(b"secret-test", b"octop-cvm:token", hashlib.sha256).digest()
+    assert old.derive("token") == expected
+    rotated = CvmConfig.from_env(
+        {**ENV, "OCTOP_CVM_SECRET_KEY": "new-secret", "OCTOP_CVM_INSTANCE_SECRET": "secret-test"}
+    )
+    assert rotated is not None
+    assert rotated.secret_key == "new-secret"
+    assert rotated.derive("token") == old.derive("token")
+    assert rotated.derive("ca") == old.derive("ca")
+    # Printing or logging the config never shows the secrets.
+    assert "secret-test" not in repr(rotated) and "new-secret" not in repr(rotated)
+
+
 def test_states_map_a_stopped_computer_to_paused() -> None:
     assert cvm_state("RUNNING") == "running"
     assert cvm_state("PENDING") == "starting"
@@ -147,6 +166,14 @@ def test_a_zone_without_stock_falls_through_to_the_next(cvm: Any) -> None:
     fake.sold_out = {"ap-guangzhou-6", "ap-guangzhou-7"}
     with pytest.raises(RuntimeError, match="no zone"):
         driver.start(spec="standard", labels={})
+
+
+def test_a_zone_at_its_instance_quota_falls_through_to_the_next(cvm: Any) -> None:
+    driver, fake = cvm
+    fake.sold_out = {"ap-guangzhou-6"}
+    fake.refusal = "LimitExceeded.InstanceQuota"
+    driver.start(spec="standard", labels={})
+    assert [r.Placement.Zone for r in fake.runs] == ["ap-guangzhou-6", "ap-guangzhou-7"]
 
 
 def test_pause_stops_charging_and_resume_finds_the_new_address(cvm: Any) -> None:

@@ -33,7 +33,6 @@ export default function BotNotifySettings() {
 
   return (
     <>
-      <h3>{t("botNotify.settingsTitle")}</h3>
       <div className={settings.group}>
         <div className={settings.row}>
           <span>

@@ -107,10 +107,27 @@ export interface OctopDesktopBridge {
    * WorkBuddy sign-in window. Resolves with Lynxce's one-time hand-off code,
    * which the page exchanges for a Lynxce session. Absent on older shells.
    */
+  wechatLogin?: (
+    qrUrl: string,
+    redirectUri: string,
+  ) => Promise<
+    | { ok: true; code: string; state: string }
+    | { ok: false; reason: "cancelled" | "denied" | "failed" }
+  >;
   workbuddyLogin?: () => Promise<
     | { ok: true; code: string }
     | { ok: false; reason: "cancelled" | "denied" | "failed" }
   >;
+  /**
+   * Ask macOS for a privacy grant the Bot's computer needs: the system prompt the
+   * first time, then the matching System Settings pane. True when already granted.
+   * Absent on older shells.
+   */
+  requestComputerPermission?: (
+    kind: "screen_recording" | "accessibility",
+  ) => Promise<boolean>;
+  /** Quit and start the app again. Absent on older shells. */
+  relaunch?: () => void;
   /** Restart on the Octop Bot cloud, signed in with this token. Absent on older shells. */
   useLynxceCloud?: (accessToken: string) => Promise<boolean>;
   session?: DesktopSessionBridge;

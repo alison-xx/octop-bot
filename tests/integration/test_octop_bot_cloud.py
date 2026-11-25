@@ -845,6 +845,20 @@ async def test_only_the_bots_work_or_its_screen_start_a_cloud_computer(
         assert shot.status_code == 409
         assert shot.json()["error"]["code"] == "BOT_COMPUTER_OFF"
         assert started == []
+        # A deliverable the store lacks: not found, unless a paused computer may still hold it
+        # (made before deliverables were mirrored); starting the computer brings it back.
+        old = {"path": "/generated/old.md"}
+        gone = await client.head(base + "/workspace/download", params=old, headers=auth)
+        assert gone.status_code == 404
+        manager = computers.current_manager()
+        assert manager is not None
+        paused = manager.record(aid, signed["user"]["id"])
+        paused.instance_id = "ins-old"
+        manager._save(paused)
+        kept = await client.get(base + "/workspace/download", params=old, headers=auth)
+        assert kept.status_code == 409
+        assert kept.json()["error"]["code"] == "BOT_COMPUTER_OFF"
+        assert started == []
 
         # The user opening its screen starts it.
         screen = await client.post(f"/api/octop-bot/computers/{aid}/screen", headers=auth)
@@ -964,3 +978,153 @@ async def test_tenant_workspace_replace_keeps_local_files(
         assert sent.status_code == 200, sent.text
         assert (local / "keep.txt").read_text() == "local file"
         assert (store / "new.txt").read_text() == "new"
+
+
+async def test_tenant_host_routes_are_closed(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.users.identity import Role
+
+    async with octop_client(tmp_octop_home) as (client, srv):
+        signed = await _sign_in(client, "13800000070")
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        registry = srv.app_runtime.agent_registry
+        mine = await registry.create(
+            AgentCreateSpec(user_id=signed["user"]["id"], name="T"), defer_bootstrap=True
+        )
+        aid = mine.agent_id
+        closed = [
+            ("GET", "/api/acp"),
+            ("GET", "/api/managed-agents/template"),
+            ("GET", f"/api/agents/{aid}/git/status"),
+            ("GET", f"/api/agents/{aid}/threads/t/files/latest-message"),
+            ("GET", "/api/bridge/connections"),
+            ("POST", "/api/bridge/probe"),
+            ("GET", "/api/memory/portable/sources"),
+            ("POST", f"/api/agents/{aid}/memory/portable/pack"),
+            ("GET", "/api/browser/env-status"),
+            ("GET", "/api/browser/harness-sessions"),
+        ]
+        for method, path in closed:
+            got = await client.request(method, path, headers=auth, json={})
+            assert got.status_code == 403, (path, got.status_code, got.text)
+
+        # The operator still has them.
+        admin = await srv.user_manager.create(
+            username="operator", password="Operator-pass1!", role=Role.ADMIN
+        )
+        from octop.infra.users.manager import UserManager  # noqa: F401
+
+        login = await client.post(
+            "/api/auth/login", json={"username": "operator", "password": "Operator-pass1!"}
+        )
+        admin_auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        for method, path in (("GET", "/api/acp"), ("GET", "/api/bridge/connections")):
+            got = await client.request(method, path, headers=admin_auth)
+            assert got.status_code != 403, (path, got.text)
+        assert admin.is_admin
+
+
+async def test_tenants_use_only_agents_in_tenant_space(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.users.identity import Role
+
+    async with octop_client(tmp_octop_home) as (client, srv):
+        registry = srv.app_runtime.agent_registry
+        admin = await srv.user_manager.create(
+            username="operator", password="Operator-pass1!", role=Role.ADMIN
+        )
+        shared = await registry.create(
+            AgentCreateSpec(user_id=admin.id, name="Ops", is_shared=True), defer_bootstrap=True
+        )
+        assert shared.is_shared
+        signed = await _sign_in(client, "13800000071")
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        seen = await client.get(f"/api/agents/{shared.agent_id}", headers=auth)
+        assert seen.status_code in (403, 404)
+        files = await client.get(f"/api/agents/{shared.agent_id}/workspace/tree", headers=auth)
+        assert files.status_code in (403, 404)
+
+        # A tenant's own Bots stay its own.
+        made = await client.post(
+            "/api/agents", headers=auth, json={"name": "Mine", "is_shared": True}
+        )
+        assert made.status_code == 201, made.text
+        assert made.json()["is_shared"] is False
+        widened = await client.patch(
+            f"/api/agents/{made.json()['agent_id']}", headers=auth, json={"visibility": "all"}
+        )
+        assert widened.status_code == 403
+
+
+async def test_tenant_connector_and_channel_addresses_are_public(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    async with octop_client(tmp_octop_home) as (client, srv):
+        signed = await _sign_in(client, "13800000072")
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        for kind, credentials in (
+            ("gitea", {"base_url": "http://172.17.0.1:3000", "token": "x"}),
+            ("ragflow", {"base_url": "https://100.100.100.200/", "api_key": "x"}),
+            ("obsidian-cli", {"binary_path": "/bin/sh"}),
+        ):
+            for path in ("/api/connectors/test-credentials", "/api/connector-instances"):
+                got = await client.post(
+                    path,
+                    headers=auth,
+                    json={"kind": kind, "display_name": kind, "credentials": credentials},
+                )
+                assert got.status_code == 400, (kind, path, got.text)
+                assert got.json()["error"]["code"] == "ENDPOINT_NOT_ALLOWED"
+        bot = await srv.app_runtime.agent_registry.create(
+            AgentCreateSpec(user_id=signed["user"]["id"], name="C"), defer_bootstrap=True
+        )
+        channel = await client.post(
+            f"/api/agents/{bot.agent_id}/channels",
+            headers=auth,
+            json={"kind": "mqtt", "name": "m", "config": {"host": "127.0.0.1"}},
+        )
+        assert channel.status_code == 400, channel.text
+
+
+async def test_tenant_group_member_builds_in_its_room(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import octop_harness.middleware.bootstrap as bootstrap
+
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.errors import ErrorCode as _Code
+    from octop.infra.errors import OctopError as _Error
+
+    monkeypatch.setattr(bootstrap, "bootstrap_marker_exists", lambda *a, **k: True)
+    async with octop_client(tmp_octop_home) as (client, srv):
+        signed = await _sign_in(client, "13800000073")
+        registry = srv.app_runtime.agent_registry
+        row = await registry.create(
+            AgentCreateSpec(user_id=signed["user"]["id"], name="G"), defer_bootstrap=True
+        )
+        room = tmp_path / "room"
+        cfg = registry._build_harness_config(
+            srv.services.agent_repo.get(row.agent_id), room_workspace=room
+        )
+        assert cfg is not None
+        with pytest.raises(_Error) as refused:
+            registry._backend_spec_for_row(
+                srv.services.agent_repo.get(row.agent_id),
+                cfg={"backend": {"type": "filesystem", "root_dir": str(tmp_path)}},
+                room=room,
+            )
+        assert refused.value.code == _Code.FORBIDDEN
+        # The room itself, but resolving absolute paths on the host: refused too.
+        with pytest.raises(_Error) as unbounded:
+            registry._backend_spec_for_row(
+                srv.services.agent_repo.get(row.agent_id),
+                cfg={"backend": {"type": "filesystem", "root_dir": str(room)}},
+                room=room,
+            )
+        assert unbounded.value.code == _Code.FORBIDDEN

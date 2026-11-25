@@ -455,3 +455,121 @@ async def test_member_group_thread_is_named_listed_on_request_and_shows_the_room
     show_room_requests(messages)
     assert messages[0]["content"] == [{"type": "text", "text": "@Editor 写提纲"}]
     assert messages[1]["content"] == [{"type": "text", "text": "done"}]
+
+
+def _turns(calls):
+    return [(agent, text) for agent, _, text in calls]
+
+
+def _text(key, user):
+    from octop.i18n import tr
+
+    return tr(f"bot_rooms.{key}", user.locale)
+
+
+@pytest.mark.asyncio
+async def test_admin_that_passes_is_asked_again_and_answers(room):
+    services, user, group = room
+    calls = []
+
+    async def run(msg):
+        calls.append((msg.tenant_id, msg.metadata["thread_id"], msg.text))
+        yield {"type": "token", "content": "[PASS]" if len(calls) == 1 else "I am Chief."}
+
+    await send_message(
+        services,
+        gateway(services, run),
+        user,
+        group.group_id,
+        text="Introduce yourself",
+        mention_ids=[],
+        request_id="r1",
+    )
+    first, retry = _turns(calls)
+    assert first[0] == retry[0] == "c"
+    assert _text("must_answer", user) in first[1]
+    assert _text("may_pass", user) not in first[1]
+    assert retry[1] == _text("pass_retry", user)
+    # Same member thread, so the model sees its own [PASS] before the retry.
+    assert calls[0][1] == calls[1][1]
+    visible = [m for m in list_messages(services, user.id, group.group_id) if m.role != "user"]
+    assert [(m.agent_id, m.role, m.text) for m in visible] == [("c", "assistant", "I am Chief.")]
+
+
+@pytest.mark.asyncio
+async def test_mentioned_member_that_keeps_passing_leaves_a_visible_notice(room):
+    services, user, group = room
+    calls = []
+
+    async def run(msg):
+        calls.append((msg.tenant_id, msg.metadata["thread_id"], msg.text))
+        yield {"type": "token", "content": "[PASS]"}
+
+    await send_message(
+        services,
+        gateway(services, run),
+        user,
+        group.group_id,
+        text="@Editor what do you think?",
+        mention_ids=[],
+        request_id="r2",
+    )
+    assert [agent for agent, _ in _turns(calls)] == ["a", "a"]
+    visible = [m for m in list_messages(services, user.id, group.group_id) if m.role != "user"]
+    assert [(m.agent_id, m.role) for m in visible] == [("a", "error")]
+    assert visible[0].text == _text("pass_fallback", user)
+
+
+@pytest.mark.asyncio
+async def test_single_bot_room_always_answers(room):
+    services, user, _group = room
+    solo = create_group(
+        services, user.id, name="Solo", admin_id="a", member_ids=[], reply_mode="all_members"
+    )
+    calls = []
+
+    async def run(msg):
+        calls.append((msg.tenant_id, msg.metadata["thread_id"], msg.text))
+        yield {"type": "token", "content": "Hello from Editor."}
+
+    await send_message(
+        services,
+        gateway(services, run),
+        user,
+        solo.group_id,
+        text="Hi",
+        mention_ids=[],
+        request_id="r3",
+    )
+    assert len(calls) == 1
+    assert _text("must_answer", user) in calls[0][2]
+    assert _text("may_pass", user) not in calls[0][2]
+
+
+@pytest.mark.asyncio
+async def test_all_members_round_lets_other_members_pass_quietly(room):
+    services, user, _group = room
+    everyone = create_group(
+        services, user.id, name="All", admin_id="c", member_ids=["a", "b"], reply_mode="all_members"
+    )
+    calls = []
+
+    async def run(msg):
+        calls.append((msg.tenant_id, msg.metadata["thread_id"], msg.text))
+        yield {"type": "token", "content": "Chief answer." if msg.tenant_id == "c" else "[PASS]"}
+
+    await send_message(
+        services,
+        gateway(services, run),
+        user,
+        everyone.group_id,
+        text="Status?",
+        mention_ids=[],
+        request_id="r4",
+    )
+    prompts = dict(_turns(calls))
+    assert len(calls) == 3  # no retry for members that may pass
+    assert _text("must_answer", user) in prompts["c"]
+    assert _text("may_pass", user) in prompts["a"]
+    visible = [m for m in list_messages(services, user.id, everyone.group_id) if m.role != "user"]
+    assert [(m.agent_id, m.text) for m in visible] == [("c", "Chief answer.")]
