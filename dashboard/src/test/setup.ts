@@ -42,27 +42,29 @@ vi.mock("react-i18next", async (importOriginal) => {
     );
   };
 
+  const translation = {
+    t: (
+      key: string,
+      fallback?: string | TOptions,
+      options?: TOptions,
+    ): string => {
+      if (typeof fallback === "string") return interpolate(fallback, options);
+      if (fallback && typeof fallback === "object") {
+        const template = fallback.defaultValue ?? key;
+        return interpolate(template, fallback);
+      }
+      return key;
+    },
+    i18n: {
+      language: "zh",
+      changeLanguage: () => Promise.resolve(),
+      exists: () => false,
+    },
+  };
+
   return {
     ...actual,
-    useTranslation: () => ({
-      t: (
-        key: string,
-        fallback?: string | TOptions,
-        options?: TOptions,
-      ): string => {
-        if (typeof fallback === "string") return interpolate(fallback, options);
-        if (fallback && typeof fallback === "object") {
-          const template = fallback.defaultValue ?? key;
-          return interpolate(template, fallback);
-        }
-        return key;
-      },
-      i18n: {
-        language: "zh",
-        changeLanguage: () => Promise.resolve(),
-        exists: () => false,
-      },
-    }),
+    useTranslation: () => translation,
     Trans: ({ children }: { children?: React.ReactNode }) => children,
   };
 });
