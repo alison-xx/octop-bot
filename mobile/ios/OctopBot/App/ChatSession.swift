@@ -122,6 +122,7 @@ final class ChatSession {
         isLoading = false
         observedTurn = nil
         conversationId = nil
+        app?.server?.rememberThread(nil, bot: bot.id)
         messages = []
         pause = nil
         error = nil
@@ -144,11 +145,15 @@ final class ChatSession {
     func showConversation() async {
         let first = !visited
         let revision = historyRevision
+        let saved = first ? await app?.server?.rememberedThread(bot: bot.id) : nil
         guard await reloadConversations(), revision == historyRevision, !isStreaming, !isLoading else { return }
         visited = true
         if let id = conversationId, let row = conversations.first(where: { $0.id == id }) {
             await open(row)
-        } else if first, conversationId == nil, messages.isEmpty, let row = app?.server == nil ? conversations.first : ConversationSummary.personalDefault(conversations) {
+        } else if first, conversationId == nil, messages.isEmpty {
+            let savedPersonal = conversations.first { $0.id == saved && $0.owned == true }
+            let fallback = app?.server == nil ? conversations.first : ConversationSummary.personalDefault(conversations)
+            guard let row = savedPersonal ?? fallback else { return }
             await open(row)
         }
     }
@@ -167,6 +172,7 @@ final class ChatSession {
             pause = nil
         }
         conversationId = conversation.id
+        app?.server?.rememberThread(conversation.id, bot: bot.id)
         error = nil
         isLoading = true
         defer { if historyRevision == revision { isLoading = false } }
@@ -482,7 +488,7 @@ final class ChatSession {
                     let text = messages.first { $0.id == replyId }?.text ?? ""
                     let summary = text.isEmpty ? (pause?.questions.first?.question ?? pause.map { _ in L("hitl.title") } ?? "") : text
                     app?.recordPreview(summary, for: bot)
-                    if app?.notifyOnReply == true, !summary.isEmpty { Notifier.replyFinished(bot: bot.name, text: summary) }
+                    if app?.notifyOnReply == true, !summary.isEmpty { Notifier.replyFinished(bot: bot, threadId: conversationId, text: summary) }
                     if let onReply {
                         onReply(text)
                     } else if app?.readAloud == true, !text.isEmpty {
@@ -542,6 +548,7 @@ final class ChatSession {
         switch event {
         case .conversation(let created):
             conversationId = created
+            app?.server?.rememberThread(created, bot: bot.id)
         case .text(let delta):
             update(id) { $0.text += delta }
         case .thinking(let delta):

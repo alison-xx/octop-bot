@@ -103,7 +103,7 @@ private fun NavHostController.back() {
 }
 
 @Composable
-fun OctopBotApp(model: AppViewModel, openBot: MutableStateFlow<String?>) {
+fun OctopBotApp(model: AppViewModel, openBot: MutableStateFlow<io.github.alisonxx.octopbot.NotificationChat?>) {
     val settings by model.settings.collectAsStateWithLifecycle()
     OctopTheme {
         ProvideUiPrefs(settings) {
@@ -187,13 +187,22 @@ private fun SignedOutNav(model: AppViewModel, notice: String?, reopenServer: Boo
 }
 
 @Composable
-private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<String?>) {
+private fun SignedInNav(model: AppViewModel, openBot: MutableStateFlow<io.github.alisonxx.octopbot.NotificationChat?>) {
     val nav = rememberNavController()
     val pending by openBot.collectAsState()
-    LaunchedEffect(pending) {
-        val bot = pending ?: return@LaunchedEffect
+    val directory by model.bots.collectAsState()
+    LaunchedEffect(pending, directory) {
+        val target = pending ?: return@LaunchedEffect
+        if (directory.isEmpty()) return@LaunchedEffect
+        try {
+            if (model.openNotification(target.botId, target.threadId))
+                nav.navigate(Routes.chat(target.botId)) { popUpTo(Routes.HOME) }
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // An unavailable or removed conversation leaves the signed-in directory on screen.
+        }
         openBot.value = null
-        nav.navigate(Routes.chat(bot)) { popUpTo(Routes.HOME) }
     }
     AskForNotifications(model)
     InstallUpdates(model)

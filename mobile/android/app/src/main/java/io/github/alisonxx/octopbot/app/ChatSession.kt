@@ -145,11 +145,14 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
         val first = !opened
         val revision = historyRevision
         scope.launch {
+            val saved = if (first) runCatching { (host.backend as? ServerBackend)?.rememberedThread(botId) }.getOrNull() else null
             val rows = runCatching { loadConversations() }.getOrNull() ?: return@launch
             if (revision != historyRevision || _state.value.streaming || _state.value.loading) return@launch
             opened = true
             val current = _state.value.conversationId
-            val target = rows.firstOrNull { it.id == current } ?: (if (host.backend is io.github.alisonxx.octopbot.net.ServerBackend) ConversationSummary.personalDefault(rows) else rows.firstOrNull())?.takeIf { first && current == null && _state.value.messages.isEmpty() }
+            val personal = rows.firstOrNull { it.id == saved && it.owned == true }
+            val fallback = if (host.backend is ServerBackend) ConversationSummary.personalDefault(rows) else rows.firstOrNull()
+            val target = rows.firstOrNull { it.id == current } ?: (personal ?: fallback)?.takeIf { first && current == null && _state.value.messages.isEmpty() }
             if (target != null) loadMessages(target)
         }
     }
@@ -171,6 +174,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
     }
 
     private suspend fun loadMessages(conversation: ConversationSummary) {
+        (host.backend as? ServerBackend)?.rememberThread(botId, conversation.id)
         val bot = bot ?: return
         val revision = ++historyRevision
         val changed = _state.value.conversationId != conversation.id
@@ -312,6 +316,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
     }
 
     fun newChat() {
+        (host.backend as? ServerBackend)?.rememberThread(botId, null)
         if (_state.value.streaming) return
         observedTurn = null
         durableAnchor = null
@@ -511,6 +516,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
 
     private fun apply(replyId: String, event: StreamEvent) {
         if (event is StreamEvent.Conversation) {
+            (host.backend as? ServerBackend)?.rememberThread(botId, event.id)
             _state.update { it.copy(conversationId = event.id) }
             return
         }
@@ -567,6 +573,12 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
             _state.update { it.copy(queued = rest) }
             send(next.text, next.images)
         }
+    }
+
+    fun detach() {
+        run++
+        historyRevision++
+        job?.cancel()
     }
 
     fun stop() {

@@ -111,6 +111,48 @@ final class CharacterTests: XCTestCase {
 
 @MainActor
 final class StreamTests: XCTestCase {
+    func testLastSuccessfulServerSelectionSurvivesAStoredLegacyGrant() {
+        typealias Mode = AppModel.SavedBackend
+        XCTAssertEqual(Mode.restore(nil, hasLegacy: true, hasServer: true, official: false), .signedOut)
+        XCTAssertEqual(Mode.restore(.server, hasLegacy: true, hasServer: true, official: false), .server)
+        XCTAssertEqual(Mode.restore(nil, hasLegacy: false, hasServer: true, official: false), .server)
+        XCTAssertEqual(Mode.restore(nil, hasLegacy: true, hasServer: true, official: true), .server)
+        XCTAssertEqual(Mode.restore(.device, hasLegacy: true, hasServer: true, official: false), .device)
+        XCTAssertEqual(Mode.restore(.signedOut, hasLegacy: true, hasServer: true, official: true), .signedOut)
+    }
+
+    func testUpgradeSealsOwnerlessPreviewsOutsideEverySignedInAccount() throws {
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let stored = Data(#"{"chief":{"text":"old preview","date":1}}"#.utf8)
+        defaults.set(stored, forKey: "chat.previews")
+        defaults.set(["chief"], forKey: "chat.unread")
+        AppModel.archiveUnattributedPreviews(defaults)
+        AppModel.archiveUnattributedPreviews(defaults)
+        XCTAssertEqual(defaults.array(forKey: "legacy.unattributedPreviews") as? [Data], [stored])
+        XCTAssertNil(defaults.object(forKey: "chat.previews"))
+        XCTAssertNil(defaults.object(forKey: "chat.unread"))
+    }
+
+    func testLegacyRecoveryReadsEveryPageAndReportsPartialRecords() async throws {
+        var cursors: [String?] = []
+        let complete = try await ServerBackend.restoreLegacyPages { cursor in
+            cursors.append(cursor)
+            if cursor == nil { return ["skipped": 0, "next_cursor": "second"] }
+            return ["skipped": 1, "next_cursor": NSNull()]
+        }
+        XCTAssertEqual(cursors, [nil, "second"])
+        XCTAssertFalse(complete)
+    }
+
+    func testLegacyRecoveryStopsOnRepeatedCursor() async {
+        do {
+            _ = try await ServerBackend.restoreLegacyPages { _ in ["skipped": 0, "next_cursor": "stuck"] }
+            XCTFail("Repeated cursors must stop recovery")
+        } catch { XCTAssertTrue(error is APIError) }
+    }
+
     func testCompletionRemainsOpenUntilHistoryIsSaved() async throws {
         var saved = false
         let chat = CompletionChat(stream: { _, _, _, emit in

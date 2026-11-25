@@ -35,6 +35,7 @@ import io.github.alisonxx.octopbot.store.Appearance
 import io.github.alisonxx.octopbot.store.BotPreview
 import io.github.alisonxx.octopbot.store.DirectoryCache
 import io.github.alisonxx.octopbot.store.Previews
+import io.github.alisonxx.octopbot.store.SavedBackend
 import io.github.alisonxx.octopbot.store.SpeechRate
 import io.github.alisonxx.octopbot.store.TextSize
 import io.github.alisonxx.octopbot.store.UserSettings
@@ -43,6 +44,9 @@ import io.github.alisonxx.octopbot.voice.Speaker
 import io.github.alisonxx.octopbot.voice.VoiceInput
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
@@ -176,6 +180,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     /** One-off messages for a snackbar. */
     val notices: Flow<String> = _notices.receiveAsFlow()
 
+    private val conversationScope = CoroutineScope(viewModelScope.coroutineContext + SupervisorJob(viewModelScope.coroutineContext[Job]))
+
+    private fun detachChats() {
+        chats.values.forEach { it.detach() }
+        conversationScope.coroutineContext.cancelChildren()
+        chats.clear()
+    }
+
     private val chats = mutableMapOf<String, ChatSession>()
 
     override val backend: ChatBackend
@@ -183,50 +195,76 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     init {
         viewModelScope.launch {
-            val backend = store.lynxceGrant()?.let { LynxceBackend(it, store, app.localBots, app.phoneModels) }
-                ?: store.serverSession()?.let { ServerBackend(it, store) }
-                ?: if (app.phoneModels.phoneOnly) deviceBackend() else null
+            val legacy = store.lynxceGrant()
+            val server = store.serverSession()?.let { ServerBackend(it, store) }
+            val selected = store.selectedBackend()
+            val backend = when (SavedBackend.restore(selected, legacy != null, server != null, server?.isOfficialCloud == true)) {
+                SavedBackend.Server -> server
+                SavedBackend.Device -> if (app.phoneModels.phoneOnly) deviceBackend() else null
+                SavedBackend.SignedOut -> null
+            }
             if (backend == null) {
-                _session.value = SessionState.SignedOut()
+                val legacyUpgrade = selected == null && legacy != null
+                if (legacyUpgrade) store.archiveLegacyPreviews()
+                _session.value = SessionState.SignedOut(if (legacyUpgrade) resources.getString(R.string.history_reauthenticate) else null)
                 _launchReady.value = true
             } else {
-                enter(backend)
+                enter(backend, rememberSelection = false)
             }
         }
         viewModelScope.launch { settings.collect { speaker.rate = it.speechRate.rate } }
         ProcessLifecycleOwner.get().lifecycle.addObserver(foreground)
     }
 
+    private var historyRecoveryJob: Job? = null
+    private val _recoveringHistory = MutableStateFlow(false)
+    val recoveringHistory: StateFlow<Boolean> = _recoveringHistory
+    private val _historyRecoveryMessage = MutableStateFlow<String?>(null)
+    val historyRecoveryMessage: StateFlow<String?> = _historyRecoveryMessage
+
+    fun recoverLegacyHistory(force: Boolean = false) {
+        val server = cloudServer?.takeIf { it.isOfficialCloud } ?: return
+        if (historyRecoveryJob?.isActive == true) return
+        _recoveringHistory.value = true
+        historyRecoveryJob = viewModelScope.launch {
+            try {
+                val owner = server.legacyHistoryOwner()
+                if (cloudServer !== server || !force && store.legacyHistoryComplete(owner)) return@launch
+                val complete = server.restoreLegacyHistory()
+                if (cloudServer !== server) return@launch
+                store.setLegacyHistoryComplete(owner, complete)
+                if (cloudServer !== server) return@launch
+                _historyRecoveryMessage.value = resources.getString(if (complete) R.string.history_restored else R.string.history_restore_incomplete)
+                chats.values.toList().forEach { it.refreshConversations() }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                if (cloudServer === server) _historyRecoveryMessage.value = resources.getString(R.string.history_restore_retry)
+            } finally {
+                if (cloudServer === server) _recoveringHistory.value = false
+            }
+        }
+    }
+
+    private fun stopHistoryRecovery() {
+        historyRecoveryJob?.cancel()
+        historyRecoveryJob = null
+        _recoveringHistory.value = false
+        _historyRecoveryMessage.value = null
+    }
+
     // Session
 
-    /** Octop Bot cloud answered: Lynxce sign-in lands there. Until it is up, it goes to Lynxce directly. */
-    private var cloudAvailable: Boolean? = null
-
-    private suspend fun useCloud(): Boolean =
-        cloudAvailable ?: ServerBackend.lynxceCloudAvailable().also { cloudAvailable = it }
-
     suspend fun signInLynxce(account: String, password: String) {
-        if (useCloud()) {
-            enter(ServerBackend.signInWithLynxce(ServerProtocol.LYNXCE_CLOUD, account, password, store))
-        } else {
-            enter(LynxceBackend.signIn(account, password, store, app.localBots, app.phoneModels))
-        }
+        enter(ServerBackend.signInWithLynxce(ServerProtocol.LYNXCE_CLOUD, account, password, store))
     }
 
     suspend fun requestLynxceCode(target: LynxceProtocol.Target) {
-        if (useCloud()) {
-            ServerBackend.requestLynxceCode(ServerProtocol.LYNXCE_CLOUD, target.value)
-        } else {
-            LynxceBackend.requestCode(target)
-        }
+        ServerBackend.requestLynxceCode(ServerProtocol.LYNXCE_CLOUD, target.value)
     }
 
     suspend fun signInLynxceCode(target: LynxceProtocol.Target, code: String) {
-        if (useCloud()) {
-            enter(ServerBackend.signInWithLynxceCode(ServerProtocol.LYNXCE_CLOUD, target.value, code, store))
-        } else {
-            enter(LynxceBackend.signIn(target, code, store, app.localBots, app.phoneModels))
-        }
+        enter(ServerBackend.signInWithLynxceCode(ServerProtocol.LYNXCE_CLOUD, target.value, code, store))
     }
 
     /** Model keys and local model servers on this phone. */
@@ -281,17 +319,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     /** Called after the server form finished signing in. Replaces whatever account was active. */
     fun useServer(backend: ServerBackend) {
-        viewModelScope.launch {
-            (session.value as? SessionState.Ready)?.backend?.takeIf { it !== backend && it is LynxceBackend }?.let {
-                it.signOut()
-                store.clearCaches()
-            }
-            enter(backend)
-        }
+        viewModelScope.launch { enter(backend) }
     }
 
-    private suspend fun enter(backend: ChatBackend) {
-        chats.clear()
+    private suspend fun enter(backend: ChatBackend, rememberSelection: Boolean = true) {
+        if (rememberSelection) {
+            when (backend) {
+                is ServerBackend -> store.selectBackend(SavedBackend.Server)
+                is DeviceBackend -> store.selectBackend(SavedBackend.Device)
+            }
+        }
+        stopHistoryRecovery()
+        detachChats()
+        val previous = (session.value as? SessionState.Ready)?.backend
+        if (previous != null && previous !== backend) store.clearCaches()
         clearWallet()
         _replying.value = emptySet()
         _directoryError.value = null
@@ -301,6 +342,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         _lastBotId.value = store.lastBot()
         _session.value = SessionState.Ready(backend)
         refreshAccountPhoto()
+        recoverLegacyHistory()
         (backend as? CreditAccount)?.let { account ->
             account.signupCredits?.let {
                 val amount = LynxceProtocol.formatCredits(it)
@@ -339,25 +381,28 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     fun signOut(notice: String? = null, reopenServer: Boolean = false) {
         val backend = (session.value as? SessionState.Ready)?.backend ?: return
+        stopHistoryRecovery()
         pollJob?.cancel()
         pollJob = null
         stopReading()
         voiceInput.cancel()
-        chats.clear()
+        detachChats()
         clearWallet()
         // Leaving phone-only use keeps its keys and chats for next time.
         if (backend is DeviceBackend) app.phoneModels.phoneOnly = false
         // Octop Bot cloud is a Lynxce sign-in, not a server the user typed: it goes back to the sign-in screen.
         val reopen = reopenServer && backend is ServerBackend && !backend.isCloud
-        if (!reopen) _session.value = SessionState.SignedOut(notice)
+        // Expose the next login only after this account has finished clearing its own credentials.
+        _session.value = SessionState.Loading
         viewModelScope.launch {
             if (reopen) {
                 // "Switch account or server": the server form opens with this server's full address.
                 store.setLastServer(backend.baseUrl)
-                _session.value = SessionState.SignedOut(notice, reopenServer = true)
             }
+            store.selectBackend(SavedBackend.SignedOut)
             backend.signOut()
-            store.clearAccount()
+            store.clearCaches()
+            _session.value = SessionState.SignedOut(notice, reopenServer = reopen)
         }
     }
 
@@ -634,7 +679,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     override fun bot(id: String): BotProfile? = _bots.value.firstOrNull { it.id == id }
 
-    fun chat(botId: String): ChatSession = chats.getOrPut(botId) { ChatSession(botId, viewModelScope, this) }
+    suspend fun openNotification(botId: String, threadId: String?): Boolean {
+        val current = (session.value as? SessionState.Ready)?.backend ?: return false
+        val bot = _bots.value.firstOrNull { it.id == botId } ?: return false
+        if (threadId != null) {
+            val target = current.conversations(bot).firstOrNull { it.id == threadId } ?: return false
+            if ((session.value as? SessionState.Ready)?.backend !== current) return false
+            chat(botId).open(target)
+        }
+        return true
+    }
+
+    fun chat(botId: String): ChatSession = chats.getOrPut(botId) { ChatSession(botId, conversationScope, this) }
 
     fun noteBotOpened(botId: String) {
         _lastBotId.value = botId
@@ -768,10 +824,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         if (creditAccount != null) refreshBalance()
         if (text == null) return
         val onScreen = chatOnScreen == bot.id
+        val thread = chats[bot.id]?.state?.value?.conversationId
         viewModelScope.launch {
             store.updatePreviews { Previews.replyFinished(it, bot.id, text, System.currentTimeMillis(), onScreen) }
             val settings = settings.first()
-            if (settings.notifications) app.notifier.replyFinished(bot.id, bot.name, text)
+            if (settings.notifications) app.notifier.replyFinished(bot.id, thread, bot.name, text)
             // Voice mode reads its own replies.
             if (settings.readAloud && voiceBotId != bot.id && app.notifier.isInForeground) readAloud(messageId, text)
         }

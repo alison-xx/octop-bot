@@ -228,6 +228,60 @@ final class ServerBackend: ChatBackend {
         return data.isEmpty ? NSNull() : ((try? JSONSerialization.jsonObject(with: data)) ?? NSNull())
     }
 
+    var isOfficialCloud: Bool { isCloud && session.baseURL.standardized == Self.lynxceCloud.standardized }
+
+    private var verifiedHistoryOwner: String?
+
+    func rememberedThread(bot: String) async -> String? {
+        guard isOfficialCloud, let owner = try? await legacyHistoryOwner() else { return nil }
+        return UserDefaults.standard.string(forKey: "cloud.thread." + owner + "." + bot)
+    }
+
+    func rememberThread(_ thread: String?, bot: String) {
+        guard let owner = verifiedHistoryOwner else { return }
+        UserDefaults.standard.set(thread, forKey: "cloud.thread." + owner + "." + bot)
+    }
+
+    func legacyHistoryOwner() async throws -> String {
+        if let verifiedHistoryOwner { return verifiedHistoryOwner }
+        guard isOfficialCloud, let profile = try await json(.get, "/api/octop-bot/cloud/account") as? [String: Any],
+              profile["connected"] as? Bool == true, let owner = profile["account_id"] as? String, !owner.isEmpty else {
+            throw APIError(kind: .server, status: 502, message: nil)
+        }
+        verifiedHistoryOwner = owner
+        return owner
+    }
+
+    func restoreLegacyHistory() async throws -> Bool {
+        try await Self.restoreLegacyPages { cursor in
+            let body = cursor.map { ["cursor": $0] } ?? [:]
+            guard let page = try await self.json(.post, "/api/octop-bot/cloud/legacy-conversations/restore", json: body) as? [String: Any] else {
+                throw APIError(kind: .server, status: 502, message: nil)
+            }
+            return page
+        }
+    }
+
+    static func restoreLegacyPages(_ fetch: (String?) async throws -> [String: Any]) async throws -> Bool {
+        var cursor: String?
+        var seen = Set<String>()
+        var complete = true
+        repeat {
+            try Task.checkCancellation()
+            let page = try await fetch(cursor)
+            guard let skipped = page["skipped"] as? Int, let next = page["next_cursor"] else {
+                throw APIError(kind: .server, status: 502, message: nil)
+            }
+            if skipped > 0 { complete = false }
+            if next is NSNull { break }
+            guard let value = next as? String, !value.isEmpty, seen.insert(value).inserted else {
+                throw APIError(kind: .server, status: 502, message: nil)
+            }
+            cursor = value
+        } while true
+        return complete
+    }
+
     // MARK: Directory
 
     private(set) var directory: [BotProfile] = []

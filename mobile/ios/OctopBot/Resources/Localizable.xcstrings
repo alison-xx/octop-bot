@@ -2,6 +2,86 @@
   "sourceLanguage": "en",
   "version": "1.0",
   "strings": {
+    "history.reauthenticate": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in to Octop Bot Cloud to recover conversations saved under your Lynxce account."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请登录 Octop Bot 云端，找回这个灵策账号已保存的历史会话。"
+          }
+        }
+      }
+    },
+    "history.restore": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recover earlier conversations"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找回旧版会话"
+          }
+        }
+      }
+    },
+    "history.restored": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Earlier conversations are now available."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已完成查找，已找回的会话可在历史中查看。"
+          }
+        }
+      }
+    },
+    "history.restoreIncomplete": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some earlier records could not be recovered. You can try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "部分旧记录暂时无法恢复，可以重试。"
+          }
+        }
+      }
+    },
+    "history.restoreRetry": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recovery could not finish. Try again in Conversations."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话恢复暂未完成，可在会话历史中重试。"
+          }
+        }
+      }
+    },
     "credits.scenario.text %@ %@": {
       "localizations": {
         "en": {

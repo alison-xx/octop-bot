@@ -24,7 +24,24 @@ struct OctopBotApp: App {
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
-    weak var model: AppModel?
+    private var pendingChat: AppModel.NotificationChat?
+    weak var model: AppModel? {
+        didSet {
+            if let pendingChat { model?.notificationChat = pendingChat; self.pendingChat = nil }
+        }
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
+    ) async {
+        let info = response.notification.request.content.userInfo
+        guard let bot = (info["agent_id"] ?? info["bot_id"]) as? String, let thread = info["thread_id"] as? String,
+              !bot.isEmpty, !thread.isEmpty else { return }
+        await MainActor.run {
+            let chat = AppModel.NotificationChat(botId: bot, threadId: thread)
+            if let model { model.notificationChat = chat } else { pendingChat = chat }
+        }
+    }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self

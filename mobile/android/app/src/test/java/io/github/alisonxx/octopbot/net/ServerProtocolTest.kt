@@ -6,6 +6,7 @@ import io.github.alisonxx.octopbot.model.MessageStatus
 import io.github.alisonxx.octopbot.model.StreamEvent
 import io.github.alisonxx.octopbot.model.ToolStep
 import io.github.alisonxx.octopbot.model.VoiceSupport
+import io.github.alisonxx.octopbot.store.SavedBackend
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -19,6 +20,32 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class ServerProtocolTest {
+    @Test fun lastSuccessfulServerSelectionSurvivesAStoredLegacyGrant() {
+        assertEquals(SavedBackend.SignedOut, SavedBackend.restore(null, hasLegacy = true, hasServer = true, official = false))
+        assertEquals(SavedBackend.Server, SavedBackend.restore(SavedBackend.Server, hasLegacy = true, hasServer = true, official = false))
+        assertEquals(SavedBackend.Server, SavedBackend.restore(null, hasLegacy = false, hasServer = true, official = false))
+        assertEquals(SavedBackend.Server, SavedBackend.restore(null, hasLegacy = true, hasServer = true, official = true))
+        assertEquals(SavedBackend.Device, SavedBackend.restore(SavedBackend.Device, hasLegacy = true, hasServer = true, official = false))
+        assertEquals(SavedBackend.SignedOut, SavedBackend.restore(SavedBackend.SignedOut, hasLegacy = true, hasServer = true, official = true))
+    }
+
+    @Test fun legacyRecoveryReadsEveryPageAndPreservesIncompleteState() = kotlinx.coroutines.test.runTest {
+        val cursors = mutableListOf<String?>()
+        val complete = ServerProtocol.restoreLegacyPages { cursor ->
+            cursors.add(cursor)
+            Http.parse(if (cursor == null) """{"skipped":0,"next_cursor":"second"}""" else """{"skipped":1,"next_cursor":null}""").jsonObject
+        }
+        assertEquals(listOf(null, "second"), cursors)
+        assertFalse(complete)
+    }
+
+    @Test fun legacyRecoveryRejectsRepeatedCursor() = kotlinx.coroutines.test.runTest {
+        try {
+            ServerProtocol.restoreLegacyPages { Http.parse("""{"skipped":0,"next_cursor":"stuck"}""").jsonObject }
+            fail("Repeated cursors must stop recovery")
+        } catch (_: ApiException) { }
+    }
+
     @Test fun automaticConversationRequiresPersonalOwnershipAndPrefersActive() {
         val rows = ServerProtocol.conversations(Http.parse("""[{"thread_id":"shared","owned":false,"is_active":true},{"thread_id":"unknown"},{"thread_id":"recent","owned":true},{"thread_id":"active","owned":true,"is_active":true}]"""), "bot")
         assertNull(io.github.alisonxx.octopbot.model.ConversationSummary.personalDefault(rows.take(2)))

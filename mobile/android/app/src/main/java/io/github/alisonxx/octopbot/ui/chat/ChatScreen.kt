@@ -298,6 +298,9 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
             HistorySheet(
                 conversations = state.conversations,
                 currentId = state.conversationId,
+                onRecover = if (model.cloudServer?.isOfficialCloud == true) ({ model.recoverLegacyHistory(force = true) }) else null,
+                recovering = model.recoveringHistory.collectAsStateWithLifecycle().value,
+                recoveryMessage = model.historyRecoveryMessage.collectAsStateWithLifecycle().value,
                 onNewChat = {
                     chat.newChat()
                     history = false
