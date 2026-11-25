@@ -43,15 +43,15 @@ internal fun accountInitial(name: String): String {
 }
 
 @Composable
-fun AccountAvatar(name: String, url: String?, size: Dp) {
+fun AccountAvatar(name: String, image: Any?, size: Dp) {
     val initial = @Composable {
         Box(Modifier.size(size).background(Color(0xFFCF3753)), contentAlignment = Alignment.Center) {
             Text(accountInitial(name), color = Color.White, fontSize = (size.value * 0.42f).sp)
         }
     }
     Box(Modifier.size(size).clip(CircleShape)) {
-        if (url == null) initial() else SubcomposeAsyncImage(
-            model = url,
+        if (image == null) initial() else SubcomposeAsyncImage(
+            model = image,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.size(size),

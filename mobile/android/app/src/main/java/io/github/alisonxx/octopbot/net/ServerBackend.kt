@@ -231,7 +231,13 @@ class ServerBackend(
                 return AccountPhoto.cloud(it)
             }
         }
-        return json("GET", "/api/auth/me").asObject()?.let(AccountPhoto::owner)
+        val me = json("GET", "/api/auth/me").asObject() ?: return null
+        val photo = AccountPhoto.owner(me)
+        val local = AccountPhoto.localAvatar(me) ?: return photo
+        val bytes = runCatching {
+            raw("GET", local.first, local.second, http = client.newBuilder().followRedirects(false).build())
+        }.getOrNull()
+        return photo.copy(localImage = bytes)
     }
 
     // Lynxce wallet (Octop Bot cloud only)

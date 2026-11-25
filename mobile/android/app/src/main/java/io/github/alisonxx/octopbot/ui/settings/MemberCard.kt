@@ -65,7 +65,7 @@ data class AccountSummary(
     val expiringOn: LocalDate? = null,
     val signupExpiryDay: String? = null,
     val permanent: Double? = null,
-    val avatarUrl: String? = null,
+    val avatarImage: Any? = null,
 ) {
     val member get() = tier != null
 
@@ -112,7 +112,7 @@ fun MemberCard(summary: AccountSummary, onCredits: () -> Unit, onOpen: (String) 
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box {
-                    AccountAvatar(summary.name, summary.avatarUrl, 52.dp)
+                    AccountAvatar(summary.name, summary.avatarImage, 52.dp)
                     Box(Modifier.align(Alignment.BottomEnd).offset(x = 3.dp, y = 3.dp).clip(CircleShape).background(palette.background).padding(2.dp)) {
                         VendorLogo("lynxce", 16.dp)
                     }

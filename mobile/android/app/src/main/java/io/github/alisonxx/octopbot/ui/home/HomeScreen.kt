@@ -102,7 +102,7 @@ data class DirectoryState(
     val account: AccountChipState? = null,
 )
 
-data class AccountChipState(val name: String, val balance: BalanceState, val avatarUrl: String? = null)
+data class AccountChipState(val name: String, val balance: BalanceState, val avatarImage: Any? = null)
 
 data class UpdateBanner(val version: String, val versionCode: Int, val urgent: Boolean, val phase: UpdatePhase)
 
@@ -142,7 +142,7 @@ fun HomeScreen(
             error = error,
             update = update.offer?.takeIf { UpdateSelection.showBanner(it, dismissedUpdate) }
                 ?.let { UpdateBanner(it.version, it.versionCode, it.urgent, update.phase) },
-            account = balance?.let { AccountChipState(name, it, photo?.url) },
+            account = balance?.let { AccountChipState(name, it, photo?.localImage ?: photo?.url) },
         ),
         refreshing = refreshing,
         onRefresh = model::refreshDirectory,
@@ -327,7 +327,7 @@ private fun AccountChip(account: AccountChipState, onCredits: () -> Unit, onRetr
             .padding(start = 6.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AccountAvatar(account.name, account.avatarUrl, 22.dp)
+        AccountAvatar(account.name, account.avatarImage, 22.dp)
         Spacer(Modifier.width(6.dp))
         BalanceText(account.balance, style = MaterialTheme.typography.labelLarge)
         if (failed) {

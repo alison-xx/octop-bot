@@ -154,6 +154,7 @@ enum ISO8601 {
 struct AccountPhoto {
     let name: String?
     let url: URL?
+    var localImage: Data?
 
     init(name: String?, url: String?) {
         let display = name?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -162,6 +163,15 @@ struct AccountPhoto {
         self.url = candidate.flatMap {
             $0.scheme?.lowercased() == "https" && $0.host != nil && $0.user == nil && $0.password == nil ? $0 : nil
         }
+    }
+
+    static func localAvatar(_ me: [String: Any]) -> (path: String, query: [String: String])? {
+        guard let id = me["id"] as? Int, id > 0, let raw = me["avatar_url"] as? String else { return nil }
+        let path = "/api/users/\(id)/avatar"
+        if raw == path { return (path, [:]) }
+        guard raw.hasPrefix(path + "?"), let parts = URLComponents(string: raw), parts.fragment == nil,
+              let items = parts.queryItems, items.count == 1, items[0].name == "v", let value = items[0].value else { return nil }
+        return (path, ["v": value])
     }
 
     static func direct(_ profile: [String: Any], accountId: String) -> AccountPhoto? {

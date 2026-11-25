@@ -170,7 +170,7 @@ struct HomeView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { showSettings = true } label: {
-                    LynxceAvatar(name: model.accountName, url: model.accountPhotoURL, size: 26, branded: false)
+                    LynxceAvatar(name: model.accountName, url: model.accountPhotoURL, localImage: model.localAccountImage, size: 26, branded: false)
                 }
                 .accessibilityLabel(Text("settings.title"))
                 .accessibilityIdentifier("openSettings")

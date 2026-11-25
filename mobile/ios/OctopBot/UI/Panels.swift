@@ -565,7 +565,7 @@ struct SettingsView: View {
 
     private var accountCard: some View {
         HStack(spacing: 14) {
-            LynxceAvatar(name: model.accountName, url: model.accountPhotoURL, size: 56, branded: false)
+            LynxceAvatar(name: model.accountName, url: model.accountPhotoURL, localImage: model.localAccountImage, size: 56, branded: false)
             VStack(alignment: .leading, spacing: 4) {
                 Text(model.accountName).font(.headline).lineLimit(1)
                 HStack(spacing: 5) {
@@ -710,6 +710,7 @@ final class GitHubStars {
 struct AccountSummary: Equatable {
     var name: String
     var avatarURL: URL?
+    var localImage: Data?
     var tier: String?
     /// Masked Lynxce id, e.g. "138****0000".
     var accountHint: String?
@@ -740,7 +741,7 @@ struct AccountCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                LynxceAvatar(name: summary.name, url: summary.avatarURL, size: 52)
+                LynxceAvatar(name: summary.name, url: summary.avatarURL, localImage: summary.localImage, size: 52)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
                         Text(verbatim: summary.name).font(.headline).lineLimit(1)
@@ -828,13 +829,16 @@ struct AccountCard: View {
 struct LynxceAvatar: View {
     let name: String
     let url: URL?
+    var localImage: Data? = nil
     var size: CGFloat = 52
     var branded = true
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             Group {
-                if let url {
+                if let localImage, let image = UIImage(data: localImage) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else if let url {
                     AsyncImage(url: url) { phase in
                         if case .success(let image) = phase {
                             image.resizable().scaledToFill()
