@@ -11,6 +11,7 @@ agent's memory rows. Those tables are not foreign keys of ``agents``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -19,6 +20,8 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from filelock import FileLock
 
 from octop.config import OctopConfig
 from octop.infra.agents.file_checkpoints import (
@@ -305,6 +308,12 @@ def checkpoint_thread_bytes(
     return _postgres_thread_bytes(str((backend_config or {}).get("dsn") or ""), agent_id)
 
 
+def checkpoint_publication_lock(root: Path, agent_id: str) -> Path:
+    """Serialize publication of a new checkpoint with destructive orphan scans."""
+    suffix = hashlib.sha256(agent_id.encode()).hexdigest()
+    return root / f".checkpoint-publish-{suffix}.lock"
+
+
 def gc_orphan_checkpoints(services: Any, *, agent_id: str | None, apply: bool) -> OrphanScan:
     """Checkpoints whose thread row is already gone.
 
@@ -344,25 +353,26 @@ def gc_orphan_checkpoints(services: Any, *, agent_id: str | None, apply: bool) -
                     SkippedCheckpoints(row.agent_id, "postgres_report_only", len(kept), sum(kept))
                 )
             continue
-        usage = checkpoint_thread_bytes(
-            agent_id=row.agent_id, cfg=cfg, octop_config=config, workspace_dir=workspace
-        )
-        known = services.thread_repo.list_ids_for_agent(row.agent_id)
-        orphans = [
-            OrphanCheckpoint(agent_id=row.agent_id, thread_id=tid, nbytes=nbytes)
-            for tid, nbytes in usage.items()
-            if tid not in known
-        ]
-        if apply:
-            for orphan in orphans:
-                delete_stored_thread(
-                    agent_id=row.agent_id,
-                    thread_id=orphan.thread_id,
-                    cfg=cfg,
-                    octop_config=config,
-                    workspace_dir=workspace,
-                )
-        found.extend(orphans)
+        with FileLock(checkpoint_publication_lock(services.paths.root, row.agent_id)):
+            usage = checkpoint_thread_bytes(
+                agent_id=row.agent_id, cfg=cfg, octop_config=config, workspace_dir=workspace
+            )
+            known = services.thread_repo.list_ids_for_agent(row.agent_id)
+            orphans = [
+                OrphanCheckpoint(agent_id=row.agent_id, thread_id=tid, nbytes=nbytes)
+                for tid, nbytes in usage.items()
+                if tid not in known
+            ]
+            if apply:
+                for orphan in orphans:
+                    delete_stored_thread(
+                        agent_id=row.agent_id,
+                        thread_id=orphan.thread_id,
+                        cfg=cfg,
+                        octop_config=config,
+                        workspace_dir=workspace,
+                    )
+            found.extend(orphans)
     return OrphanScan(orphans=found, skipped=skipped)
 
 
@@ -903,14 +913,15 @@ def sweep_deleted_residuals(
             if dsn != control_dsn:
                 external.add(dsn)
             continue
-        agent_threads = repos.thread_repo.list_ids_for_agent(row.agent_id)
-        files = _sqlite_memory_files(
-            cfg, agent_id=row.agent_id, paths=paths, workspace_dir=workspace
-        )
-        if sqlite_path is not None and sqlite_path.is_file():
-            files.append(sqlite_path.resolve())
-        for path in dict.fromkeys(files):
-            threads_removed += _delete_sqlite_orphan_checkpoints(path, agent_threads)
+        with FileLock(checkpoint_publication_lock(paths.root, row.agent_id)):
+            agent_threads = repos.thread_repo.list_ids_for_agent(row.agent_id)
+            files = _sqlite_memory_files(
+                cfg, agent_id=row.agent_id, paths=paths, workspace_dir=workspace
+            )
+            if sqlite_path is not None and sqlite_path.is_file():
+                files.append(sqlite_path.resolve())
+            for path in dict.fromkeys(files):
+                threads_removed += _delete_sqlite_orphan_checkpoints(path, agent_threads)
     directory_paths = [str(path) for path in list_deleted_agent_dirs(paths, live_ids)]
     directories_removed = _remove_deleted_agent_dirs(paths, live_ids) if remove_directories else 0
     return {

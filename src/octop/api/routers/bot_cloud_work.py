@@ -5,12 +5,37 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query
+from pydantic import BaseModel, ConfigDict, Field
 
-from octop.api.common.bot_desktop import Owner, Services
+from octop.api.common.bot_desktop import AccountServices, Owner, Services
+from octop.api.deps import get_server
 from octop.infra.cloud import bot_work_models as dto
 from octop.infra.cloud.bot_work import CloudWorkspace
+from octop.infra.cloud.legacy_conversations import RestorePage, restore_page
+from octop.infra.server import OctopServer
 
 router = APIRouter(prefix="/cloud")
+
+
+class RestoreLegacyPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cursor: str | None = Field(None, max_length=256)
+
+
+@router.post(
+    "/legacy-conversations/restore",
+    summary="Restore a page of my legacy mobile conversations",
+    description="Uses the cloud tenant's own Lynxce identity. Reuse next_cursor until it is null. Existing conversations and the source are preserved.",
+    response_model=RestorePage,
+)
+async def restore_legacy(
+    body: RestoreLegacyPage,
+    user: Owner,
+    services: AccountServices,
+    server: Annotated[OctopServer, Depends(get_server)],
+) -> RestorePage:
+    assert server.app_runtime is not None
+    return await restore_page(services, server.app_runtime.agent_registry, user.id, body.cursor)
 
 
 async def read_workspace(

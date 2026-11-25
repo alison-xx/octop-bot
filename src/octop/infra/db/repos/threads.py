@@ -14,6 +14,7 @@ from octop.infra.db.repos._base import (
     now_ts,
     sql_in_placeholders,
 )
+from octop.infra.db.repos.thread_messages import ThreadMessageInput
 from octop.infra.utils.thread_artifact import (
     MAX_THREAD_ARTIFACTS,
     ThreadArtifact,
@@ -173,13 +174,17 @@ class ThreadRepo:
         session_key: str,
         title: str | None = None,
         last_active: int | None = None,
+        created_at: int | None = None,
+        pinned: bool = False,
+        initial_messages: Sequence[ThreadMessageInput] = (),
+        restore_entry: tuple[str, str] | None = None,
     ) -> None:
         ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO threads(thread_id, agent_id, user_id, channel_type, "
-                "session_key, title, last_active, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "session_key, title, last_active, created_at, pinned) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     thread_id,
                     agent_id,
@@ -188,7 +193,8 @@ class ThreadRepo:
                     session_key,
                     clip_thread_title(title) if title else None,
                     ts if last_active is None else last_active,
-                    ts,
+                    ts if created_at is None else created_at,
+                    bool_int(pinned),
                 ),
             )
             conn.execute(
@@ -196,6 +202,20 @@ class ThreadRepo:
                 "VALUES (?, 'ready', ?, NULL) ON CONFLICT(thread_id) DO NOTHING",
                 (thread_id, ts),
             )
+
+            if initial_messages:
+                conn.executemany(
+                    "INSERT INTO thread_messages(thread_id, seq, message_id, role, message_json, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    [
+                        (thread_id, seq, m.message_id, m.role, m.message_json, m.created_at)
+                        for seq, m in enumerate(initial_messages, start=1)
+                    ],
+                )
+            if restore_entry is not None:
+                conn.execute(
+                    "UPDATE settings SET value=? WHERE key=?", (restore_entry[1], restore_entry[0])
+                )
 
     def get(self, thread_id: str) -> ThreadRow | None:
         with self._db.connect() as conn:

@@ -202,7 +202,7 @@ def _title(title: str) -> str:
     return title.removeprefix(_SCHEDULE_PREFIX).split("\n", 1)[0]
 
 
-def _regular_session(value: str) -> bool:
+def is_regular_session(value: str) -> bool:
     return value.startswith(_SESSION_PREFIX) and bool(
         _UUID.fullmatch(value[len(_SESSION_PREFIX) :])
     )
@@ -290,7 +290,7 @@ class CloudWorkspace:
         return row
 
     async def _verify_session(self, session_id: str) -> _Schedule | None:
-        if _regular_session(session_id):
+        if is_regular_session(session_id):
             return None
         if session_id.startswith("sched-"):
             return await self._schedule(session_id.removeprefix("sched-"))
@@ -308,7 +308,7 @@ class CloudWorkspace:
             items=[
                 dto.SessionSummary(**item.model_dump(exclude={"title"}), title=_title(item.title))
                 for item in rows.items
-                if _regular_session(item.id) or item.id in scheduled_ids
+                if is_regular_session(item.id) or item.id in scheduled_ids
             ],
             next_cursor=rows.next_cursor,
         )

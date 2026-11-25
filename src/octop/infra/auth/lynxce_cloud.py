@@ -57,6 +57,7 @@ WORKBUDDY_SESSION_PATH = "/api/oauth/workbuddy/session"
 # Lynxce's WorkBuddy hand-off code: "wb-handoff." + base64url payload + "." + HMAC-SHA256.
 _HANDOFF = re.compile(r"wb-handoff\.[A-Za-z0-9_-]{16,1024}\.[A-Za-z0-9_-]{43}")
 _READS = {
+    "/api/user/profile": set(),
     "/api/user/quota": set(),
     "/api/user/cloud-work/capabilities": set(),
     "/api/user/cloud-work/tasks": {"sessionId"},
