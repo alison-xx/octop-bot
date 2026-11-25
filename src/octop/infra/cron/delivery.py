@@ -487,6 +487,7 @@ class CronDeliveryService:
         )
         if servers:
             request["mcp_servers"] = servers
+        request.setdefault("configurable", {})["octop_scheduled_turn"] = True
         self._attach_turn_knowledge_config(request, command, session)
         return request
 

@@ -300,13 +300,17 @@ class ThreadMessageRepo:
         *,
         limit: int,
         offset: int = 0,
+        before_seq: int | None = None,
     ) -> tuple[list[ThreadMessageRow], bool]:
+        boundary = "" if before_seq is None else "AND seq < ? "
+        params = () if before_seq is None else (before_seq,)
         with self._db.connect() as conn:
             rows = conn.execute(
                 "SELECT seq, message_id, role, message_json, created_at "
                 "FROM thread_messages WHERE thread_id = ? "
-                "ORDER BY seq DESC LIMIT ? OFFSET ?",
-                (thread_id, limit + 1, max(0, offset)),
+                + boundary
+                + "ORDER BY seq DESC LIMIT ? OFFSET ?",
+                (thread_id, *params, limit + 1, max(0, offset)),
             ).fetchall()
         has_more = len(rows) > limit
         page = [ThreadMessageRow.from_row(row) for row in rows[:limit]]

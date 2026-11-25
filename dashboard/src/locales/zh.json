@@ -554,6 +554,14 @@
       "languageHint": "选择界面使用的语言。"
     }
   },
+  "computerPlacement": {
+    "default": "默认执行位置",
+    "turn": "这条消息在哪做",
+    "auto": "自动",
+    "cloud": "云电脑",
+    "local": "这台电脑",
+    "failed": "设置保存失败。"
+  },
   "octopBot": {
     "ask": {
       "somethingElse": "其他想法",
@@ -2945,6 +2953,7 @@
     "toolUiDockedOpen": "打开侧栏",
     "pluginUiNotInstalled": "本机未安装该插件，仅展示数据",
     "loadEarlierMessages": "加载更早的消息",
+    "threadSettingsLoadFailed": "会话设置加载失败，请重试后继续聊天。",
     "historyLoadFailed": "历史记录加载失败，已显示的消息仍然保留。请重试。",
     "historyRetry": "重试",
     "creatingSession": "正在创建会话，请稍候",
@@ -9402,6 +9411,8 @@
     }
   },
   "botTask": {
+    "redoStep": "从这一步重做",
+    "redoDraft": "请从「{{step}}」这一步重做。用 task_read_step 读取步骤记录，编号是 {{checkpoint}}。核对目前的结果，再决定需要重做的部分。任何对外操作都请重新向我确认。",
     "label": "任务：{{goal}}",
     "deep": "深度",
     "steps": "{{done}}/{{total}} 步",
@@ -9433,8 +9444,14 @@
     "hideReview": "收起",
     "deliverables": "产物",
     "checked": "已检查：{{facts}}",
-    "opens": "能打开",
+    "noCheckRecord": "暂无检查记录",
+    "openFailed": "无法打开 {{name}}，本次未交付。",
+    "checkFailed": "{{name}} 未通过检查，本次未交付。",
     "fact": {
+      "filenameOnly": "仅文件名",
+      "nonempty": "文件非空",
+      "validJson": "JSON 格式有效",
+      "opened": "LibreOffice 已打开",
       "pages": "{{count}} 页",
       "rows": "{{count}} 行数据",
       "sheets": "{{count}} 个工作表",

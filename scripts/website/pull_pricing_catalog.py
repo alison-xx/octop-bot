@@ -26,6 +26,11 @@ def trim(data: dict[str, Any]) -> dict[str, Any]:
             "modelId": m.get("modelId"),
             "routeId": m.get("routeId"),
             "routeCostRank": m.get("routeCostRank"),
+            **(
+                {"pricingDescription": m["pricingDescription"], "description": m.get("description")}
+                if m.get("pricingDescription")
+                else {}
+            ),
             "modelName": m.get("modelName"),
             "providerLabel": m.get("providerLabel"),
             "supportsImage": bool(m.get("supportsImage")),

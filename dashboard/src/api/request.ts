@@ -12,7 +12,7 @@ import {
 import i18n from "../i18n";
 import { markNavigatingAway } from "../utils/reloadOnStaleChunk";
 
-const AUTH_TOKEN_KEY = "auth_token";
+export const AUTH_TOKEN_KEY = "auth_token";
 /** sessionStorage handoff for SSO redirects / popups (default = remember). */
 const AUTH_REMEMBER_PREF_KEY = "auth_remember_pref";
 
@@ -112,9 +112,12 @@ export function clearAuthToken() {
 }
 
 /** Persist a sliding-renewed access token from an API response, if present. */
-export function applyRenewedAccessToken(response: Response): void {
+export function applyRenewedAccessToken(
+  response: Response,
+  sentToken: string,
+): void {
   const renewed = response.headers.get(ACCESS_TOKEN_RESPONSE_HEADER);
-  if (renewed) {
+  if (renewed && sentToken && getAuthToken() === sentToken) {
     setAuthToken(renewed, !isSessionOnlyAuth());
     window.dispatchEvent(new Event(ACCESS_TOKEN_RENEWED_EVENT));
   }
@@ -369,6 +372,7 @@ async function errorCodeOf(response: Response): Promise<string | undefined> {
 async function throwIfUnauthorized(
   path: string,
   response: Response,
+  sentToken: string,
 ): Promise<void> {
   if (response.status !== 401 || path.startsWith("/auth/")) {
     return;
@@ -382,6 +386,8 @@ async function throwIfUnauthorized(
   ) {
     return;
   }
+  if (getAuthToken() !== sentToken)
+    throw new DOMException("Session changed", "AbortError");
   clearAuthToken();
   handleUnauthorized();
   let message = "Unauthorized";
@@ -413,7 +419,8 @@ async function retryWithDesktopSession(
   url: string,
   options: RequestInit,
   response: Response,
-): Promise<Response | null> {
+  sentToken: string,
+): Promise<{ response: Response; token: string } | null> {
   if (response.status !== 401) return null;
   // A rejected login is a credential problem, not an expired session.
   if (path.startsWith("/auth/login") || path.startsWith("/auth/device/")) {
@@ -423,6 +430,7 @@ async function retryWithDesktopSession(
   const code = await errorCodeOf(response);
   if (code && !SESSION_UNAUTHORIZED_CODES.has(code)) return null;
   const current = getAuthToken();
+  if (current !== sentToken) return null;
   // A password account's expired token must land on the login page. Only the
   // desktop local user is renewed in place.
   if (current && !isLocalDesktopUser(current)) return null;
@@ -430,11 +438,13 @@ async function retryWithDesktopSession(
   if (!issued?.access_token || !isLocalDesktopUser(issued.access_token)) {
     return null;
   }
+  if (getAuthToken() !== sentToken) return null;
   setAuthToken(issued.access_token, !isSessionOnlyAuth());
-  return fetch(url, {
+  const retry = await fetch(url, {
     ...options,
     headers: buildHeaders(path, options.headers),
   });
+  return { response: retry, token: issued.access_token };
 }
 
 export async function request<T = unknown>(
@@ -442,6 +452,7 @@ export async function request<T = unknown>(
   options: RequestInit = {},
 ): Promise<T> {
   assertNotSetupLocked(path);
+  let sentToken = getAuthToken();
 
   const url = getApiUrl(path);
 
@@ -452,15 +463,24 @@ export async function request<T = unknown>(
     headers,
   });
 
-  const retried = await retryWithDesktopSession(path, url, options, response);
-  if (retried) response = retried;
+  const retried = await retryWithDesktopSession(
+    path,
+    url,
+    options,
+    response,
+    sentToken,
+  );
+  if (retried) {
+    response = retried.response;
+    sentToken = retried.token;
+  }
 
   if (await check503ForSetupRequired(path, response)) {
     throw new SetupRequiredError();
   }
 
-  await throwIfUnauthorized(path, response);
-  applyRenewedAccessToken(response);
+  await throwIfUnauthorized(path, response, sentToken);
+  applyRenewedAccessToken(response, sentToken);
   // Desktop: bind the shell's device credential the first chance we get, so the
   // next cold start can renew instead of landing on /login.
   if (response.ok) void registerDeviceSession(getAuthToken());
@@ -499,6 +519,7 @@ export async function requestBlob(
   onProgress?: (loaded: number, total: number) => void,
 ): Promise<Blob> {
   assertNotSetupLocked(path);
+  const sentToken = getAuthToken();
 
   const url = getApiUrl(path);
   const headers = buildAuthHeaders(path);
@@ -511,8 +532,8 @@ export async function requestBlob(
     throw new SetupRequiredError();
   }
 
-  await throwIfUnauthorized(path, response);
-  applyRenewedAccessToken(response);
+  await throwIfUnauthorized(path, response, sentToken);
+  applyRenewedAccessToken(response, sentToken);
 
   if (!response.ok) {
     throw await responseError(response);
@@ -547,6 +568,7 @@ export async function probeAuthResource(
   options: RequestInit = {},
 ): Promise<void> {
   assertNotSetupLocked(path);
+  const sentToken = getAuthToken();
 
   const url = getApiUrl(path);
   const headers = buildAuthHeaders(path);
@@ -559,8 +581,8 @@ export async function probeAuthResource(
     throw new SetupRequiredError();
   }
 
-  await throwIfUnauthorized(path, response);
-  applyRenewedAccessToken(response);
+  await throwIfUnauthorized(path, response, sentToken);
+  applyRenewedAccessToken(response, sentToken);
 
   if (!response.ok) {
     throw await responseError(response);
@@ -579,6 +601,7 @@ export async function probeAuthResource(
  */
 export async function requestHead(path: string): Promise<Headers> {
   assertNotSetupLocked(path);
+  const sentToken = getAuthToken();
 
   const response = await fetch(getApiUrl(path), {
     method: "HEAD",
@@ -589,8 +612,8 @@ export async function requestHead(path: string): Promise<Headers> {
     throw new SetupRequiredError();
   }
 
-  await throwIfUnauthorized(path, response);
-  applyRenewedAccessToken(response);
+  await throwIfUnauthorized(path, response, sentToken);
+  applyRenewedAccessToken(response, sentToken);
 
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
@@ -607,6 +630,7 @@ export async function requestStream(
   options: RequestInit = {},
 ): Promise<{ contentType: string; body: ReadableStream<Uint8Array> }> {
   assertNotSetupLocked(path);
+  const sentToken = getAuthToken();
 
   const url = getApiUrl(path);
   const headers = buildAuthHeaders(path);
@@ -619,8 +643,8 @@ export async function requestStream(
     throw new SetupRequiredError();
   }
 
-  await throwIfUnauthorized(path, response);
-  applyRenewedAccessToken(response);
+  await throwIfUnauthorized(path, response, sentToken);
+  applyRenewedAccessToken(response, sentToken);
 
   if (!response.ok) {
     throw await responseError(response);
@@ -649,6 +673,7 @@ export async function requestUpload<T = unknown>(
   onProgress?: UploadProgressHandler,
 ): Promise<T> {
   assertNotSetupLocked(path);
+  const sentToken = getAuthToken();
 
   const url = getApiUrl(path);
   const headers = buildAuthHeaders(path);
@@ -733,13 +758,13 @@ export async function requestUpload<T = unknown>(
         }
 
         try {
-          await throwIfUnauthorized(path, response);
+          await throwIfUnauthorized(path, response, sentToken);
         } catch (err) {
           reject(err);
           return;
         }
 
-        applyRenewedAccessToken(response);
+        applyRenewedAccessToken(response, sentToken);
 
         if (!response.ok) {
           reject(await responseError(response));

@@ -426,6 +426,7 @@ fun CloudScreenDialog(state: CloudFloatState, botName: String) {
     var controlError by remember { mutableStateOf<String?>(null) }
     val takenOver = state.status?.takeover == true
     // Starts or resumes the computer when it is off; shows "starting…" meanwhile and a retry on failure.
+    LaunchedEffect(url) { url?.let { state.server.keepScreenBound(it, state.botId) } }
     LaunchedEffect(attempt) {
         error = null
         runCatching { state.server.screenUrl(state.botId, control = takenOver) }
