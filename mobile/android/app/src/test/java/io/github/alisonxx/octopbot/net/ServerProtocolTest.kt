@@ -19,6 +19,15 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class ServerProtocolTest {
+    @Test fun historyPageOverlapRetainsNewestVersionAndOriginalOrder() {
+        val old = Http.parse("""[{"id":"a"},{"history_seq":2,"content":"partial"}]""").asArray()!!
+        val new = Http.parse("""[{"history_seq":2,"content":"finished"},{"id":"b"}]""").asArray()!!
+        val rows = ServerProtocol.joinHistory(old, new)
+        assertEquals(3, rows.size)
+        assertEquals("finished", rows[1].asObject()?.str("content"))
+        assertEquals("b", rows[2].asObject()?.str("id"))
+    }
+
     @org.junit.Test
     fun computerCreditCodesAreRecognized() {
         org.junit.Assert.assertTrue(ApiException.isCreditsRequired(ApiException.COMPUTER_CREDITS_REQUIRED))

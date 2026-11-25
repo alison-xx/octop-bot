@@ -24,6 +24,11 @@ final class ChatSession {
     private(set) var isRunningDevice = false
     /// Messages written while a reply was streaming; sent in order when it ends.
     private(set) var queued: [ChatMessage] = []
+    private var historyRows: [[String: Any]] = []
+    private(set) var older: ServerBackend.HistoryPosition?
+    private(set) var loadingOlder = false
+    private var historyRevision = 0
+    private var visited = false
     private var currentRun: UUID?
     /// Called with the finished reply text (voice mode reads it aloud).
     var onReply: ((String) -> Void)?
@@ -53,6 +58,11 @@ final class ChatSession {
 
     func newChat() {
         cancel()
+        visited = true
+        historyRevision += 1
+        historyRows = []
+        older = nil
+        isLoading = false
         conversationId = nil
         messages = []
         pause = nil
@@ -64,24 +74,133 @@ final class ChatSession {
         if let rows = try? await backend.conversations(for: bot) { conversations = rows }
     }
 
+    /// Restore the latest server thread on the first visit; keep an explicitly empty new chat.
+    func showConversation() async {
+        let first = !visited
+        visited = true
+        let revision = historyRevision
+        await reloadConversations()
+        guard revision == historyRevision, !isStreaming, !isLoading else { return }
+        if let id = conversationId, let row = conversations.first(where: { $0.id == id }) {
+            await open(row)
+        } else if first, conversationId == nil, messages.isEmpty, let row = conversations.first {
+            await open(row)
+        }
+    }
+
     func open(_ conversation: ConversationSummary) async {
-        cancel()
+        guard !isStreaming, let backend = app?.backend else { return }
+        visited = true
+        historyRevision += 1
+        let revision = historyRevision
+        if conversationId != conversation.id {
+            historyRows = []
+            older = nil
+            messages = []
+            pause = nil
+        }
         conversationId = conversation.id
-        messages = []
-        pause = nil
         error = nil
-        guard let backend = app?.backend else { return }
         isLoading = true
-        defer { isLoading = false }
+        defer { if historyRevision == revision { isLoading = false } }
         do {
-            let loaded = try await backend.messages(in: conversation, bot: bot)
-            if conversationId == conversation.id {
+            if let server = backend as? ServerBackend {
+                let page = try await server.historyPage(conversation.id, bot: bot)
+                guard historyRevision == revision else { return }
+                var fresh = page.rows
+                var next = page.next
+                let known = Set(historyRows.compactMap(Self.historyKey))
+                while !known.isEmpty, !fresh.contains(where: { Self.historyKey($0).map(known.contains) == true }),
+                      let position = next {
+                    let prior = try await server.historyPage(conversation.id, bot: bot, position: position)
+                    guard historyRevision == revision else { return }
+                    fresh = Self.joinHistory(older: prior.rows, newer: fresh)
+                    next = prior.next
+                }
+                let previousCount = historyRows.count
+                if next == nil {
+                    historyRows = fresh
+                    older = nil
+                } else {
+                    historyRows = Self.joinHistory(older: historyRows, newer: fresh)
+                    if historyRows.count == fresh.count { older = next }
+                    else if older?.cursor == nil { older?.offset += max(0, historyRows.count - previousCount) }
+                }
+                // The selected thread may have a pending write, so restore its approval card too.
+                messages = server.historyMessages(historyRows, bot: bot)
+                pause = page.pause
+            } else {
+                let loaded = try await backend.messages(in: conversation, bot: bot)
+                guard historyRevision == revision else { return }
                 messages = loaded
                 pause = backend.openPause(in: conversation)
-                runDeviceReads()
             }
+            runDeviceReads()
         } catch {
-            if conversationId == conversation.id { self.error = error.localizedDescription }
+            if historyRevision == revision { self.error = error.localizedDescription }
+        }
+    }
+
+    private static func historyKey(_ row: [String: Any]) -> String? {
+        if let seq = row["history_seq"] as? Int { return "seq:\(seq)" }
+        return row["id"] as? String
+    }
+
+    static func joinHistory(older: [[String: Any]], newer: [[String: Any]]) -> [[String: Any]] {
+        // Rows are in chronological order. The newest copy of an overlapping id is authoritative.
+        let ids = Set(newer.compactMap(historyKey))
+        if let overlap = older.firstIndex(where: { row in historyKey(row).map(ids.contains) == true }) {
+            return Array(older[..<overlap]) + newer
+        }
+        return older + newer
+    }
+
+    func loadOlder() async {
+        guard !isStreaming, !isLoading, !loadingOlder, let older, let thread = conversationId, let server = app?.server else { return }
+        let revision = historyRevision
+        loadingOlder = true
+        defer { loadingOlder = false }
+        do {
+            let page = try await server.historyPage(thread, bot: bot, position: older)
+            guard historyRevision == revision, !isStreaming else { return }
+            historyRows = Self.joinHistory(older: page.rows, newer: historyRows)
+            self.older = page.next
+            messages = server.historyMessages(historyRows, bot: bot)
+        } catch {
+            if historyRevision == revision { self.error = error.localizedDescription }
+        }
+    }
+
+    /// Subscribe without sending a user turn. Historical projections correct any tokens missed on reconnect.
+    func observe(_ thread: String) async {
+        guard let server = app?.server else { return }
+        var draft: String?
+        func reconcile() async {
+            guard !Task.isCancelled, !isStreaming, conversationId == thread else { return }
+            let row = ConversationSummary(id: thread, title: "", updatedAt: nil, botId: bot.id)
+            await open(row)
+            draft = nil
+        }
+        while !Task.isCancelled, conversationId == thread, !isStreaming {
+            do {
+                for try await event in server.observe(thread, bot: bot) {
+                    guard !Task.isCancelled, !isStreaming, conversationId == thread else { return }
+                    switch event {
+                    case .status, .finished:
+                        await reconcile()
+                    case .delta(let delta):
+                        if draft == nil {
+                            let row = ChatMessage(role: .assistant, text: "", status: .streaming)
+                            messages.append(row)
+                            draft = row.id
+                        }
+                        if let draft { apply(delta, to: draft) }
+                    }
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+            }
+            try? await Task.sleep(for: .seconds(2))
         }
     }
 
@@ -114,6 +233,8 @@ final class ChatSession {
             return
         }
         if app?.notifyOnReply == true { Notifier.requestPermission() }
+        historyRevision += 1
+        isLoading = false
         let history = messages
         messages.append(ChatMessage(role: .user, text: trimmed, images: images))
         // A choice saved before Lynxce moved Octop Bot to its Tencent line falls back to the default.
@@ -220,6 +341,7 @@ final class ChatSession {
             }
             do {
                 for try await event in stream {
+                    guard currentRun == run, !Task.isCancelled else { return }
                     apply(event, to: replyId)
                 }
                 update(replyId) { $0.status = .done }

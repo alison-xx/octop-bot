@@ -488,6 +488,15 @@ private final class FakeBackend: ChatBackend {
 
 @MainActor
 final class QueueTests: XCTestCase {
+    func testHistoryPageOverlapPreservesOrderAndReplacesTheCurrentVersion() {
+        let old: [[String: Any]] = [["id": "a"], ["history_seq": 2, "content": "partial"]]
+        let new: [[String: Any]] = [["history_seq": 2, "content": "finished"], ["id": "b"]]
+        let rows = ChatSession.joinHistory(older: old, newer: new)
+        XCTAssertEqual(rows.count, 3)
+        XCTAssertEqual(rows[1]["content"] as? String, "finished")
+        XCTAssertEqual(rows[2]["id"] as? String, "b")
+    }
+
     func testPreparingAndFailedBotsDoNotSend() async {
         let app = AppModel()
         let backend = FakeBackend()

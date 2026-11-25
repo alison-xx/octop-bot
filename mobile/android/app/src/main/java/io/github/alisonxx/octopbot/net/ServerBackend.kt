@@ -1,6 +1,7 @@
 package io.github.alisonxx.octopbot.net
 
 import io.github.alisonxx.octopbot.device.DeviceToolbox
+import io.github.alisonxx.octopbot.model.HitlRequest
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -406,23 +408,54 @@ class ServerBackend(
 
     // Threads
 
-    override suspend fun conversations(bot: BotProfile): List<ConversationSummary> =
-        ServerProtocol.conversations(json("GET", agent(bot) + "/threads", mapOf("limit" to "50")), bot.id)
+    override suspend fun conversations(bot: BotProfile): List<ConversationSummary> {
+        val rows = mutableListOf<JsonElement>()
+        val seen = mutableSetOf<String>()
+        var offset = 0
+        var window: Int? = null
+        while (true) {
+            val limit = window ?: 50
+            val query = mapOf("limit" to limit.toString(), "offset" to (if (window == null) offset else 0).toString())
+            val page = json("GET", agent(bot) + "/threads", query).asArray() ?: break
+            val added = page.filter { it.asObject()?.str("thread_id")?.let(seen::add) == true }
+            rows += added
+            if (page.size < limit) break
+            if (window != null) {
+                if (added.isEmpty()) break
+                window = limit * 2
+            } else if (added.isEmpty()) {
+                // Older servers ignore offset but support requesting a larger window.
+                window = offset + 50
+            } else offset += page.size
+        }
+        return ServerProtocol.conversations(JsonArray(rows), bot.id)
+    }
+
+    data class Position(val offset: Int = 0, val cursor: String? = null)
+    data class Page(val rows: JsonArray, val next: Position?, val pending: HitlRequest?)
+
+    suspend fun historyPage(thread: String, bot: BotProfile, position: Position = Position()): Page {
+        val limit = 50
+        val query = mapOf("limit" to limit.toString()) + (position.cursor?.let { "cursor" to it } ?: ("offset" to position.offset.toString()))
+        repeat(20) {
+            val body = json("GET", agent(bot) + "/threads/${segment(thread)}/history", query).asObject() ?: throw ApiException.badResponse()
+            if (body.bool("history_loading") != true) {
+                val next = if (body.bool("has_more") == true) Position(position.offset + (body.long("limit")?.toInt() ?: limit), body.str("next_cursor")) else null
+                return Page(body.arr("messages") ?: JsonArray(emptyList()), next, ServerProtocol.hitlRequest(body["hitl_pending"], toolLabels()))
+            }
+            delay((body.long("history_retry_after_ms") ?: 800).coerceIn(300, 3000))
+        }
+        throw ApiException.network()
+    }
+
+    suspend fun historyMessages(rows: JsonArray, bot: BotProfile) = ServerProtocol.history(rows, toolLabels(), bot.id)
 
     override suspend fun messages(conversation: ConversationSummary, bot: BotProfile): List<ChatMessage> =
         transcript(conversation, bot).messages
 
     override suspend fun transcript(conversation: ConversationSummary, bot: BotProfile): Transcript {
-        repeat(20) {
-            val page = ServerProtocol.historyPage(
-                json("GET", agent(bot) + "/threads/${segment(conversation.id)}/history", mapOf("limit" to "50")),
-                toolLabels(),
-                agentId = bot.id,
-            )
-            if (!page.loading) return Transcript(page.messages, page.pending)
-            delay(page.retryAfterMs.coerceIn(300, 3000))
-        }
-        return Transcript(emptyList(), pending = null)
+        val page = historyPage(conversation.id, bot)
+        return Transcript(historyMessages(page.rows, bot), page.pending)
     }
 
     override suspend fun deleteConversation(conversation: ConversationSummary, bot: BotProfile) {
@@ -450,24 +483,7 @@ class ServerBackend(
             ServerProtocol.imageContent(text, images.mapIndexed { index, image -> upload(image, index, bot) })
         }
         val frames = Channel<String>(Channel.UNLIMITED)
-        val wsUrl = url(agent(bot) + "/chat/ws", mapOf("token" to session.token))
-            .replaceFirst("https://", "wss://").replaceFirst("http://", "ws://")
-        val socket = Http.client.newWebSocket(
-            Http.request(wsUrl).build(),
-            object : WebSocketListener() {
-                override fun onMessage(webSocket: WebSocket, text: String) {
-                    frames.trySend(text)
-                }
-
-                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                    frames.close(ServerProtocol.closeError(code, reason))
-                }
-
-                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    frames.close(ServerProtocol.handshakeError(response?.code))
-                }
-            },
-        )
+        val socket = threadSocket(bot, frames)
         sockets[threadId] = socket
         val pinger = launch {
             while (true) {
@@ -489,6 +505,58 @@ class ServerBackend(
             pinger.cancel()
             sockets.remove(threadId)
             socket.close(1000, null)
+        }
+    }
+
+    private fun threadSocket(bot: BotProfile, frames: Channel<String>): WebSocket {
+        val wsUrl = url(agent(bot) + "/chat/ws", mapOf("token" to session.token))
+            .replaceFirst("https://", "wss://").replaceFirst("http://", "ws://")
+        return Http.client.newWebSocket(
+            Http.request(wsUrl).build(),
+            object : WebSocketListener() {
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    frames.trySend(text)
+                }
+
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    frames.close(ServerProtocol.closeError(code, reason))
+                }
+
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                    frames.close(ServerProtocol.handshakeError(response?.code))
+                }
+            },
+        )
+    }
+
+    sealed interface Observation {
+        data object Status : Observation
+        data object Finished : Observation
+        data class Delta(val event: StreamEvent) : Observation
+    }
+
+    fun observe(thread: String, bot: BotProfile): Flow<Observation> = channelFlow {
+        val frames = Channel<String>(Channel.UNLIMITED)
+        val socket = threadSocket(bot, frames)
+        try {
+            socket.send(buildJsonObject { put("type", "subscribe"); put("thread_id", thread) }.toString())
+            var mapper = ServerProtocol.FrameMapper(toolLabels())
+            for (raw in frames) {
+                val frame = Http.parse(raw).asObject() ?: continue
+                if (frame.str("thread_id") != thread) continue
+                when (frame.str("type")) {
+                    "turn.started", "turn.resumed", "turn_status" -> send(Observation.Status)
+                    "turn.ended" -> {
+                        send(Observation.Finished)
+                        mapper = ServerProtocol.FrameMapper(toolLabels())
+                    }
+                    else -> (mapper.map(frame, thread) as? ServerProtocol.FrameMapper.Outcome.Events)?.events?.forEach {
+                        send(Observation.Delta(it))
+                    }
+                }
+            }
+        } finally {
+            socket.cancel()
         }
     }
 

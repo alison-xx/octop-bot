@@ -207,6 +207,16 @@ object ServerProtocol {
         val pending: HitlRequest? = null,
     )
 
+    fun historyKey(row: JsonElement): String? = row.asObject()?.let { obj ->
+        obj.long("history_seq")?.let { "seq:$it" } ?: obj.idString("id")
+    }
+
+    fun joinHistory(earlier: JsonArray, later: JsonArray): JsonArray {
+        val ids = later.mapNotNull(::historyKey).toSet()
+        val overlap = earlier.indexOfFirst { historyKey(it) in ids }
+        return JsonArray((if (overlap < 0) earlier else earlier.take(overlap)) + later)
+    }
+
     fun historyPage(body: JsonElement, toolLabels: Map<String, String> = emptyMap(), agentId: String? = null): HistoryPage {
         val obj = body.asObject() ?: return HistoryPage(emptyList(), false, 0)
         return HistoryPage(
@@ -281,7 +291,7 @@ object ServerProtocol {
             }
             if (text.isEmpty() && thinking.isEmpty() && tools.isEmpty() && images.isEmpty() && files.isEmpty()) continue
             out += ChatMessage(
-                id = row.idString("id") ?: UUID.randomUUID().toString(),
+                id = row.idString("id") ?: row.long("history_seq")?.let { "history-$it" } ?: UUID.randomUUID().toString(),
                 role = role,
                 text = text.toString(),
                 thinking = thinking.toString(),
