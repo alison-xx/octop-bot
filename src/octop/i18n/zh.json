@@ -57,6 +57,7 @@
       "cancel": "结束这一步"
     },
     "computer_handoff": {
+      "upgrade": "当前云服务需要升级才能让 Bot 操作画面。请让用户手动接管云电脑。",
       "title": "需要你接管云电脑",
       "header": "接管云电脑",
       "question": "{reason}\n请打开这个 Bot 的云电脑画面，点「接管」完成这一步，完成后选「我完成了」。",
@@ -506,6 +507,10 @@
   },
   "errors": {
     "BOT_CLOUD_ACCOUNT_REQUIRED": "请登录灵策云账号。切换账号后，请重新打开此操作。",
+    "BOT_COMPUTER_OPERATION_TIMEOUT": "云电脑响应超时，刚才的操作可能还在执行。请先查看云电脑，再决定是否重试。",
+    "BOT_CLOUD_REVERIFY_REQUIRED": "请再验证一次灵策账号以开通云电脑。",
+    "BOT_COMPUTER_TRANSFERS_BUSY": "已有两个文件正在传输，请等其中一个完成后重试。",
+    "BOT_WORKSPACE_BOUNDED_READ_REQUIRED": "当前工作区无法按上传上限读取文件。请使用支持有界读取的工作区后端，或更新工作区组件。",
     "LYNXCE_OWNER_MISMATCH": "这台 Octop Bot 已绑定其他灵策账号。请使用首次登录时的灵策账号。",
     "LYNXCE_LEGACY_PASSWORD_REQUIRED": "这台 Octop Bot 之前设置过本地登录密码。第一次用灵策账号登录时，请同时输入这个密码，之后就只用灵策账号登录。",
     "LYNXCE_CODE_INVALID": "验证码错误或已过期，请重新获取。",

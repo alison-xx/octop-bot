@@ -14,6 +14,23 @@ from octop.infra.db.repos.thread_messages import ThreadMessageInput
 from octop.infra.errors import OctopError
 
 
+async def test_privacy_changes_keep_the_selected_cloud_computer(env_with_agent):
+    client, server, auth, bot = env_with_agent
+    repo = server.services.agent_repo
+    row = repo.get(bot)
+    config = json.loads(row.config_json or "{}")
+    config["octop_bot"] = {"computer": "cloud"}
+    assert repo.replace_owned_bot_config(row.user_id, bot, row.config_json, json.dumps(config))
+
+    for private in (True, False):
+        response = await client.put(
+            f"/api/octop-bot/bots/{bot}/privacy", headers=auth, json={"private": private}
+        )
+        response.raise_for_status()
+        assert response.json()["is_private"] is private
+        assert json.loads(repo.get(bot).config_json)["octop_bot"]["computer"] == "cloud"
+
+
 async def test_private_folder_survives_deletion_until_owner_releases_reservation(env_with_agent):
     from octop.infra.agents.bot_privacy import PrivateDirectoryGuard
 

@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from octop.infra.cloud.computers import DiskBalanceInsufficient
 from octop.infra.crypto.fernet import decrypt_json, encrypt_json
-from octop.infra.db.services import SharedServices
+from octop.infra.db.services import RepoBundle, SharedServices
 from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -110,6 +110,10 @@ def _enabled() -> bool:
 
 def _key(user_id: int) -> str:
     return f"lynxce.cloud.user.{user_id}"
+
+
+def has_session(services: SharedServices | RepoBundle, user_id: int) -> bool:
+    return services.secret_repo.get(_key(user_id)) is not None
 
 
 def _load(services: SharedServices, user_id: int) -> _Grant | None:
@@ -552,11 +556,30 @@ async def logout_cloud(
         return CloudAccountStatus()
     if expected_account_id is not None and expected_account_id != initial.account_id:
         raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
+    remote_token = None
+    if bot_desktop_enabled():
+        from octop.infra.cloud.computers.remote import RemoteCredentials, clear_token, pause_shadows
+
+        shadows = await asyncio.to_thread(
+            services.settings_repo.with_prefix, f"octop_bot:shadow:{user_id}:"
+        )
+        if shadows:
+            with suppress(OctopError, TimeoutError):
+                async with asyncio.timeout(5):
+                    remote_token = await RemoteCredentials(services, user_id).token(
+                        binding=initial.binding
+                    )
     async with _lock(services, user_id):
         grant = await asyncio.to_thread(_load, services, user_id)
         if grant:
             if initial.binding != grant.binding:
                 raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
+            if bot_desktop_enabled():
+                if remote_token:
+                    with suppress(Exception):
+                        async with asyncio.timeout(8):
+                            await pause_shadows(services, user_id, grant.account_id, remote_token)
+                await _finish(asyncio.to_thread(clear_token, services, user_id))
             await _finish(asyncio.to_thread(services.secret_repo.delete, _key(user_id)))
             # Local sign-out is durable even if Lynxce is temporarily unavailable.
             with suppress(_UpstreamFailure):

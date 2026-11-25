@@ -30,6 +30,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
+from octop.api.common.bot_desktop import close_login_screens
 from octop.api.deps import _decode, current_user, extract_raw_token, get_server, sign_token
 from octop.infra.auth.tokens import PURPOSE_ACCESS
 from octop.infra.desktop import desktop_shell_enabled
@@ -239,5 +240,6 @@ async def revoke_device(
     """
     _require_desktop_loopback(request)
     _write_secret(server, {"v": 1, "revoked": True, "revoked_at": int(time.time())})
+    close_login_screens(request, user.id)
     server.services.audit_repo.write(actor=user.username, action="auth.device_revoked")
     return {"ok": True}

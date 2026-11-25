@@ -597,6 +597,7 @@ def computer_use_tool(
     *,
     approvals: ApprovalRules | None = None,
     user_repo: Any = None,
+    remote_action: Callable[[str, dict[str, Any]], tuple[str, str, bytes | None]] | None = None,
 ) -> StructuredTool:
     watches: dict[str, ScreenWatch] = {}
 
@@ -640,7 +641,7 @@ def computer_use_tool(
         button: Literal["left", "middle", "right"] = "left",
         seconds: float = 1.0,
     ) -> Command[Any] | str:
-        if manager.taken_over(agent_id, user_id):
+        if remote_action is None and manager.taken_over(agent_id, user_id):
             return TAKEN_OVER
         # One conversation at a time drives the screen (a private chat and a group can both
         # reach this Bot's computer).
@@ -658,6 +659,45 @@ def computer_use_tool(
         )
         if refused:
             return refused
+
+        if remote_action is not None:
+            # A desktop Bot sends one structured action. Only the cloud can inspect the
+            # handback frame and execute the action under the same device lock.
+            params = {
+                "action": action,
+                "x": x,
+                "y": y,
+                "x2": x2,
+                "y2": y2,
+                "text": text,
+                "keys": keys,
+                "direction": direction,
+                "amount": amount,
+                "button": button,
+                "seconds": seconds,
+            }
+            status, note, image = remote_action(
+                thread, {k: v for k, v in params.items() if v is not None}
+            )
+            if status == "handback":
+                note = f"Requested action was not performed. {note}"
+                if image is None:
+                    return note
+                return _with_image(
+                    tool_call_id,
+                    note,
+                    image,
+                    "Screen after handback",
+                )
+            if image is None:
+                return note
+            stuck = watch.after(action, image)
+            return _with_image(
+                tool_call_id,
+                f"{note} {stuck}" if stuck else note,
+                image,
+                f"Cloud computer screen after {action}",
+            )
 
         def work(driver: ComputerDriver, instance: str) -> Command[Any] | str:
             if action in ("click", "double_click") and x is not None and y is not None:
@@ -830,8 +870,14 @@ class ComputerBriefing(AgentMiddleware[Any, Any]):
     The text is fixed per agent, so it never breaks the prompt cache between turns.
     """
 
-    def __init__(self, *, room: bool = False) -> None:
-        self._text = BRIEFING.format(files=_ROOM_FILES if room else _PRIVATE_FILES)
+    def __init__(self, *, room: bool = False, desktop: bool = False) -> None:
+        files = _ROOM_FILES if room else _PRIVATE_FILES
+        if desktop:
+            files = (
+                "Your normal execute and file tools work in the local Bot workspace. "
+                "Use cloud_computer_workspace for cloud commands and explicit file transfers."
+            )
+        self._text = BRIEFING.format(files=files)
 
     def _brief(self, request: ModelRequest[Any]) -> ModelRequest[Any]:
         blocks: list[Any] = (

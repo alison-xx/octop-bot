@@ -4,20 +4,32 @@ import {
   type BotServerInfo,
 } from "../../api/modules/botCloudComputer";
 
-let cached: Promise<BotServerInfo | null> | null = null;
+let pending: Promise<BotServerInfo | null> | null = null;
 
-/** This server's edition and capabilities, read once per page load. */
+/** Share concurrent reads. Desktop capabilities depend on the current Lynxce session. */
 export function useBotServerInfo(): BotServerInfo | null {
   const [info, setInfo] = useState<BotServerInfo | null>(null);
   useEffect(() => {
-    let mounted = true;
-    cached ??= Promise.resolve()
-      .then(() => botCloudComputerApi.serverInfo())
-      .then((value) => value ?? null)
-      .catch(() => null);
-    void cached.then((value) => mounted && setInfo(value));
+    let version = 0;
+    function refresh() {
+      const request = ++version;
+      pending ??= Promise.resolve()
+        .then(() => botCloudComputerApi.serverInfo())
+        .catch(() => null)
+        .finally(() => {
+          pending = null;
+        });
+      void pending.then((value) => {
+        if (request === version) setInfo(value);
+      });
+    }
+    refresh();
+    window.addEventListener("focus", refresh);
+    window.addEventListener("octop-bot-account-changed", refresh);
     return () => {
-      mounted = false;
+      version++;
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("octop-bot-account-changed", refresh);
     };
   }, []);
   return info;
