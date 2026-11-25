@@ -1195,3 +1195,290 @@ def test_unpaid_use_cancels_and_starts_a_new_warning_cycle(
     clock.now += 15 * 86400
     manager.tick()
     assert sent == ["bot", "bot"]
+
+
+@pytest.fixture
+def sole_computer(tmp_path, monkeypatch):
+    import os
+
+    if os.name != "posix":
+        pytest.skip("Single-controller proof uses POSIX flock on the shared SQLite volume")
+    from octop.config import OctopConfig
+    from octop.infra.cloud.computers.handoff import SingleComputerController
+    from octop.infra.db.migrate import run_migrations
+    from octop.infra.db.pool import SqlitePool
+    from octop.infra.db.services import build_shared_services
+    from octop.infra.utils.paths import PathLayout
+
+    db = SqlitePool(tmp_path / "db.sqlite")
+    run_migrations(db)
+    services = build_shared_services(db=db, paths=PathLayout(tmp_path), config=OctopConfig())
+    owner = services.user_repo.create(username="a", role="user")
+    services.agent_repo.create(agent_id="bot", user_id=owner, name="Bot")
+    driver, billing, clock = Driver(), Billing(), Clock()
+    monkeypatch.setattr(computers.ComputerManager, "_start_reaper", lambda _: None)
+    manager = computers.ComputerManager(
+        services, driver, billing=billing, clock=clock, controller=SingleComputerController(db.path)
+    )
+    try:
+        yield manager, driver, billing, clock, owner, db
+    finally:
+        manager.close()
+        db.close()
+
+
+@pytest.mark.parametrize("resume", [True, False])
+async def test_background_handoff_pauses_only_its_wake_once(sole_computer, resume):
+    import asyncio
+
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    manager, driver, billing, clock, owner, _ = sole_computer
+    if resume:
+        manager.ensure_running("bot", owner)
+        manager.pause("bot", owner)
+    with background_computer_turn(owner, "bot", "private") as turn:
+        assert not pause_background_computer() and turn.manager is None
+        await asyncio.to_thread(manager.run, "bot", owner, "work", 5)
+        clock.now += 17
+        assert await asyncio.to_thread(pause_background_computer)
+        assert not pause_background_computer(turn)
+    assert not pause_background_computer(turn)
+    assert not manager.record("bot", owner).running
+    assert billing.settled[-1][1] == 17
+    assert [cmd for cmd, _ in driver.calls].count("pause") == 1 + int(resume)
+
+
+@pytest.mark.parametrize(
+    "foreign", ["same_thread", "file", "takeover", "viewer", "glance", "screen"]
+)
+def test_other_activity_permanently_relinquishes_handoff(sole_computer, foreign, monkeypatch):
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    m, _, _, clock, u, _ = sole_computer
+    with background_computer_turn(u, "bot", "thread") as original:
+        m.ensure_running("bot", u)
+        if foreign == "same_thread":
+            with background_computer_turn(u, "bot", "thread"):
+                m.run("bot", u, "another turn", 5)
+        elif foreign == "file":
+            from contextvars import Context
+
+            Context().run(m.write, "bot", u, "other.txt", b"other")
+        elif foreign == "takeover":
+            m.set_takeover("bot", u, True)
+            m.set_takeover("bot", u, False)
+        elif foreign == "viewer":
+            m.viewing("bot", u)
+        elif foreign == "glance":
+            monkeypatch.setattr(m._driver, "run_python", lambda *_: "WINDOW:Desktop", raising=False)
+            m.glance("bot", u)
+        else:
+            assert m.claim_screen("bot", "elsewhere")
+        clock.now += computers.VIEWER_GRACE_SECONDS + computers.SCREEN_HOLD_SECONDS
+        m.ensure_running("bot", u)
+        assert not pause_background_computer(original) and m.record("bot", u).running
+
+
+def test_background_handoff_existing_instance_and_superseded_generation(sole_computer):
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    m, driver, _, _, u, _ = sole_computer
+    with background_computer_turn(u + 1, "bot", "elsewhere"):
+        instance = m.ensure_running("bot", u)
+        assert not pause_background_computer()
+    with background_computer_turn(u, "bot", "a"):
+        m.ensure_running("bot", u)
+        assert not pause_background_computer()
+    record = m.record("bot", u)
+    record.running = False
+    m._save(record)
+    with background_computer_turn(u, "bot", "b"):
+        assert m.ensure_running("bot", u) == instance  # The provider never actually stopped.
+        assert not pause_background_computer()
+    m.pause("bot", u)
+    with background_computer_turn(u, "bot", "c") as stale:
+        assert m.ensure_running("bot", u) == instance
+        m.pause("bot", u)
+        assert m.ensure_running("bot", u) == instance  # Same provider ID, new generation.
+        assert not pause_background_computer(stale) and driver.state(instance) == "running"
+
+
+def test_background_handoff_rechecks_owner_and_never_stops_on_pause_failure(
+    sole_computer, monkeypatch
+):
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    m, driver, billing, _, u, db = sole_computer
+    with background_computer_turn(u, "bot", "a"):
+        instance = m.ensure_running("bot", u)
+
+        def unavailable(_):
+            raise RuntimeError("provider busy")
+
+        with monkeypatch.context() as temporary:
+            temporary.setattr(driver, "pause", unavailable)
+            assert not pause_background_computer()
+            assert ("stop", instance) not in driver.calls and not billing.settled
+    m.pause("bot", u)
+    second = m._services.user_repo.create(username="b", role="user")
+    with background_computer_turn(u, "bot", "b"):
+        m.ensure_running("bot", u)
+        with db.transaction() as cx:
+            cx.execute("UPDATE agents SET user_id = ? WHERE agent_id = ?", (second, "bot"))
+        assert not pause_background_computer() and driver.state(instance) == "running"
+
+
+def test_background_handoff_inflight_and_racing_foreground(sole_computer, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    m, driver, _, _, u, _ = sole_computer
+    with background_computer_turn(u, "bot", "a"):
+        # Even this turn's own pending callback cannot cut a still-running I/O operation.
+        assert not m.use("bot", u, lambda _driver, _instance: pause_background_computer())
+        assert m.record("bot", u).running
+    m.pause("bot", u)
+    pause_entered, allow_pause, foreground_entered = Event(), Event(), Event()
+    original_pause = driver.pause
+
+    def hold(instance):
+        pause_entered.set()
+        assert allow_pause.wait(5)
+        original_pause(instance)
+
+    def foreground():
+        foreground_entered.set()
+        return m.run("bot", u, "foreground", 5)
+
+    monkeypatch.setattr(driver, "pause", hold)
+    with background_computer_turn(u, "bot", "b") as turn, ThreadPoolExecutor(2) as pool:
+        instance = m.ensure_running("bot", u)
+        release = pool.submit(pause_background_computer, turn)
+        assert pause_entered.wait(5)
+        other = pool.submit(foreground)
+        try:
+            assert foreground_entered.wait(5) and not other.done()
+        finally:
+            allow_pause.set()
+        assert release.result(timeout=5)
+        assert other.result(timeout=5) == (0, "ran foreground")
+        assert driver.state(instance) == "running"
+
+
+def test_other_process_invalidates_the_entire_controller_generation(sole_computer):
+    import subprocess
+    import sys
+
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    m, _, _, _, u, db = sole_computer
+    with background_computer_turn(u, "bot", "a") as turn:
+        m.ensure_running("bot", u)
+        assert turn.manager is m
+        command = (
+            "from pathlib import Path; import sys; "
+            "from octop.infra.cloud.computers.handoff import SingleComputerController; "
+            "other = SingleComputerController(Path(sys.argv[1])); "
+            "cm = other.exclusive(); assert not cm.__enter__(); cm.__exit__(None,None,None); "
+            "other.close()"
+        )
+        subprocess.run([sys.executable, "-c", command, str(db.path)], check=True, timeout=8)
+        assert not pause_background_computer(turn) and m.record("bot", u).running
+    m.pause("bot", u)
+    with background_computer_turn(u, "bot", "b") as second_turn:
+        m.ensure_running("bot", u)
+        assert second_turn.manager is None and not pause_background_computer()
+
+
+def test_foreground_command_already_in_progress_owns_its_whole_operation(sole_computer):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    manager, driver, _, _, owner, _ = sole_computer
+    entered, finish = Event(), Event()
+
+    def action(_driver, _instance):
+        entered.set()
+        assert finish.wait(5)
+
+    with background_computer_turn(owner, "bot", "cron") as turn, ThreadPoolExecutor(1) as pool:
+        instance = manager.ensure_running("bot", owner)
+        action_future = pool.submit(manager.use, "bot", owner, action)
+        try:
+            assert entered.wait(5)
+            assert not pause_background_computer(turn)
+            assert driver.state(instance) == "running"
+        finally:
+            finish.set()
+        action_future.result(timeout=5)
+        assert not pause_background_computer(turn)
+
+
+def test_handoff_after_restart_or_unknown_controller_cannot_pause(sole_computer, setup):
+    from octop.infra.cloud.computers.handoff import (
+        SingleComputerController,
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    manager, driver, billing, clock, owner, db = sole_computer
+    with background_computer_turn(owner, "bot", "initial") as stale:
+        manager.ensure_running("bot", owner)
+        manager.close()
+        replacement = computers.ComputerManager(
+            manager._services,
+            driver,
+            billing=billing,
+            clock=clock,
+            controller=SingleComputerController(db.path),
+        )
+        try:
+            assert not pause_background_computer(stale)
+            with background_computer_turn(owner, "bot", "replacement"):
+                replacement.ensure_running("bot", owner)
+                assert not pause_background_computer()
+        finally:
+            replacement.close()
+    unfenced = setup[0]
+    with background_computer_turn(7, "bot1", "unknown") as unknown:
+        unfenced.ensure_running("bot1", 7)
+        assert unknown.manager is None and not pause_background_computer()
+
+
+def test_provider_state_must_still_be_running_at_handoff(sole_computer):
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    m, driver, _, _, u, _ = sole_computer
+    with background_computer_turn(u, "bot", "a"):
+        instance = m.ensure_running("bot", u)
+        driver.states[instance] = "paused"
+        assert not pause_background_computer() and ("pause", instance) not in driver.calls
