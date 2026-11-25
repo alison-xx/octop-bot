@@ -647,6 +647,7 @@ function ChatPageInner() {
     reasoningEffort,
     handleReasoningChange,
     conversationMode,
+    threadModesReady,
     handleConversationModeChange,
     hitlPolicy,
     handleHitlPolicyChange,
@@ -664,7 +665,7 @@ function ChatPageInner() {
     composerSession?.conversationMode,
     composerSession?.hitlPolicy,
     composerSession?.sessionMode,
-    composerSession?.owned !== false,
+    !activeThreadId || (!!composerSession && composerSession.owned !== false),
   );
 
   const personalModel =
@@ -737,7 +738,12 @@ function ChatPageInner() {
     decisionSaved: t("chatUsage.decisionSaved"),
   });
 
-  const { resetNavForAgentSwitch, markInitialNavDone } = useChatNavigation({
+  const {
+    resetNavForAgentSwitch,
+    markInitialNavDone,
+    threadMetadataFailed,
+    retryThreadMetadata,
+  } = useChatNavigation({
     routeAgentId,
     threadId,
     resolvedAgentId,
@@ -815,7 +821,10 @@ function ChatPageInner() {
     ],
   );
 
+  const activeThreadReady =
+    !activeThreadId || (!!composerSession && threadModesReady);
   const { handleSend } = useChatSend({
+    activeThreadReady,
     resolvedAgentId,
     activeThreadId,
     selectedModel,
@@ -1747,18 +1756,25 @@ function ChatPageInner() {
               />
             )}
 
-            {historyError && (
+            {(historyError || threadMetadataFailed) && (
               <Alert
                 type="error"
                 showIcon
-                message={t("chat.historyLoadFailed")}
+                message={t(
+                  threadMetadataFailed
+                    ? "chat.threadSettingsLoadFailed"
+                    : "chat.historyLoadFailed",
+                )}
                 action={
                   <Button
                     size="small"
                     loading={
                       historyLoading || historyRefreshing || historyLoadingMore
                     }
-                    onClick={() => void retryHistory()}
+                    onClick={() => {
+                      if (threadMetadataFailed) retryThreadMetadata();
+                      if (historyError) void retryHistory();
+                    }}
                   >
                     {t("chat.historyRetry")}
                   </Button>
@@ -2173,6 +2189,7 @@ function ChatPageInner() {
               holdSend={membersStillTalking}
               isTeam={isTeamChat}
               disabled={
+                !activeThreadReady ||
                 !agentChatReady ||
                 noAgents ||
                 memoryMaintBlocking ||

@@ -36,7 +36,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -78,6 +77,7 @@ import io.github.alisonxx.octopbot.store.BotPreview
 import io.github.alisonxx.octopbot.store.Previews
 import io.github.alisonxx.octopbot.ui.common.BalanceText
 import io.github.alisonxx.octopbot.ui.common.SearchField
+import io.github.alisonxx.octopbot.ui.common.AccountAvatar
 import io.github.alisonxx.octopbot.ui.common.accountName
 import io.github.alisonxx.octopbot.ui.common.accentOf
 import io.github.alisonxx.octopbot.ui.common.relativeTime
@@ -102,7 +102,7 @@ data class DirectoryState(
     val account: AccountChipState? = null,
 )
 
-data class AccountChipState(val name: String, val balance: BalanceState)
+data class AccountChipState(val name: String, val balance: BalanceState, val avatarImage: Any? = null)
 
 data class UpdateBanner(val version: String, val versionCode: Int, val urgent: Boolean, val phase: UpdatePhase)
 
@@ -130,6 +130,8 @@ fun HomeScreen(
     val update by model.update.collectAsStateWithLifecycle()
     val dismissedUpdate by model.dismissedUpdate.collectAsStateWithLifecycle()
     val balance by model.balance.collectAsStateWithLifecycle()
+    val photo by model.accountPhoto.collectAsStateWithLifecycle()
+    val name = photo?.name ?: accountName(backend)
     Directory(
         state = DirectoryState(
             bots = bots,
@@ -140,7 +142,7 @@ fun HomeScreen(
             error = error,
             update = update.offer?.takeIf { UpdateSelection.showBanner(it, dismissedUpdate) }
                 ?.let { UpdateBanner(it.version, it.versionCode, it.urgent, update.phase) },
-            account = balance?.let { AccountChipState(accountName(backend), it) },
+            account = balance?.let { AccountChipState(name, it, photo?.localImage ?: photo?.url) },
         ),
         refreshing = refreshing,
         onRefresh = model::refreshDirectory,
@@ -243,6 +245,12 @@ fun Directory(
             state.error?.let { ErrorBanner(it, onRetry = onRefresh) }
             PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 112.dp)) {
+                    if (query.isNotBlank() && bots.isEmpty() && (!state.showGroups || groups.isEmpty())) {
+                        item {
+                            Text(stringResource(R.string.home_no_match), color = palette.secondary,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+                        }
+                    }
                     items(bots, key = { it.id }) { bot ->
                         BotRow(
                             bot = bot,
@@ -325,7 +333,7 @@ private fun AccountChip(account: AccountChipState, onCredits: () -> Unit, onRetr
             .padding(start = 6.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Rounded.AccountCircle, contentDescription = null, tint = palette.secondary, modifier = Modifier.size(22.dp))
+        AccountAvatar(account.name, account.avatarImage, 22.dp)
         Spacer(Modifier.width(6.dp))
         BalanceText(account.balance, style = MaterialTheme.typography.labelLarge)
         if (failed) {

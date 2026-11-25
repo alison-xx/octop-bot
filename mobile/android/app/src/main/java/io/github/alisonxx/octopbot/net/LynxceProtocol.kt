@@ -418,6 +418,7 @@ object LynxceProtocol {
             displayName = user.str("displayName")?.takeIf { it.isNotBlank() },
             accessToken = body.str("accessToken") ?: throw ApiException.badResponse(),
             refreshToken = body.str("refreshToken") ?: throw ApiException.badResponse(),
+            signupExpiryDay = signupExpiryDayUTC(body),
         )
     }
 

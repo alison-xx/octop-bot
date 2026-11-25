@@ -22,6 +22,7 @@ import io.github.alisonxx.octopbot.net.ApiException
 import io.github.alisonxx.octopbot.net.ChatBackend
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -30,7 +31,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import io.github.alisonxx.octopbot.net.ServerBackend
+import io.github.alisonxx.octopbot.net.ServerProtocol
+import io.github.alisonxx.octopbot.net.Transcript
 import java.util.UUID
 
 data class ChatState(
@@ -38,6 +43,8 @@ data class ChatState(
     val messages: List<ChatMessage> = emptyList(),
     val streaming: Boolean = false,
     val loading: Boolean = false,
+    val hasOlder: Boolean = false,
+    val loadingOlder: Boolean = false,
     val conversations: List<ConversationSummary> = emptyList(),
     val motion: BotMotion = BotMotion.Idle,
     /** Server mode: an open question or approval; the card docks above the composer. */
@@ -77,8 +84,54 @@ interface ChatHost {
 class ChatSession(private val botId: String, private val scope: CoroutineScope, private val host: ChatHost) {
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state
+    internal data class ObservedTurn(var id: String?, val anchor: ChatMessage?, val rows: MutableList<ChatMessage> = mutableListOf(), var ended: Boolean = false, val resumed: Boolean = false, var lastHistoryRetry: Boolean = false) {
+        fun committedTail(history: List<ChatMessage>): List<ChatMessage> {
+            val previous = anchor ?: return history
+            var at = history.indexOfLast { it.id == previous.id }
+            if (at < 0) at = history.indexOfLast { it.role == previous.role && it.text == previous.text }
+            return if (at < 0) emptyList() else history.drop(at + 1)
+        }
+
+        fun hasCommittedReply(history: List<ChatMessage>): Boolean {
+            val tail = committedTail(history)
+            if (lastHistoryRetry && rows.none { it.role == MessageRole.Assistant &&
+                (it.text.isNotEmpty() || it.thinking.isNotEmpty() || it.tools.isNotEmpty() || it.attachments.isNotEmpty()) }) return true
+            if (resumed) {
+                val updated = anchor?.takeIf { it.role == MessageRole.Assistant }?.let { old -> history.lastOrNull { it.id == old.id } }
+                if (updated != null && anchor != null && (updated.text != anchor.text || updated.thinking != anchor.thinking ||
+                    updated.tools != anchor.tools || updated.attachments != anchor.attachments || updated.status != anchor.status)) return true
+                return tail.any { it.role == MessageRole.Assistant }
+            }
+            val user = rows.firstOrNull { it.role == MessageRole.User } ?: return tail.any { it.role == MessageRole.Assistant }
+            val at = tail.indexOfLast { it.id == user.id || (it.role == MessageRole.User && it.text == user.text) }
+            if (at < 0) return anchor?.id == user.id && tail.any { it.role == MessageRole.Assistant }
+            return tail.drop(at + 1).any { it.role == MessageRole.Assistant }
+        }
+
+        fun merged(history: List<ChatMessage>): List<ChatMessage> {
+            val tail = committedTail(history)
+            return history + rows.filterNot { row -> tail.any { it.id == row.id || (it.role == row.role && it.text == row.text) } }
+        }
+    }
+
+    private var observedTurn: ObservedTurn? = null
+    private var durableAnchor: ChatMessage? = null
+
+    private fun observedHistory(history: List<ChatMessage>): List<ChatMessage> {
+        durableAnchor = history.lastOrNull()
+        val turn = observedTurn ?: return history
+        if (turn.ended && turn.hasCommittedReply(history)) {
+            observedTurn = null
+            return history
+        }
+        return turn.merged(history)
+    }
+
     private var job: Job? = null
     private var opened = false
+    private var historyRevision = 0
+    private var historyRows = JsonArray(emptyList())
+    private var older: ServerBackend.Position? = null
     private var lastAttachments: List<ImageAttachment> = emptyList()
     /** The running reply continues a paused turn (`hitl/resume`). */
     private var resumed = false
@@ -89,16 +142,18 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
 
     /** First visit: continue the most recent conversation, like a messenger thread. */
     fun openLatest() {
-        if (opened) return
-        opened = true
+        val first = !opened
+        val revision = historyRevision
         scope.launch {
-            _state.update { it.copy(loading = true) }
-            val latest = runCatching { loadConversations() }.getOrNull()?.firstOrNull()
-            if (latest != null && _state.value.conversationId == null && _state.value.messages.isEmpty()) {
-                loadMessages(latest)
-            } else {
-                _state.update { it.copy(loading = false) }
-            }
+            val saved = if (first) runCatching { (host.backend as? ServerBackend)?.rememberedThread(botId) }.getOrNull() else null
+            val rows = runCatching { loadConversations() }.getOrNull() ?: return@launch
+            if (revision != historyRevision || _state.value.streaming || _state.value.loading) return@launch
+            opened = true
+            val current = _state.value.conversationId
+            val personal = rows.firstOrNull { it.id == saved && it.owned == true }
+            val fallback = if (host.backend is ServerBackend) ConversationSummary.personalDefault(rows) else rows.firstOrNull()
+            val target = rows.firstOrNull { it.id == current } ?: (personal ?: fallback)?.takeIf { first && current == null && _state.value.messages.isEmpty() }
+            if (target != null) loadMessages(target)
         }
     }
 
@@ -119,22 +174,157 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
     }
 
     private suspend fun loadMessages(conversation: ConversationSummary) {
+        (host.backend as? ServerBackend)?.rememberThread(botId, conversation.id)
         val bot = bot ?: return
-        _state.update { it.copy(conversationId = conversation.id, messages = emptyList(), loading = true, hitl = null) }
-        val transcript = runCatching { host.backend.transcript(conversation, bot) }.onFailure(::report).getOrNull()
-        val messages = transcript?.messages.orEmpty()
-        val pending = transcript?.pending
+        val revision = ++historyRevision
+        val changed = _state.value.conversationId != conversation.id
+        if (changed) { observedTurn = null; durableAnchor = null }
+        if (changed) { historyRows = JsonArray(emptyList()); older = null }
+        _state.update { it.copy(conversationId = conversation.id, messages = if (changed) emptyList() else it.messages, loading = true,
+            hasOlder = older != null, loadingOlder = false, hitl = if (changed) null else it.hitl) }
+        val transcript = try {
+            val server = host.backend as? ServerBackend
+            if (server == null) host.backend.transcript(conversation, bot) else {
+                val page = server.historyPage(conversation.id, bot)
+                if (revision != historyRevision) return
+                var fresh = page.rows
+                var next = page.next
+                val known = historyRows.mapNotNull(ServerProtocol::historyKey).toSet()
+                while (known.isNotEmpty() && fresh.none { ServerProtocol.historyKey(it) in known } && next != null) {
+                    val prior = server.historyPage(conversation.id, bot, next)
+                    if (revision != historyRevision) return
+                    fresh = ServerProtocol.joinHistory(prior.rows, fresh)
+                    next = prior.next
+                }
+                if (next == null) {
+                    historyRows = fresh
+                    older = null
+                } else {
+                    historyRows = ServerProtocol.joinHistory(historyRows, fresh)
+                    if (historyRows.size == fresh.size) older = next
+                    else older = older?.let { if (it.cursor != null) it else it.copy(offset = historyRows.size) }
+                }
+                Transcript(server.historyMessages(historyRows, bot), page.pending)
+            }
+        } catch (error: Throwable) {
+            if (revision == historyRevision) { _state.update { it.copy(loading = false) }; report(error) }
+            return
+        }
+        if (revision != historyRevision) return
+        val messages = observedHistory(transcript.messages)
+        val pending = transcript.pending
         // Device reads left open (the app was closed mid-turn) run again right away; writes show the card.
         val rerun = pending?.takeIf { runsAlone(it) }
         _state.update {
-            it.copy(messages = messages, loading = false, motion = restingMotion(messages), hitl = pending.takeIf { rerun == null })
+            it.copy(messages = messages, loading = false, hasOlder = older != null, motion = restingMotion(messages), hitl = pending.takeIf { rerun == null })
         }
         if (rerun != null && !_state.value.streaming) stream(bot, emptyList(), resume = true) { flowOf(StreamEvent.Hitl(rerun)) }
     }
 
+    fun loadOlder() {
+        val bot = bot ?: return
+        val thread = _state.value.conversationId ?: return
+        val position = older ?: return
+        val server = host.backend as? ServerBackend ?: return
+        if (_state.value.streaming || _state.value.loading || _state.value.loadingOlder) return
+        val revision = historyRevision
+        _state.update { it.copy(loadingOlder = true) }
+        scope.launch {
+            try {
+                val page = server.historyPage(thread, bot, position)
+                if (historyRevision != revision) return@launch
+                historyRows = ServerProtocol.joinHistory(page.rows, historyRows)
+                older = page.next
+                val messages = observedHistory(server.historyMessages(historyRows, bot))
+                if (historyRevision == revision) _state.update { it.copy(messages = messages, hasOlder = older != null) }
+            } catch (error: Throwable) { if (revision == historyRevision) report(error) }
+            finally { if (revision == historyRevision) _state.update { it.copy(loadingOlder = false) } }
+        }
+    }
+
+    suspend fun observe(thread: String) {
+        val server = host.backend as? ServerBackend ?: return
+        val bot = bot ?: return
+        val summary = ConversationSummary(thread, "", null, bot.id)
+        suspend fun turn(id: String?): ObservedTurn {
+            val current = observedTurn
+            if (current != null && (id == null || current.id == null || current.id == id)) {
+                if (id != null) current.id = id
+                current.ended = false
+                current.lastHistoryRetry = false
+                return current
+            }
+            if (current != null) {
+                val saved = server.historyMessages(historyRows, bot)
+                _state.update { it.copy(messages = saved) }
+            }
+            return ObservedTurn(id, durableAnchor).also { observedTurn = it }
+        }
+        suspend fun finish() {
+            observedTurn?.ended = true
+            repeat(4) { attempt ->
+                if (_state.value.conversationId != thread || _state.value.streaming) return
+                observedTurn?.lastHistoryRetry = attempt == 3
+                loadMessages(summary)
+                if (observedTurn?.ended != true || attempt == 3) return
+                kotlinx.coroutines.delay(300)
+            }
+        }
+        while (kotlinx.coroutines.currentCoroutineContext().isActive && _state.value.conversationId == thread && !_state.value.streaming) {
+            try {
+                server.observe(thread, bot).collect { event ->
+                    if (_state.value.conversationId != thread || _state.value.streaming) return@collect
+                    when (event) {
+                        is ServerBackend.Observation.Status -> {
+                            if (event.active) {
+                                val prior = observedTurn?.id
+                                if (event.turn != null && prior != null && event.turn != prior) finish()
+                                val prefix = turn(event.turn).rows.lastOrNull()
+                                if (prefix?.role == MessageRole.Assistant) {
+                                    _state.update { state -> state.copy(messages = state.messages.map {
+                                        if (it.id == prefix.id) it.copy(status = MessageStatus.Streaming) else it
+                                    }) }
+                                }
+                            } else finish()
+                        }
+                        ServerBackend.Observation.Finished -> finish()
+                        is ServerBackend.Observation.User -> {
+                            val current = turn(null)
+                            if (_state.value.messages.none { it.id == event.row.id }) {
+                                current.rows.add(event.row)
+                                _state.update { it.copy(messages = it.messages + event.row) }
+                            }
+                        }
+                        is ServerBackend.Observation.Delta -> {
+                            val current = turn(null)
+                            if (current.rows.lastOrNull()?.role != MessageRole.Assistant) {
+                                val row = ChatMessage(role = MessageRole.Assistant, text = "", status = MessageStatus.Streaming)
+                                current.rows.add(row)
+                                _state.update { it.copy(messages = it.messages + row) }
+                            }
+                            val index = current.rows.lastIndex
+                            val id = current.rows[index].id
+                            apply(id, event.event)
+                            _state.value.messages.lastOrNull { it.id == id }?.let { current.rows[index] = it }
+                        }
+                    }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { /* Reconnect and reconcile the persisted history. */ }
+            kotlinx.coroutines.delay(2000)
+        }
+    }
+
     fun newChat() {
+        (host.backend as? ServerBackend)?.rememberThread(botId, null)
         if (_state.value.streaming) return
-        _state.update { it.copy(conversationId = null, messages = emptyList(), loading = false, motion = BotMotion.Idle, hitl = null) }
+        observedTurn = null
+        durableAnchor = null
+        opened = true
+        historyRevision++
+        older = null
+        historyRows = JsonArray(emptyList())
+        _state.update { it.copy(conversationId = null, messages = emptyList(), hasOlder = false, loadingOlder = false, loading = false, motion = BotMotion.Idle, hitl = null) }
     }
 
     fun delete(conversation: ConversationSummary) {
@@ -187,9 +377,11 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
         if (!bot.canSend) return
         val state = _state.value
         lastAttachments = images
+        historyRevision++
+        _state.update { it.copy(loading = false, loadingOlder = false) }
         val history = state.messages.filter { it.role != MessageRole.Note }
         val user = ChatMessage(role = MessageRole.User, text = text, images = images.map { it.uri })
-        stream(bot, listOf(user)) { host.backend.send(user.text, images, bot, state.conversationId, history, host.model(), host.device) }
+        stream(bot, listOf(user)) { host.backend.send(user.text, user.id, images, bot, state.conversationId, history, host.model(), host.device) }
     }
 
     // Questions and approvals (server mode)
@@ -272,7 +464,9 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
         val reply = ChatMessage(role = MessageRole.Assistant, text = "", status = MessageStatus.Streaming)
         _state.update { it.copy(messages = it.messages + before + reply, streaming = true, motion = BotMotion.Working) }
         host.replyStarted(botId)
+        val anchor = durableAnchor
         job = scope.launch {
+            var turnId: String? = null
             var status: MessageStatus = MessageStatus.Done
             try {
                 var events = events()
@@ -281,7 +475,11 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
                     var reads: HitlRequest? = null
                     events.collect { event ->
                         if (token != run) return@collect
-                        if (event is StreamEvent.Hitl && runsAlone(event.request)) reads = event.request else apply(reply.id, event)
+                        when {
+                            event is StreamEvent.TurnStarted -> turnId = event.id
+                            event is StreamEvent.Hitl && runsAlone(event.request) -> reads = event.request
+                            else -> apply(reply.id, event)
+                        }
                     }
                     val request = reads ?: break
                     val conversation = _state.value.conversationId ?: break
@@ -293,6 +491,15 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
                 throw cancelled
             } catch (error: Throwable) {
                 val kind = (error as? ApiException)?.kind
+                val disconnected = kind == ApiException.Kind.Network || (kind == null && error is java.io.IOException)
+                if (token == run && disconnected && host.backend is ServerBackend) {
+                    val partial = _state.value.messages.lastOrNull { it.id == reply.id }
+                    if (partial != null && (turnId != null || partial.text.isNotEmpty() || partial.thinking.isNotEmpty() || partial.tools.isNotEmpty() || partial.attachments.isNotEmpty())) {
+                        val rows = before.filter { !resumed && it.role == MessageRole.User }.toMutableList()
+                        rows.add(partial)
+                        observedTurn = ObservedTurn(turnId, anchor, rows, resumed = resumed)
+                    }
+                }
                 val credits = kind == ApiException.Kind.Credits
                 val limit = kind == ApiException.Kind.DailyLimit
                 val apiError = error as? ApiException
@@ -309,6 +516,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
 
     private fun apply(replyId: String, event: StreamEvent) {
         if (event is StreamEvent.Conversation) {
+            (host.backend as? ServerBackend)?.rememberThread(botId, event.id)
             _state.update { it.copy(conversationId = event.id) }
             return
         }
@@ -325,7 +533,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
                     is StreamEvent.Thinking -> message.copy(thinking = message.thinking + event.delta).also { motion = BotMotion.Thinking }
                     is StreamEvent.Tool -> message.copy(tools = upsert(message.tools, event))
                     is StreamEvent.Attachment -> message.copy(attachments = FileCards.merge(message.attachments, listOf(event.file)))
-                    is StreamEvent.Conversation, is StreamEvent.Hitl -> message
+                    is StreamEvent.Conversation, is StreamEvent.TurnStarted, is StreamEvent.Hitl -> message
                 }
             }
             state.copy(messages = messages, motion = motion)
@@ -365,6 +573,12 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
             _state.update { it.copy(queued = rest) }
             send(next.text, next.images)
         }
+    }
+
+    fun detach() {
+        run++
+        historyRevision++
+        job?.cancel()
     }
 
     fun stop() {

@@ -63,6 +63,15 @@ def install(app: Any, server: Any) -> None:
             locale = resolve_request_locale(request)
             return JSONResponse(status_code=exc.status, content=exc.to_envelope(locale=locale))
 
+        if getattr(request.state, "octop_ticket_authenticated", False):
+            raw = None
+        authorization = request.headers.get("authorization")
+        if raw and not (authorization and authorization.lower().startswith("bearer ")):
+            from octop.infra.metrics import METRICS
+
+            is_sse = "text/event-stream" in request.headers.get("accept", "")
+            METRICS.inc("query_token_sse_total" if is_sse else "query_token_http_total")
+
         response = await call_next(request)
         if raw is not None:
             try:

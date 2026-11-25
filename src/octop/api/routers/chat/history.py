@@ -225,6 +225,7 @@ def _require_thread(
 async def list_threads(
     agent_id: str,
     limit: int = 50,
+    offset: Annotated[int, Query(ge=0, description="Number of directory rows to skip.")] = 0,
     include_bot_groups: Annotated[
         bool,
         Query(description="Also list this Bot's work threads in Octop Bot groups."),
@@ -245,6 +246,7 @@ async def list_threads(
         agent_id=agent_id,
         user_id=effective_uid,
         limit=limit,
+        offset=offset,
         include_bot_groups=include_bot_groups,
     )
     bound = thread_registry.get_bound_thread_id(
@@ -464,6 +466,14 @@ async def get_thread_history(
     thread_id: str,
     limit: int = HISTORY_DEFAULT_LIMIT,
     offset: int = 0,
+    cursor: Annotated[
+        int | None,
+        Query(
+            gt=0,
+            le=2**63 - 1,
+            description="Read older messages before the previous page’s next_cursor. Takes precedence over offset.",
+        ),
+    ] = None,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
@@ -476,7 +486,8 @@ async def get_thread_history(
     """
     row = _require_thread(server, agent_id, thread_id, user, as_user)
     page_limit = _clamp_history_limit(limit)
-    page_offset = max(0, offset)
+    page_offset = 0 if cursor is not None else max(0, offset)
+    next_cursor = None
     projection_repo = server.services.thread_message_repo
     projection_status = projection_repo.projection_status(thread_id)
     history_loading = projection_status != "ready"
@@ -507,12 +518,13 @@ async def get_thread_history(
             else "pending"
         )
     else:
-        messages, has_more = _load_projected_thread_messages(
+        messages, has_more, next_cursor = _load_projected_thread_messages(
             server,
             agent_id,
             thread_id,
             page_limit,
             offset=page_offset,
+            before_seq=cursor,
             user=user,
         )
     effective_uid = as_user if as_user is not None else user.id
@@ -532,7 +544,7 @@ async def get_thread_history(
         "has_more": has_more,
         "limit": page_limit,
         "offset": page_offset,
-        "next_cursor": None,
+        "next_cursor": next_cursor,
         "history_loading": history_loading,
         "history_status": projection_status,
         "history_retry_after_ms": 1500 if history_loading else 0,

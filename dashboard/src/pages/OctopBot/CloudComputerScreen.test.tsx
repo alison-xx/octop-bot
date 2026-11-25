@@ -1,5 +1,11 @@
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { botCloudComputerApi } from "../../api/modules/botCloudComputer";
+import {
+  ACCESS_TOKEN_RENEWED_EVENT,
+  setAuthToken,
+  clearAuthToken,
+} from "../../api/request";
 import CloudComputerScreen from "./CloudComputerScreen";
 
 const clients: { viewOnly: boolean }[] = [];
@@ -35,5 +41,34 @@ describe("cloud computer screen", () => {
     );
     await waitFor(() => expect(clients).toHaveLength(1));
     expect(clients[0].viewOnly).toBe(false);
+  });
+  it("keeps the open screen on a renewed dashboard sign-in", async () => {
+    const renew = vi
+      .spyOn(botCloudComputerApi, "renewScreen")
+      .mockResolvedValue(undefined);
+    setAuthToken("first");
+    const view = render(
+      <CloudComputerScreen
+        wsPath="/api/screen"
+        session="view"
+        botId="bot"
+        interactive={false}
+      />,
+    );
+    try {
+      await waitFor(() => expect(renew).toHaveBeenCalledWith("bot", "view"));
+      setAuthToken("second");
+      window.dispatchEvent(new Event(ACCESS_TOKEN_RENEWED_EVENT));
+      expect(renew).toHaveBeenCalledTimes(2);
+      window.dispatchEvent(new Event(ACCESS_TOKEN_RENEWED_EVENT));
+      expect(renew).toHaveBeenCalledTimes(2);
+      view.unmount();
+      setAuthToken("third");
+      window.dispatchEvent(new Event(ACCESS_TOKEN_RENEWED_EVENT));
+      expect(renew).toHaveBeenCalledTimes(2);
+    } finally {
+      clearAuthToken();
+      renew.mockRestore();
+    }
   });
 });

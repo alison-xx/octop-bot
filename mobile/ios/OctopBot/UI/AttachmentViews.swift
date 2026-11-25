@@ -2,19 +2,26 @@ import SwiftUI
 
 /// Files under an assistant reply: pictures as themselves, other files as cards in a sideways row.
 struct AttachmentStrip: View {
+    @Environment(AppModel.self) private var model
     var files: [FileAttachment]
 
     var body: some View {
+        if let server = model.server, server.attachments.isActive {
+            cards(for: server).id(ObjectIdentifier(server))
+        }
+    }
+
+    private func cards(for server: ServerBackend) -> some View {
         let images = files.filter(\.isImage)
         let others = files.filter { !$0.isImage }
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(images) { ImageAttachmentCard(file: $0) }
+        return VStack(alignment: .leading, spacing: 10) {
+            ForEach(images) { ImageAttachmentCard(file: $0, server: server) }
             if others.count == 1, let file = others.first {
-                FileAttachmentCard(file: file)
+                FileAttachmentCard(file: file, server: server)
             } else if !others.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 10) {
-                        ForEach(others) { FileAttachmentCard(file: $0) }
+                        ForEach(others) { FileAttachmentCard(file: $0, server: server) }
                     }
                     .padding(.vertical, 4)
                     .padding(.horizontal, 1)
@@ -27,12 +34,12 @@ struct AttachmentStrip: View {
 
 /// Open / share / save, shared by every card.
 private struct AttachmentMenu: ViewModifier {
-    @Environment(AppModel.self) private var model
     var file: FileAttachment
+    let server: ServerBackend
 
     func body(content: Content) -> some View {
         content.contextMenu {
-            if let server = model.server {
+            if server.attachments.isActive {
                 Button("file.open", systemImage: "eye") { Task { await FileOpener.open(file, from: server) } }
                 Button("common.share", systemImage: "square.and.arrow.up") { Task { await FileOpener.share(file, from: server) } }
                 Button("file.saveToFiles", systemImage: "folder") { Task { await FileOpener.saveToFiles(file, from: server) } }
@@ -52,15 +59,14 @@ private struct CardPressStyle: ButtonStyle {
 
 /// A picture the Bot sent, shown as itself: rounded, at most 320 pt wide, its own aspect ratio.
 struct ImageAttachmentCard: View {
-    @Environment(AppModel.self) private var model
     @Environment(\.displayScale) private var scale
     var file: FileAttachment
+    let server: ServerBackend
     @State private var image: UIImage?
     @State private var failed = false
 
     var body: some View {
         Button {
-            guard let server = model.server else { return }
             Task { await FileOpener.open(file, from: server) }
         } label: {
             Group {
@@ -85,22 +91,23 @@ struct ImageAttachmentCard: View {
             }
         }
         .buttonStyle(CardPressStyle())
-        .modifier(AttachmentMenu(file: file))
+        .modifier(AttachmentMenu(file: file, server: server))
         .accessibilityLabel(Text(file.name))
         .task(id: file.url) {
-            guard let server = model.server else { return }
-            image = await AttachmentStore.shared.thumbnail(file, on: server, size: CGSize(width: 640, height: 640), scale: scale)
-            failed = image == nil
+            let loaded = await server.attachments.thumbnail(file, size: CGSize(width: 640, height: 640), scale: scale)
+            guard !Task.isCancelled, server.attachments.isActive else { return }
+            image = loaded
+            failed = loaded == nil
         }
     }
 }
 
 /// A file card like a messenger's: an optional first-page preview, then the type glyph, name and size.
 struct FileAttachmentCard: View {
-    @Environment(AppModel.self) private var model
     @Environment(\.colorScheme) private var scheme
     @Environment(\.displayScale) private var scale
     var file: FileAttachment
+    let server: ServerBackend
     @State private var size: Int64?
     @State private var thumbnail: UIImage?
 
@@ -108,7 +115,6 @@ struct FileAttachmentCard: View {
 
     var body: some View {
         Button {
-            guard let server = model.server else { return }
             Task { await FileOpener.open(file, from: server) }
         } label: {
             VStack(spacing: 0) {
@@ -130,12 +136,14 @@ struct FileAttachmentCard: View {
             .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.06), radius: 6, y: 2)
         }
         .buttonStyle(CardPressStyle())
-        .modifier(AttachmentMenu(file: file))
+        .modifier(AttachmentMenu(file: file, server: server))
         .accessibilityElement(children: .combine)
         .task(id: file.url) {
-            guard let server = model.server else { return }
-            size = await AttachmentStore.shared.size(of: file, on: server)
-            thumbnail = await AttachmentStore.shared.thumbnail(file, on: server, size: CGSize(width: Self.width, height: 150), scale: scale)
+            let loadedSize = await server.attachments.size(of: file)
+            let loaded = await server.attachments.thumbnail(file, size: CGSize(width: Self.width, height: 150), scale: scale)
+            guard !Task.isCancelled, server.attachments.isActive else { return }
+            size = loadedSize
+            thumbnail = loaded
         }
     }
 }

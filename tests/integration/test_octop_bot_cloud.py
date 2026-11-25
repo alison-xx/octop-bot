@@ -33,6 +33,7 @@ class Upstream:
         self.live: dict[str, dict[str, Any]] = {}
         self.deleted: list[str] = []
         self.list_fails = False
+        self.login_fields: dict[str, Any] = {}
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         assert req.url.host == "api.lynxce.cn" and req.url.scheme == "https"
@@ -46,22 +47,27 @@ class Upstream:
                 return httpx.Response(403, json={"error": {"message": "insufficient balance"}})
             return httpx.Response(200, json={"object": "list", "data": []})
         assert req.headers["X-Lynxce-Client"] == "web"
-        if path == "/api/auth/phone-login":
+        if path in {"/api/auth/phone-login", "/api/auth/password-login", "/api/auth/refresh"}:
             payload = json.loads(req.content)
-            if payload["code"] != "123456":
+            if path == "/api/auth/phone-login" and payload["code"] != "123456":
                 return httpx.Response(401, json={"message": "bad code"})
-            uid = payload["phone"]
+            uid = payload.get("phone", payload.get("account", "13800000001"))
+            data: dict[str, Any] = {
+                "accessToken": f"access-{uid}",
+                "refreshToken": f"refresh-{uid}",
+                **self.login_fields,
+            }
+            if path != "/api/auth/refresh":
+                data["user"] = {"id": "lx-" + uid, "displayName": "User " + uid}
             return httpx.Response(
                 200,
                 json={
                     "code": 0,
-                    "data": {
-                        "accessToken": f"access-{uid}",
-                        "refreshToken": f"refresh-{uid}",
-                        "user": {"id": "lx-" + uid, "displayName": "User " + uid},
-                    },
+                    "data": data,
                 },
             )
+        if path == "/api/user/profile":
+            return httpx.Response(200, json={"code": 0, "data": {"id": "lx-13800000001"}})
         if path == "/api/user/personal-api-keys" and req.method == "GET":
             owner = req.headers["Authorization"].removeprefix("Bearer ")
             if self.list_fails:
@@ -152,6 +158,72 @@ async def _sign_in(client: httpx.AsyncClient, phone: str) -> dict[str, Any]:
     return body
 
 
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        (CODE_LOGIN, {"target": "13800000001", "code": "123456"}),
+        ("/api/auth/lynxce/login", {"account": "13800000001", "password": "test-password"}),
+        ("/api/auth/lynxce/session-login", {"refresh_token": "test-refresh"}),
+    ],
+)
+@pytest.mark.parametrize(
+    ("upstream_fields", "expected"),
+    [
+        (
+            {
+                "isNewUser": True,
+                "signupGrant": {"credits": 100.5, "expiresAt": "2027-01-01T00:00:00Z"},
+            },
+            {
+                "isNewUser": True,
+                "signupGrant": {"credits": 100.5, "expiresAt": "2027-01-01T00:00:00Z"},
+            },
+        ),
+        ({"isNewUser": False, "signupGrant": None}, {"isNewUser": False, "signupGrant": None}),
+        (
+            {"isNewUser": True, "signupGrant": {"credits": 50, "expiresAt": None}},
+            {"isNewUser": True, "signupGrant": {"credits": 50, "expiresAt": None}},
+        ),
+        ({}, {}),
+        ({"isNewUser": "true", "signupGrant": {"credits": True, "expiresAt": "x"}}, {}),
+        ({"isNewUser": 1, "signupGrant": {"credits": 10, "expiresAt": 123}}, {}),
+        ({"isNewUser": False, "signupGrant": "invalid"}, {"isNewUser": False}),
+        (
+            {"isNewUser": True, "signupGrant": {"credits": -1, "expiresAt": None}},
+            {"isNewUser": True},
+        ),
+        (
+            {"isNewUser": True, "signupGrant": {"credits": 5, "expiresAt": "x" * 65}},
+            {"isNewUser": True},
+        ),
+        (
+            {"isNewUser": None, "signupGrant": {"credits": 0, "expiresAt": "x", "other": "hidden"}},
+            {"signupGrant": {"credits": 0, "expiresAt": "x"}},
+        ),
+    ],
+)
+async def test_cloud_login_signup_fields(
+    tmp_octop_home: Path,
+    upstream: Upstream,
+    path: str,
+    body: dict[str, Any],
+    upstream_fields: dict[str, Any],
+    expected: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Session hand-over is off on the cloud unless switched on.
+    monkeypatch.setenv("OCTOP_BOT_SESSION_LOGIN", "1")
+    upstream.login_fields = {**upstream_fields, "otherUpstreamField": "hidden"}
+    async with octop_client(tmp_octop_home) as (client, srv):
+        response = await client.post(path, json=body)
+        assert response.status_code == 200, response.text
+        result = response.json()
+        assert {k: result[k] for k in ("isNewUser", "signupGrant") if k in result} == expected
+        assert "otherUpstreamField" not in result
+        stored = cloud._load(srv.services, result["user"]["id"])
+        assert stored is not None and stored.login_fields == {}
+
+
 async def test_each_lynxce_account_gets_its_own_tenant(
     tmp_octop_home: Path, upstream: Upstream
 ) -> None:
@@ -201,6 +273,129 @@ async def test_each_lynxce_account_gets_its_own_tenant(
         provider = selected.provider(srv.services)
         assert provider.base_url == GATEWAY_URL
         assert await provider.api_key() == "sk-test-1"  # type: ignore[operator]
+
+
+async def test_three_cloud_sessions_share_a_paged_conversation(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import socket
+    import time
+    from types import SimpleNamespace
+
+    from langchain_core.messages import AIMessage, HumanMessage
+    from octop_harness import HarnessAgent
+
+    from octop.infra.auth import tokens
+    from tests.support.http import chat_ws_path, ws_connect
+
+    # HTTP and WS run inside ASGI. Every external dependency uses a local
+    # stand-in, so this fixture needs neither DNS nor TCP, including proxies.
+    attempted_connections: list[str] = []
+
+    def deny_network(*_args: Any, **_kwargs: Any) -> Any:
+        attempted_connections.append("unconfigured connection")
+        raise AssertionError("The cloud conversation fixture attempted a network connection")
+
+    monkeypatch.setattr(socket, "getaddrinfo", deny_network)
+    monkeypatch.setattr(socket.socket, "connect", deny_network)
+    monkeypatch.setattr(socket.socket, "connect_ex", deny_network)
+    monkeypatch.setattr(
+        cloud_files,
+        "harness_spec",
+        lambda spec, config=None: {
+            "type": "filesystem",
+            "root_dir": str(tmp_octop_home / "object-store" / spec["agent_id"]),
+            "virtual_mode": True,
+        },
+    )
+
+    async with octop_client(tmp_octop_home) as (client, server):
+        issuance_times = iter(range(int(time.time()) - 4, int(time.time()) + 1))
+
+        async def login(phone: str) -> dict[str, str]:
+            # Access JWTs for a user issued in the same second are identical.
+            with monkeypatch.context() as clock:
+                clock.setattr(tokens, "time", SimpleNamespace(time=lambda: next(issuance_times)))
+                session = await _sign_in(client, phone)
+            return {"Authorization": f"Bearer {session['access_token']}"}
+
+        ios, android, web = [await login("13800000001") for _ in range(3)]
+        assert len({s["Authorization"] for s in (ios, android, web)}) == 3
+        other_account = await login("13800000002")
+        created = await client.post(
+            "/api/agents", headers=ios, json={"name": "Shared conversation"}
+        )
+        created.raise_for_status()
+        aid = created.json()["agent_id"]
+        directory = f"/api/agents/{aid}/threads"
+        thread_ids = []
+        for auth in (ios, android):
+            new = await client.post(directory, headers=auth)
+            new.raise_for_status()
+            thread_ids.append(new.json()["thread_id"])
+        tid = thread_ids[0]
+        history = f"{directory}/{tid}/history"
+        (
+            await client.patch(f"{directory}/{tid}", headers=ios, json={"title": "Shared topic"})
+        ).raise_for_status()
+        pages = [
+            (await client.get(directory, headers=web, params={"limit": 1, "offset": n})).json()
+            for n in (0, 1)
+        ]
+        assert {p[0]["thread_id"] for p in pages} == set(thread_ids)
+
+        agent = server.app_runtime.agent_registry.get_agent(aid)
+        # Cloud tenants get a per-turn account-bound harness instance.
+        monkeypatch.setattr(HarnessAgent, "stream", lambda self, request: agent.stream(request))
+        app = client._octop_app  # type: ignore[attr-defined]
+
+        async def turn(auth: dict[str, str], label: str) -> None:
+            agent.chunks = [
+                {"type": "token", "node": "agent", "content": f"reply {label}"},
+                {
+                    "type": "state_update",
+                    "data": {
+                        "messages": [
+                            HumanMessage(content=label, id=f"user-{label}"),
+                            AIMessage(content=f"reply {label}", id=f"assistant-{label}"),
+                        ]
+                    },
+                },
+            ]
+            async with ws_connect(app, chat_ws_path(aid, auth)) as socket:
+                await socket.send_json({"type": "subscribe", "thread_id": tid})
+                assert await socket.receive_json() == {
+                    "type": "turn_status",
+                    "thread_id": tid,
+                    "active": False,
+                }
+                await socket.send_json({"type": "user_turn", "text": label, "thread_id": tid})
+                assert (await socket.drain_turn())[-1]["type"] == "done"
+
+        await turn(ios, "one")
+        latest = (await client.get(history, headers=android, params={"limit": 1})).json()
+        assert [m["id"] for m in latest["messages"]] == ["assistant-one"]
+        assert latest["has_more"] and latest["next_cursor"]
+        await turn(android, "two")
+        older = (
+            await client.get(history, headers=web, params={"cursor": latest["next_cursor"]})
+        ).json()
+        assert [m["id"] for m in older["messages"]] == ["user-one"]
+        assert not older["has_more"] and older["next_cursor"] is None
+        await turn(web, "three")
+
+        for auth in (ios, android, web):
+            synced = (await client.get(history, headers=auth)).json()
+            assert synced["thread_id"] == tid and not synced["history_loading"]
+            assert [m["id"] for m in synced["messages"]] == [
+                f"{role}-{label}"
+                for label in ("one", "two", "three")
+                for role in ("user", "assistant")
+            ]
+            assert [m["history_seq"] for m in synced["messages"]] == list(range(1, 7))
+        assert (await client.get(directory, headers=other_account)).status_code in (403, 404)
+        assert (await client.get(history, headers=other_account)).status_code in (403, 404)
+    assert not attempted_connections
 
 
 async def test_tenants_cannot_reach_the_host(tmp_octop_home: Path, upstream: Upstream) -> None:
@@ -980,6 +1175,18 @@ async def test_tenant_workspace_replace_keeps_local_files(
         assert (store / "new.txt").read_text() == "new"
 
 
+@pytest.mark.parametrize(
+    "credits", [float("nan"), float("inf"), float("-inf"), 10**400, 10**12 + 1]
+)
+def test_signup_grant_credits_must_be_finite(credits: float) -> None:
+    from octop.infra.auth import lynxce_cloud
+
+    fields = lynxce_cloud._login_fields(
+        {"isNewUser": True, "signupGrant": {"credits": credits, "expiresAt": None}}
+    )
+    assert fields == {"isNewUser": True}
+
+
 async def test_tenant_host_routes_are_closed(
     tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1072,6 +1279,7 @@ async def test_tenant_connector_and_channel_addresses_are_public(
             ("gitea", {"base_url": "http://172.17.0.1:3000", "token": "x"}),
             ("ragflow", {"base_url": "https://100.100.100.200/", "api_key": "x"}),
             ("obsidian-cli", {"binary_path": "/bin/sh"}),
+            ("gitea", {"note": "http://10.0.0.1/x"}),
         ):
             for path in ("/api/connectors/test-credentials", "/api/connector-instances"):
                 got = await client.post(
@@ -1090,6 +1298,13 @@ async def test_tenant_connector_and_channel_addresses_are_public(
             json={"kind": "mqtt", "name": "m", "config": {"host": "127.0.0.1"}},
         )
         assert channel.status_code == 400, channel.text
+        channel = await client.post(
+            f"/api/agents/{bot.agent_id}/channels",
+            headers=auth,
+            json={"kind": "mqtt", "name": "m", "config": {"note": "http://10.0.0.1/x"}},
+        )
+        assert channel.status_code == 400, channel.text
+        assert channel.json()["error"]["code"] == "ENDPOINT_NOT_ALLOWED"
 
 
 async def test_tenant_group_member_builds_in_its_room(

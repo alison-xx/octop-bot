@@ -5,8 +5,12 @@ from __future__ import annotations
 import asyncio
 import math
 import re
+import threading
+import time
+from collections import deque
 from datetime import UTC, datetime, timedelta
 from typing import Literal
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel
 
@@ -66,7 +70,10 @@ def _checkout(data: object, source: WalletSource) -> CheckoutLink:
     # The official checkout ticket lasts 15 minutes. Allow for clock skew.
     if not timedelta(0) < remaining <= timedelta(minutes=16):
         raise OctopError.localized(ErrorCode.NETWORK_ERROR)
-    return CheckoutLink(url=url, expires_at=expires_at)
+    # Open on the credits tab. Lynxce's own query (the ticket) is kept byte for byte.
+    parts = urlsplit(url)
+    query = f"{parts.query}&tab=boost" if parts.query else "tab=boost"
+    return CheckoutLink(url=urlunsplit(parts._replace(query=query)), expires_at=expires_at)
 
 
 async def balance(services: SharedServices, user_id: int, source: WalletSource) -> WalletBalance:
@@ -99,6 +106,24 @@ async def balance(services: SharedServices, user_id: int, source: WalletSource) 
     )
 
 
+# Each recharge has Lynxce sign a checkout ticket: at most this many per account per minute.
+RECHARGE_LIMIT = 5
+_RECHARGE_WINDOW = 60.0
+_recharges: dict[int, deque[float]] = {}
+_recharge_lock = threading.Lock()
+
+
+def _limit_recharges(user_id: int) -> None:
+    now = time.monotonic()
+    with _recharge_lock:
+        recent = _recharges.setdefault(user_id, deque())
+        while recent and now - recent[0] >= _RECHARGE_WINDOW:
+            recent.popleft()
+        if len(recent) >= RECHARGE_LIMIT:
+            raise OctopError.localized(ErrorCode.BOT_RECHARGE_RATE_LIMITED)
+        recent.append(now)
+
+
 async def recharge(
     services: SharedServices,
     user_id: int,
@@ -106,7 +131,11 @@ async def recharge(
     expected_account_id: str | None,
     expected_connection_id: str | None,
     origin: str | None = None,
+    intent: Literal["credits", "plan"] = "credits",
 ) -> CheckoutLink:
+    if intent == "plan":
+        raise OctopError.localized(ErrorCode.BOT_PLAN_UNAVAILABLE)
+    _limit_recharges(user_id)
     if source == "cloud":
         if not expected_account_id or expected_connection_id is not None:
             raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)

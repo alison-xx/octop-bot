@@ -1,3 +1,4 @@
+import { getDesktopBridge } from "../../utils/desktopBridge";
 import { request } from "../request";
 
 export type WalletSource = "model" | "cloud";
@@ -12,6 +13,13 @@ export interface LynxceWallet {
 }
 
 const path = "/octop-bot/wallet";
+
+function checkoutOrigin() {
+  const shell = getDesktopBridge();
+  if (!shell?.botOnly) return "web";
+  return shell.supportsRechargeReturn ? "desktop" : undefined;
+}
+
 export const lynxceWalletApi = {
   balance: (source: WalletSource, signal?: AbortSignal) =>
     request<LynxceWallet>(path + "?source=" + source, {
@@ -23,6 +31,7 @@ export const lynxceWalletApi = {
       method: "POST",
       body: JSON.stringify({
         source: wallet.source,
+        from: checkoutOrigin(),
         expected_account_id: wallet.account_id,
         ...(wallet.source === "model" && {
           expected_connection_id: wallet.connection_id,
