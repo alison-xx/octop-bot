@@ -1195,3 +1195,22 @@ def test_unpaid_use_cancels_and_starts_a_new_warning_cycle(
     clock.now += 15 * 86400
     manager.tick()
     assert sent == ["bot", "bot"]
+
+
+def test_model_checks_handback_before_another_action(setup: Any) -> None:
+    manager, _, _, _ = setup
+    manager.ensure_running("bot1", 7)
+    manager.set_takeover("bot1", 7, True)
+
+    def work(*args: Any) -> str:
+        return "action"
+
+    def review(*args: Any) -> tuple[str, bool]:
+        return "still private", False
+
+    assert manager.model_screen("bot1", 7, "taken", work, review) == "taken"
+    manager.release_takeover_if_held("bot1", 7)
+    assert manager.model_screen("bot1", 7, "taken", work, review) == "still private"
+    assert manager.record("bot1", 7).check_handoff_frame
+    assert manager.model_screen("bot1", 7, "taken", work, lambda *_: ("checked", True)) == "checked"
+    assert manager.model_screen("bot1", 7, "taken", work, review) == "action"

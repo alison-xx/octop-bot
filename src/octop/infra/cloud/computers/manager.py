@@ -164,6 +164,8 @@ class ComputerRecord:
     # The user has the mouse and keyboard; the Bot waits until it is handed back. It only
     # holds while the screen is watched (see ``controlled``).
     takeover: bool = False
+    # The next model-visible frame after human input must be checked for password controls.
+    check_handoff_frame: bool = False
     # Last time someone was watching the screen; a watched computer is not idle.
     viewed_at: float = 0.0
     unsettled: list[Unsettled] = field(default_factory=list)
@@ -186,6 +188,7 @@ class ComputerRecord:
     @classmethod
     def load(cls, raw: str) -> ComputerRecord:
         data = json.loads(raw)
+        data.setdefault("check_handoff_frame", bool(data.get("takeover")))
         data["reservations"] = [Reservation(**r) for r in data.get("reservations", [])]
         data["unsettled"] = [
             Unsettled(
@@ -937,6 +940,7 @@ class ComputerManager:
     def set_takeover(self, agent_id: str, user_id: int, active: bool) -> ComputerRecord:
         with self._lock(agent_id):
             record = self.record(agent_id, user_id)
+            record.check_handoff_frame |= active or record.takeover
             record.takeover = active
             record.active_at = self._clock()
             self._cancel_reclaim(record, used=True)
@@ -953,6 +957,31 @@ class ComputerManager:
                 record.takeover = False
                 record.active_at = self._clock()
                 self._save(record)
+
+    def model_screen[T](
+        self,
+        agent_id: str,
+        user_id: int,
+        taken_over: str,
+        work: Callable[[ComputerDriver, str], T],
+        review: Callable[[ComputerDriver, str], tuple[T, bool]],
+    ) -> T | str:
+        """Serialize the model's observation with human takeover and handback."""
+
+        def observe(driver: ComputerDriver, instance: str) -> T | str:
+            with self._lock(agent_id):
+                record = self.record(agent_id, user_id)
+                if record.controlled(self._clock()):
+                    return taken_over
+                if record.check_handoff_frame:
+                    result, clear = review(driver, instance)
+                    if clear:
+                        record.check_handoff_frame = False
+                        self._save(record)
+                    return result
+                return work(driver, instance)
+
+        return self.use(agent_id, user_id, observe)
 
     def taken_over(self, agent_id: str, user_id: int) -> bool:
         return self.record(agent_id, user_id).controlled(self._clock())

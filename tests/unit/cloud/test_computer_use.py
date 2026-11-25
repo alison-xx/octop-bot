@@ -80,6 +80,9 @@ class FakeManager:
         self.driver = FakeDriver()
         self.taken = False
 
+    def model_screen(self, agent_id: str, user_id: int, taken: str, work: Any, review: Any) -> Any:
+        return self.use(agent_id, user_id, work)
+
     def taken_over(self, agent_id: str, user_id: int) -> bool:
         return self.taken
 
@@ -304,3 +307,49 @@ def test_a_click_on_send_asks_first_and_a_pay_button_is_never_clicked(
     assert "Did click" in clicked.update["messages"][0].content
     # An ordinary button needs no confirmation.
     assert "Did click" in _call(tool, action="click", x=240, y=410).update["messages"][0].content
+
+
+def test_handback_masks_visible_password_before_resizing() -> None:
+    import io
+
+    from PIL import Image
+
+    tree = _TREE.replace("push-button", "password-text")
+    result = io.BytesIO()
+    Image.new("RGB", cu.SCREEN, "white").save(result, "PNG")
+
+    class Desktop(_TreeDriver):
+        def accessibility(self, instance: str) -> str:
+            return tree
+
+        def screenshot(self, instance: str) -> bytes:
+            return result.getvalue()
+
+    jpg, clear = cu.handback_view(Desktop(), "test")  # type: ignore[arg-type]
+    assert not clear
+    with Image.open(io.BytesIO(jpg)) as view:
+        assert max(view.getpixel((640, 410))) < 5
+        assert min(view.getpixel((10, 10))) > 250
+    assert "立即支付" not in cu.summarize_elements(tree)
+    with pytest.raises(ValueError):
+        cu._password_boxes(tree.replace('cp:size="(120, 40)"', ""))
+
+
+def test_incomplete_tree_withholds_handback_frame() -> None:
+    class MissingTree(FakeDriver):
+        def accessibility(self, instance: str) -> str:
+            return "<desktop/>"
+
+    class Handback(FakeManager):
+        def model_screen(
+            self, agent_id: str, user_id: int, taken: str, work: Any, review: Any
+        ) -> Any:
+            result, cleared = review(MissingTree(), "test")
+            assert not cleared
+            return result
+
+    tool = cu.computer_use_tool(Handback(), "bot1", 7)  # type: ignore[arg-type]
+    assert (
+        "could not be checked privately"
+        in _call(tool, action="zoom", x=0, y=0, x2=25, y2=25).content
+    )
