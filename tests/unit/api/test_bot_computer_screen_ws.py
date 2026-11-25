@@ -299,11 +299,11 @@ def test_release_takeover_if_held_checks_raw_state(monkeypatch: pytest.MonkeyPat
     lock = manager._lock("bot-a")
 
     def read(*args: Any) -> ComputerRecord:
-        assert lock.locked()
+        assert lock._is_owned()  # RLock (manager._lock) has no .locked() on 3.12
         return record
 
     def save(value: ComputerRecord) -> None:
-        assert lock.locked()
+        assert lock._is_owned()  # RLock (manager._lock) has no .locked() on 3.12
         saved.append(value)
 
     monkeypatch.setattr(manager, "record", read)
