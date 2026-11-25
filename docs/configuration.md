@@ -3,6 +3,11 @@
 Octop stores all of its state under `~/.octop/`. The directory is created
 on first server start (or by `octop init` / `octop run`).
 
+## Cloud server workers
+
+When `OCTOP_BOT_CLOUD=1`, run the cloud server with one worker. Rate limits
+and computer slots are maintained in process and are not shared across workers.
+
 ## Filesystem layout
 
 ```
@@ -176,6 +181,7 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_LOG_MAX_BYTES` | int | `104857600` (100 MiB) | Roll the active log when it exceeds this size (in addition to daily rotation) |
 | `OCTOP_LOG_COMPRESS` | bool | `true` | logrotate-style `compress` + `delaycompress`: gzip prior rotated plains on the next cycle (`octop.YYYY-MM-DD.log.gz`); the newest rotated file stays uncompressed until then |
 | `OCTOP_ACCESS_TOKEN_TTL` | int (seconds) | `86400` | JWT access-token lifetime |
+| `OCTOP_TOKEN_LOGIN_REQUIRE_SRC` | bool | `false` | Require Lynxce token-login access tokens to carry `src: "octopbot"`; when off, tokens without `src` increment `token_login_without_src_total` |
 | `OCTOP_LOGIN_MAX_ATTEMPTS` | int | `5` | Failed-login attempts before lockout |
 | `OCTOP_LOGIN_LOCKOUT_SECONDS` | int | `900` | Lockout duration after `OCTOP_LOGIN_MAX_ATTEMPTS` failures |
 | `OCTOP_CAPTCHA_PROVIDER` | slug | `slider` | Login captcha (`slider`, `turnstile`, `hcaptcha`, `recaptcha-v3`, `tencent`, `geetest-v4`; `recaptcha` v2 stays resolvable for existing configs but is unlisted). Boot snapshot; restart after change |

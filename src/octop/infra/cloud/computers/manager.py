@@ -65,6 +65,9 @@ REAP_INTERVAL_SECONDS = 30
 # record was saved) are stopped once they are this old; younger ones may still be starting.
 ORPHAN_AGE_SECONDS = 15 * 60
 ORPHAN_SCAN_SECONDS = 10 * 60
+# How often shadow Bots (desktop Bots' stand-ins, see bot_cloud/shadows.py) are checked for
+# having gone unused long enough to be deleted.
+SHADOW_SCAN_SECONDS = 60 * 60
 SERVER_ID_KEY = "octop_bot:computers:server_id"
 # When AGS is out of capacity, a running computer whose Bot has not acted for this long is
 # paused to make room (it would pause at IDLE_PAUSE_SECONDS anyway; resuming takes seconds).
@@ -155,6 +158,8 @@ class ComputerRecord:
     spec: Spec = "standard"
     instance_id: str | None = None
     running: bool = False
+    starting: bool = False
+    starting_at: float | None = None
     # Billing cursor: the start of the oldest reservation still open.
     running_since: float | None = None
     # When the computer last started or resumed, for "running for N minutes".
@@ -370,6 +375,10 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return box["value"]  # type: ignore[no-any-return]
 
 
+MAX_RUNNING_COMPUTERS_PER_USER = 2
+STARTING_STALE_SECONDS = 10 * 60
+
+
 class ComputerManager:
     def __init__(
         self,
@@ -387,6 +396,7 @@ class ComputerManager:
         # Commands running right now, per agent: a computer mid-command is never idle.
         self._busy: dict[str, int] = {}
         self._guard = threading.Lock()
+        self._user_locks: dict[int, threading.Lock] = {}
         self._reaper: threading.Thread | None = None
         self._stopping = threading.Event()
         # What the Bot last did on each computer, for the chat's floating screen: (kind, time).
@@ -398,6 +408,7 @@ class ComputerManager:
         self._last_orphan_scan = 0.0
         # Per Bot: called whenever its computer starts or resumes (see ``on_wake``).
         self._wakers: dict[str, Waker] = {}
+        self._last_shadow_scan = 0.0
         self.remind: Callable[[ComputerRecord, float], bool] | None = None
 
     # Records
@@ -409,6 +420,10 @@ class ComputerManager:
     def _lock(self, agent_id: str) -> threading.RLock:
         with self._guard:
             return self._locks.setdefault(agent_id, threading.RLock())
+
+    def _user_lock(self, user_id: int) -> threading.Lock:
+        with self._guard:
+            return self._user_locks.setdefault(user_id, threading.Lock())
 
     def record(self, agent_id: str, user_id: int) -> ComputerRecord:
         raw = self._services.settings_repo.get(self._key(agent_id))
@@ -561,18 +576,47 @@ class ComputerManager:
             if record.running and record.instance_id:
                 self._save(record)
                 return record.instance_id
-            reservation = self._billing.reserve(record, CHUNK_MINUTES)
+            with self._user_lock(user_id):
+                records = self._services.settings_repo.with_prefix("octop_bot:computer:").values()
+                running = sum(
+                    1
+                    for raw in records
+                    if (other := ComputerRecord.load(raw)).user_id == user_id
+                    and other.agent_id != agent_id
+                    and (
+                        other.running
+                        or (
+                            other.starting
+                            and other.starting_at is not None
+                            and now - other.starting_at < STARTING_STALE_SECONDS
+                        )
+                    )
+                )
+                if running >= MAX_RUNNING_COMPUTERS_PER_USER:
+                    raise OctopError.localized(ErrorCode.BOT_COMPUTER_LIMIT)
+                record.starting = True
+                record.starting_at = now
+                self._save(record)
+            try:
+                reservation = self._billing.reserve(record, CHUNK_MINUTES)
+            except BaseException:
+                record.starting = False
+                record.starting_at = None
+                self._save(record)
+                raise
             try:
                 try:
                     fresh = self._wake(record)
                 except Exception as exc:
-                    # Out of AGS capacity: pause someone's idle computer and try once more.
-                    if not (capacity_full(exc) and self._make_room(agent_id)):
+                    # Out of AGS capacity: pause this user's idle computer and retry.
+                    if not (capacity_full(exc) and self._make_room(agent_id, user_id)):
                         raise
                     fresh = self._wake(record)
             except Exception as exc:
                 # Settle first: a settle that fails is kept in ``unsettled``, saved here.
                 self._settle_one(record, reservation, 0)
+                record.starting = False
+                record.starting_at = None
                 self._save(record)
                 if capacity_full(exc):
                     logger.warning(
@@ -589,6 +633,8 @@ class ComputerManager:
             except Exception:  # noqa: BLE001 - commands will report the failure themselves
                 logger.warning("computer %s is slow to come up", agent_id)
             record.running = True
+            record.starting = False
+            record.starting_at = None
             record.running_since = now
             record.started_at = now
             record.paid_until = now + CHUNK_MINUTES * 60
@@ -647,8 +693,8 @@ class ComputerManager:
         )
         return True
 
-    def _make_room(self, agent_id: str) -> bool:
-        """Pause this server's longest-idle running computer to free AGS capacity.
+    def _make_room(self, agent_id: str, user_id: int) -> bool:
+        """Pause the user's longest-idle running computer to free AGS capacity.
 
         Never one in use: mid-command, acted on lately, or with its screen open.
         """
@@ -662,7 +708,8 @@ class ComputerManager:
             except Exception:  # noqa: BLE001 - a broken record is the reaper's to report
                 continue
             if (
-                other.agent_id == agent_id
+                other.user_id != user_id
+                or other.agent_id == agent_id
                 or not other.running
                 or self._busy.get(other.agent_id, 0) > 0
                 or now - other.viewed_at < VIEWER_GRACE_SECONDS
@@ -778,6 +825,33 @@ class ComputerManager:
                 self._stop_orphans(records, now)
             except Exception:  # noqa: BLE001 - retried on the next scan
                 logger.exception("cloud computer orphan scan failed")
+        if now - self._last_shadow_scan >= SHADOW_SCAN_SECONDS:
+            self._last_shadow_scan = now
+            try:
+                self._reap_shadows(now)
+            except Exception:  # noqa: BLE001 - retried on the next scan
+                logger.exception("shadow Bot scan failed")
+
+    def _reap_shadows(self, now: float) -> None:
+        """Delete shadow Bots unused for a long time (the desktop was uninstalled or stopped
+        using the cloud). Their computers are stopped and settled by the next pass, like any
+        deleted Bot's; a computer in use keeps its shadow."""
+        from octop.infra.cloud.bot_cloud.shadows import IDLE_DAYS, idle_shadows  # noqa: PLC0415
+
+        def last_use(row: Any) -> float:
+            if row.user_id is None:
+                return 0.0
+            record = self.record(row.agent_id, row.user_id)
+            return max(record.active_at, record.viewed_at)
+
+        for row in idle_shadows(self._services, last_use, now):
+            if row.user_id is None:
+                continue
+            if self.record(row.agent_id, row.user_id).running or self.busy(row.agent_id):
+                continue
+            logger.info("deleting shadow Bot %s, unused for %s days", row.agent_id, IDLE_DAYS)
+            self._services.agent_repo.delete(row.agent_id)
+            self._services.settings_repo.delete(f"octop_bot:shadow:{row.agent_id}")
 
     def _stop_orphans(self, records: list[ComputerRecord], now: float) -> None:
         """Stop this server's instances that no record knows (lost starts, crashes)."""
@@ -1163,9 +1237,18 @@ class ComputerManager:
         self._driver.write(self.ensure_running(agent_id, user_id, seed), path, data)
 
     def read(
-        self, agent_id: str, user_id: int, path: str, *, seed: Seeder | None = None
+        self,
+        agent_id: str,
+        user_id: int,
+        path: str,
+        *,
+        seed: Seeder | None = None,
+        max_bytes: int | None = None,
     ) -> bytes | None:
-        return self._driver.read(self.ensure_running(agent_id, user_id, seed), path)
+        instance = self.ensure_running(agent_id, user_id, seed)
+        if max_bytes is None:
+            return self._driver.read(instance, path)
+        return self._driver.read(instance, path, max_bytes=max_bytes)
 
 
 _manager: ComputerManager | None = None

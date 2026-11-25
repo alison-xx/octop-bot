@@ -28,6 +28,7 @@ from octop.api.routers.bot_octop_import import router as octop_import_router
 from octop.api.routers.bot_onboarding import router as onboarding_router
 from octop.api.routers.bot_own_keys import router as own_keys_router
 from octop.api.routers.bot_profile import router as profile_router
+from octop.api.routers.bot_remote_bots import router as remote_bots_router
 from octop.api.routers.bot_server import router as server_router
 from octop.api.routers.bot_wallet import router as wallet_router
 from octop.infra.agents.bot_appearance import Appearance, Character, set_character
@@ -71,6 +72,7 @@ router.include_router(onboarding_router)
 router.include_router(move_in_router)
 router.include_router(octop_import_router)
 router.include_router(profile_router)
+router.include_router(remote_bots_router)
 router.include_router(own_keys_router)
 router.include_router(wallet_router)
 
