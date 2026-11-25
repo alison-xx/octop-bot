@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button, Dropdown, type MenuProps } from "antd";
 import {
   ArrowRight,
@@ -25,8 +25,8 @@ import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { applyGuestLocale, applyUserLocale } from "../../utils/locale";
 import { isBotOnlyDesktop } from "../../utils/desktopBridge";
 import { BOT_CAPABILITIES, BOT_SETTINGS } from "../../utils/botClientRoute";
-import { accountInitials } from "../Chat/utils/accountDisplayName";
-import { ProfileAvatar } from "../Admin/Users/ProfileAvatar";
+import { LynxceAccountAvatar } from "../../components/LynxceAccountAvatar";
+import { useLynxceAccount } from "../../context/LynxceAccountContext";
 import { botCloudApi } from "../../api/modules/botCloud";
 import lynxceLogo from "../../assets/providers/lynxce.png";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
@@ -39,33 +39,11 @@ import {
   useLynxceCredits,
 } from "./useLynxceCredits";
 
-const AVATAR_CACHE = "octop-bot:lynxce-avatar";
-
-/** The last Lynxce avatar seen on this device, so the sidebar does not flash initials. */
-function cachedAvatar(): string | null {
-  try {
-    return window.localStorage.getItem(AVATAR_CACHE);
-  } catch {
-    return null;
-  }
-}
-
-function cacheAvatar(url: string | null) {
-  try {
-    if (url) window.localStorage.setItem(AVATAR_CACHE, url);
-    else window.localStorage.removeItem(AVATAR_CACHE);
-  } catch {
-    // Private windows and blocked storage just show initials until the account loads.
-  }
-}
-
 export async function signOutBotClient(
   username: string | undefined,
   navigate: NavigateFunction,
 ) {
   if (username === "local") holdDesktopLocalAutoLogin();
-  // A shared computer must not show the last person's avatar after sign-out.
-  cacheAvatar(null);
   resetCredits();
   await authApi.logout();
   clearAuthToken();
@@ -121,36 +99,18 @@ export default function AccountMenu({
   const location = useLocation();
   // Signed in to Lynxce: that account's name, with the Lynxce mark. Otherwise
   // the local account ("local"), never a team or other borrowed name.
-  const [lynxceName, setLynxceName] = useState<string | null>(null);
-  const [lynxceAvatar, setLynxceAvatar] = useState<string | null>(() =>
-    isBotOnlyDesktop() ? cachedAvatar() : null,
-  );
-  const [lynxceAccount, setLynxceAccount] = useState<string | null>(null);
+  const account = useLynxceAccount();
+  const lynxceAccount = account?.account_id;
+  const lynxceName = account?.display_name || lynxceAccount;
   const desktop = isBotOnlyDesktop();
-  useEffect(() => {
-    if (!desktop) return;
-    let current = true;
-    botCloudApi.account().then(
-      (a) => {
-        if (!current) return;
-        setLynxceName(a.connected ? a.display_name || a.account_id : null);
-        setLynxceAccount(a.connected ? a.account_id : null);
-        const avatar = (a.connected && a.avatar_url) || null;
-        setLynxceAvatar(avatar);
-        cacheAvatar(avatar);
-      },
-      () => current && setLynxceName(null),
-    );
-    return () => {
-      current = false;
-    };
-  }, [desktop]);
   const lynxce = desktop ? Boolean(lynxceName) : true;
   const [open, setOpen] = useState(false);
   const { recharge, opening } = useRecharge();
-  const name = desktop
-    ? lynxceName || user?.username || ""
-    : botAccountName(user, t("botClient.account.lynxceUser"));
+  const name =
+    lynxceName ||
+    (desktop
+      ? user?.username || ""
+      : botAccountName(user, t("botClient.account.lynxceUser")));
   const source = t(
     lynxce ? "botClient.account.lynxce" : "botClient.account.local",
   );
@@ -237,28 +197,21 @@ export default function AccountMenu({
           },
         ]),
   ];
-  const avatar =
-    desktop && lynxce && lynxceAvatar ? (
-      <span className={styles.avatar}>
-        <img src={lynxceAvatar} alt="" onError={() => setLynxceAvatar(null)} />
-      </span>
-    ) : lynxce && (user?.avatar_url || user?.avatar_icon) ? (
-      <ProfileAvatar
-        className={styles.avatar}
-        url={user.avatar_url}
-        icon={user.avatar_icon}
+  const avatar = lynxce ? (
+    <LynxceAccountAvatar
+      key={lynxceAccount}
+      name={name}
+      url={account ? account.avatar_url : user?.avatar_url}
+    />
+  ) : (
+    <span className={styles.avatar} data-chief>
+      <BotCharacter
+        look={{ ...octopCharacter, source: "character" }}
+        size={26}
+        badges={false}
       />
-    ) : lynxce ? (
-      <span className={styles.avatar}>{accountInitials(name)}</span>
-    ) : (
-      <span className={styles.avatar} data-chief>
-        <BotCharacter
-          look={{ ...octopCharacter, source: "character" }}
-          size={26}
-          badges={false}
-        />
-      </span>
-    );
+    </span>
+  );
   const badge = lynxce && (
     <img className={styles.badge} src={lynxceLogo} alt="" />
   );

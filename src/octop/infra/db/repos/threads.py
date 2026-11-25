@@ -301,7 +301,13 @@ class ThreadRepo:
         return map_rows(rows, ThreadRow)
 
     def list_visible(
-        self, *, agent_id: str, user_id: int, limit: int = 50, include_bot_groups: bool = False
+        self,
+        *,
+        agent_id: str,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0,
+        include_bot_groups: bool = False,
     ) -> list[ThreadRow]:
         """Own threads plus conversations contributed to this shared expert.
 
@@ -316,8 +322,8 @@ class ThreadRepo:
                 + groups
                 + "ORDER BY pinned DESC, "
                 "CASE WHEN last_active > 0 THEN last_active ELSE created_at END DESC, "
-                "thread_id DESC LIMIT ?",
-                (agent_id, user_id, limit),
+                "thread_id DESC LIMIT ? OFFSET ?",
+                (agent_id, user_id, limit, offset),
             ).fetchall()
         return map_rows(rows, ThreadRow)
 

@@ -24,7 +24,24 @@ struct OctopBotApp: App {
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
-    weak var model: AppModel?
+    private var pendingChat: AppModel.NotificationChat?
+    weak var model: AppModel? {
+        didSet {
+            if let pendingChat { model?.notificationChat = pendingChat; self.pendingChat = nil }
+        }
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
+    ) async {
+        let info = response.notification.request.content.userInfo
+        guard let bot = (info["agent_id"] ?? info["bot_id"]) as? String, let thread = info["thread_id"] as? String,
+              !bot.isEmpty, !thread.isEmpty else { return }
+        await MainActor.run {
+            let chat = AppModel.NotificationChat(botId: bot, threadId: thread)
+            if let model { model.notificationChat = chat } else { pendingChat = chat }
+        }
+    }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
@@ -54,13 +71,28 @@ struct RootView: View {
                 OnboardingView().transition(.opacity)
             case .ready:
                 HomeView().transition(.opacity)
+                    .overlay(alignment: .top) {
+                        if let notice = model.signupNotice {
+                            Text(verbatim: notice)
+                                .font(.callout)
+                                .padding()
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                .padding(.horizontal)
+                                .task(id: notice) {
+                                    UIAccessibility.post(notification: .announcement, argument: notice)
+                                    try? await Task.sleep(for: .seconds(5))
+                                    if !Task.isCancelled { model.signupNotice = nil }
+                                }
+                        }
+                    }
             }
         }
         .animation(.easeOut(duration: 0.35), value: model.phase)
         .tint(Palette.text)
         // Files a Bot links to live on its server; open them with this account's access.
-        .environment(\.openURL, OpenURLAction { url in
-            guard let server = model.server, ServerBackend.isWorkspaceDownload(url) else { return .systemAction }
+        .environment(\.openURL, OpenURLAction { [server = model.server] url in
+            guard ServerBackend.isWorkspaceDownload(url) else { return .systemAction }
+            guard let server, server.attachments.isActive else { return .discarded }
             Task { await FileOpener.open(url, from: server) }
             return .handled
         })

@@ -75,6 +75,11 @@ export const botCloudComputerApi = {
     request<CloudComputerGlance>(endpoint(id) + "/glance"),
   openScreen: (id: string) =>
     request<ScreenTicket>(endpoint(id) + "/screen", { method: "POST" }),
+  renewScreen: (id: string, session: string) =>
+    request<void>(endpoint(id) + "/screen/renew", {
+      method: "POST",
+      body: JSON.stringify({ session }),
+    }),
   /** Types text (any language) at the taken-over desktop's cursor. */
   typeText: (session: string, text: string) =>
     request<void>(sessionEndpoint(session) + "/type", {

@@ -68,6 +68,7 @@ async def _turn_then_rebind(
     auth: dict[str, str],
     thread_id: str,
     gate_release: asyncio.Event,
+    subscriber: dict[str, str],
 ) -> list[dict[str, Any]]:
     """Start a turn on conn A, drop it after the first token, re-subscribe on B.
 
@@ -83,27 +84,41 @@ async def _turn_then_rebind(
             }
         )
         first = await ws_a.receive_json()
+        started_id = None
         while first.get("type") != "token":
-            # Skip steer protocol frames (turn.started, …) — harness chunks only.
+            if first.get("type") == "turn.started":
+                started_id = first["turn_id"]
             first = await ws_a.receive_json()
         assert first.get("content") == "first"
     # A is closed; turn is blocked on gate_release (still active, not cancelled).
 
     frames: list[dict[str, Any]] = []
-    async with _chat_ws(c, aid, auth) as ws_b:
+    async with _chat_ws(c, aid, subscriber) as ws_b:
         await ws_b.send_json({"type": "subscribe", "thread_id": thread_id})
         frames.append(await ws_b.receive_json())
+        assert started_id and frames[0].get("turn_id") == started_id
         # Release the slow stream only after B is subscribed.
         gate_release.set()
         frames.extend(await ws_b.drain_turn())
     return frames
 
 
-async def test_ws_rebind_after_disconnect_receives_later_chunks(env: Any) -> None:
+@pytest.mark.parametrize("shared", [False, True])
+async def test_ws_rebind_after_disconnect_receives_later_chunks(env: Any, shared: bool) -> None:
     """After disconnect, a new subscriber must see subsequent tokens + done."""
-    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    c, srv, _fake, alice_auth, bob_auth, aid = env
     create = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
     tid = create.json()["thread_id"]
+    if shared:
+        (
+            await c.patch(f"/api/agents/{aid}", headers=alice_auth, json={"is_shared": True})
+        ).raise_for_status()
+        (
+            await c.patch(
+                f"/api/agents/{aid}/threads/{tid}", headers=alice_auth, json={"contributed": True}
+            )
+        ).raise_for_status()
+    subscriber = bob_auth if shared else alice_auth
     agent = srv.app_runtime.agent_registry.get_agent(aid)
 
     gate = asyncio.Event()
@@ -117,13 +132,18 @@ async def test_ws_rebind_after_disconnect_receives_later_chunks(env: Any) -> Non
     cancel_spy = MagicMock(wraps=srv.app_runtime.agent_registry.cancel_stream)
     srv.app_runtime.agent_registry.cancel_stream = cancel_spy
 
-    frames = await _turn_then_rebind(c, aid, alice_auth, tid, gate)
+    frames = await _turn_then_rebind(c, aid, alice_auth, tid, gate, subscriber)
 
     cancel_spy.assert_not_called()
-    assert frames[0] == {"type": "turn_status", "thread_id": tid, "active": True}
+    assert frames[0]["type"] == "turn_status" and frames[0]["thread_id"] == tid
+    assert frames[0]["active"] is True
     contents = [f.get("content") for f in frames if f.get("type") == "token"]
     assert "second" in contents
     assert frames[-1].get("type") == "done"
+
+    gate.clear()
+    next_turn = await _turn_then_rebind(c, aid, alice_auth, tid, gate, subscriber)
+    assert next_turn[0]["turn_id"] != frames[0]["turn_id"]
 
 
 async def _turn_with_second_subscriber(
@@ -209,7 +229,8 @@ async def test_ws_concurrent_subscribers_both_receive_later_chunks(env: Any) -> 
     assert a_frames[0].get("content") == "first"
     assert [f.get("content") for f in a_frames if f.get("type") == "token"] == ["first", "second"]
     assert a_frames[-1].get("type") == "done"
-    assert b_frames[0] == {"type": "turn_status", "thread_id": tid, "active": True}
+    assert b_frames[0]["type"] == "turn_status" and b_frames[0]["thread_id"] == tid
+    assert b_frames[0]["active"] is True and b_frames[0]["turn_id"]
     assert [f.get("content") for f in b_frames if f.get("type") == "token"] == ["second"]
     assert b_frames[-1].get("type") == "done"
 

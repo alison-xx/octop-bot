@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import gzip
 import socket
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import httpx
 import pytest
 
 from octop.infra.utils.ssrf_guard import (
@@ -19,6 +21,7 @@ from octop.infra.utils.ssrf_guard import (
     safe_request,
     validate_https_url,
     validate_https_url_resolved,
+    validate_public_url_values,
 )
 
 
@@ -174,3 +177,67 @@ async def test_allowlisted_http_request_is_pinned_to_the_validated_ip(
     response = await safe_request("GET", f"http://whisper.lan:{port}/v1/models")
     assert response.status_code == 200
     assert seen_hosts == [f"whisper.lan:{port}"]
+
+
+async def test_public_url_values_check_nested_strings(monkeypatch: pytest.MonkeyPatch) -> None:
+    _resolve_to(
+        monkeypatch,
+        {
+            "example.com": "8.8.8.8",
+            "private.example.com": "127.0.0.1",
+            "mapped.example.com": "::ffff:100.64.0.1",
+        },
+    )
+    await validate_public_url_values({"unrelated": ["ordinary text", "https://example.com"]})
+    with pytest.raises(UnsafeOutboundUrl):
+        await validate_public_url_values({"unrelated": "https://private.example.com"})
+    with pytest.raises(UnsafeOutboundUrl):
+        await validate_public_url_values({"unrelated": "http://example.com"})
+    with pytest.raises(UnsafeOutboundUrl):
+        await validate_public_url_values({"unrelated": "https://mapped.example.com"})
+
+
+async def test_safe_request_decodes_gzip_and_limits_decoded_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.utils import ssrf_guard
+
+    body = b"hello" * 100
+    encoded = gzip.compress(body)
+    monkeypatch.setattr(
+        ssrf_guard,
+        "PinnedIPTransport",
+        lambda *_: httpx.MockTransport(
+            lambda request: httpx.Response(
+                200, headers={"content-encoding": "gzip"}, content=encoded
+            )
+        ),
+    )
+    _resolve_to(monkeypatch, {"example.com": "8.8.8.8"})
+    response = await safe_request("GET", "https://example.com", max_response_bytes=len(body))
+    assert response.content == body
+    assert "content-encoding" not in response.headers
+    with pytest.raises(UnsafeOutboundUrl, match="size limit"):
+        await safe_request("GET", "https://example.com", max_response_bytes=len(body) - 1)
+
+
+async def test_safe_request_stops_after_response_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.utils import ssrf_guard
+
+    seen: list[int] = []
+
+    class Stream(httpx.AsyncByteStream):
+        async def __aiter__(self):  # type: ignore[no-untyped-def]
+            for index in range(4):
+                seen.append(index)
+                yield b"1234"
+
+    monkeypatch.setattr(
+        ssrf_guard,
+        "PinnedIPTransport",
+        lambda *_: httpx.MockTransport(lambda request: httpx.Response(200, stream=Stream())),
+    )
+    _resolve_to(monkeypatch, {"example.com": "8.8.8.8"})
+    with pytest.raises(UnsafeOutboundUrl, match="size limit"):
+        await safe_request("GET", "https://example.com", max_response_bytes=5)
+    assert seen == [0, 1]
