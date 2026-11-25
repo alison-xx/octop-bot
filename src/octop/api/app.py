@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from scalar_fastapi import get_scalar_api_reference
 
+from octop.api.middleware.body_limit import install as install_body_limit
 from octop.api.middleware.jwt_auth import install as install_jwt_auth
 from octop.api.middleware.setup_lockdown import install as install_setup_lockdown
 from octop.api.openapi_meta import API_DESCRIPTION, OPENAPI_TAGS, configure_openapi
@@ -158,6 +159,7 @@ def build_app(server: OctopServer) -> FastAPI:
 
     # Bridge proxy must sit inside JWT auth so ``request.state.octop_user`` is set
     # (Starlette runs the last-added middleware first).
+    install_body_limit(app)
     install_bridge_proxy(app, server)
     from octop.api.middleware.stream_session import StreamSessionMiddleware
 
@@ -200,6 +202,8 @@ def build_app(server: OctopServer) -> FastAPI:
         auth_oauth,
         auth_oidc,
         backup,
+        bot_computers,
+        bot_desktop_computers,
         bot_groups,
         bot_workspace,
         bridge,
@@ -261,7 +265,9 @@ def build_app(server: OctopServer) -> FastAPI:
     from octop.api.routers.storage_backends import user_router as storage_backends_user_router
     from octop.api.routers.tls import router as tls_router
     from octop.api.routers.voice import admin_router as admin_voice_router
+    from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
 
+    desktop_computers = bot_desktop_enabled() and not bot_cloud_enabled()
     _mount_routers(
         app,
         [
@@ -322,6 +328,16 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(mbti.router, "/api", ["mbti"]),
             _RouterMount(experts.router, "/api", ["experts"]),
             _RouterMount(teams.router, "/api", ["teams"]),
+            _RouterMount(
+                bot_desktop_computers.router if desktop_computers else bot_computers.router,
+                "/api/octop-bot",
+                ["teams"],
+            ),
+            *(
+                []
+                if desktop_computers
+                else [_RouterMount(bot_computers.session_router, "/api/octop-bot", ["teams"])]
+            ),
             _RouterMount(bot_workspace.router, "/api", ["teams"]),
             _RouterMount(bot_groups.router, "/api", ["teams"]),
             _RouterMount(managed.router, "/api", ["agents"]),

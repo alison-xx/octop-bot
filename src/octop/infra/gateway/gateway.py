@@ -157,6 +157,7 @@ class Gateway:
             self._processor.replace_thread_message_repo(repos.thread_message_repo)
             self._processor.replace_care_push_repo(repos.care_push_repo)
             self._processor.hitl_coordinator.session_policies.replace_repo(repos.thread_repo)
+            self._processor.hitl_coordinator.store.repo = repos.handoff_repo
 
     @property
     def ws_hub(self) -> WebSocketHub:
@@ -277,7 +278,11 @@ class Gateway:
         )
 
         install_channel_thinking_clean()
+        from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator
+        from octop.infra.gateway.hitl.store import HitlPendingStore
+
         self._processor = GlobalProcessor(
+            hitl=HitlChannelCoordinator(HitlPendingStore(repo=self._repos.handoff_repo)),
             agent_manager=self._agent_manager,
             thread_registry=self._thread_registry,
             audit_repo=self._repos.audit_repo,

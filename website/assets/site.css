@@ -1520,7 +1520,19 @@ a.card:hover,
   border-radius: 14px;
   background: var(--bg-soft);
 }
-.price-tabs button {
+.price-tabs label,
+.cycle label,
+.model-tabs label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+/* Keep category content in step with native selection while deferred scripts load. */
+main:has(#tab-packs:checked, #tab-enterprise:checked) #v-plans { display: none; }
+main:has(#tab-packs:checked) #v-packs[hidden],
+main:has(#tab-enterprise:checked) #v-enterprise[hidden] { display: block !important; }
+.price-tabs label {
   position: relative;
   z-index: 1;
   min-height: 40px;
@@ -1533,7 +1545,7 @@ a.card:hover,
   color: var(--ink-2);
   cursor: pointer;
 }
-.price-tabs button[aria-selected="true"] {
+.price-tabs input:checked + label {
   color: var(--ink);
   font-weight: 600;
 }
@@ -1547,15 +1559,16 @@ a.card:hover,
   pointer-events: none;
   transition: transform 200ms var(--ease);
 }
-.price-tabs button:nth-child(2)[aria-selected="true"] ~ .segment-indicator,
-.cycle button:nth-child(2)[aria-pressed="true"] ~ .segment-indicator {
+#tab-packs:checked ~ .segment-indicator,
+#billing-year:checked ~ .segment-indicator {
   transform: translateX(100%);
 }
-.price-tabs button:nth-child(3)[aria-selected="true"] ~ .segment-indicator {
+#tab-enterprise:checked ~ .segment-indicator {
   transform: translateX(200%);
 }
-.price-tabs button:focus-visible,
-.cycle button:focus-visible {
+.price-tabs input:focus-visible + label,
+.cycle input:focus-visible + label,
+.model-tabs input:focus-visible + label {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -1568,7 +1581,7 @@ a.card:hover,
 }
 @media (max-width: 560px) {
   .price-tabs { display: grid; width: 100%; }
-  .price-tabs button { flex: 1; min-width: 0; padding-inline: 4px; font-size: 13px; }
+  .price-tabs label { flex: 1; min-width: 0; padding-inline: 4px; font-size: 13px; }
 }
 .cycle-wrap {
   display: flex;
@@ -1584,7 +1597,7 @@ a.card:hover,
   border-radius: 999px;
   background: var(--surface);
 }
-.cycle button {
+.cycle label {
   position: relative;
   z-index: 1;
   min-height: 40px;
@@ -1603,7 +1616,7 @@ a.card:hover,
   background: var(--ink);
   box-shadow: none;
 }
-.cycle button[aria-pressed="true"] {
+.cycle input:checked + label {
   color: var(--on-ink);
 }
 .cycle em {
@@ -1612,7 +1625,7 @@ a.card:hover,
   font-style: normal;
   color: var(--accent);
 }
-.cycle button[aria-pressed="true"] em {
+.cycle input:checked + label em {
   color: inherit;
   opacity: 0.8;
 }
@@ -1622,6 +1635,7 @@ a.card:hover,
   left: 50%;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
+  align-items: start;
   gap: 16px;
   width: min(calc(100vw - 2 * var(--gutter)), 1440px);
   margin: 26px 0 10px;
@@ -1925,7 +1939,7 @@ button.pack[aria-pressed="true"]::after {
   gap: 6px;
   margin: 24px 0 10px;
 }
-.model-tabs button {
+.model-tabs label {
   height: 34px;
   padding: 0 14px;
   border: 1px solid var(--line);
@@ -1937,7 +1951,7 @@ button.pack[aria-pressed="true"]::after {
   color: var(--ink-2);
   cursor: pointer;
 }
-.model-tabs button[aria-pressed="true"] {
+.model-tabs input:checked + label {
   border-color: var(--ink);
   background: var(--ink);
   color: var(--on-ink);

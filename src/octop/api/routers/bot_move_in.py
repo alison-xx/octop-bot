@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from octop.api.deps import current_user, get_server
 from octop.infra.cloud.move_in import (
@@ -14,10 +14,14 @@ from octop.infra.cloud.move_in import (
     MovedGroup,
     MovedNotes,
     MovedThread,
+    MovedThreadPart,
+    ThreadPartReceipt,
+    charge_move_request,
     move_bot,
     move_group,
     move_notes,
     move_thread,
+    move_thread_part,
 )
 from octop.infra.desktop import bot_cloud_move_in_enabled
 from octop.infra.errors import ErrorCode, OctopError
@@ -35,7 +39,12 @@ def _cloud(server: Annotated[OctopServer, Depends(get_server)]) -> OctopServer:
 Server = Annotated[OctopServer, Depends(_cloud)]
 Owner = Annotated[User, Depends(current_user)]
 
-router = APIRouter(prefix="/move-in")
+
+async def _metered(request: Request, user: Owner, server: Server) -> None:
+    charge_move_request(user.id, len(await request.body()))
+
+
+router = APIRouter(prefix="/move-in", dependencies=[Depends(_metered)])
 
 _REPEAT = "Sending the same `source` again returns what it became the first time."
 
@@ -60,6 +69,22 @@ async def moved_thread(body: MovedThread, user: Owner, server: Server) -> Moved:
     assert server.services is not None and server.app_runtime is not None
     runtime = server.app_runtime
     return await move_thread(
+        server.services, runtime.agent_registry, runtime.gateway.thread_registry, user, body
+    )
+
+
+@router.post(
+    "/thread-parts",
+    summary="Resume a paged desktop chat import",
+    description="Send byte pages from the same desktop snapshot. The returned byte offset resumes "
+    "an interrupted transfer. A thread ID is returned once the complete chat is available.",
+)
+async def moved_thread_part(
+    body: MovedThreadPart, user: Owner, server: Server
+) -> ThreadPartReceipt:
+    assert server.services is not None and server.app_runtime is not None
+    runtime = server.app_runtime
+    return await move_thread_part(
         server.services, runtime.agent_registry, runtime.gateway.thread_registry, user, body
     )
 

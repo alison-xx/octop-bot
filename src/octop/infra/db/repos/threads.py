@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from octop.infra.db.pool import DatabasePool
@@ -176,7 +176,7 @@ class ThreadRepo:
         last_active: int | None = None,
         created_at: int | None = None,
         pinned: bool = False,
-        initial_messages: Sequence[ThreadMessageInput] = (),
+        initial_messages: Iterable[ThreadMessageInput] = (),
         restore_entry: tuple[str, str] | None = None,
     ) -> None:
         ts = now_ts()
@@ -207,14 +207,16 @@ class ThreadRepo:
                 conn.executemany(
                     "INSERT INTO thread_messages(thread_id, seq, message_id, role, message_json, created_at) "
                     "VALUES (?, ?, ?, ?, ?, ?)",
-                    [
+                    (
                         (thread_id, seq, m.message_id, m.role, m.message_json, m.created_at)
                         for seq, m in enumerate(initial_messages, start=1)
-                    ],
+                    ),
                 )
             if restore_entry is not None:
                 conn.execute(
-                    "UPDATE settings SET value=? WHERE key=?", (restore_entry[1], restore_entry[0])
+                    "INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) "
+                    "DO UPDATE SET value=excluded.value",
+                    restore_entry,
                 )
 
     def get(self, thread_id: str) -> ThreadRow | None:

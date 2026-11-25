@@ -561,6 +561,9 @@ class AgentManager:
         expert_catalog: ExpertCatalog | None = None,
         plugin_manager: PluginManager | None = None,
     ) -> None:
+        from octop.infra.cloud.devices.hub import DeviceHub
+
+        self.local_devices = DeviceHub()
         self._repos = repos
         self._paths = paths
         from octop.infra.control.desktop.bot_apps import BotComputer
@@ -605,6 +608,7 @@ class AgentManager:
         self._reclaim_task: asyncio.Task[None] | None = None
         self._reclaim_sweep_task: asyncio.Task[None] | None = None
         self._reclaim_wake: asyncio.Event | None = None
+        self._desktop_computer_bindings: dict[str, tuple[int, str | None]] = {}
         self._reload_dirty: set[str] = set()
         self._reload_worker_running: dict[str, bool] = {}
         self._bootstrap_graph_refresh_pending: set[str] = set()
@@ -1207,7 +1211,12 @@ class AgentManager:
             out.pop("system_files_path", None)
         if pin_workspace_dir and "workspace_dir" in current_raw:
             out["workspace_dir"] = current_raw["workspace_dir"]
-        if row is not None and row.user_id is not None and self._cloud_tenant(row.user_id):
+        if (
+            row is not None
+            and row.kind != "shadow"
+            and row.user_id is not None
+            and self._cloud_tenant(row.user_id)
+        ):
             from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
                 DEFAULT_SYSTEM_FILES_PATH,
                 default_workspace_for_chat_agent,
@@ -1429,6 +1438,11 @@ class AgentManager:
         except OSError:
             logger.exception("rmtree failed for %s; agent removed from DB anyway", workspace_dir)
         self._repos.agent_repo.delete(agent_id)
+        self._desktop_computer_bindings.pop(agent_id, None)
+        if row.user_id is not None:
+            from octop.infra.cloud.computers.remote import clean_deleted_shadows
+
+            await clean_deleted_shadows(self._account_services(), row.user_id)
         from octop.infra.users.groups import RESOURCE_EXPERT, GroupAccess  # noqa: PLC0415
 
         GroupAccess(self._repos).clear(RESOURCE_EXPERT, agent_id)
@@ -1445,7 +1459,7 @@ class AgentManager:
         """Load agent into harness runtime (no-op config merge)."""
         async with self._lock:
             row = self._repos.agent_repo.get(agent_id)
-            if row is None:
+            if row is None or row.kind == "shadow":
                 raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
             await self._start_agent(row, init_workspace=False)
 
@@ -1615,7 +1629,8 @@ class AgentManager:
 
     def get_row(self, agent_id: str) -> AgentRow | None:
         """Look up an agent row by its public agent_id (ULID). Returns None if absent."""
-        return self._repos.agent_repo.get(agent_id)
+        row = self._repos.agent_repo.get(agent_id)
+        return None if row is not None and row.kind == "shadow" else row
 
     def workspace_for_agent(self, agent_id: str) -> Any | None:
         """Return the agent's :class:`BackendWorkspace`.
@@ -1861,6 +1876,10 @@ class AgentManager:
             AGENT_FAILED — agent exists but last start failed
             AGENT_NOT_RUNNING — agent exists but is not loaded in harness
         """
+        row = self._repos.agent_repo.get(agent_id)
+        if row is not None and row.kind == "shadow":
+            # A desktop Bot's cloud stand-in never runs an agent.
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
         try:
@@ -2195,6 +2214,14 @@ class AgentManager:
 
     @asynccontextmanager
     async def _track_invocation(self, agent_id: str) -> AsyncIterator[None]:
+        desktop = self._desktop_computer_bindings.get(agent_id)
+        if desktop is not None:
+            from octop.infra.auth.lynxce_cloud import _load
+
+            owner, binding = desktop
+            grant = await asyncio.to_thread(_load, self._account_services(), owner)
+            if (grant.binding if grant else None) != binding:
+                await self.reload(agent_id)
         await self._begin_invocation(agent_id)
         try:
             yield
@@ -2297,6 +2324,14 @@ class AgentManager:
         from octop.infra.db.services import SharedServices
 
         return SharedServices(self._paths, self._config, self._repos)
+
+    def refresh_desktop_computer_tools(self, user_id: int) -> None:
+        from octop.infra.cloud.computers.remote import configured_target
+
+        if self._harness_manager is not None:
+            for row in self._repos.agent_repo.list_by_user(user_id, include_disabled=False):
+                if row.last_state != "stopped" and configured_target(row) == "cloud":
+                    self._schedule_reload(row.agent_id)
 
     async def on_account_model_selected(self, user_id: int) -> None:
         """Make native Bots usable on installations without a shared model provider."""
@@ -3694,14 +3729,44 @@ class AgentManager:
         """A cloud tenant's Bot never drives the server's own browser or screen."""
         return disabled | TENANT_HOST_TOOLS if self._cloud_tenant(user_id) else disabled
 
-    def _cloud_computer_tools(self, row: AgentRow) -> list[Any]:
+    def _cloud_computer_tools(self, row: AgentRow, *, room: bool = False) -> list[Any]:
         """``cloud_computer`` and ``request_takeover`` for a cloud tenant's Bot, when the server
         has cloud computers configured; nothing otherwise."""
-        if row.user_id is None or not self._cloud_tenant(row.user_id):
-            return []
-        from octop.infra.cloud.computers.manager import current_manager  # noqa: PLC0415
+        from octop.infra.cloud.computers.manager import current_manager
+        from octop.infra.cloud.computers.remote import RemoteComputerManager, configured_target
+        from octop.infra.desktop import bot_desktop_enabled
 
-        computers = current_manager()
+        if row.user_id is None:
+            return []
+        if not room:
+            self._desktop_computer_bindings.pop(row.agent_id, None)
+        extra: list[Any] = []
+        computers: Any
+        remote_action = None
+        if self._cloud_tenant(row.user_id):
+            computers = current_manager()
+        elif bot_desktop_enabled() and not row.is_shared and configured_target(row) == "cloud":
+            from octop.infra.auth.lynxce_cloud import _load
+            from octop.infra.cloud.computers.remote_tools import workspace_tool
+
+            services = self._account_services()
+            grant = _load(services, row.user_id)
+            if not room:
+                self._desktop_computer_bindings[row.agent_id] = (
+                    row.user_id,
+                    grant.binding if grant else None,
+                )
+            if grant is None:
+                return []
+            remote = RemoteComputerManager.owned(services, row.user_id, row.agent_id)
+            computers = remote
+            remote_action = remote.model_action
+            if not room:
+                extra.append(
+                    workspace_tool(computers, lambda: self.get_agent(row.agent_id).workspace)
+                )
+        else:
+            return []
         if computers is None:
             return []
         from octop.infra.bot_tasks.approvals import ApprovalRules  # noqa: PLC0415
@@ -3717,8 +3782,10 @@ class AgentManager:
                 row.user_id,
                 approvals=ApprovalRules(self._repos.settings_repo),
                 user_repo=self._repos.user_repo,
+                remote_action=remote_action,
             ),
             request_takeover_tool(computers, self._repos.user_repo, row.agent_id, row.user_id),
+            *extra,
         ]
 
     def host_files_allowed(self, agent_id: str) -> bool:
@@ -4379,6 +4446,8 @@ class AgentManager:
         A stored config that differs (an older row, another write path) is rewritten first, so
         everything below (folder resolution, reloads) reads the same one.
         """
+        if row.kind == "shadow":
+            return cfg
         from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
             DEFAULT_SYSTEM_FILES_PATH,
             default_workspace_for_chat_agent,
@@ -4933,6 +5002,8 @@ class AgentManager:
         self, row: AgentRow, *, room_workspace: Path | None = None
     ) -> HarnessAgentConfig:
         """Convert an AgentRow into a HarnessAgentConfig."""
+        if row.kind == "shadow":
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {row.agent_id!r} not found")
         from octop_harness.middleware.bootstrap import bootstrap_marker_exists  # noqa: PLC0415
 
         from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
@@ -5212,12 +5283,29 @@ class AgentManager:
             # Tasks (plan, evidence, finish gate) wherever the Bot works: every turn for a
             # cloud tenant, Octop Bot client turns otherwise.
             from octop.infra.bot_tasks.approvals import ApprovalRules, request_approval_tool
+            from octop.infra.bot_tasks.archives import TaskArchive
             from octop.infra.bot_tasks.budget import task_budget_tool
             from octop.infra.bot_tasks.store import TaskStore
             from octop.infra.bot_tasks.tools import task_tools
             from octop.infra.bot_tasks.watchdog import BotTaskMiddleware
 
             tenant = self._cloud_tenant(row.user_id)
+            if tenant and not row.is_shared:
+                from octop.infra.agents.bot_workspace import is_private_bot
+                from octop.infra.cloud.devices.tools import LocalDesktopTools
+
+                if not is_private_bot(row):
+                    agent_middleware.append(
+                        LocalDesktopTools(
+                            self.local_devices,
+                            row.user_id,
+                            row.name,
+                            row.agent_id,
+                            self._repos.thread_repo,
+                            lambda: self.get_agent(row.agent_id).workspace,
+                            self._repos.user_repo,
+                        )
+                    )
             tasks = TaskStore(self._repos.settings_repo)
             rules = ApprovalRules(self._repos.settings_repo, timezone=self._config.default_timezone)
             task_kit = [
@@ -5230,10 +5318,23 @@ class AgentManager:
                     row.user_id,
                 ),
             ]
+            archive = (
+                None
+                if row.is_shared
+                else TaskArchive(
+                    ws,
+                    self._repos,
+                    row.agent_id,
+                    row.user_id,
+                    resolve_user_locale(user_repo=self._repos.user_repo, user_id=row.user_id),
+                )
+            )
+            if archive:
+                task_kit.append(archive.read_tool(tasks))
             anywhere = [*computer_tools, *task_kit] if tenant else computer_tools
             if not tenant:
                 workspace_tools.extend(task_kit)
-            if not tenant and not row.is_shared and row.kind == "expert":
+            if not tenant and not computer_tools and not row.is_shared and row.kind == "expert":
                 from octop.infra.agents.bot_computer import computer_tool
 
                 workspace_tools.append(
@@ -5246,20 +5347,24 @@ class AgentManager:
             agent_middleware.append(BotWorkspaceTools(workspace_tools, anywhere))
             agent_middleware.append(
                 BotTaskMiddleware(
-                    tasks, always=tenant, user_repo=self._repos.user_repo, owner=row.user_id
+                    tasks,
+                    always=tenant,
+                    archive=archive,
+                    user_repo=self._repos.user_repo,
+                    owner=row.user_id,
                 )
             )
             if computer_tools:
                 from octop.infra.cloud.computers.computer_use import ComputerBriefing
 
-                agent_middleware.append(ComputerBriefing())
+                agent_middleware.append(ComputerBriefing(desktop=not tenant))
             from octop.infra.agents.bot_device import DeviceTools
 
             agent_middleware.append(DeviceTools())
         elif room_workspace is not None and not team_host:
             # A group member points and types on its own cloud computer too; its file tools
             # stay on the group's shared files.
-            computer_tools = self._cloud_computer_tools(row)
+            computer_tools = self._cloud_computer_tools(row, room=True)
             if computer_tools:
                 from octop.infra.agents.middleware.bot_workspace import BotWorkspaceTools
                 from octop.infra.cloud.computers.computer_use import ComputerBriefing

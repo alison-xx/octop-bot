@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import threading
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pytest
@@ -36,9 +38,16 @@ class Settings:
 class Agents:
     def __init__(self) -> None:
         self.deleted: set[str] = set()
+        self.shadows: list[Any] = []
 
     def get(self, agent_id: str) -> object | None:
         return None if agent_id in self.deleted else object()
+
+    def list_shadows(self, user_id: int | None = None) -> list[Any]:
+        return [s for s in self.shadows if s.agent_id not in self.deleted]
+
+    def delete(self, agent_id: str) -> None:
+        self.deleted.add(agent_id)
 
 
 class Services:
@@ -161,7 +170,7 @@ class Billing:
 
     def charge_disk(self, record: Any, day: str, size_gb: int) -> None:
         if self.disk_down:
-            raise OctopError.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
+            raise computers.DiskBalanceInsufficient.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
         self.disks.append((record.agent_id, day, size_gb))
 
     def reserve(self, record: Any, minutes: int) -> computers.Reservation:
@@ -327,10 +336,10 @@ def test_out_of_capacity_pauses_the_longest_idle_computer_and_retries(setup: Any
     clock.now += 60
     CloudComputer(manager, user_id=8, agent_id="recent").execute("ls")
     clock.now += computers.MAKE_ROOM_IDLE_SECONDS
-    assert CloudComputer(manager, user_id=9, agent_id="new").execute("ls").output == "ran ls"
+    assert CloudComputer(manager, user_id=7, agent_id="new").execute("ls").output == "ran ls"
     # The longest-idle computer made room; the other keeps running.
     assert ("pause", "ins-1") in driver.calls
-    assert manager.is_running("recent", 8) and manager.is_running("new", 9)
+    assert manager.is_running("recent", 8) and manager.is_running("new", 7)
     assert not manager.is_running("old", 7)
 
 
@@ -923,6 +932,158 @@ def test_on_cvm_beside_old_ags_computers_nothing_but_work_starts_one(
     assert store.download_files(["/generated/old.md"])[0].content == b"from AGS"
 
 
+def test_shadow_bots_nobody_used_for_30_days_are_deleted_with_their_computers(setup: Any) -> None:
+    from types import SimpleNamespace
+
+    manager, driver, billing, clock = setup
+    agents = manager._services.agent_repo
+    day = 86400.0
+    clock.now = 100 * day
+    agents.shadows = [
+        # Updated by its desktop long ago, and its computer not used since.
+        SimpleNamespace(agent_id="gone", user_id=7, updated_at=60 * day, kind="shadow"),
+        # Its desktop still updates it.
+        SimpleNamespace(agent_id="synced", user_id=7, updated_at=95 * day, kind="shadow"),
+        # Old, but its computer was used last week.
+        SimpleNamespace(agent_id="used", user_id=7, updated_at=10 * day, kind="shadow"),
+    ]
+    clock.now = 93 * day
+    CloudComputer(manager, user_id=7, agent_id="used").execute("ls")
+    manager.pause("used", 7)
+    CloudComputer(manager, user_id=7, agent_id="gone")  # no computer yet
+    clock.now = 100 * day
+    manager.tick()
+    assert agents.deleted == {"gone"}
+    # Not again within the hour.
+    agents.shadows.append(
+        SimpleNamespace(agent_id="later", user_id=7, updated_at=1 * day, kind="shadow")
+    )
+    clock.now += 60
+    manager.tick()
+    assert "later" not in agents.deleted
+    clock.now += computers.SHADOW_SCAN_SECONDS
+    manager.tick()
+    assert "later" in agents.deleted
+
+
+def test_running_limit_and_other_users_are_not_paused(setup: Any) -> None:
+    manager, driver, _, clock = setup
+    manager.ensure_running("a", 7)
+    manager.ensure_running("b", 7)
+    with pytest.raises(OctopError) as exc:
+        manager.ensure_running("c", 7)
+    assert exc.value.code == ErrorCode.BOT_COMPUTER_LIMIT
+    clock.now += computers.MAKE_ROOM_IDLE_SECONDS + 1
+    assert not manager._make_room("other", 8)
+    assert driver.states["ins-1"] == "running"
+    assert driver.states["ins-2"] == "running"
+
+
+def test_start_does_not_block_another_users_running_computer(setup: Any, monkeypatch: Any) -> None:
+    manager, driver, _, _ = setup
+    manager.ensure_running("ready", 8)
+    entered, release = threading.Event(), threading.Event()
+    original = driver.start
+
+    def blocked_start(*, spec: str, labels: Mapping[str, str]) -> str:
+        entered.set()
+        assert release.wait(5)
+        return original(spec=spec, labels=labels)
+
+    monkeypatch.setattr(driver, "start", blocked_start)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        start = pool.submit(manager.ensure_running, "slow", 7)
+        try:
+            assert entered.wait(2)
+            run = pool.submit(manager.run, "ready", 8, "pwd", 30)
+            assert run.result(timeout=2) == (0, "ran pwd")
+        finally:
+            release.set()
+        start.result(timeout=2)
+
+
+def test_concurrent_starts_reserve_user_slots(setup: Any, monkeypatch: Any) -> None:
+    manager, driver, _, _ = setup
+    manager.ensure_running("existing", 7)
+    entered, release = threading.Event(), threading.Event()
+    original = driver.start
+
+    def blocked_start(*, spec: str, labels: Mapping[str, str]) -> str:
+        entered.set()
+        assert release.wait(5)
+        return original(spec=spec, labels=labels)
+
+    monkeypatch.setattr(driver, "start", blocked_start)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        start = pool.submit(manager.ensure_running, "first", 7)
+        try:
+            assert entered.wait(2)
+            assert manager.record("first", 7).starting
+            competing = pool.submit(manager.ensure_running, "second", 7)
+            with pytest.raises(OctopError) as exc:
+                competing.result(timeout=2)
+            assert exc.value.code == ErrorCode.BOT_COMPUTER_LIMIT
+        finally:
+            release.set()
+        start.result(timeout=2)
+    assert not manager.record("first", 7).starting
+
+
+def test_stale_start_does_not_consume_slot_and_failure_clears_it(setup: Any) -> None:
+    manager, driver, billing, clock = setup
+    manager.ensure_running("existing", 7)
+    manager._save(
+        computers.ComputerRecord(
+            agent_id="stale",
+            user_id=7,
+            starting=True,
+            starting_at=clock.now - computers.STARTING_STALE_SECONDS,
+        )
+    )
+    billing.broke = True
+    with pytest.raises(OctopError):
+        manager.ensure_running("new", 7)
+    assert not manager.record("new", 7).starting
+    billing.broke = False
+    driver.fail_start = True
+    with pytest.raises(RuntimeError):
+        manager.ensure_running("new", 7)
+    assert not manager.record("new", 7).starting
+    driver.fail_start = False
+    manager.ensure_running("new", 7)
+
+
+def test_driver_stops_streaming_at_read_limit() -> None:
+    import httpx
+
+    class Stream(httpx.SyncByteStream):
+        def __init__(self) -> None:
+            self.chunks_read = 0
+            self.closed = False
+
+        def __iter__(self) -> Any:
+            for chunk in (b"abc", b"def", b"must not be read"):
+                self.chunks_read += 1
+                yield chunk
+
+        def close(self) -> None:
+            self.closed = True
+
+    stream = Stream()
+    config = AgsConfig.from_env(
+        {"OCTOP_AGS_SECRET_ID": "id", "OCTOP_AGS_SECRET_KEY": "key", "OCTOP_AGS_TOOL": "t"}
+    )
+    assert config is not None
+    driver = ags.AgsDriver(config)
+    driver._http = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, stream=stream))
+    )
+    driver.token = lambda instance_id, fresh=False: "token"  # type: ignore[method-assign]
+    assert driver.read("instance", "/tmp/file", max_bytes=5) == b"abcde"
+    assert stream.chunks_read == 2
+    assert stream.closed
+
+
 # 1970-01-02 00:00 Beijing is 1970-01-01 16:00 UTC.
 BEIJING_MIDNIGHT = 16 * 3600.0
 
@@ -972,6 +1133,56 @@ def test_an_unpaid_disk_is_retried_later_and_never_deleted(
     assert manager.record("bot1", 7).disk_failed_day == ""
     # The computer was only paused, never stopped for the missed charge.
     assert ("stop", "ins-1") not in driver.calls
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED),
+        RuntimeError("billing unavailable"),
+    ],
+)
+def test_inconclusive_disk_charge_cancels_unpaid_reclaim(
+    setup: Any, monkeypatch: pytest.MonkeyPatch, failure: Exception
+) -> None:
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "on")
+    monkeypatch.setenv("OCTOP_COMPUTER_RECLAIM", "on")
+    manager, driver, billing, clock = setup
+    manager.remind = lambda record, deadline: True
+    driver.disk_size = 40
+    billing.disk_down = True
+    manager.ensure_running("bot", 1)
+    manager.pause("bot", 1)
+    manager.tick()
+    clock.now += 22 * 86400
+    manager.tick()
+    assert manager.record("bot", 1).reclaim_reason == "unpaid"
+    clock.now += 7 * 86400
+    # A deadline alone is insufficient; today's charge must confirm the balance.
+    manager._reclaim_tick("bot", 1, clock.now)
+    assert manager.record("bot", 1).instance_id is not None
+
+    def unavailable(*args: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(billing, "charge_disk", unavailable)
+    manager.tick()
+    record = manager.record("bot", 1)
+    assert manager.disk_status(record) == (40, 0)
+    assert record.reclaim_reason is None
+    assert record.reclaim_at is None
+    assert record.disk_paid_day == ""
+    assert record.disk_retry_at > clock.now
+    assert ("stop", "ins-1") not in driver.calls
+
+
+def test_legacy_unclassified_disk_failures_do_not_authorize_reclaim() -> None:
+    old = computers.ComputerRecord.load(
+        '{"agent_id":"old","user_id":7,"disk_failed_day":"2026-01-01",'
+        '"reclaim_reason":"unpaid","reminded_at":10,"reclaim_at":20}'
+    )
+    assert old.disk_failed_day == ""
+    assert old.reclaim_reason is None and old.reclaim_at is None
 
 
 def test_ags_computers_and_deleted_bots_pay_no_disk(
@@ -1195,6 +1406,393 @@ def test_unpaid_use_cancels_and_starts_a_new_warning_cycle(
     clock.now += 15 * 86400
     manager.tick()
     assert sent == ["bot", "bot"]
+
+
+@pytest.fixture
+def sole_computer(tmp_path, monkeypatch):
+    import os
+
+    if os.name != "posix":
+        pytest.skip("Single-controller proof uses POSIX flock on the shared SQLite volume")
+    from octop.config import OctopConfig
+    from octop.infra.cloud.computers.handoff import SingleComputerController
+    from octop.infra.db.migrate import run_migrations
+    from octop.infra.db.pool import SqlitePool
+    from octop.infra.db.services import build_shared_services
+    from octop.infra.utils.paths import PathLayout
+
+    db = SqlitePool(tmp_path / "db.sqlite")
+    run_migrations(db)
+    services = build_shared_services(db=db, paths=PathLayout(tmp_path), config=OctopConfig())
+    owner = services.user_repo.create(username="a", role="user")
+    services.agent_repo.create(agent_id="bot", user_id=owner, name="Bot")
+    driver, billing, clock = Driver(), Billing(), Clock()
+    monkeypatch.setattr(computers.ComputerManager, "_start_reaper", lambda _: None)
+    manager = computers.ComputerManager(
+        services, driver, billing=billing, clock=clock, controller=SingleComputerController(db.path)
+    )
+    try:
+        yield manager, driver, billing, clock, owner, db
+    finally:
+        manager.close()
+        db.close()
+
+
+@pytest.mark.parametrize("resume", [True, False])
+async def test_background_handoff_pauses_only_its_wake_once(sole_computer, resume):
+    import asyncio
+
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    manager, driver, billing, clock, owner, _ = sole_computer
+    if resume:
+        manager.ensure_running("bot", owner)
+        manager.pause("bot", owner)
+    with background_computer_turn(owner, "bot", "private") as turn:
+        assert not pause_background_computer() and turn.manager is None
+        await asyncio.to_thread(manager.run, "bot", owner, "work", 5)
+        clock.now += 17
+        assert await asyncio.to_thread(pause_background_computer)
+        assert not pause_background_computer(turn)
+    assert not pause_background_computer(turn)
+    assert not manager.record("bot", owner).running
+    assert billing.settled[-1][1] == 17
+    assert [cmd for cmd, _ in driver.calls].count("pause") == 1 + int(resume)
+
+
+@pytest.mark.parametrize(
+    "foreign", ["same_thread", "file", "model_screen", "takeover", "viewer", "glance", "screen"]
+)
+def test_other_activity_permanently_relinquishes_handoff(sole_computer, foreign, monkeypatch):
+    from contextvars import Context
+
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    m, _, _, clock, u, _ = sole_computer
+    with background_computer_turn(u, "bot", "thread") as original:
+        m.ensure_running("bot", u)
+        if foreign == "same_thread":
+            with background_computer_turn(u, "bot", "thread"):
+                m.run("bot", u, "another turn", 5)
+        elif foreign == "model_screen":
+            assert (
+                Context().run(
+                    m.model_screen,
+                    "bot",
+                    u,
+                    "taken",
+                    lambda *_: "frame",
+                    lambda *_: ("review", True),
+                )
+                == "frame"
+            )
+        elif foreign == "file":
+            Context().run(m.write, "bot", u, "other.txt", b"other")
+        elif foreign == "takeover":
+            m.set_takeover("bot", u, True)
+            m.set_takeover("bot", u, False)
+        elif foreign == "viewer":
+            m.viewing("bot", u)
+        elif foreign == "glance":
+            monkeypatch.setattr(m._driver, "run_python", lambda *_: "WINDOW:Desktop", raising=False)
+            m.glance("bot", u)
+        else:
+            assert m.claim_screen("bot", "elsewhere")
+        clock.now += computers.VIEWER_GRACE_SECONDS + computers.SCREEN_HOLD_SECONDS
+        m.ensure_running("bot", u)
+        assert not pause_background_computer(original) and m.record("bot", u).running
+
+
+def test_background_handoff_existing_instance_and_superseded_generation(sole_computer):
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    m, driver, _, _, u, _ = sole_computer
+    with background_computer_turn(u + 1, "bot", "elsewhere"):
+        instance = m.ensure_running("bot", u)
+        assert not pause_background_computer()
+    with background_computer_turn(u, "bot", "a"):
+        m.ensure_running("bot", u)
+        assert not pause_background_computer()
+    record = m.record("bot", u)
+    record.running = False
+    m._save(record)
+    with background_computer_turn(u, "bot", "b"):
+        assert m.ensure_running("bot", u) == instance  # The provider never actually stopped.
+        assert not pause_background_computer()
+    m.pause("bot", u)
+    with background_computer_turn(u, "bot", "c") as stale:
+        assert m.ensure_running("bot", u) == instance
+        m.pause("bot", u)
+        assert m.ensure_running("bot", u) == instance  # Same provider ID, new generation.
+        assert not pause_background_computer(stale) and driver.state(instance) == "running"
+
+
+def test_background_handoff_rechecks_owner_and_never_stops_on_pause_failure(
+    sole_computer, monkeypatch
+):
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    m, driver, billing, _, u, db = sole_computer
+    with background_computer_turn(u, "bot", "a"):
+        instance = m.ensure_running("bot", u)
+
+        def unavailable(_):
+            raise RuntimeError("provider busy")
+
+        with monkeypatch.context() as temporary:
+            temporary.setattr(driver, "pause", unavailable)
+            assert not pause_background_computer()
+            assert ("stop", instance) not in driver.calls and not billing.settled
+    m.pause("bot", u)
+    second = m._services.user_repo.create(username="b", role="user")
+    with background_computer_turn(u, "bot", "b"):
+        m.ensure_running("bot", u)
+        with db.transaction() as cx:
+            cx.execute("UPDATE agents SET user_id = ? WHERE agent_id = ?", (second, "bot"))
+        assert not pause_background_computer() and driver.state(instance) == "running"
+
+
+def test_background_handoff_inflight_and_racing_foreground(sole_computer, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    m, driver, _, _, u, _ = sole_computer
+    with background_computer_turn(u, "bot", "a"):
+        # Even this turn's own pending callback cannot cut a still-running I/O operation.
+        assert not m.use("bot", u, lambda _driver, _instance: pause_background_computer())
+        assert m.record("bot", u).running
+    m.pause("bot", u)
+    pause_entered, allow_pause, foreground_entered = Event(), Event(), Event()
+    original_pause = driver.pause
+
+    def hold(instance):
+        pause_entered.set()
+        assert allow_pause.wait(5)
+        original_pause(instance)
+
+    def foreground():
+        foreground_entered.set()
+        return m.run("bot", u, "foreground", 5)
+
+    monkeypatch.setattr(driver, "pause", hold)
+    with background_computer_turn(u, "bot", "b") as turn, ThreadPoolExecutor(2) as pool:
+        instance = m.ensure_running("bot", u)
+        release = pool.submit(pause_background_computer, turn)
+        assert pause_entered.wait(5)
+        other = pool.submit(foreground)
+        try:
+            assert foreground_entered.wait(5) and not other.done()
+        finally:
+            allow_pause.set()
+        assert release.result(timeout=5)
+        assert other.result(timeout=5) == (0, "ran foreground")
+        assert driver.state(instance) == "running"
+
+
+def test_other_process_invalidates_the_entire_controller_generation(sole_computer):
+    import subprocess
+    import sys
+
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    m, _, _, _, u, db = sole_computer
+    with background_computer_turn(u, "bot", "a") as turn:
+        m.ensure_running("bot", u)
+        assert turn.manager is m
+        command = (
+            "from pathlib import Path; import sys; "
+            "from octop.infra.cloud.computers.handoff import SingleComputerController; "
+            "other = SingleComputerController(Path(sys.argv[1])); "
+            "cm = other.exclusive(); assert not cm.__enter__(); cm.__exit__(None,None,None); "
+            "other.close()"
+        )
+        subprocess.run([sys.executable, "-c", command, str(db.path)], check=True, timeout=8)
+        assert not pause_background_computer(turn) and m.record("bot", u).running
+    m.pause("bot", u)
+    with background_computer_turn(u, "bot", "b") as second_turn:
+        m.ensure_running("bot", u)
+        assert second_turn.manager is None and not pause_background_computer()
+
+
+def test_foreground_command_already_in_progress_owns_its_whole_operation(sole_computer):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    manager, driver, _, _, owner, _ = sole_computer
+    entered, finish = Event(), Event()
+
+    def action(_driver, _instance):
+        entered.set()
+        assert finish.wait(5)
+
+    with background_computer_turn(owner, "bot", "cron") as turn, ThreadPoolExecutor(1) as pool:
+        instance = manager.ensure_running("bot", owner)
+        action_future = pool.submit(manager.use, "bot", owner, action)
+        try:
+            assert entered.wait(5)
+            assert not pause_background_computer(turn)
+            assert driver.state(instance) == "running"
+        finally:
+            finish.set()
+        action_future.result(timeout=5)
+        assert not pause_background_computer(turn)
+
+
+def test_handoff_after_restart_or_unknown_controller_cannot_pause(sole_computer, setup):
+    from octop.infra.cloud.computers.handoff import (
+        SingleComputerController,
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    manager, driver, billing, clock, owner, db = sole_computer
+    with background_computer_turn(owner, "bot", "initial") as stale:
+        manager.ensure_running("bot", owner)
+        manager.close()
+        replacement = computers.ComputerManager(
+            manager._services,
+            driver,
+            billing=billing,
+            clock=clock,
+            controller=SingleComputerController(db.path),
+        )
+        try:
+            assert not pause_background_computer(stale)
+            with background_computer_turn(owner, "bot", "replacement"):
+                replacement.ensure_running("bot", owner)
+                assert not pause_background_computer()
+        finally:
+            replacement.close()
+    unfenced = setup[0]
+    with background_computer_turn(7, "bot1", "unknown") as unknown:
+        unfenced.ensure_running("bot1", 7)
+        assert unknown.manager is None and not pause_background_computer()
+
+
+def test_provider_state_must_still_be_running_at_handoff(sole_computer):
+    from octop.infra.cloud.computers.handoff import (
+        background_computer_turn,
+        pause_background_computer,
+    )
+
+    m, driver, _, _, u, _ = sole_computer
+    with background_computer_turn(u, "bot", "a"):
+        instance = m.ensure_running("bot", u)
+        driver.states[instance] = "paused"
+        assert not pause_background_computer() and ("pause", instance) not in driver.calls
+
+
+@pytest.mark.parametrize("confirmed_today", [False, True])
+def test_stale_unpaid_notice_gives_idle_its_own_delivered_grace(
+    setup: Any, monkeypatch: pytest.MonkeyPatch, confirmed_today: bool
+) -> None:
+    manager, driver, _, clock = setup
+    monkeypatch.setenv("OCTOP_COMPUTER_RECLAIM", "on")
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "off")
+    day = 86400
+    active = clock.now
+    clock.now += 41 * day
+    # A previously delivered insufficient-balance warning reached its own deadline yesterday.
+    # A disabled billing switch must invalidate even a same-day balance result.
+    confirmed = computers.beijing_day(clock.now if confirmed_today else clock.now - day)
+    record = computers.ComputerRecord(
+        agent_id="bot",
+        user_id=1,
+        instance_id="synthetic",
+        active_at=active,
+        reminded_at=clock.now - 8 * day,
+        reclaim_at=clock.now - day,
+        reclaim_reason="unpaid",
+        disk_insufficient_day=confirmed,
+        disk_failed_day=computers.beijing_day(active),
+    )
+    driver.states["synthetic"] = "paused"
+    manager._save(record)
+    assert manager.reclaim_status(record) == (41, "reminded", clock.now + 7 * day)
+    sent = []
+
+    def notify(record: Any, deadline: float) -> bool:
+        sent.append((record.reclaim_reason, deadline))
+        return len(sent) > 1
+
+    manager.remind = notify
+    manager._reclaim_tick("bot", 1, clock.now)
+    assert manager.record("bot", 1).reminded_at is None
+    clock.now += day
+    manager._reclaim_tick("bot", 1, clock.now)
+    fresh = manager.record("bot", 1)
+    assert fresh.reclaim_reason == "idle" and fresh.reminded_at == clock.now
+    assert sent == [("idle", clock.now + 6 * day), ("idle", clock.now + 7 * day)]
+    assert fresh.reclaim_at == clock.now + 7 * day
+    clock.now = fresh.reclaim_at - 1
+    manager._reclaim_tick("bot", 1, clock.now)
+    assert driver.state("synthetic") == "paused"
+    clock.now += 1
+    manager._reclaim_tick("bot", 1, clock.now)
+    assert driver.state("synthetic") == "gone" and len(sent) == 2
+
+
+def test_waiting_for_first_balance_result_after_midnight_preserves_prior_notice(
+    setup: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import UTC, datetime
+
+    manager, driver, billing, clock = setup
+    monkeypatch.setenv("OCTOP_COMPUTER_RECLAIM", "on")
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "on")
+    last = datetime(2026, 11, 20, 15, 59, tzinfo=UTC).timestamp()
+    end = last + 2 * 60
+    billing.disk_down = True
+    driver.disk_size = 40
+    driver.states["disk"] = "paused"
+    record = computers.ComputerRecord(
+        agent_id="bot",
+        user_id=1,
+        instance_id="disk",
+        active_at=last - 45 * 86400,
+        disk_failed_day=computers.beijing_day(last - 30 * 86400),
+        disk_insufficient_day=computers.beijing_day(last),
+        disk_retry_at=last + computers.DISK_RETRY_SECONDS,
+        reclaim_reason="unpaid",
+        reminded_at=end - 7 * 86400,
+        reclaim_at=end,
+    )
+    manager._save(record)
+    calls = []
+    manager.remind = lambda *_: calls.append("duplicate") or True
+    clock.now = end
+    manager.tick()
+    transient = manager.record("bot", 1)
+    assert transient.reclaim_at == end and transient.reminded_at == record.reminded_at
+    assert driver.state("disk") == "paused" and not calls
+    clock.now = last + computers.DISK_RETRY_SECONDS
+    manager.tick()
+    assert driver.state("disk") == "gone" and not calls
 
 
 def test_model_checks_handback_before_another_action(setup: Any) -> None:

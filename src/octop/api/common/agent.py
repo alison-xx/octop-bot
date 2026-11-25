@@ -17,6 +17,8 @@ def user_owns_agent(row: Any, user: Any) -> bool:
 
 def assert_agent_owner(row: Any, user: Any) -> None:
     """Raise if the user may not mutate this agent row (admin bypasses)."""
+    if getattr(row, "kind", None) == "shadow":
+        raise OctopError.localized(ErrorCode.AGENT_NOT_FOUND)
     if user.is_admin:
         return
     if row.user_id is None or row.user_id != user.id:
@@ -53,6 +55,8 @@ def _user_may_access(row: Any, user: Any, *, repos: Any | None = None) -> bool:
 
 
 def assert_agent_access_row(row: Any, user: Any, *, repos: Any | None = None) -> None:
+    if getattr(row, "kind", None) == "shadow":
+        raise OctopError.localized(ErrorCode.AGENT_NOT_FOUND)
     if not _user_may_access(row, user, repos=repos):
         raise OctopError(ErrorCode.FORBIDDEN, "agent not accessible to user")
 
@@ -67,7 +71,7 @@ def require_agent_row(
     """Load an agent row after owner / shared-agent / admin ``as_user`` checks."""
     assert server.app_runtime is not None
     row = server.app_runtime.agent_registry.get_row(agent_id)
-    if row is None:
+    if row is None or getattr(row, "kind", None) == "shadow":
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     if as_user is not None and as_user != user.id:
         if not user.is_admin:

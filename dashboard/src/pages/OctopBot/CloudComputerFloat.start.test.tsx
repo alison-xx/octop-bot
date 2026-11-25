@@ -14,8 +14,10 @@ import CloudComputerFloat, {
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (k: string) => k }),
 }));
-vi.mock("../../api/modules/botCloudComputer", () => ({
+vi.mock(import("../../api/modules/botCloudComputer"), async (original) => ({
+  ...(await original()),
   botCloudComputerApi: {
+    ...(await original()).botCloudComputerApi,
     status: vi.fn(),
     glance: vi.fn(),
     openScreen: vi.fn(),
@@ -46,31 +48,39 @@ beforeEach(() => {
 });
 
 describe("opening the cloud computer from its icon", () => {
-  it("opens one interactive screen when the chat and its handoff card are mounted together", async () => {
-    api.status.mockResolvedValue({ ...off, state: "running" });
-    api.takeover.mockResolvedValue({
-      ...off,
-      state: "running",
-      takeover: true,
-    });
-    api.openScreen.mockResolvedValue({
-      ws_path: "/ws",
-      session: "s",
-      expires_in: 60,
-    });
-    render(
-      <>
-        <CloudComputerFloat botId="writer" botName="Writer" />
-        <CloudComputerHandoff botId="writer" />
-      </>,
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "cloudComputer.handoffOpen" }),
-    );
-    expect(await screen.findByText("live screen")).toBeInTheDocument();
-    expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    expect(api.openScreen).toHaveBeenCalledTimes(1);
-  });
+  it.each([false, true])(
+    "opens only one handoff screen (legacy read-only: %s)",
+    async (readOnly) => {
+      api.status.mockResolvedValue({ ...off, state: "running" });
+      api.takeover.mockResolvedValue({
+        ...off,
+        state: "running",
+        takeover: true,
+      });
+      api.openScreen.mockResolvedValue({
+        ws_path: "/ws",
+        session: readOnly ? { viewOnly: true } : "s",
+        expires_in: 60,
+      });
+      render(
+        <>
+          <CloudComputerFloat botId="writer" botName="Writer" />
+          <CloudComputerHandoff botId="writer" />
+        </>,
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "cloudComputer.handoffOpen" }),
+      );
+      expect(await screen.findByText("live screen")).toBeInTheDocument();
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+      expect(api.openScreen).toHaveBeenCalledTimes(1);
+      expect(api.takeover).toHaveBeenCalledTimes(readOnly ? 0 : 1);
+      if (readOnly)
+        expect(
+          screen.getByText("cloudComputer.legacyViewOnly"),
+        ).toBeInTheDocument();
+    },
+  );
 
   it("keeps the window open while the computer starts", () => {
     const rules = { pillOnly: false, idleSinceMs: null, nowMs: 0 };

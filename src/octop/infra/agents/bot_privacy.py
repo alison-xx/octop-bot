@@ -137,9 +137,16 @@ def _update_privacy(services: Any, manager: Any, owner: int, agent_id: str, priv
                 ErrorCode.WORKSPACE_ROOT_RESTRICTED, "choose a dedicated private working folder"
             )
         record = json.dumps({"owner": owner, "path": str(root), "name": row.name})
-        cfg["octop_bot"] = {"private": True}
+        options = cfg.get("octop_bot")
+        if not isinstance(options, dict):
+            options = cfg["octop_bot"] = {}
+        options["private"] = True
     else:
-        cfg.pop("octop_bot", None)
+        # is_private_bot(row) was true, so these are the current Bot options.
+        options = cfg["octop_bot"]
+        del options["private"]
+        if not options:
+            del cfg["octop_bot"]
     if not services.agent_repo.set_bot_privacy(
         agent_id, row.config_json, json.dumps(cfg, ensure_ascii=False), key, record
     ):

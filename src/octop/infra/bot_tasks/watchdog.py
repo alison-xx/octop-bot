@@ -31,6 +31,7 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
 from octop.i18n import tr
+from octop.infra.bot_tasks.archives import TaskArchive
 from octop.infra.bot_tasks.deliverables import inspect_file
 from octop.infra.bot_tasks.model import Deliverable, Task
 from octop.infra.bot_tasks.model_silence import ModelSilence, watch_model_output
@@ -43,6 +44,7 @@ FREE_TOOLS = TASK_TOOL_NAMES | {
     "ask_user_question",
     "write_todos",
     "request_takeover",
+    "wait_for_local_device",
     "request_approval",
 }
 # Tools that do real work; reading and looking around never need a plan.
@@ -150,9 +152,10 @@ def restored_task(task: Task) -> str:
         proof = f" - {item.evidence}" if item.evidence else ""
         lines.append(f"{number}. [{item.status}] {item.text}{proof}")
     assumptions = "\nAssumptions: " + "; ".join(task.assumptions) if task.assumptions else ""
+    progress = "\n".join(f"- [{step.status}] {step.content}" for step in task.steps)
     return RESTORED.format(
         goal=task.goal, tier=task.tier, criteria="\n".join(lines), assumptions=assumptions
-    )
+    ) + ("\n" + progress if progress else "")
 
 
 def _user_turn(messages: list[BaseMessage]) -> str:
@@ -262,11 +265,13 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         store: TaskStore,
         *,
         always: bool = False,
+        archive: TaskArchive | None = None,
         user_repo: object | None = None,
         owner: int = 0,
     ) -> None:
         self._users = user_repo
         self._owner = owner
+        self._archive = archive
         self._store = store
         self._always = always
         self._watch = TaskWatch()
@@ -455,10 +460,34 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
             return result
         name = str(block.get("filename") or block.get("path") or "file")
         size = local.stat().st_size
-        # Past the cap only the name is checked: a stand-in byte keeps it from reading as empty.
-        inspection = inspect_file(name, local.read_bytes() if size <= MAX_INSPECT_BYTES else b"x")
-        if size > MAX_INSPECT_BYTES:
-            inspection.facts = []
+        inspection = inspect_file(name, local.read_bytes() if size <= MAX_INSPECT_BYTES else None)
+        thread = str(_configurable().get("thread_id") or "")
+        if thread:
+            with self._store.locked(thread):
+                task = self._store.running(thread)
+                if task is not None:
+                    display_name = name[:300]
+                    task.delivery_failures.pop(display_name, None)
+                    if not inspection.ok:
+                        if len(task.delivery_failures) >= 30:
+                            del task.delivery_failures[next(iter(task.delivery_failures))]
+                        task.delivery_failures[display_name] = (
+                            "open" if inspection.open_failed else "validation"
+                        )
+                    else:
+                        same = [d for d in task.deliverables if d.name == display_name]
+                        task.deliverables = [
+                            *task.deliverables[-29:],
+                            Deliverable(
+                                name=display_name,
+                                path=str(block.get("path") or name)[:1000],
+                                size=size,
+                                version=max((d.version for d in same), default=0) + 1,
+                                facts=inspection.facts,
+                            ),
+                        ]
+                    task.updated_at = time.time()
+                    self._store.save(thread, task)
         if not inspection.ok:
             return ToolMessage(
                 content=NOT_SENT.format(problems="; ".join(inspection.problems)),
@@ -466,24 +495,19 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
                 tool_call_id=str(request.tool_call.get("id") or ""),
                 status="error",
             )
-        thread = str(_configurable().get("thread_id") or "")
-        if thread:
-            with self._store.locked(thread):
-                task = self._store.running(thread)
-                if task is not None:
-                    same = [d for d in task.deliverables if d.name == name]
-                    task.deliverables = [
-                        *task.deliverables[-29:],
-                        Deliverable(
-                            name=name[:300],
-                            path=str(block.get("path") or name)[:1000],
-                            size=size,
-                            version=len(same) + 1,
-                            facts=inspection.facts,
-                        ),
-                    ]
-                    task.updated_at = time.time()
-                    self._store.save(thread, task)
+        return result
+
+    def _after_delivery(
+        self, request: ToolCallRequest, result: ToolMessage | Command[Any]
+    ) -> ToolMessage | Command[Any]:
+        result = self._deliver(request, result)
+        if self._archive is not None and self._active():
+            self._archive.observe(
+                self._store,
+                str(_configurable().get("thread_id") or ""),
+                str(request.tool_call.get("name") or ""),
+                result,
+            )
         return result
 
     def wrap_tool_call(
@@ -494,7 +518,7 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         task, refused = self._before(request)
         if refused is not None:
             return refused
-        result = self._deliver(request, handler(request))
+        result = self._after_delivery(request, handler(request))
         return self._after(request, task, result) if task is not None else result
 
     async def awrap_tool_call(
@@ -507,7 +531,7 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
             return refused
         result = await handler(request)
         # Reading and checking the file is blocking work: off the event loop.
-        result = await asyncio.to_thread(self._deliver, request, result)
+        result = await asyncio.to_thread(self._after_delivery, request, result)
         return (
             await asyncio.to_thread(self._after, request, task, result)
             if task is not None

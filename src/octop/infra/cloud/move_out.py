@@ -10,6 +10,8 @@ failure. Nothing is deleted here: switching back to "this computer" shows it all
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import json
 import logging
 from collections.abc import Callable
@@ -25,6 +27,7 @@ from octop.infra.agents.bot_workspace import chief_key, is_private_bot
 from octop.infra.agents.threads.fork import load_checkpoint_messages
 from octop.infra.auth import lynxce_cloud
 from octop.infra.bridge.ids import is_bridge_agent_id
+from octop.infra.cloud import move_wire
 from octop.infra.cloud.move_in import goal_json
 from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
@@ -37,7 +40,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _INSTALL_KEY = "octop_bot:install_id"
-# One message bigger than this (a pasted file, a long tool result) is cut, so a chat fits a request.
+# Legacy group timeline text cap. Thread imports keep each original message.
 _MAX_TEXT = 100_000
 _MAX_THREADS_PER_BOT = 200
 
@@ -148,7 +151,13 @@ class _Cloud:
             logger.warning("cloud refused the sign-in at %s: %s", path, response.status_code)
             raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
         if not response.is_success:
-            logger.warning("cloud refused %s: %s %s", path, response.status_code, response.text)
+            logger.warning("cloud refused %s: %s", path, response.status_code)
+            if response.status_code == 429:
+                raise OctopError.localized(ErrorCode.BOT_MOVE_IN_LIMITED)
+            if response.status_code == 413:
+                raise OctopError.localized(ErrorCode.REQUEST_TOO_LARGE, limit_mb=10)
+            if response.status_code in (409, 422):
+                raise OctopError.localized(ErrorCode.BOT_CLOUD_REQUEST_REJECTED)
             raise OctopError.localized(ErrorCode.NETWORK_ERROR)
         return response.json() if response.content else None
 
@@ -182,7 +191,68 @@ async def _thread_messages(
             services.thread_message_repo.page, thread_id, limit=100_000
         )
         messages = messages_from_dict([json.loads(row.message_json) for row in rows])
-    return _clip(messages_to_dict(messages))  # type: ignore[no-any-return]
+    return messages_to_dict(messages)
+
+
+async def _send_thread(
+    cloud: _Cloud, header: dict[str, Any], messages: list[dict[str, Any]]
+) -> None:
+    if len(messages) > move_wire.MAX_MESSAGES:
+        raise OctopError.localized(ErrorCode.BOT_MOVE_CHAT_LIMIT)
+    await _send_history(cloud, "threads", "thread-parts", header, messages)
+
+
+async def _send_history(
+    cloud: _Cloud,
+    whole: str,
+    parts: str,
+    header: dict[str, Any],
+    messages: list[dict[str, Any]],
+    *,
+    limit_error: ErrorCode = ErrorCode.BOT_MOVE_CHAT_LIMIT,
+) -> None:
+    digest = hashlib.sha256()
+    size = 0
+    small = True
+    for message in messages:
+        wire = move_wire.message_wire(message) + b"\n"
+        digest.update(wire)
+        size += len(wire)
+        small &= len(wire) < 200_000
+    if size > move_wire.MAX_BYTES:
+        raise OctopError.localized(limit_error)
+    if small and size <= move_wire.PAGE_BYTES:
+        await cloud.post(f"/api/octop-bot/move-in/{whole}", {**header, "messages": messages})
+        return
+    manifest = {
+        **header,
+        "snapshot": digest.hexdigest(),
+        "total": size,
+        "message_count": len(messages),
+    }
+    for _ in range(2):
+        next_byte = 0
+        for start, page in enumerate(move_wire.pages(messages)):
+            offset = start * move_wire.PAGE_BYTES
+            if offset < next_byte:
+                continue
+            receipt = await cloud.post(
+                f"/api/octop-bot/move-in/{parts}",
+                {**manifest, "offset": offset, "data": base64.b64encode(page).decode("ascii")},
+            )
+            next_byte = receipt.get("next_offset")
+            if next_byte == size and receipt.get("id"):
+                return
+            if next_byte == 0:
+                break  # A missing staged page was discarded. Restart this same snapshot once.
+            if (
+                not isinstance(next_byte, int)
+                or next_byte <= offset
+                or next_byte >= size
+                or next_byte % move_wire.PAGE_BYTES
+            ):
+                raise OctopError.localized(ErrorCode.NETWORK_ERROR)
+    raise OctopError.localized(ErrorCode.BOT_CLOUD_REQUEST_REJECTED)
 
 
 async def _send_all(
@@ -241,15 +311,15 @@ async def _send_all(
         for thread in rows_for_bot:
             messages = await _thread_messages(services, registry, agent_id, thread.thread_id)
             if messages:
-                await cloud.post(
-                    "/api/octop-bot/move-in/threads",
+                await _send_thread(
+                    cloud,
                     {
                         "source": _source(services, "thread", thread.thread_id),
                         "bot_id": moved[agent_id],
                         "title": thread.title,
                         "last_active": thread.last_active,
-                        "messages": messages,
                     },
+                    messages,
                 )
             status.done += 1
 
