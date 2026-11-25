@@ -27,6 +27,11 @@ from octop.infra.cloud.computers.manager import (
     computer_manager,
     disk_billing_enabled,
 )
+from octop.infra.cloud.computers.model_screen import (
+    ModelScreenAction,
+    ModelScreenResult,
+    perform_model_screen,
+)
 from octop.infra.cloud.computers.rfb import RfbClientFilter
 from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.errors import ErrorCode, OctopError
@@ -66,6 +71,9 @@ _sessions: dict[str, tuple[str, int, float]] = {}
 
 
 class ComputerStatus(BaseModel):
+    model_screen_version: Literal[1] = Field(
+        1, description="Version of the atomic desktop model-screen action API."
+    )
     state: Literal["none", "running", "paused"] = Field(
         description="none: not started yet (it starts on the Bot's first tool use)."
     )
@@ -110,12 +118,17 @@ class ComputerGlance(BaseModel):
     )
 
 
-def _owned(server: Any, user: User, agent_id: str) -> Any:
+def _owned(server: Any, user: User, agent_id: str, *, shadow_only: bool = False) -> Any:
     if not bot_cloud_enabled():
         raise OctopError.localized(ErrorCode.NOT_FOUND)
     manager = computer_manager(server.services)
     row = server.services.agent_repo.get(agent_id)
-    if manager is None or row is None or row.user_id != user.id:
+    if (
+        manager is None
+        or row is None
+        or row.user_id != user.id
+        or (shadow_only and row.kind != "shadow")
+    ):
         raise OctopError.localized(ErrorCode.NOT_FOUND)
     return manager
 
@@ -316,6 +329,25 @@ def _computer_path(path: str) -> str:
     if not any(full == root or full.startswith(root + "/") for root in _FILE_ROOTS):
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     return full
+
+
+@router.post(
+    "/{agent_id}/model-screen",
+    summary="Perform one protected model action on the cloud desktop",
+    description="Starts the owned computer if needed. Human control blocks the action. After handback, only a checked observation may be returned.",
+    response_model=ModelScreenResult,
+)
+async def model_screen(
+    agent_id: str,
+    body: ModelScreenAction,
+    response: Response,
+    user: User = Depends(desktop_remote_user),
+    server: Any = Depends(get_server),
+) -> ModelScreenResult:
+    manager = _owned(server, user, agent_id, shadow_only=True)
+    response.headers["Cache-Control"] = "no-store"
+    with _slot(_command_counts, user.id):
+        return await asyncio.to_thread(perform_model_screen, manager, agent_id, user.id, body)
 
 
 @router.post(

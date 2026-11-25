@@ -169,6 +169,8 @@ class ComputerRecord:
     # The user has the mouse and keyboard; the Bot waits until it is handed back. It only
     # holds while the screen is watched (see ``controlled``).
     takeover: bool = False
+    # The next model-visible frame after human input must be checked for password controls.
+    check_handoff_frame: bool = False
     # Last time someone was watching the screen; a watched computer is not idle.
     viewed_at: float = 0.0
     unsettled: list[Unsettled] = field(default_factory=list)
@@ -191,6 +193,7 @@ class ComputerRecord:
     @classmethod
     def load(cls, raw: str) -> ComputerRecord:
         data = json.loads(raw)
+        data.setdefault("check_handoff_frame", bool(data.get("takeover")))
         data["reservations"] = [Reservation(**r) for r in data.get("reservations", [])]
         data["unsettled"] = [
             Unsettled(
@@ -842,8 +845,8 @@ class ComputerManager:
         if record.instance_id and self._driver.state(record.instance_id) == "gone":
             self._lost(record.agent_id, record.user_id)
             return
-        if record.takeover and not record.controlled(now):
-            self.set_takeover(record.agent_id, record.user_id, False)  # no one is watching
+        if record.takeover:
+            record = self._viewer_record(record.agent_id, record.user_id)
         busy = self._busy.get(record.agent_id, 0) > 0
         watched = now - record.viewed_at < VIEWER_GRACE_SECONDS
         if not (busy or watched) and now - record.active_at >= IDLE_PAUSE_SECONDS:
@@ -1001,9 +1004,21 @@ class ComputerManager:
         self.viewing(agent_id, user_id)
         return self._driver.screen(instance)
 
-    def viewing(self, agent_id: str, user_id: int) -> None:
+    def _viewer_record(self, agent_id: str, user_id: int) -> ComputerRecord:
+        """Read the current lease and finalize an expired handback under the device lock."""
         with self._lock(agent_id):
             record = self.record(agent_id, user_id)
+            now = self._clock()
+            if record.takeover and not record.controlled(now):
+                record.takeover = False
+                record.check_handoff_frame = True
+                record.active_at = now
+                self._save(record)
+            return record
+
+    def viewing(self, agent_id: str, user_id: int) -> None:
+        with self._lock(agent_id):
+            record = self._viewer_record(agent_id, user_id)
             record.viewed_at = record.active_at = self._clock()
             self._cancel_reclaim(record, used=True)
             self._save(record)
@@ -1011,6 +1026,7 @@ class ComputerManager:
     def set_takeover(self, agent_id: str, user_id: int, active: bool) -> ComputerRecord:
         with self._lock(agent_id):
             record = self.record(agent_id, user_id)
+            record.check_handoff_frame |= active or record.takeover
             record.takeover = active
             record.active_at = self._clock()
             self._cancel_reclaim(record, used=True)
@@ -1025,27 +1041,55 @@ class ComputerManager:
             record = self.record(agent_id, user_id)
             if record.takeover:
                 record.takeover = False
+                record.check_handoff_frame = True
                 record.active_at = self._clock()
                 self._save(record)
 
+    def model_screen[T](
+        self,
+        agent_id: str,
+        user_id: int,
+        taken_over: str,
+        work: Callable[[ComputerDriver, str], T],
+        review: Callable[[ComputerDriver, str], tuple[T, bool]],
+    ) -> T | str:
+        """Serialize the model's observation with human takeover and handback."""
+
+        def observe(driver: ComputerDriver, instance: str) -> T | str:
+            with self._lock(agent_id):
+                record = self._viewer_record(agent_id, user_id)
+                if record.takeover:
+                    return taken_over
+                if record.check_handoff_frame:
+                    result, clear = review(driver, instance)
+                    if clear:
+                        record.check_handoff_frame = False
+                        self._save(record)
+                    return result
+                return work(driver, instance)
+
+        return self.use(agent_id, user_id, observe)
+
     def taken_over(self, agent_id: str, user_id: int) -> bool:
-        return self.record(agent_id, user_id).controlled(self._clock())
+        return self._viewer_record(agent_id, user_id).takeover
 
     def _controlled(self, agent_id: str, user_id: int) -> str:
         """The instance the user has taken over; typing and the clipboard need takeover."""
-        record = self.record(agent_id, user_id)
-        if not (record.controlled(self._clock()) and record.running and record.instance_id):
+        record = self._viewer_record(agent_id, user_id)
+        if not (record.takeover and record.running and record.instance_id):
             raise OctopError.localized(ErrorCode.BOT_COMPUTER_NOT_TAKEN_OVER)
         return record.instance_id
 
     def paste_text(self, agent_id: str, user_id: int, text: str) -> None:
-        self._driver.paste_text(self._controlled(agent_id, user_id), text)
-        self.viewing(agent_id, user_id)
+        with self._lock(agent_id):
+            self._driver.paste_text(self._controlled(agent_id, user_id), text)
+            self.viewing(agent_id, user_id)
 
     def read_clipboard(self, agent_id: str, user_id: int) -> str:
-        text = self._driver.read_clipboard(self._controlled(agent_id, user_id))
-        self.viewing(agent_id, user_id)
-        return text
+        with self._lock(agent_id):
+            text = self._driver.read_clipboard(self._controlled(agent_id, user_id))
+            self.viewing(agent_id, user_id)
+            return text
 
     def close(self) -> None:
         """Stop the reaper (server shutdown): it must not touch a closed database."""
