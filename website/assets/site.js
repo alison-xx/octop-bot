@@ -111,9 +111,11 @@
   const mobileNav = $(".mobile-nav");
   function setMenu(open) {
     if (!menuBtn || !mobileNav) return;
+    mobileNav.inert = !open;
     mobileNav.classList.toggle("open", open);
     menuBtn.setAttribute("aria-expanded", String(open));
   }
+  setMenu(false);
   menuBtn?.addEventListener("click", () =>
     setMenu(menuBtn.getAttribute("aria-expanded") !== "true"),
   );
@@ -121,17 +123,39 @@
     if (e.target.closest("a")) setMenu(false);
   });
   addEventListener("keydown", (e) => {
-    if (e.key === "Escape") setMenu(false);
+    if (e.key === "Escape" && mobileNav?.classList.contains("open")) {
+      setMenu(false);
+      menuBtn.focus();
+    }
   });
+
+  document.addEventListener("pointerdown", (e) => {
+    if (mobileNav?.classList.contains("open") && !mobileNav.contains(e.target) && !menuBtn.contains(e.target)) setMenu(false);
+  });
+  header?.addEventListener("focusout", (e) => {
+    if (e.relatedTarget && !header.contains(e.relatedTarget)) setMenu(false);
+  });
+  matchMedia("(max-width: 1180px)").addEventListener("change", () => setMenu(false));
+  addEventListener("pageshow", () => setMenu(false));
 
   const helpMenus = $$(".nav-more");
   function setHelp(menu, open) {
     menu.classList.toggle("open", open);
     $("button", menu).setAttribute("aria-expanded", String(open));
   }
-  helpMenus.forEach((menu) =>
-    $("button", menu).addEventListener("click", () => setHelp(menu, !menu.classList.contains("open"))),
-  );
+  helpMenus.forEach((menu) => {
+    const button = $("button", menu);
+    button.addEventListener("click", () => setHelp(menu, !menu.classList.contains("open")));
+    menu.addEventListener("pointerenter", (e) => {
+      if (e.pointerType === "mouse") setHelp(menu, true);
+    });
+    menu.addEventListener("pointerleave", () => {
+      if (!menu.contains(document.activeElement)) setHelp(menu, false);
+    });
+    menu.addEventListener("focusout", (e) => {
+      if (!menu.contains(e.relatedTarget)) setHelp(menu, false);
+    });
+  });
   document.addEventListener("click", (e) => {
     helpMenus.forEach((menu) => {
       if (!menu.contains(e.target)) setHelp(menu, false);
@@ -307,12 +331,23 @@
     const trigger = e.target.closest("[data-community]");
     if (!trigger || !community) return;
     e.preventDefault();
+    if (mobileNav?.contains(trigger)) menuBtn.focus();
     setMenu(false);
     community.dataset.kind = trigger.dataset.community === "business" ? "business" : "community";
     openDialog(community);
   });
 
   const lightbox = $("#lightbox");
+  if (lightbox) $$("[data-zoom]").forEach((shot) => {
+    shot.tabIndex = 0;
+    shot.setAttribute("role", "button");
+    shot.setAttribute("aria-haspopup", "dialog");
+    shot.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      shot.click();
+    });
+  });
   document.addEventListener("click", (e) => {
     const shot = e.target.closest("[data-zoom]");
     if (!shot || !lightbox) return;
@@ -381,13 +416,30 @@
     document.addEventListener("langchange", muteLoop);
   });
 
+  function wireTabKeys(tabs) {
+    tabs.forEach((tab, i) => tab.addEventListener("keydown", (e) => {
+      const target = {
+        ArrowLeft: tabs[(i - 1 + tabs.length) % tabs.length],
+        ArrowRight: tabs[(i + 1) % tabs.length],
+        Home: tabs[0],
+        End: tabs[tabs.length - 1],
+      }[e.key];
+      if (!target) return;
+      e.preventDefault();
+      target.focus();
+      target.click();
+    }));
+  }
+
   /* ---------------- Showcase tabs ---------------- */
   $$("[data-showcase]").forEach((box) => {
     const img = $("img", box);
     const caption = $(".showcase-caption", box);
     const tabs = $$("[role=tab]", box);
     let current = tabs.find((tab) => tab.getAttribute("aria-selected") === "true") || tabs[0];
+    let swapTimer;
     const show = (tab, animate) => {
+      clearTimeout(swapTimer);
       current = tab;
       tabs.forEach((other) => {
         const on = other === tab;
@@ -398,24 +450,16 @@
       const apply = () => {
         img.src = src;
         img.alt = tab.dataset[lang === "en" ? "altEn" : "alt"] || "";
-        caption.innerHTML = lang === "en" ? tab.dataset.captionEn : tab.dataset.caption;
+        caption.textContent = lang === "en" ? tab.dataset.captionEn : tab.dataset.caption;
         img.classList.remove("swap");
       };
       if (animate && !reduceMotion) {
         img.classList.add("swap");
-        setTimeout(apply, 180);
+        swapTimer = setTimeout(apply, 180);
       } else apply();
     };
-    tabs.forEach((tab, i) => {
-      tab.addEventListener("click", () => show(tab, true));
-      tab.addEventListener("keydown", (e) => {
-        const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-        if (!step) return;
-        const next = tabs[(i + step + tabs.length) % tabs.length];
-        next.focus();
-        show(next, true);
-      });
-    });
+    tabs.forEach((tab) => tab.addEventListener("click", () => show(tab, true)));
+    wireTabKeys(tabs);
     document.addEventListener("langchange", () => show(current, false));
     show(current, false);
   });
@@ -559,17 +603,19 @@
 
   /* A release can skip a platform (say, no Windows build). Offer that platform's newest package instead. */
   function releaseWith(test) {
-    const list = site ? [site.latest, ...site.history] : [];
+    const list = site ? [site.latest, ...site.history].filter((r) => r.channel === "stable") : [];
     return list.find((r) => r.assets.some(test) || (test.nas && r.nas && r.nas.image)) || null;
   }
-  const versionTag = (r) => (site && r !== site.latest && r.version !== site.latest.version ? ` · ${t("版本", "Version")} ${esc(r.version)}` : "");
+  const versionTag = (r) => ` · ${t("正式版", "Stable")} ${esc(r.version)}`;
   const isWin = (a) => a.platform === "win32";
   const isMac = (a) => a.platform === "darwin";
-  const isPhone = (a) => a.platform === "android" || a.platform === "ios";
+  const isAndroid = (a) => a.platform === "android";
+  const isIos = (a) => a.platform === "ios";
   const isNas = Object.assign((a) => a.platform === "nas", { nas: true });
 
-  function primaryChoice(latest) {
-    const release = releaseWith(os === "win" ? isWin : os === "mac" ? isMac : isPhone) || latest;
+  function primaryChoice() {
+    const release = releaseWith(os === "win" ? isWin : os === "mac" ? isMac : phone === "android" ? isAndroid : isIos);
+    if (!release) return null;
     if (os === "win") {
       const a = pick(release, "win32", "installer", "x64");
       return a && { href: assetUrl(release, a), label: t("下载 Windows 版", "Download for Windows"), sub: `x64 · ${formatSize(a.size)}`, icon: OS_ICON.win, version: release.version };
@@ -590,7 +636,7 @@
   }
 
   function renderPrimary(release) {
-    const choice = primaryChoice(release);
+    const choice = primaryChoice();
     $$("[data-download-primary]").forEach((btn) => {
       btn.removeAttribute("target");
       btn.removeAttribute("rel");
@@ -603,17 +649,20 @@
         } else btn.setAttribute("download", "");
         btn.innerHTML = `${choice.icon}<span>${choice.label}</span>`;
       } else {
-        btn.href = "download.html";
+        const useWeb = phone === "ios" && $("#platforms");
+        btn.href = useWeb ? WEB_APP : "download.html#platforms-section";
         btn.removeAttribute("download");
-        btn.innerHTML = `${ARROW}<span>${t("选择版本下载", "Choose a download")}</span>`;
+        btn.innerHTML = useWeb
+          ? `${OS_ICON.web}<span>${t("打开网页版", "Open web app")}</span>`
+          : `${ARROW}<span>${t("选择版本下载", "Choose a download")}</span>`;
       }
     });
     $$("[data-download-note]").forEach((el) => {
       el.textContent = choice
         ? `${t("版本", "Version")} ${choice.version} · ${choice.sub} · ${t("免费开源", "Free & open source")}`
         : os === "mobile"
-          ? t("在手机上可以直接用网页版，客户端请在 Windows 或 Mac 电脑上下载。", "On a phone, use the web app. The desktop app is for Windows PCs and Macs.")
-          : t("提供 Windows x64 和 Apple 芯片 Mac 版本。", "Available for Windows x64 and Macs with Apple silicon.");
+          ? t("手机也可以用浏览器登录灵策账号，继续云端对话。", "Sign in with Lynxce in your mobile browser to continue a cloud chat.")
+          : t("Windows x64 · Apple 芯片 Mac · Android APK", "Windows x64 · Apple silicon Mac · Android APK");
     });
     $$("[data-version]").forEach((el) => (el.textContent = release.version));
     $$("[data-release-date]").forEach((el) => (el.textContent = release.date));
@@ -631,20 +680,23 @@
         <div class="platform-head">${icon}<div><h3 class="h3">${title}</h3><small class="muted">${sub}</small></div>${detected ? `<span class="badge">${t("你的系统", "Your system")}</span>` : ""}</div>
         ${body}</article>`;
 
+  const staticMac = $("[data-stable-mac]");
+
   function renderPlatforms(latest, beta) {
     const box = $("#platforms");
     if (!box) return;
-    const winRel = releaseWith(isWin) || latest;
-    const macRel = releaseWith(isMac) || latest;
-    const phoneRel = releaseWith(isPhone) || latest;
+    const winRel = releaseWith(isWin);
+    const macRel = releaseWith(isMac);
+    const androidRel = releaseWith(isAndroid);
+    const iosRel = releaseWith(isIos);
     const nasRel = releaseWith(isNas) || latest;
-    const win = pick(winRel, "win32", "installer", "x64");
-    const winArm = pick(winRel, "win32", "installer", "arm64");
-    const zip = pick(winRel, "win32", "portable");
-    const mac = pick(macRel, "darwin", null, "arm64");
-    const intel = pick(macRel, "darwin", null, "x64");
-    const apk = pick(phoneRel, "android");
-    const ios = pick(phoneRel, "ios");
+    const win = winRel && pick(winRel, "win32", "installer", "x64");
+    const winArm = winRel && pick(winRel, "win32", "installer", "arm64");
+    const zip = winRel && pick(winRel, "win32", "portable");
+    const mac = macRel && pick(macRel, "darwin", null, "arm64");
+    const intel = macRel && pick(macRel, "darwin", null, "x64");
+    const apk = androidRel && pick(androidRel, "android");
+    const ios = iosRel && pick(iosRel, "ios");
     const fpk = pick(nasRel, "nas");
     const image = nasRel.nas && nasRel.nas.image;
     const cards = [];
@@ -680,21 +732,20 @@
       );
     }
     if (apk || ios) {
-      const version = (apk || ios).appVersion;
       cards.push(
         card(
           "phone",
           OS_ICON.phone,
           t("手机", "Phone"),
-          `${[apk && "Android", ios && "iPhone"].filter(Boolean).join(" · ")}${version ? ` · ${t("版本", "Version")} ${esc(version)}` : ""}`,
+          [apk && "Android", ios && "iPhone"].filter(Boolean).join(" · "),
           `<div class="files">
-          ${apk ? fileRow(phoneRel, apk, "Android", "APK", phone === "android") : ""}
+          ${apk ? fileRow(androidRel, apk, "Android", `APK · ${esc(apk.appVersion || androidRel.version)}`, phone === "android") : ""}
           ${
             ios
-              ? `<div class="file"><div><b>iPhone / iPad</b><small>${storeName(ios.url)}</small></div><a class="btn ${phone === "ios" ? "btn-primary" : "btn-ghost"} btn-sm" href="${esc(ios.url)}" target="_blank" rel="noopener"><span>${t("前往获取", "Get it")}</span>${OUT}</a></div>`
+              ? `<div class="file"><div><b>iPhone / iPad</b><small>${storeName(ios.url)} · ${esc(ios.appVersion || iosRel.version)}</small></div><a class="btn ${phone === "ios" ? "btn-primary" : "btn-ghost"} btn-sm" href="${esc(ios.url)}" target="_blank" rel="noopener"><span>${t("前往获取", "Get it")}</span>${OUT}</a></div>`
               : ""
           }
-        </div><p class="muted" style="font-size:14px">${t("手机端连接你电脑或 NAS 上的 Octop Bot 使用。", "The phone app connects to Octop Bot on your computer or NAS.")}</p>`,
+        </div><p class="muted" style="font-size:14px">${t("登录灵策账号继续云端对话，或连接自己的 Octop Bot 服务器。", "Sign in with Lynxce to continue your cloud chats, or connect to your own Octop Bot server.")}</p>`,
           os === "mobile",
         ),
       );
@@ -745,6 +796,10 @@
       }
     }
     box.innerHTML = cards.join("");
+    // The offline catalog predates the signed stable Mac package in the static HTML.
+    if (!macRel && !site.stable && staticMac && !site.hidden.has("darwin")) {
+      box.prepend(staticMac);
+    }
     $$("[data-intel-note]").forEach((el) => (el.hidden = Boolean(intel)));
   }
 
@@ -752,16 +807,11 @@
     const box = $("#history");
     if (!box) return;
     box.innerHTML = releases
-      .map((r, i) => {
+      .map((r) => {
         const notes = (r.notes[lang] && r.notes[lang].length ? r.notes[lang] : r.notes.zh) || [];
-        const badge =
-          i === 0
-            ? ` <span class="badge" style="vertical-align:middle">${t("最新", "Latest")}</span>`
-            : r.channel === "beta" && r.live
-              ? ` <span class="badge neutral" style="vertical-align:middle">${t("测试版", "Beta")}</span>`
-              : "";
+        const badge = r.channel === "beta" ? t("测试版", "Beta") : t("正式版", "Stable");
         return `<article class="release reveal in">
-        <div><h3>${esc(r.version)}${badge}</h3><time datetime="${esc(r.date)}">${esc(r.date)}</time></div>
+        <div><h3>${esc(r.version)} <span class="badge neutral">${badge}</span></h3><time datetime="${esc(r.date)}">${esc(r.date)}</time></div>
         <div><ul>${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
         ${
           r.tag
@@ -786,9 +836,13 @@
       .catch(() => ({}));
     return Promise.all([live, listed]).then(([manifestReleases, data]) => {
       /* releases.json "hidden" lists platforms not to offer yet, e.g. "ios" before the App Store listing is live. */
-      const hidden = new Set(data.hidden || []);
+      const hidden = new Set(data.hidden || (data.releases ? [] : ["ios"]));
       const fromManifest = manifestReleases.map((r) => ({ ...r, assets: r.assets.filter((a) => !hidden.has(a.platform)) }));
-      const fromList = data.releases || [];
+      const fromList = (data.releases || []).map((r) => {
+        const assets = r.assets.filter((a) => !hidden.has(a.platform));
+        const live = fromManifest.find((entry) => entry.version === r.version);
+        return live ? { ...r, channel: live.channel, assets: [...live.assets, ...assets] } : { ...r, assets };
+      });
       const stable = fromManifest.find((r) => r.channel === "stable");
       const beta = fromManifest.find((r) => r.channel === "beta");
       const latest = stable || beta || fromList[0];
@@ -798,7 +852,7 @@
       const history = [...fromList, ...fromManifest]
         .filter((r) => !seen.has(r.version) && seen.add(r.version))
         .sort((a, b) => compareVersions(b.version, a.version));
-      return { latest, beta: stable && beta && compareVersions(beta.version, stable.version) > 0 ? beta : null, history, hidden };
+      return { latest, stable, beta: beta && (!stable || compareVersions(beta.version, stable.version) > 0) ? beta : null, history, hidden };
     });
   }
 
@@ -1000,10 +1054,15 @@
     const tabs = $$("[role=tab]", box);
     const panels = $$("[role=tabpanel]", box);
     const select = (id) => {
-      tabs.forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.panel === id)));
+      tabs.forEach((tab) => {
+        const active = tab.dataset.panel === id;
+        tab.setAttribute("aria-selected", String(active));
+        tab.tabIndex = active ? 0 : -1;
+      });
       panels.forEach((panel) => (panel.hidden = panel.id !== id));
     };
     tabs.forEach((tab) => tab.addEventListener("click", () => select(tab.dataset.panel)));
+    wireTabKeys(tabs);
     select(os === "mac" ? "steps-mac" : "steps-win");
   });
 
@@ -1027,6 +1086,7 @@
       if (empty) empty.hidden = shown > 0;
     };
     input?.addEventListener("input", apply);
+    document.addEventListener("langchange", apply);
     buttons.forEach((btn) =>
       btn.addEventListener("click", () => {
         category = btn.dataset.cat;

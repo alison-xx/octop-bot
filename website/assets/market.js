@@ -58,18 +58,18 @@
     tabs.innerHTML = items
       .map(
         (c) =>
-          `<button type="button" role="tab" class="m-tab" data-tab="${c.id}" aria-selected="${c.id === tab}">${esc(c.name)}</button>`,
+          `<button type="button" class="m-tab" data-tab="${c.id}" aria-pressed="${c.id === tab}">${esc(c.name)}</button>`,
       )
       .join("");
   }
 
   function renderList() {
     const q = search.value.trim().toLowerCase();
-    const shown = data.templates.filter(
-      (x) =>
-        !q ||
-        [x.name.zh, x.name.en, x.tagline.zh, x.tagline.en].some((s) => s.toLowerCase().includes(q)),
-    );
+    const shown = data.templates.filter((x) => {
+      const inCategory = tab === "all" || (tab === "featured" ? x.featured : x.category === tab);
+      return inCategory && (!q || [x.name.zh, x.name.en, x.tagline.zh, x.tagline.en]
+        .some((value) => value.toLowerCase().includes(q)));
+    });
     if (!shown.length) {
       list.innerHTML = `<p class="m-empty">${t("没有找到匹配的 Bot。", "No Bots match your search.")}</p>`;
       return;
@@ -122,7 +122,7 @@
     const parts = [
       section(ICON.chat, t("可以这样开始", "Ways to start"), "", `<div class="m-starters">${tx(x.starters).map((s) => `<span>${esc(s)}</span>`).join("")}</div>`),
       section(ICON.rules, t("工作守则", "Working rules"), "", `<p class="m-role">${esc(tx(x.role))}</p>${ul(tx(x.instructions))}`),
-      section(ICON.memory, t("已经知道的事", "What it already knows"), t("导入后写进这个 Bot 的记忆，每次对话都会参考。", "Written into the Bot's memory and used in every conversation."), ul(tx(x.memories))),
+      section(ICON.memory, t("已经知道的事", "What it already knows"), t("这些资料会随模板导入，供这个 Bot 工作时参考。", "These notes are imported with the template for the bot to refer to."), ul(tx(x.memories))),
     ];
     if (x.skills.length)
       parts.push(
@@ -154,7 +154,7 @@
         section(
           ICON.plug,
           t("建议连接", "Suggested connections"),
-          t("连接后能直接读写对应的应用，不连接也能用。", "Connect these so it can work in those apps directly. It works without them too."),
+          t("需要读写外部应用时，先在客户端检查连接和授权。也可以直接提供资料。", "Check the connection and its permissions in the app before asking the bot to access it. You can also supply the material directly."),
           `<div class="m-chips">${x.integrations.map((i) => `<span><i style="background:${esc(i.color || "")}"></i>${esc(tx(i.name))}</span>`).join("")}</div>`,
         ),
       );
@@ -188,10 +188,12 @@
     }
   }
 
-  function go(url) {
-    history.pushState(null, "", url);
+  function openTemplate(slug) {
+    history.replaceState({ ...history.state, focusSlug: slug }, "");
+    history.pushState({ fromMarket: true }, "", "?bot=" + encodeURIComponent(slug));
     route();
-    window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+    window.scrollTo({ top: 0, behavior: "instant" });
+    $(".m-back", detail)?.focus({ preventScroll: true });
   }
 
   function openImport(slug) {
@@ -214,18 +216,18 @@
     const open = e.target.closest("[data-open]");
     if (open && !e.metaKey && !e.ctrlKey) {
       e.preventDefault();
-      go("?bot=" + encodeURIComponent(open.dataset.open));
+      openTemplate(open.dataset.open);
       return;
     }
-    if (e.target.closest("[data-home]") && !e.metaKey && !e.ctrlKey) {
+    if (e.target.closest("[data-home]") && history.state?.fromMarket && !e.metaKey && !e.ctrlKey) {
       e.preventDefault();
-      go("market.html");
+      history.back();
       return;
     }
     const tb = e.target.closest("[data-tab]");
     if (tb) {
       tab = tb.dataset.tab;
-      renderTabs();
+      tabs.querySelectorAll("[data-tab]").forEach((btn) => btn.setAttribute("aria-pressed", String(btn === tb)));
       renderList();
     }
   });
@@ -234,7 +236,12 @@
     if (e.target.closest(".market-choice")) setTimeout(() => dialog.close(), 300);
   });
   search.addEventListener("input", renderList);
-  window.addEventListener("popstate", route);
+  window.addEventListener("popstate", () => {
+    if (!data) return;
+    route();
+    const slug = history.state?.focusSlug;
+    if (slug) list.querySelector(`[data-open="${CSS.escape(slug)}"]`)?.focus({ preventScroll: true });
+  });
   document.addEventListener("langchange", () => data && route());
 
   fetch("market/catalog.json?v=1")

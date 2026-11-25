@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script src="assets/boot.js?v=1"></script>
   <title data-en="Octop Bot · One sentence, a whole AI team">Octop Bot · 一句话，组建你的 AI 团队</title>
-  <meta name="description" content="Octop Bot 是免费开源的桌面 AI 团队客户端。告诉 Chief 你想完成什么，它会找来合适的 Bot，拉进同一个群聊，分工接力把事情做完。" data-en-content="Octop Bot is a free, open-source desktop app for AI teams. Tell Chief what you need and it brings the right bots into one group chat to get it done.">
+  <meta name="description" content="用 Chief 召集 Bot，在群里分工、核对资料、交付文件。直接从网页版开始，也可以在桌面端处理本机文件。" data-en-content="Give Chief a brief, share source files with the group and review the result. Start on the web or work with local files in the desktop app.">
   <meta name="theme-color" content="#f7f6f2" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Octop Bot · 一句话，组建你的 AI 团队">
-  <meta property="og:description" content="免费开源的桌面 AI 团队客户端，支持 Windows 和 Apple 芯片 Mac。">
+  <meta property="og:description" content="用 Chief 召集 Bot，在群里分工、核对资料、交付文件。直接从网页版开始，也可以在桌面端处理本机文件。" data-en-content="Give Chief a brief, share source files with the group and review the result. Start on the web or work with local files in the desktop app.">
   <meta property="og:image" content="https://octop-bot.lynxce.cn/assets/art/team.webp">
   <meta property="og:url" content="https://octop-bot.lynxce.cn/">
   <meta name="twitter:card" content="summary_large_image">
@@ -18,9 +18,9 @@
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="preload" as="image" href="assets/screen-team-zh.webp">
-  <link rel="stylesheet" href="assets/site.css?v=19">
+  <link rel="stylesheet" href="assets/site.css?v=public-1">
   <script src="assets/auth.js?v=2" defer></script>
-  <script src="assets/site.js?v=17" defer></script>
+  <script src="assets/site.js?v=public-1" defer></script>
 </head>
 <body>
   <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
@@ -35,7 +35,7 @@
         <div class="nav-more">
           <button type="button" aria-expanded="false" aria-controls="help-menu"><span data-en="Help">帮助</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
           <div class="nav-menu" id="help-menu">
-            <a href="guide.html"><b data-en="Guide">使用指南</b><small data-en="From install to your first Bot">从安装到第一个 Bot</small></a>
+            <a href="guide.html"><b data-en="Guide">使用指南</b><small data-en="Try a first task with Chief">跟 Chief 做第一件事</small></a>
             <a href="changelog.html"><b data-en="Changelog">更新日志</b><small data-en="What changed in each release">每个版本改了什么</small></a>
             <a href="guide.html#faq"><b data-en="FAQ">常见问题</b><small data-en="Install, accounts and everyday use">安装、账号和日常使用</small></a>
             <a href="#community" data-community><b data-en="Join the community">加入社群</b><small data-en="The Octop Bot community on WeChat">扫码进 Octop Bot 用户群</small></a>
@@ -70,15 +70,14 @@
     <section class="hero">
       <div class="wrap">
         <div class="hero-copy">
-          <span class="chip reveal"><b data-en="New">全新</b><span><span data-en="Version">版本</span> <span data-version>1.0.4</span> · <span data-en="free &amp; open source">免费开源</span></span></span>
           <h1 class="display reveal" style="--delay:.05s" data-en="One sentence.<br>A whole AI team.">一句话，<br>组建你的 AI 团队。</h1>
-          <p class="lead reveal" style="--delay:.1s" data-en="Tell Chief what you want done. It finds the right bots, brings them into one group chat and keeps the work moving until it is finished.">告诉 Chief 你想完成什么。它会找来合适的 Bot，拉进同一个群聊，分工、接力、验收，直到把事情做完。</p>
+          <p class="lead reveal" style="--delay:.1s" data-en="Give Chief your route notes and ask for a printable weekend guide. One bot checks walking times, another draws the map. Review the draft and ask for changes in the group chat.">把路线资料交给 Chief，请它做一份能打印的周末指南。让一个 Bot 核对步程，另一个画地图，你在同一个群里看草稿、改路线、收成品。</p>
           <div class="hero-cta reveal" style="--delay:.15s">
             <a class="btn btn-primary btn-lg" href="download.html" data-download-primary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg><span data-en="Download the app">下载客户端</span></a>
             <a class="btn btn-ghost btn-lg" href="https://bot.lynxce.cn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z"/></svg><span data-en="Use in your browser">在浏览器里使用</span></a>
             <button class="btn btn-ghost btn-lg" type="button" data-film><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10.5-6.5a1 1 0 0 0 0-1.8L9.5 4.6A1 1 0 0 0 8 5.5Z"/></svg><span data-en="Watch the film">观看介绍片</span><span class="sub">0:32</span></button>
           </div>
-          <p class="hero-meta reveal" style="--delay:.2s" data-download-note data-en="Windows x64 · Mac with Apple silicon · MIT licensed">Windows x64 · Apple 芯片 Mac · MIT 开源</p>
+          <p class="hero-meta reveal" style="--delay:.2s" data-download-note data-en="Windows x64 · Apple silicon Mac · Android APK">Windows x64 · Apple 芯片 Mac · Android APK</p>
         </div>
 
         <div class="stage reveal" style="--delay:.25s">
@@ -102,13 +101,13 @@
       <div class="wrap">
         <div class="section-head center reveal">
           <span class="eyebrow" data-en="How it works">工作方式</span>
-          <h2 class="h2" data-en="You set the goal.<br>The team does the rest.">你定目标，<br>团队来接力。</h2>
+          <h2 class="h2" data-en="Make a weekend<br>walking guide.">试着做一份<br>周末散步指南。</h2>
         </div>
         <div class="steps">
           <article class="step reveal">
             <span class="step-num">01</span>
             <h3 class="h3" data-en="Say what you need">说出你要的结果</h3>
-            <p data-en="Write it the way you would brief a colleague. No prompts, no workflows to set up.">像跟同事交代工作一样说一句话，不用写提示词，也不用搭流程。</p>
+            <p data-en="Tell Chief who will use the guide, how long the walk should take and what you want to receive.">先说清楚指南给谁看、能走多久、最后要拿到什么。</p>
             <div class="bubble"><span class="me" data-en="Let&#39;s make a weekend guide to the riverfront. Three stops, 90 minutes.">把河岸散步做成一期周末指南。90 分钟，三站就好。</span></div>
           </article>
           <article class="step reveal" style="--delay:.08s">
@@ -120,7 +119,7 @@
           <article class="step reveal" style="--delay:.16s">
             <span class="step-num">03</span>
             <h3 class="h3" data-en="The team delivers">团队接力交付</h3>
-            <p data-en="Members hand work to each other in the group, and Chief checks the result against your goal.">成员在群里接力，每一步都看得见。最后由 Chief 对照目标汇总验收。</p>
+            <p data-en="Check the three stops in walking order and make sure the map is legible in black and white. Request any edits in the same chat.">拿到草稿后，按出发顺序核对三站，看看地图在黑白打印时能否读清。需要改哪一段，直接在群里指出来。</p>
             <div class="bubble"><div class="them"><span class="bot" data-bot="heart:red" style="width:24px;height:24px;flex:none;margin-top:4px"></span><span data-en="I&#39;ll draw the map. Each stop gets a different icon, so it works in black and white too.">我来画地图。用三种形状区分市场、船厂和栈桥，黑白打印也能看清。</span></div></div>
           </article>
         </div>
@@ -132,13 +131,13 @@
       <div class="wrap">
         <div class="section-head center reveal">
           <span class="eyebrow" data-en="Inside the app">客户端实拍</span>
-          <h2 class="h2" data-en="Calm on the surface.<br>A team at work underneath.">界面安静，<br>团队在后台忙碌。</h2>
+          <h2 class="h2" data-en="See the team at work<br>in a group chat.">看看团队怎样<br>在群里交接工作。</h2>
         </div>
         <div class="showcase reveal" data-showcase>
           <div class="tabs" role="tablist" aria-label="客户端截图" data-en-aria-label="App screenshots">
             <button role="tab" type="button" aria-selected="true" data-shot="team" data-caption="一份需求，多位成员在群里接力。" data-caption-en="One request, several bots taking turns in a group chat." data-alt="团队群聊截图" data-alt-en="Group chat screenshot" data-en="Group chat">团队群聊</button>
             <button role="tab" type="button" aria-selected="false" data-shot="groups" data-caption="右键分组，整理成员，或直接用组内 Bot 发起群聊。" data-caption-en="Right-click a section to tidy it up or start a group chat with its bots." data-alt="团队通讯录截图" data-alt-en="Team directory screenshot" data-en="Directory">团队通讯录</button>
-            <button role="tab" type="button" aria-selected="false" data-shot="cloud" data-caption="云端定时任务：电脑关机也照常执行，完成后打开结果接着聊。" data-caption-en="Scheduled cloud tasks run while your computer is off. Open the result and keep chatting." data-alt="云端定时任务截图" data-alt-en="Scheduled cloud tasks screenshot" data-en="Cloud tasks">云端任务</button>
+            <button role="tab" type="button" aria-selected="false" data-shot="cloud" data-caption="早期桌面版中的云端定时任务界面。当前网页版可从云端 Bot 发起任务。" data-caption-en="An earlier desktop view of scheduled cloud tasks. In the current web app, start a task with a cloud bot." data-alt="云端定时任务截图" data-alt-en="Scheduled cloud tasks screenshot" data-en="Cloud tasks">云端任务</button>
             <button role="tab" type="button" aria-selected="false" data-shot="guide" data-caption="三步新手引导：连接模型、认识团队、发出第一条消息。" data-caption-en="A three-step guide: connect a model, meet the team, send your first message." data-alt="新手引导截图" data-alt-en="Getting started screenshot" data-en="Getting started">新手引导</button>
           </div>
           <div class="window">
@@ -154,7 +153,7 @@
       <div class="wrap">
         <div class="section-head reveal">
           <span class="eyebrow" data-en="Built for teamwork">为协作而生</span>
-          <h2 class="h2" data-en="Everything a small team needs.<br>Nothing it doesn't.">小团队需要的都在，<br>多余的一样没有。</h2>
+          <h2 class="h2" data-en="Who should handle<br>your next task?">下一件事，<br>交给哪个 Bot？</h2>
         </div>
         <div class="bento">
           <a class="card wide span-4 reveal" href="features.html#group">
@@ -166,18 +165,18 @@
             <img class="art" src="assets/art/team.webp" alt="" width="1400" height="953" loading="lazy">
           </a>
           <a class="card span-2 reveal" href="features.html#goal" style="--delay:.06s">
-            <h3 class="h3" data-en="Goals you can check">能验收的 Goal</h3>
-            <p data-en="Write roles and acceptance criteria once. Chief reviews every stage against them.">写下分工和验收标准，Chief 按阶段逐项核对。</p>
+            <h3 class="h3" data-en="Set a group Goal">写下交付要求</h3>
+            <p data-en="Put the route, walking times and printable map in the group Goal. Check each item against the draft.">把路线、步程和可打印地图写进群 Goal，收稿时逐项核对。</p>
             <img class="art" src="assets/art/goal.webp" alt="" width="880" height="900" loading="lazy">
           </a>
           <a class="card span-2 reveal" href="features.html#cloud">
-            <h3 class="h3" data-en="Works while you sleep">关机也在干活</h3>
-            <p data-en="Scheduled cloud tasks run with your computer off. Pick up the chat on another device.">云端定时任务在电脑关机后照常执行，换台电脑接着聊。</p>
+            <h3 class="h3" data-en="Check pages on a cloud computer">在云电脑上核对网页</h3>
+            <p data-en="Give a cloud bot the links in the web app. If a site asks you to sign in, take control of the screen, sign in and hand it back.">在网页版把链接交给云端 Bot。需要登录时打开电脑画面，接管完成验证，再交还给 Bot。</p>
             <img class="art" src="assets/art/cloud.webp" alt="" width="780" height="900" loading="lazy">
           </a>
           <a class="card span-2 reveal" href="features.html#local" style="--delay:.06s">
-            <h3 class="h3" data-en="Your files stay local">文件留在本机</h3>
-            <p data-en="Local bots work with the files on this computer. Attachments and tool logs never leave it unless you choose.">本机 Bot 直接处理这台电脑里的文件，附件和工具记录默认留在本机。</p>
+            <h3 class="h3" data-en="Work with local files">整理这台电脑上的文件</h3>
+            <p data-en="Give a local desktop bot your meeting notes. Ask for an action list by owner, then open the result to check it.">把会议记录发给桌面端的本机 Bot，让它按负责人整理待办，再打开结果核对。</p>
             <img class="art" src="assets/art/local.webp" alt="" width="900" height="859" loading="lazy">
           </a>
           <a class="card span-2 reveal" href="features.html#models" style="--delay:.12s">
@@ -185,11 +184,11 @@
             <p data-en="Sign in with Lynxce, connect another provider, or run a model on your own machine.">登录灵策智算账号、接入其他模型服务，或者用本机模型。</p>
             <img class="art" src="assets/art/models.webp" alt="" width="900" height="899" loading="lazy">
           </a>
-          <div class="card ink span-3 reveal">
-            <h3 class="h3" data-en="Always within reach">随叫随到</h3>
-            <p data-en="Search every bot, group and past chat in a keystroke, quote an earlier message, or keep Chief floating on your desktop.">一个快捷键搜遍成员、群聊和历史私聊；引用对话找回原话；桌面悬浮球让 Chief 一直在手边。</p>
-            <div class="keys"><span class="kbd" style="background:transparent;color:inherit">Ctrl</span><span class="kbd" style="background:transparent;color:inherit">K</span></div>
-          </div>
+          <a class="card ink span-3 reveal" href="market.html?bot=listing-copywriter">
+            <h3 class="h3" data-en="Draft a product listing">为新品写上架文案</h3>
+            <p data-en="Give Listing Copywriter the product specs and the store you sell on. Ask for a title and three selling points, then check each claim against the specs.">把产品参数和销售平台发给「商品上新文案」，请它写一个标题、三个卖点，再对照参数核实每一句。</p>
+            <span data-en="View the market template →">查看市场模板 →</span>
+          </a>
           <div class="card span-3 reveal" style="--delay:.06s">
             <h3 class="h3" data-en="Open source, MIT licensed">开源，MIT 协议</h3>
             <p data-en="Built on Tencent Cloud's open-source Octop. Read the code, report an issue with steps to reproduce, or send a pull request.">基于腾讯云开源的 Octop 打造。欢迎阅读实现、提交问题和复现步骤，或者直接贡献代码。</p>
@@ -223,7 +222,7 @@
         <div class="section-head center reveal">
           <span class="eyebrow" data-en="32-second film">32 秒介绍片</span>
           <h2 class="h2" data-en="One weekend guide, a whole team on it.">一期周末指南，一整个团队来做。</h2>
-          <p class="lead" data-en="Tell Chief once. Rae walks the route, Lin writes the opener, Peach draws the map, and scheduled work keeps running in the cloud with your computer off.">跟 Chief 说一句，阿澄去走路线，林墨写开篇，桃子画地图；定好的任务放到云端，电脑关了也照常跑。</p>
+          <p class="lead" data-en="In this example, Rae checks the route, Lin writes the introduction and Peach draws the map. Watch them put the guide together.">片中，阿澄核对路线，林墨写开篇，桃子画地图。看看三个人怎样在群里把指南拼完整。</p>
         </div>
         <button class="film reveal" type="button" data-film aria-label="播放介绍片" data-en-aria-label="Play the film">
           <img src="media/intro-zh.webp?v=2" data-lang-src="media/intro-{lang}.webp?v=2" alt="" width="1280" height="720" loading="lazy">
@@ -238,8 +237,8 @@
     <section class="wrap">
       <div class="cta reveal">
         <img class="app-icon" src="assets/app-icon.webp" alt="" width="96" height="96">
-        <h2 class="h2" data-en="Give Chief a seat on your desktop.">把 Chief 带到你的桌面。</h2>
-        <p class="lead" data-en="Free for Windows and Macs with Apple silicon. Connect a model, then hand Chief your first task.">Windows 和 Apple 芯片 Mac 免费下载。连接一个模型，就能把第一件事交给 Chief。</p>
+        <h2 class="h2" data-en="Start your first task with Chief.">和 Chief 开始第一件事。</h2>
+        <p class="lead" data-en="Start in your browser with a Lynxce account. To work with files on this computer, download the desktop app.">手边只有浏览器？登录网页版就能开始。要处理这台电脑上的文件，可以下载桌面客户端。</p>
         <div class="hero-cta">
           <a class="btn btn-primary btn-lg" href="download.html" data-download-primary><span data-en="Download">下载</span></a>
           <a class="btn btn-ghost btn-lg" href="https://bot.lynxce.cn" data-en="Use the web app">使用网页版</a>
@@ -254,13 +253,13 @@
       <div class="footer-grid">
         <div class="footer-brand">
           <a class="brand" href="index.html"><img src="assets/app-icon.webp" alt="" width="30" height="30">Octop Bot</a>
-          <p data-en="One sentence, a whole AI team. A free, open-source desktop app.">一句话，组建你的 AI 团队。免费开源的桌面客户端。</p>
+          <p data-en="An open-source AI team led by Chief.">由 Chief 带队的开源 AI 团队。</p>
         </div>
         <div>
           <h4 data-en="Product">产品</h4>
           <ul>
-            <li><a href="features.html" data-en="Features">功能</a>
-        <a href="market.html" data-en="Bot Market">Bot 市场</a></li>
+            <li><a href="features.html" data-en="Features">功能</a></li>
+            <li><a href="market.html" data-en="Bot Market">Bot 市场</a></li>
             <li><a href="pricing.html" data-en="Pricing">定价</a></li>
             <li><a href="download.html" data-en="Download">下载</a></li>
             <li><a href="https://bot.lynxce.cn" data-en="Web app ↗">网页版 ↗</a></li>
