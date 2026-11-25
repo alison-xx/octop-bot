@@ -63,8 +63,10 @@ function ThreadHistory({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const listPending = useRef(false);
   useEffect(() => {
     let current = true;
+    listPending.current = true;
     setLoading(true);
     setError("");
     void octopThreadsApi
@@ -76,7 +78,10 @@ function ThreadHistory({
         if (current) setError(apiErrorMessage(e, t("octopBot.failed"), t));
       })
       .finally(() => {
-        if (current) setLoading(false);
+        if (current) {
+          listPending.current = false;
+          setLoading(false);
+        }
       });
     return () => {
       current = false;
@@ -84,7 +89,8 @@ function ThreadHistory({
   }, [agentId, limit, t, attempt]);
   useEffect(() => {
     const refresh = () => {
-      if (document.visibilityState === "visible") setAttempt((n) => n + 1);
+      if (!listPending.current && document.visibilityState === "visible")
+        setAttempt((n) => n + 1);
     };
     const timer = window.setInterval(refresh, 20000);
     document.addEventListener("visibilitychange", refresh);

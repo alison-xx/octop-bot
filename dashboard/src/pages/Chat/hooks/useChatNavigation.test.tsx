@@ -97,7 +97,10 @@ describe("useChatNavigation stale thread", () => {
     );
 
     await waitFor(() => {
-      expect(ensureThreadInList).toHaveBeenCalledWith("thr_foreign");
+      expect(ensureThreadInList).toHaveBeenCalledWith(
+        "thr_foreign",
+        expect.any(Function),
+      );
       expect(navigateMock).toHaveBeenCalledWith("/chat/agent-new", {
         replace: true,
       });
@@ -128,7 +131,10 @@ describe("useChatNavigation stale thread", () => {
     );
 
     await waitFor(() => {
-      expect(ensureThreadInList).toHaveBeenCalledWith("thr_maybe");
+      expect(ensureThreadInList).toHaveBeenCalledWith(
+        "thr_maybe",
+        expect.any(Function),
+      );
     });
     expect(navigateMock).not.toHaveBeenCalledWith(
       "/chat/agent-new",
@@ -160,7 +166,10 @@ describe("useChatNavigation stale thread", () => {
     );
 
     await waitFor(() => {
-      expect(ensureThreadInList).toHaveBeenCalledWith("thr_ok");
+      expect(ensureThreadInList).toHaveBeenCalledWith(
+        "thr_ok",
+        expect.any(Function),
+      );
     });
     expect(navigateMock).not.toHaveBeenCalled();
   });

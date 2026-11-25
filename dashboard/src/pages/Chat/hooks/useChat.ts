@@ -1267,17 +1267,17 @@ export function useChat(
           return false;
         page = await loadThreadHistory(agentId, key, params);
       }
+      if (
+        loadGenRef.current !== gen ||
+        !chatStore.isHistoryReadCurrent(key, epoch)
+      )
+        return false;
       if (page.projectionLoading) {
         failedHistoryOperation.current = "older";
         setHistoryError(true);
         return false;
       }
       const { messages: older, hasMore, nextOffset, nextCursor } = page;
-      if (
-        loadGenRef.current !== gen ||
-        !chatStore.isHistoryReadCurrent(key, epoch)
-      )
-        return false;
       chatStore.prependHistoryMessages(key, older, {
         hasMore,
         nextOffset,

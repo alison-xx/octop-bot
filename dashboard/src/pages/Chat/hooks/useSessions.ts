@@ -346,13 +346,16 @@ function visibleSessionsForAgent(
   sessions: Session[],
   agentId: string,
   activeThreadId?: string,
+  hasMore = false,
 ): Session[] {
   const limit = getLoadedLimit(agentId);
   let visible = sessions.slice(0, limit);
   if (!activeThreadId || visible.some((s) => s.id === activeThreadId)) {
     return visible;
   }
-  const active = sessions.find((s) => s.id === activeThreadId);
+  const active =
+    sessions.find((s) => s.id === activeThreadId) ??
+    (hasMore ? _sessions.find((s) => s.id === activeThreadId) : undefined);
   if (!active) return visible;
   visible = [active, ...visible.filter((s) => s.id !== activeThreadId)];
   return visible.slice(0, limit);
@@ -386,7 +389,7 @@ function applySessionPage(
   _loadedLimitByAgent.set(agentId, limit);
   _hasMore = hasMore;
   setModuleSessions(
-    visibleSessionsForAgent(allSessions, agentId, activeThreadId),
+    visibleSessionsForAgent(allSessions, agentId, activeThreadId, hasMore),
   );
 }
 
@@ -461,7 +464,7 @@ export function useSessions(agentId: string | null) {
         );
         if (_storeAgentId !== agentId) return _sessions;
         applySessionPage(valid, more, limit, agentId, activeThreadId);
-        return visibleSessionsForAgent(valid, agentId, activeThreadId);
+        return _sessions;
       } catch {
         return _sessions;
       } finally {
@@ -512,16 +515,38 @@ export function useSessions(agentId: string | null) {
   );
 
   const ensureThreadInList = useCallback(
-    async (threadId: string): Promise<ThreadProbeResult> => {
+    async (
+      threadId: string,
+      stillCurrent: () => boolean = () => true,
+    ): Promise<ThreadProbeResult> => {
       if (!agentId || !threadId) return "missing";
       if (_sessions.some((s) => s.id === threadId)) return "found";
       try {
         const page = await octopThreadsApi.history(agentId, threadId, {
           limit: 1,
         });
-        return _storeAgentId === agentId && page.thread_id === threadId
-          ? "found"
-          : "unknown";
+        if (page.thread_id !== threadId) return "unknown";
+        // Older servers list by limit only. Read the actual sidebar row, including
+        // ownership and composer settings, before making a deep link writable.
+        let limit = Math.max(50, getLoadedLimit(agentId));
+        while (_storeAgentId === agentId && stillCurrent()) {
+          const result = await fetchSessionsPage(agentId, limit);
+          if (_storeAgentId !== agentId || !stillCurrent()) return "unknown";
+          const active = result.sessions.find((s) => s.id === threadId);
+          if (active) {
+            setModuleSessions((current) =>
+              visibleSessionsForAgent(
+                [...current.filter((s) => s.id !== threadId), active],
+                agentId,
+                threadId,
+              ),
+            );
+            return "found";
+          }
+          if (!result.hasMore) break;
+          limit *= 2;
+        }
+        return "unknown";
       } catch (error) {
         return _storeAgentId === agentId &&
           error instanceof ApiResponseError &&

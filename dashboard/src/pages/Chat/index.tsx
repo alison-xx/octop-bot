@@ -664,7 +664,7 @@ function ChatPageInner() {
     composerSession?.conversationMode,
     composerSession?.hitlPolicy,
     composerSession?.sessionMode,
-    composerSession?.owned !== false,
+    !activeThreadId || (!!composerSession && composerSession.owned !== false),
   );
 
   const personalModel =
@@ -815,7 +815,12 @@ function ChatPageInner() {
     ],
   );
 
+  const activeThreadReady =
+    !activeThreadId ||
+    (!!composerSession &&
+      conversationMode === (composerSession.conversationMode ?? "craft"));
   const { handleSend } = useChatSend({
+    activeThreadReady,
     resolvedAgentId,
     activeThreadId,
     selectedModel,
@@ -2173,6 +2178,7 @@ function ChatPageInner() {
               holdSend={membersStillTalking}
               isTeam={isTeamChat}
               disabled={
+                !activeThreadReady ||
                 !agentChatReady ||
                 noAgents ||
                 memoryMaintBlocking ||

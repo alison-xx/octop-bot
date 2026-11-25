@@ -171,18 +171,45 @@ describe("useSessions agent switch", () => {
     expect(probe).toBe("unknown");
   });
 
-  it("retains a deep link to a thread beyond the list probe", async () => {
-    listMock.mockResolvedValue(
-      Array.from({ length: 51 }, (_, i) => threadRow("recent-" + i)),
-    );
-    historyMock.mockResolvedValue({ thread_id: "older", messages: [] });
-    const { result } = renderHook(() => useSessions("agent-new"));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(await result.current.ensureThreadInList("older")).toBe("found");
-    expect(historyMock).toHaveBeenCalledWith("agent-new", "older", {
-      limit: 1,
-    });
-  });
+  it.each(["ask", "plan"])(
+    "retains a shared deep thread's %s mode across a sidebar refresh",
+    async (mode) => {
+      const rows = [
+        ...Array.from({ length: 61 }, (_, i) => threadRow("recent-" + i)),
+        {
+          ...threadRow("older"),
+          owned: false,
+          conversation_mode: mode,
+          model_ref: "model/saved",
+        },
+      ];
+      listMock.mockImplementation(async (_agent, limit) =>
+        rows.slice(0, limit),
+      );
+      historyMock.mockResolvedValue({ thread_id: "older", messages: [] });
+      const { result } = renderHook(() => useSessions("agent-new"));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await act(async () => {
+        expect(await result.current.ensureThreadInList("older")).toBe("found");
+      });
+      const saved = {
+        id: "older",
+        owned: false,
+        conversationMode: mode,
+        modelRef: "model/saved",
+      };
+      expect(result.current.sessions).toContainEqual(
+        expect.objectContaining(saved),
+      );
+      await act(async () => {
+        await result.current.fetchSessions("older");
+      });
+      expect(result.current.sessions).toHaveLength(10);
+      expect(result.current.sessions).toContainEqual(
+        expect.objectContaining(saved),
+      );
+    },
+  );
 
   it("ensureThreadInList returns missing when probe confirms absence", async () => {
     historyMock.mockRejectedValueOnce(new ApiResponseError(404, null, null));

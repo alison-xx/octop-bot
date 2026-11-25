@@ -124,6 +124,47 @@ describe("history failures", () => {
       expect.objectContaining({ cursor: "pinned-boundary" }),
     );
   });
+  it("ignores an old thread's final pending projection after switching threads", async () => {
+    chatStore.setHistoryPage(thread, [], {
+      hasMore: true,
+      nextOffset: 25,
+      nextCursor: "boundary",
+    });
+    const projecting = {
+      thread_id: thread,
+      messages: [],
+      history_loading: true,
+      history_retry_after_ms: 500,
+    };
+    const last = deferredHistory();
+    let calls = 0;
+    vi.spyOn(octopThreadsApi, "history").mockImplementation(() =>
+      ++calls === 21 ? last.promise : Promise.resolve(projecting),
+    );
+    const { result, rerender } = renderHook(({ id }) => useChat(id, "agent"), {
+      initialProps: { id: thread },
+    });
+    let request!: Promise<boolean>;
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        request = result.current.loadMoreHistory();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10000);
+      });
+      expect(calls).toBe(21);
+      rerender({ id: "other-history-thread" });
+      await act(async () => {
+        last.resolve(projecting);
+        expect(await request).toBe(false);
+      });
+      expect(result.current.historyError).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("retries the failed older page with the same cursor", async () => {
     chatStore.setHistoryPage(
       thread,

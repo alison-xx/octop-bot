@@ -23,7 +23,10 @@ interface UseChatNavigationParams {
   prefillInputRef: React.MutableRefObject<string>;
   loadHistory: (threadId: string) => Promise<void>;
   clearMessages: () => void;
-  ensureThreadInList: (threadId: string) => Promise<ThreadProbeResult>;
+  ensureThreadInList: (
+    threadId: string,
+    stillCurrent?: () => boolean,
+  ) => Promise<ThreadProbeResult>;
   fetchSessions: (activeId?: string) => Promise<Session[]>;
   refreshAgents: (opts?: { silent?: boolean }) => Promise<void>;
 }
@@ -167,7 +170,7 @@ export function useChatNavigation({
     prefillInputRef,
   ]);
 
-  const ensureThreadAttemptRef = useRef<string | null>(null);
+  const ensureThreadAttemptRef = useRef<symbol | null>(null);
   useLayoutEffect(() => {
     return () => {
       ensureThreadAttemptRef.current = null;
@@ -189,14 +192,18 @@ export function useChatNavigation({
     // Thread missing from the visible page (or list is empty after load).
     // Probe the API — only rewrite the URL when the probe confirms absence.
     // Do not treat a still-loading / failed list as "deleted".
-    const attemptKey = `${resolvedAgentId}:${threadId}`;
-    if (ensureThreadAttemptRef.current === attemptKey) {
+    const attemptKey = Symbol(threadId);
+    if (ensureThreadAttemptRef.current !== null) {
       return;
     }
     ensureThreadAttemptRef.current = attemptKey;
-    void ensureThreadInList(threadId).then((result) => {
+    void ensureThreadInList(
+      threadId,
+      () => ensureThreadAttemptRef.current === attemptKey,
+    ).then((result) => {
       if (ensureThreadAttemptRef.current !== attemptKey) return;
       // Only rewrite when the probe confirms absence — keep URL on found/unknown.
+      if (result === "unknown") ensureThreadAttemptRef.current = null;
       if (result !== "missing") return;
       const preferred = pickPreferredSession(sessions);
       if (preferred) {
