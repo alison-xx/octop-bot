@@ -4,6 +4,7 @@ import { Monitor } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { botCloudComputerApi } from "../../api/modules/botCloudComputer";
 import { apiErrorMessage } from "../../utils/apiError";
+import { expandForHandoff } from "./CloudComputerFloat";
 import CloudComputerScreen from "./CloudComputerScreen";
 
 /**
@@ -22,7 +23,8 @@ export default function CloudComputerHandoff({ botId }: { botId: string }) {
     setBusy(true);
     setError("");
     try {
-      await botCloudComputerApi.takeover(botId, true);
+      const status = await botCloudComputerApi.takeover(botId, true);
+      if (expandForHandoff(botId, status)) return;
       const ticket = await botCloudComputerApi.openScreen(botId);
       setScreen({ ws: ticket.ws_path, session: ticket.session });
     } catch (e) {
