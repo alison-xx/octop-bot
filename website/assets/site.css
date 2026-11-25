@@ -1517,13 +1517,16 @@ a.card:hover,
 .price-tabs {
   position: relative;
   max-width: 100%;
-  display: inline-flex;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   padding: 4px;
   border-radius: 14px;
   background: var(--bg-soft);
 }
 .price-tabs button {
   position: relative;
+  z-index: 1;
   min-height: 40px;
   padding: 8px 20px;
   border: 0;
@@ -1540,18 +1543,20 @@ a.card:hover,
 }
 .segment-indicator {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
-  left: 0;
-  width: 1px;
+  inset: 4px auto 4px 4px;
+  width: calc((100% - 8px) / 3);
   border-radius: 11px;
   background: var(--surface);
   box-shadow: var(--shadow-sm);
-  transform-origin: left center;
   pointer-events: none;
+  transition: transform 200ms var(--ease);
 }
-.segment-indicator.ready {
-  transition: transform 220ms var(--ease), width 220ms var(--ease);
+.price-tabs button:nth-child(2)[aria-selected="true"] ~ .segment-indicator,
+.cycle button:nth-child(2)[aria-pressed="true"] ~ .segment-indicator {
+  transform: translateX(100%);
+}
+.price-tabs button:nth-child(3)[aria-selected="true"] ~ .segment-indicator {
+  transform: translateX(200%);
 }
 .price-tabs button:focus-visible,
 .cycle button:focus-visible {
@@ -1566,7 +1571,7 @@ a.card:hover,
   animation: pricing-enter 220ms cubic-bezier(.2,.8,.2,1);
 }
 @media (max-width: 560px) {
-  .price-tabs { display: flex; width: 100%; }
+  .price-tabs { display: grid; width: 100%; }
   .price-tabs button { flex: 1; min-width: 0; padding-inline: 4px; font-size: 13px; }
 }
 .cycle-wrap {
@@ -1575,7 +1580,9 @@ a.card:hover,
 }
 .cycle {
   position: relative;
-  display: inline-flex;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 100%;
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1583,6 +1590,7 @@ a.card:hover,
 }
 .cycle button {
   position: relative;
+  z-index: 1;
   min-height: 40px;
   padding: 7px 16px;
   border: 0;
@@ -1594,8 +1602,7 @@ a.card:hover,
   cursor: pointer;
 }
 .cycle .segment-indicator {
-  top: 3px;
-  bottom: 3px;
+  width: calc((100% - 8px) / 2);
   border-radius: 999px;
   background: var(--ink);
   box-shadow: none;

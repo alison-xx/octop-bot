@@ -143,6 +143,7 @@
 
   let pricing = null;
   let catalog = null;
+  let ratesVisible = false;
   let cycle = "month";
   let pack = 50;
   let customAmount = "";
@@ -167,10 +168,24 @@
     return li;
   }
 
-  function renderPlans(animate = false) {
+  function updateBilling(card, plan) {
+    const amount = card.querySelector(".amount");
+    const renew = card.querySelector(".renew");
+    const yearly = cycle === "year" && plan.yearly;
+    amount.replaceChildren(node("span", "currency", "¥"), node("strong", "", num(yearly ? plan.yearly : plan.monthly)));
+    if (plan.monthly) amount.append(node("small", "", yearly ? t("/年", "/yr") : t("/月", "/mo")));
+    if (!plan.monthly) renew.textContent = t("免费", "Free");
+    else if (yearly) {
+      renew.replaceChildren(node("s", "", money(plan.monthly * 12)), document.createTextNode(
+        " · " + t(`折合 ${money(Math.round(plan.yearly / 12))}/月`, `${money(Math.round(plan.yearly / 12))}/mo`) +
+        " · " + t("手动续费", "renew by hand"),
+      ));
+    } else renew.textContent = t("到期前 3 天提醒，手动续费", "Reminder 3 days before it ends; renew by hand");
+  }
+
+  function renderPlans() {
     const box = $("#plans");
     if (!box || !pricing) return;
-    const m = media();
     const expanded = new Set([...box.querySelectorAll("details[open]")].map((details) => details.dataset.plan));
     box.replaceChildren(
       ...pricing.plans.map((plan) => {
@@ -180,29 +195,10 @@
         if (plan.tag) header.append(node("span", "tag", pick(plan.tag)));
         card.append(header);
 
-        const amount = node("div", "amount");
-        const yearly = cycle === "year" && plan.yearly;
-        amount.append(node("span", "currency", "¥"), node("strong", "", num(yearly ? plan.yearly : plan.monthly)));
-        if (plan.monthly) amount.append(node("small", "", yearly ? t("/年", "/yr") : t("/月", "/mo")));
-        card.append(amount);
-
-        const renew = node("div", "renew");
-        if (plan.monthly === 0) renew.textContent = t("免费", "Free");
-        else if (yearly) {
-          renew.append(
-            node("s", "", money(plan.monthly * 12)),
-            document.createTextNode(
-              " · " + t(`折合 ${money(Math.round(plan.yearly / 12))}/月`, `${money(Math.round(plan.yearly / 12))}/mo`) +
-                " · " + t("手动续费", "renew by hand"),
-            ),
-          );
-        } else renew.textContent = t("到期前 3 天提醒，手动续费", "Reminder 3 days before it ends; renew by hand");
-        card.append(renew);
+        card.append(node("div", "amount"), node("div", "renew"));
+        updateBilling(card, plan);
 
         const credits = node("div", "credits");
-        if (animate) {
-          amount.classList.add("pricing-enter");
-        }
         const main = node("div", "row");
         if (plan.creditsNote) main.append(node("span", "", pick(plan.creditsNote)));
         else {
@@ -235,21 +231,11 @@
         details.append(node("summary", "", t("全部权益", "All benefits")));
         const perks = node("ul", "perks");
         perks.append(perkRow(t("文本模型", "Text models"), t("全部可用模型", "All available models")));
-        const images = m.perImage ? Math.floor(plan.credits / m.perImage) : null;
-        const videos = m.perSecond ? Math.floor(plan.credits / (m.perSecond * VIDEO_SECONDS)) : null;
-        perks.append(
-          perkRow(
-            t("作图", "Images"),
-            pick(plan.image) + (images !== null ? t(` · 约 ${num(images)} 张`, ` · about ${num(images)}`) : ""),
-          ),
-          perkRow(
-            t("做视频", "Videos"),
-            pick(plan.video) +
-              (videos !== null
-                ? t(` · 约 ${num(videos)} 条 ${VIDEO_SECONDS} 秒视频`, ` · about ${num(videos)} × ${VIDEO_SECONDS}s`)
-                : ""),
-          ),
-        );
+        const imageRow = perkRow(t("作图", "Images"), pick(plan.image));
+        const videoRow = perkRow(t("做视频", "Videos"), pick(plan.video));
+        imageRow.className = "plan-image";
+        videoRow.className = "plan-video";
+        perks.append(imageRow, videoRow);
         for (const [key, value] of plan.perks) {
           const row = perkRow(t(...PERK_LABELS[key]), pick(value));
           if (key === "support" && value && value.zh === "社群") {
@@ -268,6 +254,25 @@
         return card;
       }),
     );
+    updateEstimates();
+  }
+
+  function updateEstimates() {
+    if (!pricing) return;
+    const m = media();
+    document.querySelectorAll("#plans .plan").forEach((card, index) => {
+      const plan = pricing.plans[index];
+      const images = num(Math.floor(plan.credits / m.perImage));
+      const videos = num(Math.floor(plan.credits / (m.perSecond * VIDEO_SECONDS)));
+      card.querySelector(".plan-image b").textContent = pick(plan.image) +
+        (m.perImage ? t(` · 约 ${images} 张`, ` · about ${images}`) : "");
+      card.querySelector(".plan-video b").textContent = pick(plan.video) +
+        (m.perSecond ? t(` · 约 ${videos} 条 ${VIDEO_SECONDS} 秒视频`, ` · about ${videos} × ${VIDEO_SECONDS}s`) : "");
+    });
+    updatePlanNote(m);
+  }
+
+  function updatePlanNote(m) {
     const note = $("#plans-note");
     if (note) {
       note.textContent = m.imageName
@@ -279,23 +284,27 @@
       note.textContent += " " + t("会员积分仅限 Octop 使用。", "Membership credits are for Octop Bot only.");
       if (cycle === "year") note.textContent += " " + t("年付升档请联系客服。", "Contact support to upgrade a yearly plan.");
     }
-    document.querySelectorAll("#cycle button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.cycle === cycle)));
   }
 
   /* ---------- packs ---------- */
   function renderPacks() {
     const box = $("#packs");
     if (!box || !pricing) return;
-    box.replaceChildren(
+    if (!box.childElementCount) box.append(
       ...pricing.packs.map((yuan) => {
         const b = node("button", "pack");
         b.type = "button";
         b.dataset.yuan = String(yuan);
-        b.setAttribute("aria-pressed", String(!customAmount && yuan === pack));
-        b.append(node("b", "", money(yuan)), node("span", "", "✦ " + t(`${num(yuan * pricing.creditsPerYuan)} 积分`, `${num(yuan * pricing.creditsPerYuan)} credits`)));
+        b.append(node("b", "", money(yuan)), node("span"));
         return b;
       }),
     );
+    for (const button of box.children) {
+      const amount = Number(button.dataset.yuan);
+      const credits = num(amount * pricing.creditsPerYuan);
+      button.setAttribute("aria-pressed", String(!customAmount && amount === pack));
+      button.querySelector("span").textContent = t(`${credits} 积分`, `${credits} credits`);
+    }
     const { min, max } = pricing.customPack;
     const custom = Number(customAmount);
     const customOk = customAmount !== "" && Number.isInteger(custom) && custom >= min && custom <= max;
@@ -330,6 +339,7 @@
   /* ---------- unit prices and model price table ---------- */
   let modelTab = "text";
   function renderRates() {
+    if (!ratesVisible) return;
     if (!pricing) return;
     const m = media();
     const r = pricing.rates;
@@ -424,25 +434,6 @@
 
   /* ---------- views: plans or packs ---------- */
   const VIEW_HASH = { plans: "", packs: "#credits", enterprise: "#enterprise" };
-  const segments = [$("#price-tabs"), $("#cycle")];
-  for (const group of segments) {
-    const indicator = node("span", "segment-indicator");
-    indicator.setAttribute("aria-hidden", "true");
-    group.prepend(indicator);
-  }
-  function positionIndicator(group) {
-    const active = group.querySelector('[aria-selected="true"], [aria-pressed="true"]');
-    if (!active || !active.offsetWidth) return;
-    const indicator = group.querySelector(".segment-indicator");
-    indicator.style.width = `${active.offsetWidth}px`;
-    indicator.style.transform = `translateX(${active.offsetLeft}px)`;
-    if (!indicator.classList.contains("ready")) {
-      requestAnimationFrame(() => requestAnimationFrame(() => indicator.classList.add("ready")));
-    }
-  }
-  function positionIndicators() {
-    segments.forEach(positionIndicator);
-  }
   let currentView = null;
   function showView(view, animate = true) {
     const changed = currentView !== view;
@@ -456,12 +447,10 @@
       panel.hidden = name !== view;
       panel.classList.remove("pricing-enter");
       if (name === view && changed && animate) {
-        void panel.offsetWidth;
-        panel.classList.add("pricing-enter");
+          panel.classList.add("pricing-enter");
       }
     }
     currentView = view;
-    positionIndicators();
   }
 
   document.addEventListener("click", (e) => {
@@ -474,8 +463,10 @@
     if (c && cycle !== c.dataset.cycle) {
       cycle = c.dataset.cycle;
       document.querySelectorAll("#cycle button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.cycle === cycle)));
-      positionIndicator($("#cycle"));
-      renderPlans(true);
+      if (pricing) {
+        document.querySelectorAll("#plans .plan").forEach((card, index) => updateBilling(card, pricing.plans[index]));
+        updatePlanNote(media());
+      }
     }
     const p = e.target.closest("button.pack[data-yuan]");
     if (p) {
@@ -539,8 +530,8 @@
     customAmount = e.target.value.trim();
     renderPacks();
   });
-  $("#price-tabs").addEventListener("keydown", (e) => {
-    const buttons = [...$("#price-tabs").querySelectorAll('[role="tab"]')];
+  function switchWithKeyboard(e) {
+    const buttons = [...e.currentTarget.querySelectorAll("button")];
     const index = buttons.indexOf(e.target);
     if (index < 0) return;
     let next;
@@ -552,40 +543,72 @@
     e.preventDefault();
     buttons[next].focus();
     buttons[next].click();
-  });
+  }
+  $("#price-tabs").addEventListener("keydown", switchWithKeyboard);
+  $("#cycle").addEventListener("keydown", switchWithKeyboard);
   document.addEventListener("langchange", () => {
     renderAll();
-    positionIndicators();
   });
-  window.addEventListener("resize", positionIndicators);
-  document.fonts.ready.then(positionIndicators);
-  document.fonts.addEventListener("loadingdone", positionIndicators);
   window.addEventListener("hashchange", () => {
     const view = Object.keys(VIEW_HASH).find((name) => VIEW_HASH[name] === location.hash);
     if (view) showView(view);
   });
   showView(Object.keys(VIEW_HASH).find((name) => VIEW_HASH[name] === location.hash) || "plans", false);
-  window.OctopAuth.ready.then(async () => { await window.OctopAuth.redeemHash("recharge"); renderPlans(); renderPacks(); });
+  window.OctopAuth.ready.then(async () => {
+    await window.OctopAuth.redeemHash("recharge");
+    if (pricing && window.OctopAuth.config.checkoutEnabled) renderPlans();
+    renderPacks();
+  });
 
   const getJson = (url, timeoutMs = 8000) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    return fetch(url, { cache: "no-cache", signal: ctrl.signal })
+    return fetch(url, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .finally(() => clearTimeout(timer));
   };
-  // Plans render as soon as the finalized prices arrive; image and video counts fill in when the
-  // model prices do (live, or the bundled copy if Lynxce is slow or unreachable).
-  getJson("data/pricing.json?v=2").then((plans) => {
-    pricing = plans;
-    renderAll();
-  });
-  getJson(CATALOG_URL, 5000)
-    .then((body) => (body && body.code === 0 && body.data ? body.data : Promise.reject("bad")))
-    .catch(() => getJson("data/pricing-catalog.json").then((body) => body.data))
-    .then((models) => {
-      catalog = models;
+  async function loadPlans() {
+    try {
+      pricing = await getJson("data/pricing.json?v=2");
       renderAll();
-    })
-    .catch(() => {});
+    } catch {
+      const retry = node("button", "btn btn-ghost", t("重新加载套餐", "Reload plans"));
+      retry.type = "button";
+      retry.addEventListener("click", loadPlans, { once: true });
+      $("#plans").replaceChildren(retry);
+    }
+  }
+
+  loadPlans();
+  // The local snapshot supplies estimates without waiting for the cross-origin catalog.
+  const localCatalog = getJson("data/pricing-catalog.json").then((body) => {
+    catalog = body.data;
+    updateEstimates();
+  }).catch(() => {});
+
+  async function showRates() {
+    ratesVisible = true;
+    await localCatalog;
+    renderRates();
+    try {
+      const live = await getJson(CATALOG_URL, 5000);
+      if (live?.code === 0 && live.data && JSON.stringify(live.data) !== JSON.stringify(catalog)) {
+        catalog = live.data;
+        updateEstimates();
+        renderRates();
+      }
+    } catch {
+      // The local snapshot remains available.
+    }
+  }
+  if ("IntersectionObserver" in window) {
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      observer.disconnect();
+      showRates();
+    }, { rootMargin: "320px" });
+    observer.observe($("#rates"));
+  } else {
+    showRates();
+  }
 })();

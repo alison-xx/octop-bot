@@ -17,10 +17,11 @@
   <link rel="canonical" href="https://octop-bot.lynxce.cn/pricing.html">
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="stylesheet" href="assets/site.css?v=20">
+  <link rel="preload" href="data/pricing.json?v=2" as="fetch" crossorigin>
+  <link rel="stylesheet" href="assets/site.css?v=21">
   <script src="assets/auth.js?v=2" defer></script>
   <script src="assets/site.js?v=17" defer></script>
-  <script src="assets/pricing.js?v=9" defer></script>
+  <script src="assets/pricing.js?v=10" defer></script>
 </head>
 <body>
   <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
@@ -74,6 +75,7 @@
         <button type="button" id="tab-plans" role="tab" aria-controls="v-plans" data-view="plans" aria-selected="true" data-en="Membership">会员套餐</button>
         <button type="button" id="tab-packs" role="tab" aria-controls="v-packs" data-view="packs" aria-selected="false" tabindex="-1" data-en="Credit packs">加油包</button>
         <button type="button" id="tab-enterprise" role="tab" aria-controls="v-enterprise" data-view="enterprise" aria-selected="false" tabindex="-1" data-en="Enterprise">企业定制</button>
+          <span class="segment-indicator" aria-hidden="true"></span>
       </div>
     </section>
 
@@ -82,6 +84,7 @@
         <div class="cycle" id="cycle" role="group" aria-label="付款周期" data-en-aria-label="Billing period">
           <button type="button" data-cycle="month" aria-pressed="true" data-en="Monthly">月付</button>
           <button type="button" data-cycle="year" aria-pressed="false" data-en="Yearly &lt;em&gt;10% off for now&lt;/em&gt;">年付<em>限时 9 折</em></button>
+          <span class="segment-indicator" aria-hidden="true"></span>
         </div>
       </div>
       <div class="plans" id="plans"></div>
