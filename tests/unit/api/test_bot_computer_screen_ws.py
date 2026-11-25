@@ -296,31 +296,14 @@ def test_release_takeover_if_held_checks_raw_state(monkeypatch: pytest.MonkeyPat
     )  # type: ignore[arg-type]
     record = ComputerRecord(agent_id="bot-a", user_id=7)
     saved: list[ComputerRecord] = []
-    held: list[str] = []
-    real_lock = manager._lock
-
-    class Tracking:
-        """The agent's lock, noting while it is held (an RLock has no locked())."""
-
-        def __init__(self, agent_id: str) -> None:
-            self.agent_id, self.inner = agent_id, real_lock(agent_id)
-
-        def __enter__(self) -> None:
-            self.inner.acquire()
-            held.append(self.agent_id)
-
-        def __exit__(self, *exc: object) -> None:
-            held.remove(self.agent_id)
-            self.inner.release()
-
-    monkeypatch.setattr(manager, "_lock", Tracking)
+    lock = manager._lock("bot-a")
 
     def read(*args: Any) -> ComputerRecord:
-        assert "bot-a" in held
+        assert lock._is_owned()  # RLock (manager._lock) has no .locked() on 3.12
         return record
 
     def save(value: ComputerRecord) -> None:
-        assert "bot-a" in held
+        assert lock._is_owned()  # RLock (manager._lock) has no .locked() on 3.12
         saved.append(value)
 
     monkeypatch.setattr(manager, "record", read)
