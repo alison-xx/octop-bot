@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from octop.i18n import tr
 from octop.infra.agents.security.hitl_session import HitlSessionPolicy, ephemeral_hitl_policy
 from octop.infra.agents.turn_resources import attach_turn_knowledge, resolve_turn_mcp
+from octop.infra.bot_tasks.inbox import classify_handoff
 from octop.infra.cloud.computers.handoff import (
     BackgroundComputerTurn,
     background_computer_turn,
@@ -154,12 +155,15 @@ class CronDeliveryService:
             else:
                 await self._bind_latest_thread(session_key)
             session = self._gateway.require_session(command.agent_id, session_key)
+            previous_takeover = await asyncio.to_thread(
+                self._repos.cron_repo.consume_takeover_marker, command.cron_id
+            )
             if command.task_type == "text":
                 await self._publish_fixed(command, session, command.prompt)
             elif command.task_type == "script":
                 await self._deliver_script(command, session)
             else:
-                await self._deliver_agent(command, session)
+                await self._deliver_agent(command, session, previous_takeover)
 
         await self._gateway.run_in_session(
             command.agent_id,
@@ -332,6 +336,7 @@ class CronDeliveryService:
         self,
         command: CronDeliveryCommand,
         session: SessionRow,
+        previous_takeover: bool,
     ) -> None:
         request = await self._build_agent_request(command, session)
         if command.allow_all:
@@ -375,7 +380,7 @@ class CronDeliveryService:
                             raw = chunk.get("request")
                             pause = raw if isinstance(raw, dict) else {}
                 if pause is not None:
-                    await self._wait_for_user(command, session, pause, turn)
+                    await self._wait_for_user(command, session, pause, turn, previous_takeover)
             outbound = strip_thinking("".join(parts)).strip()
             if not outbound:
                 raise RuntimeError("cron agent run produced no visible response")
@@ -426,11 +431,13 @@ class CronDeliveryService:
         session: SessionRow,
         request: dict[str, Any],
         turn: BackgroundComputerTurn,
+        previous_takeover: bool,
     ) -> None:
         """Leave the run's card answerable for a day, tell the user, and stop without failing."""
         hitl = self._hitl()
+        suggest_alternative = False
         if hitl is not None and request:
-            await hitl.register_waiting_turn(
+            record = await hitl.register_waiting_turn(
                 normalize_hitl_request(request),
                 ctx=HitlStreamContext(
                     thread_id=session.thread_id,
@@ -443,6 +450,9 @@ class CronDeliveryService:
                 origin=cron_origin(command.cron_id),
                 ttl_seconds=WAIT_FOR_USER_SECONDS,
             )
+            if classify_handoff(record)[0] == "takeover":
+                await asyncio.to_thread(self._repos.cron_repo.record_takeover, command.cron_id)
+                suggest_alternative = previous_takeover
         text = self._waiting_text(command, session.user_id, session.channel_type, "needs_you")
         shared_chat_types = ("group", "supergroup", "channel")
         in_owner_inbox = not ThreadRegistry.is_virtual_channel(session.channel_type) and (
@@ -461,12 +471,19 @@ class CronDeliveryService:
             detail = pause_summary(request)
             if detail:
                 text = f"{text}\n{detail}"
+        notice = text
+        if suggest_alternative:
+            text += "\n" + self._waiting_text(
+                command, session.user_id, session.channel_type, "repeated_takeover"
+            )
         if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD:
             # The card itself is already in the conversation; a notification points at it.
             await self._notify_best_effort(session, command.agent_id, text)
         else:
             try:
-                await self._gateway.push_session_text(session, text, title_source=command.prompt)
+                await self._gateway.push_session_text(
+                    session, notice if in_owner_inbox else text, title_source=command.prompt
+                )
             except Exception:
                 logger.warning(
                     "failed to tell thread=%s a cron run waits for the user",

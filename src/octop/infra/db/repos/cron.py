@@ -424,6 +424,25 @@ class CronJobRepo:
         with self._db.transaction() as conn:
             conn.execute(f"UPDATE cron_jobs SET {', '.join(fields)} WHERE cron_id = ?", params)
 
+    def consume_takeover_marker(self, cron_id: str) -> bool:
+        """Consume the previous actual run's marker once, including across restarts."""
+        with self._db.transaction() as conn:
+            return bool(
+                conn.execute(
+                    "DELETE FROM settings WHERE key=?", (f"cron:takeover:{cron_id}",)
+                ).rowcount
+                == 1
+            )
+
+    def record_takeover(self, cron_id: str) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "INSERT INTO settings(key,value) SELECT ?, '1' FROM cron_jobs "
+                "WHERE cron_id=? ON CONFLICT(key) DO NOTHING",
+                (f"cron:takeover:{cron_id}", cron_id),
+            )
+
     def delete(self, cron_id: str) -> None:
         with self._db.transaction() as conn:
             conn.execute("DELETE FROM cron_jobs WHERE cron_id = ?", (cron_id,))
+            conn.execute("DELETE FROM settings WHERE key=?", (f"cron:takeover:{cron_id}",))
