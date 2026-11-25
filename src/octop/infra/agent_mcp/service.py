@@ -141,11 +141,10 @@ class AgentMcpGatewayService:
         """Resolve the current pause and persist any follow-up approval."""
         coordinator = self._gateway.processor.hitl_coordinator
         rejected = any(decision.get("type") == "reject" for decision in decisions)
-        if pending is not None:
-            coordinator.store.mark_resolved(
-                pending.pending_id,
-                "rejected" if rejected else "approved",
-            )
+        if pending is not None and not coordinator.store.mark_resolved(
+            pending.pending_id, "rejected" if rejected else "approved"
+        ):
+            raise OctopError.localized(ErrorCode.NOT_FOUND)
         try:
             chunks = self._gateway.processor.iter_hitl_resume_chunks(
                 agent_id=expert_id,

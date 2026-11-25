@@ -5,6 +5,7 @@ export type OneShotPhase =
   | "done"
   | "failed"
   | "missed"
+  | "expired"
   | "waiting"
   | "paused";
 
@@ -99,6 +100,7 @@ export function oneShotPhase(
   if (lastStatus === "ok") return "done";
   if (lastStatus === "error") return "failed";
   if (lastStatus === "missed") return "missed";
+  if (lastStatus === "expired") return "expired";
   if (lastStatus === "waiting") return "waiting";
   return "paused";
 }
@@ -113,6 +115,8 @@ export function oneShotPhaseLabelKey(phase: OneShotPhase): string {
       return "cronJobs.oneShotFailed";
     case "missed":
       return "cronJobs.oneShotMissed";
+    case "expired":
+      return "cronJobs.lastStatusExpired";
     case "waiting":
       return "cronJobs.oneShotWaiting";
     case "paused":
@@ -130,6 +134,8 @@ export function lastRunStatusTag(
   if (status === "missed")
     return { color: "warning", labelKey: "cronJobs.lastStatusMissed" };
   // A question, approval or takeover the run left for the user: not a failure.
+  if (status === "expired")
+    return { color: "warning", labelKey: "cronJobs.lastStatusExpired" };
   if (status === "waiting")
     return { color: "warning", labelKey: "cronJobs.lastStatusWaiting" };
   return null;

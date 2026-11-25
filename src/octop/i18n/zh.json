@@ -66,6 +66,7 @@
       "role": "这个岗位平时主要做：{hint}"
     },
     "approval": {
+      "expired": "这次等待已过期。Bot 已停止等待你的答复。",
       "title": "需要你确认",
       "header": "确认",
       "question": "Bot 想要{action}：{target}\n{detail}",
@@ -949,6 +950,7 @@
       "custom": "自定义"
     },
     "waiting": {
+      "expired": "这次定时任务需要你处理，等待 24 小时后已过期。本次操作未获批准，下次定时任务会照常运行。",
       "needs_you": "定时任务「{name}」需要你处理，打开这个 Bot 的对话继续（24 小时内有效）。",
       "still": "定时任务「{name}」上一次运行还在等你处理，这次没有执行。"
     }
