@@ -13,7 +13,12 @@ from fastapi.responses import JSONResponse, Response
 from octop.api.common.agent import agent_is_shared, require_agent_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.deps import current_user, get_server
-from octop.api.routers.chat.models import ForkThreadBody, RebindSessionBody, RenameThreadBody
+from octop.api.routers.chat.models import (
+    BotTaskStatus,
+    ForkThreadBody,
+    RebindSessionBody,
+    RenameThreadBody,
+)
 from octop.api.routers.chat.serialize import (
     HISTORY_DEFAULT_LIMIT,
     _backfill_thread_projection,
@@ -27,6 +32,7 @@ from octop.infra.agents.threads.context_breakdown import SEGMENT_KEYS, compute_c
 from octop.infra.agents.threads.fork import fork_dashboard_thread
 from octop.infra.agents.workspace.dir import agent_facing_workspace_dir_from_config
 from octop.infra.bot_groups.turns import show_room_requests
+from octop.infra.bot_tasks.store import TaskStore
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
 from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages, thread_visible_to
@@ -456,6 +462,24 @@ async def get_thread_context_usage(
             if breakdown.segments.get(key, 0) > 0
         ],
     }
+
+
+@router.get(
+    "/agents/{agent_id}/threads/{thread_id}/task-statuses",
+    summary="Read current task card statuses",
+    description="Returns the signed-in owner's recent task statuses, including interruptions after the last tool output.",
+)
+def read_task_statuses(
+    agent_id: str,
+    thread_id: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> list[BotTaskStatus]:
+    _require_thread(server, agent_id, thread_id, user, None, write=True)
+    return [
+        BotTaskStatus.model_validate(task, from_attributes=True)
+        for task in TaskStore(server.services.settings_repo).tasks(thread_id)
+    ]
 
 
 @router.get("/agents/{agent_id}/threads/{thread_id}/history", summary="Thread history")

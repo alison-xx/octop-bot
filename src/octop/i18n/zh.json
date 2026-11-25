@@ -1,4 +1,7 @@
 {
+  "bot_tasks": {
+    "model_silence": "模型长时间没有输出，任务已中断。已完成的工作和证据保存在任务卡中。"
+  },
   "bot_rooms": {
     "attachments": "请根据用户要求，在本群的工作目录中使用 attachment_paths 给出的相对路径读取附件。",
     "im_text_only": "请通过此通道向 Bot 群发送文字。文件请在 Octop Bot 中处理。",
@@ -66,6 +69,11 @@
       "role": "这个岗位平时主要做：{hint}"
     },
     "approval": {
+      "start_observing": "选择「总是允许」后，接下来三次仍需逐次确认。看过这三次记录后，你可以启用自动允许。",
+      "observing": "观察第 {count}/3 次。选择「允许一次」会记录本次确认，拒绝会结束这条规则的观察。",
+      "review_records": "前三次由你确认的操作如下。检查后可以启用这条规则。",
+      "activate": "启用规则并允许",
+      "budget_detail": "总上限将从 {old_steps} 步、{old_minutes} 分钟调整为 {steps} 步、{minutes} 分钟。",
       "title": "需要你确认",
       "header": "确认",
       "question": "Bot 想要{action}：{target}\n{detail}",
@@ -74,6 +82,7 @@
       "always": "总是允许",
       "deny": "拒绝",
       "category": {
+        "budget": "延长任务上限",
         "send": "发送",
         "publish": "发布",
         "submit": "提交",
