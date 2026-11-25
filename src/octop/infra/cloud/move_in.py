@@ -15,7 +15,7 @@ import time
 from collections import deque
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Annotated, Any, Literal, TextIO
+from typing import IO, TYPE_CHECKING, Annotated, Any, Literal
 
 from filelock import AsyncFileLock
 from langchain_core.messages import messages_from_dict
@@ -326,7 +326,7 @@ async def _publish_thread(
     return tid
 
 
-def _save_projection(projection: TextIO, messages: list[Any]) -> None:
+def _save_projection(projection: IO[str], messages: list[Any]) -> None:
     for m in message_inputs(messages):
         projection.write(
             json.dumps([m.message_id, m.role, m.message_json, m.created_at], ensure_ascii=False)
@@ -334,7 +334,7 @@ def _save_projection(projection: TextIO, messages: list[Any]) -> None:
         )
 
 
-def _read_projection(projection: TextIO) -> Iterator[ThreadMessageInput]:
+def _read_projection(projection: IO[str]) -> Iterator[ThreadMessageInput]:
     projection.seek(0)
     for line in projection:
         yield ThreadMessageInput(*json.loads(line))
