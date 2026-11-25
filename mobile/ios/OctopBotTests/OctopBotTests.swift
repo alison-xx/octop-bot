@@ -744,6 +744,18 @@ final class CloudComputerTests: XCTestCase {
 
 @MainActor
 final class CreditTests: XCTestCase {
+
+    private func purchaseSession() async throws -> SKTestSession {
+        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "CreditPacks", withExtension: "storekit"))
+        let session = try SKTestSession(contentsOf: file)
+        session.resetToDefaultState()
+        session.askToBuyEnabled = false
+        session.disableDialogs = true
+        session.clearTransactions()
+        try await session.setSimulatedError(nil, forAPI: .purchase)
+        return session
+    }
+
     func testCatalogHonorsServerSwitch() async {
         let account = SellingAccount()
         account.enabled = false
@@ -755,12 +767,7 @@ final class CreditTests: XCTestCase {
     }
 
     func testStoreKitPurchaseAndRetryAfterAccountSwitch() async throws {
-        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "CreditPacks", withExtension: "storekit"))
-        let session = try SKTestSession(contentsOf: file)
-        session.resetToDefaultState()
-        session.askToBuyEnabled = false
-        session.disableDialogs = true
-        session.clearTransactions()
+        let session = try await purchaseSession()
         defer { session.clearTransactions(); session.resetToDefaultState() }
         let purchaser = SellingAccount()
         var current = purchaser
@@ -811,30 +818,32 @@ final class CreditTests: XCTestCase {
     }
 
     func testRepeatPurchaseOfSamePackAfterFirstDelivery() async throws {
-        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "CreditPacks", withExtension: "storekit"))
-        let session = try SKTestSession(contentsOf: file)
-        session.resetToDefaultState()
-        session.disableDialogs = true
-        session.clearTransactions()
+        let session = try await purchaseSession()
         defer { session.clearTransactions(); session.resetToDefaultState() }
         let owner = SellingAccount()
         let productID = "cn.lynxce.octopbot.credits.5000"
         var signedIn = owner
         let store = CreditStore()
         store.start(account: { signedIn }, credited: {})
-        let first = try await session.buyProduct(identifier: productID, options: [.appAccountToken(owner.token)])
-        for _ in 0..<40 {
-            await store.flush()
-            var unfinished = false
-            for await result in Transaction.unfinished where result.unsafePayloadValue.id == first.id { unfinished = true }
-            if owner.delivered.contains(first.id), !unfinished { break }
-            try await Task.sleep(for: .milliseconds(100))
+        // Buy through the app first so its StoreKit client is attached to this session before
+        // the test controller creates the second, off-device purchase.
+        await store.load()
+        let offer = try XCTUnwrap(store.offers.first { $0.product.id == productID })
+        let purchase = await store.buy(offer)
+        XCTAssertTrue(purchase == .credited || purchase == .recorded)
+        let firstID = try XCTUnwrap(owner.delivered.first)
+        XCTAssertEqual(owner.delivered, [firstID])
+        var firstUnfinished = true
+        for _ in 0..<40 where firstUnfinished {
+            firstUnfinished = false
+            for await result in Transaction.unfinished where result.unsafePayloadValue.id == firstID { firstUnfinished = true }
+            if firstUnfinished { try await Task.sleep(for: .milliseconds(100)) }
         }
-        XCTAssertEqual(owner.delivered, [first.id])
+        guard !firstUnfinished else { return XCTFail("StoreKit still has the first purchase in its unfinished queue") }
 
         owner.offline = true
         let second = try await session.buyProduct(identifier: productID, options: [.appAccountToken(owner.token)])
-        XCTAssertNotEqual(first.id, second.id)
+        XCTAssertNotEqual(firstID, second.id)
         let other = SellingAccount()
         signedIn = other
         for _ in 0..<40 where !other.attempted.contains(second.id) {
@@ -847,7 +856,7 @@ final class CreditTests: XCTestCase {
         owner.offline = false
         await store.flush()
         await store.flush()
-        XCTAssertEqual(owner.delivered, [first.id, second.id])
+        XCTAssertEqual(owner.delivered, [firstID, second.id])
     }
 
     func testOnlyOfficialCloudCanAcknowledgeApplePurchases() throws {
@@ -866,12 +875,7 @@ final class CreditTests: XCTestCase {
     }
 
     func testStoreKitCancelledAndPendingPurchases() async throws {
-        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "CreditPacks", withExtension: "storekit"))
-        let session = try SKTestSession(contentsOf: file)
-        session.resetToDefaultState()
-        session.askToBuyEnabled = false
-        session.disableDialogs = true
-        session.clearTransactions()
+        let session = try await purchaseSession()
         defer { session.clearTransactions(); session.resetToDefaultState() }
         let account = SellingAccount()
         let store = CreditStore()
