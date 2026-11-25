@@ -36,6 +36,14 @@
     "openFailed": "Couldn’t open the top-up page. Please try again."
   },
   "botCloud": {
+    "wechatFailed": "WeChat sign-in failed. Please try again.",
+    "wechatBack": "‹ Other options",
+    "wechatBindTitle": "Bind phone number",
+    "wechatBindBody": "Bind a phone number to complete registration.",
+    "wechatUser": "WeChat user",
+    "wechatPhone": "Phone number",
+    "wechatExpires": "Complete binding within 10 minutes or scan again.",
+    "wechatSubmit": "Bind and sign in",
     "stop": "Stop cloud task",
     "stopConfirm": "Stop this cloud task? Its chat history will be kept.",
     "importChat": "Continue this local chat in the cloud",
@@ -44,7 +52,6 @@
     "noText": "There are no messages to bring into the cloud yet.",
     "importNeedsModel": "A cloud model available to this account is required to continue.",
     "title": "Cloud workspace",
-    "workWithBot": "Work with this Bot in the cloud",
     "signInTitle": "Sign in to Lynxce",
     "intro": "Use the same Lynxce account to continue on another device. Accepted cloud tasks keep running when you quit Octop Bot or shut down your computer.",
     "account": "Lynxce account",
@@ -81,7 +88,6 @@
     "createCloud": "Save to cloud",
     "paused": "Paused",
     "onceEnded": "One-time run finished",
-    "copyTimer": "Create cloud schedule from this",
     "pauseFirst": "This local schedule has changed. Pause it and reopen it from its schedule settings.",
     "monthly": "Monthly",
     "monthDay": "Day of the month",
@@ -150,6 +156,8 @@
     "retryMember": "Ask this member again"
   },
   "botDirectory": {
+    "preparing": "Preparing",
+    "preparingHint": "Preparing your Bot, just a moment",
     "newPrivateChat": "Start a new private chat",
     "newGroupWithMembers": "New group with these members",
     "groupHistoryHelp": "Each group keeps one continuous history. A new group can use the same members, administrator and reply mode. Its messages, files, notes and Goal start empty.",
@@ -178,28 +186,9 @@
     "skip": "Skip guide",
     "resume": "Continue guide",
     "next": "Next",
-    "previous": "Back",
-    "openDraft": "Edit in Chief’s chat",
     "model": {
-      "label": "Connect a model",
       "title": "Choose a chat model",
       "description": "Sign in to Lynxce to choose a model available to your account. Chats use that account’s credits. You can also connect another provider or a local model under Account and models."
-    },
-    "team": {
-      "label": "Meet your team",
-      "title": "Work with Chief",
-      "description": "Chief coordinates your team. Give Chief a concrete task and ask who can help.",
-      "chat": "Talk one-on-one or as a team",
-      "chatHint": "Select a contact for a private chat. Ask Chief to bring people into a group, then post a question or @mention a member.",
-      "groups": "Organize your contacts",
-      "groupsHint": "Right-click an empty area to create a section, or right-click a contact to move it into one. Open a group chat to read the team’s messages.",
-      "cloud": "Pick up on another computer",
-      "cloudHint": "Sign in to Cloud workspace with the same Lynxce account to continue a cloud chat. Tasks scheduled there can run while your computer is off."
-    },
-    "draft": {
-      "label": "Your first message",
-      "title": "What would you like to try?",
-      "description": "Choose a starting point to bring a draft into Chief’s chat. Edit it to fit your task and send it when you’re ready."
     }
   },
   "lynxceSignIn": {
@@ -214,13 +203,15 @@
     "resendIn": "Resend in {{seconds}}s",
     "sentPhone": "Code sent by text message. It is valid for a few minutes.",
     "sentEmail": "Code sent by email. Check spam if it does not arrive.",
-    "newAccountHint": "No Lynxce account yet? Signing in creates one; a new email also needs a sign-in password.",
+    "newAccountHint": "New numbers and emails get an account; a new email also sets a password.",
     "newPassword": "Set a sign-in password",
     "newPasswordHint": "At least 8 characters. You can also sign in to Lynxce with this email and password later.",
     "password": "Password",
-    "methods": "Sign-in method",
-    "tabCode": "Code",
-    "tabPassword": "Password"
+    "usePassword": "Use a password",
+    "useCode": "Use a code instead",
+    "missingTarget": "Enter your phone number or email first",
+    "missingCode": "Enter the 6-digit code",
+    "missingPassword": "Enter your password"
   },
   "botOnboarding": {
     "chiefName": "Chief",
@@ -229,20 +220,59 @@
     "account": "Phone or email",
     "accountPlaceholder": "Lynxce account",
     "lynxceHint": "Your password is only used to verify you with Lynxce. It is never stored on this device.",
-    "lynxceSubmit": "Sign in and start",
+    "lynxceSubmit": "Sign in",
     "loginTitle": "Sign in to Octop Bot",
     "loginCloudBody": "Sign in to Octop Bot Cloud with your Lynxce account. Your first sign-in sets it up; Bots and chats stay in the cloud, on every device.",
     "loginLynxceBody": "Sign in with the Lynxce account this Octop Bot was first bound to.",
     "startTitle": "Start using Octop Bot",
-    "startBody": "Sign in with a Lynxce account and every Bot gets its own cloud computer, paid for with credits. New accounts are created for you. Or skip signing in and use Octop Bot on this computer.",
-    "lynxceStart": "Sign in to Lynxce",
+    "startBody": "Sign in with your Lynxce account. New accounts are created for you.",
+    "lynxceStart": "Sign in",
     "or": "or",
-    "useLocal": "Use without signing in: set up my own models",
-    "useLocalHint": "Use Ollama on this computer, or your own API key from Tencent Cloud, Alibaba Bailian, DeepSeek and more. Data stays on this computer; you can sign in to Lynxce later.",
+    "useLocal": "Use on this computer only",
+    "useLocalHint": "Private: data never leaves this computer. Set a local password and models first.",
     "localFailed": "Could not open the local account. Try again.",
     "loginLegacyBody": "This Octop Bot used a local password. It now signs in with a Lynxce account. Enter the old password once with your first sign-in; after that only your Lynxce account is needed.",
     "legacyPassword": "Old local password (needed only this once)",
-    "loginUnavailable": "This server has not turned on Lynxce sign-in yet. Ask its admin to update Octop Bot."
+    "loginUnavailable": "This server has not turned on Lynxce sign-in yet. Ask its admin to update Octop Bot.",
+    "guide": {
+      "welcomeTitle": "Welcome, I'm Chief",
+      "welcomeLead": "What's your industry, or your job? Pick one and I'll put together a team of bots for it, with a group chat.",
+      "reopenHint": "Skipped guides stay closed. Reopen any time from the account menu → Getting started",
+      "step": "Step {{step}} of {{total}}",
+      "skip": "Skip guide",
+      "skipped": "Getting started skipped. Reopen it from the account menu → Getting started.",
+      "askTitle": "Chief hasn't built the team yet",
+      "askHint": "Answer Chief's question, or say again what you need in the message box.",
+      "buildingTitle": "Chief is building your team",
+      "buildingHint": "Usually 20–40 seconds. New bots and the group appear on the left.",
+      "teamTitle": "“{{name}}” is ready",
+      "teamHint": "The new group chat and bots are in a section on the left. Open the group to give it a first task.",
+      "openGroup": "Open group chat",
+      "coachTitle": "Your team is ready",
+      "coachBody": "Open the group chat and give it a first task.",
+      "groupTitle": "Post your first message",
+      "groupHint": "Chief drafted one for you. Send it as is or edit it. To call on a bot, type @ and pick it.",
+      "done": "You're all set: the team is at work. Reopen the guide any time from the account menu → Getting started.",
+      "new": "New",
+      "industries": "Industry",
+      "other": "Something else",
+      "noteLabel": "Anything specific? (optional)",
+      "notePlaceholder": "For example: home goods, selling on Amazon US",
+      "startTeam": "Build my team",
+      "askHintRetry": "Answer Chief's question, or tap Send again to build a team for the industry you picked.",
+      "retry": "Send again",
+      "roles": "Job",
+      "customIndustry": "What's your industry?",
+      "customIndustryPlaceholder": "For example: pet shop, bookstore",
+      "customRole": "What's your job?",
+      "customRolePlaceholder": "For example: photographer, accountant",
+      "request": {
+        "industry": "I work in {{label}}. ",
+        "role": "I'm a {{label}}. ",
+        "note": "More detail: {{note}}. ",
+        "team": "Please build me a team and set up its group chat."
+      }
+    }
   },
   "botClient": {
     "showOrb": "Show floating button",
@@ -368,10 +398,13 @@
       "settings": "Settings",
       "settingsHint": "Models, appearance, language, notifications",
       "capabilitiesHint": "Skills, connectors, knowledge and more",
-      "cloudHint": "Tasks that keep running with your computer off",
       "lynxceSignIn": "Sign in to Lynxce",
-      "lynxceSignInHint": "A cloud computer for every Bot, paid with credits",
-      "lynxceSignOut": "Sign out of Lynxce"
+      "lynxceSignOut": "Sign out of Lynxce",
+      "credits": "credits",
+      "usage": "Usage",
+      "localHint": "Data stays on this computer. Sign in to Lynxce to sync devices and use Lynxce models and cloud computers.",
+      "accountCenter": "Account center",
+      "accountCenterHint": "Plans, orders and invoices"
     },
     "nav": {
       "general": "General",
@@ -433,6 +466,21 @@
       "autoDownloadHint": "Get new versions in the background and ask to restart when ready",
       "beta": "Receive beta versions",
       "betaHint": "Try new features early; may be less stable"
+    },
+    "settingsGroups": {
+      "account": "Account",
+      "ai": "AI",
+      "other": "Other"
+    },
+    "settingsDescriptions": {
+      "account": "Manage your account, credits and usage.",
+      "models": "Choose and manage models for conversations.",
+      "general": "Adjust the appearance and language.",
+      "notifications": "Choose how to receive notifications and sounds.",
+      "privacy": "Manage desktop features, privacy and local import.",
+      "about": "View version, updates and server information.",
+      "appearanceHint": "Choose the interface theme.",
+      "languageHint": "Choose the interface language."
     }
   },
   "octopBot": {
@@ -523,7 +571,19 @@
       "card": "Bot's computer",
       "asleep": "Asleep",
       "paused": "You're in control",
-      "using": "Using {{app}}"
+      "using": "Using {{app}}",
+      "needsPermission": "Needs macOS permission",
+      "permTitle": "Octop Bot can't use this Mac yet",
+      "permBody": "To see the screen and work in the apps you allow, turn on these permissions in System Settings → Privacy & Security.",
+      "permScreen": "Screen Recording",
+      "permScreenHint": "Shows this computer's screen",
+      "permAccessibility": "Accessibility",
+      "permAccessibilityHint": "Lets the Bot click and type in the apps you allow",
+      "permGrant": "Allow",
+      "permRelaunchHint": "After turning on Screen Recording, restart Octop Bot for it to take effect.",
+      "permRelaunch": "Restart",
+      "permManual": "In System Settings → Privacy & Security, find Octop Bot, turn these permissions on, then restart Octop Bot.",
+      "streamFailed": "Couldn't connect to the screen"
     },
     "imChats": "Linked IM conversations",
     "imEmpty": "Pair a channel and send it a message to select that conversation here.",
@@ -659,6 +719,9 @@
       "mimo": "Xiaomi MiMo",
       "other": "Other models"
     },
+    "modelRoutes": "{{n}} routes",
+    "modelRoute": "Route",
+    "modelRouteN": "Route {{n}}",
     "searchModels": "Search models"
   },
   "app": {
@@ -774,6 +837,9 @@
     "LYNXCE_CODE_TARGET_INVALID": "Enter a valid phone number or email.",
     "LYNXCE_CODE_THROTTLED": "Codes were requested too often. Try again in a moment.",
     "LYNXCE_SIGNUP_PASSWORD_REQUIRED": "This email has no Lynxce account yet. Set a sign-in password (at least 8 characters) to create one, then sign in with the same code.",
+    "LYNXCE_WECHAT_FLOW_EXPIRED": "WeChat sign-in expired. Please try again.",
+    "LYNXCE_WECHAT_FAILED": "WeChat sign-in failed. Please try again.",
+    "LYNXCE_WECHAT_DISABLED": "WeChat sign-in is unavailable.",
     "BOT_CLOUD_REQUEST_REJECTED": "Lynxce Cloud could not complete this action.",
     "BOT_CLOUD_CREDITS_REQUIRED": "You're out of Lynxce credits. Top up at https://admin.lynxce.cn/recharge to continue.",
     "BOT_LYNXCE_DAILY_LIMIT": "Today's Lynxce usage hit its daily limit. It resets at 00:00 UTC. To raise the limit, open your Lynxce account centre at https://admin.lynxce.cn and edit the Octop Bot key.",
@@ -782,6 +848,7 @@
     "BOT_MODEL_KEY_LIMIT": "You can keep up to {{limit}} API keys. Remove one first.",
     "BOT_COMPUTER_NOT_TAKEN_OVER": "Take over the cloud computer before typing into it or reading its clipboard.",
     "BOT_COMPUTER_BUSY": "No cloud computer is free right now, so this one could not start. Try again in a few minutes.",
+    "ENDPOINT_NOT_ALLOWED": "This address cannot be used. Enter a public HTTPS address or domain.",
     "BOT_COMPUTER_OFF": "This file is on the cloud computer, which is off right now. Open the computer with its icon, then try again.",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "Authorize Lynxce checkout to recharge this account. Your existing chat connection stays active.",
     "BOT_LAYOUT_CHANGED": "The sidebar changed. Refresh it and try again.",
@@ -939,6 +1006,8 @@
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({{used}}/{{quota}}).",
     "AGENT_QUOTA_EXCEEDED": "This account has reached its expert limit. Please contact an administrator to raise the limit ({{used}}/{{quota}}).",
+    "BOT_COUNT_LIMIT": "This account can have up to {{limit}} Bots and has reached that. Delete Bots you no longer use, then try again.",
+    "BOT_GROUP_COUNT_LIMIT": "This account can have up to {{limit}} group chats and has reached that. Delete group chats you no longer use, then try again.",
     "BACKEND_TYPE_NOT_ALLOWED": "This account cannot use backend type {{types}}.",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
@@ -9017,6 +9086,10 @@
     "soundHint": "Play a short chime when a new message arrives"
   },
   "cloudComputer": {
+    "diskFee": "Disk {{gb}} GB · {{credits}} credits per day",
+    "diskBillingOff": "Billing currently off",
+    "reclaimWarning": "This computer and its disk files are scheduled for removal. Your Bot, chats, and cloud storage files stay.",
+    "diskOverdue": "Disk fees are {{days}} days overdue.",
     "section": "Cloud computer",
     "state": {
       "none": "Not started",
@@ -9051,6 +9124,7 @@
       "open": "Open the cloud computer screen",
       "starting": "Starting the computer…",
       "startFailed": "The computer could not start. Try again in a moment.",
+      "retry": "Retry",
       "fit": "Switch aspect ratio",
       "expand": "Expand",
       "collapse": "Collapse",
@@ -9133,11 +9207,48 @@
   },
   "botStart": {
     "heroTitle": "An AI team on call",
-    "featureComputer": "Every Bot has a cloud computer and keeps working while you're away",
+    "heroSub": "Chief hires Bots, starts groups and hands out work. You just say what you need.",
+    "featureChief": "Chief leads: one sentence to hire a Bot or start a group",
     "featureDevices": "One team on desktop, phone and web",
-    "featureModels": "Lynxce models, your own API keys or local models",
+    "featureComputer": "Bots start a cloud computer when the job needs one",
     "lynxceAccount": "Lynxce account",
-    "recommended": "Recommended"
+    "recommended": "Recommended · Syncs everywhere",
+    "wechat": "WeChat",
+    "wechatSignIn": "Sign in with WeChat",
+    "crew": {
+      "finance": {
+        "role": "Finance",
+        "done": "reconciled this month's expenses"
+      },
+      "ops": {
+        "role": "Ops",
+        "done": "drafted today's 3 social posts"
+      },
+      "admin": {
+        "role": "Admin",
+        "done": "booked Friday's meeting room"
+      },
+      "support": {
+        "role": "Support",
+        "done": "answered 26 customer questions"
+      },
+      "teacher": {
+        "role": "Tutor",
+        "done": "graded class 2's essays"
+      },
+      "doctor": {
+        "role": "Clinic",
+        "done": "prepared tomorrow's follow-ups"
+      },
+      "boss": {
+        "role": "Assistant",
+        "done": "summed up the week in one page"
+      },
+      "staff": {
+        "role": "Clerk",
+        "done": "entered 120 order records"
+      }
+    }
   },
   "botModels": {
     "title": "Models",
@@ -9312,6 +9423,7 @@
     "routinesPick": "Turn on these routines",
     "integrationsAfter": "After importing, connect {{names}} under Capabilities → Connectors.",
     "listJoin": ", ",
+    "importedPreparing": "Added {{name}}, getting it ready",
     "imported": "Imported {{name}}",
     "entry": "Bot Market",
     "menuEntry": "Add from the Bot Market",

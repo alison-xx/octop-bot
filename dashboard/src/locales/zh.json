@@ -36,6 +36,14 @@
     "openFailed": "未能打开充值页，请重试。"
   },
   "botCloud": {
+    "wechatFailed": "微信登录失败，请重试。",
+    "wechatBack": "‹ 其他方式",
+    "wechatBindTitle": "绑定手机号",
+    "wechatBindBody": "第一次用微信登录，绑定手机号后即可完成注册。",
+    "wechatUser": "微信用户",
+    "wechatPhone": "手机号",
+    "wechatExpires": "请在 10 分钟内完成绑定，超时需要重新扫码。",
+    "wechatSubmit": "绑定并登录",
     "stop": "停止云端任务",
     "stopConfirm": "停止这次云端执行？已生成的会话记录会保留。",
     "importChat": "把当前私聊带到云端",
@@ -44,7 +52,6 @@
     "noText": "这段私聊还没有可带到云端的文字。",
     "importNeedsModel": "需要账号下可用的云端模型才能续聊。",
     "title": "云端工作区",
-    "workWithBot": "在云端与这位 Bot 工作",
     "signInTitle": "登录灵策智算",
     "intro": "用同一个灵策账号在其他设备接着聊。云端接收任务后，即使退出 Octop Bot 或关闭电脑，任务仍由灵策执行。",
     "account": "灵策账号",
@@ -81,7 +88,6 @@
     "createCloud": "保存到云端",
     "paused": "已暂停",
     "onceEnded": "单次任务已结束",
-    "copyTimer": "用此配置创建云端任务",
     "pauseFirst": "这项本机任务已更改。请先暂停任务，再从它的定时设置打开。",
     "monthly": "每月",
     "monthDay": "每月第几天",
@@ -150,6 +156,8 @@
     "retryMember": "请这位成员重试"
   },
   "botDirectory": {
+    "preparing": "准备中",
+    "preparingHint": "正在准备，马上就好",
     "newPrivateChat": "开始新私聊",
     "newGroupWithMembers": "沿用成员另开群聊",
     "groupHistoryHelp": "每个群保留一条连续的历史。另开群聊会沿用成员、管理员和回复方式，消息、文件、群笔记和 Goal 都从空白开始。",
@@ -178,28 +186,9 @@
     "skip": "跳过引导",
     "resume": "继续新手引导",
     "next": "下一步",
-    "previous": "上一步",
-    "openDraft": "在 Chief 对话中编辑",
     "model": {
-      "label": "连接模型",
       "title": "选一个聊天模型",
       "description": "用灵策账号登录后，可以从账号可用的模型里选择，聊天消耗该账号的积分。也可以在「账号与模型」连接其他服务或本机模型。"
-    },
-    "team": {
-      "label": "认识团队",
-      "title": "和 Chief 一起工作",
-      "description": "Chief 是你的团队协调员。从一个具体任务开始，它可以帮你找到合适的成员。",
-      "chat": "私聊或一起讨论",
-      "chatHint": "在通讯录中点头像与成员私聊。让 Chief 把成员拉进群后，可以在群里直接提问，也可以用 @ 指定成员。",
-      "groups": "右键整理通讯录",
-      "groupsHint": "右键空白处新建分组，或右键成员将它移入分组。打开群聊就能看到团队的消息。",
-      "cloud": "在另一台电脑接着聊",
-      "cloudHint": "在「云端工作区」登录同一灵策账号即可续聊。把定时任务建在云端，关机后也能按时执行。"
-    },
-    "draft": {
-      "label": "第一条消息",
-      "title": "你想先做哪件事？",
-      "description": "选一个起点，把草稿带到 Chief 的输入框。可以按自己的需求改写，准备好后再发送。"
     }
   },
   "lynxceSignIn": {
@@ -214,13 +203,15 @@
     "resendIn": "{{seconds}} 秒后重发",
     "sentPhone": "验证码已发送到手机，几分钟内有效。",
     "sentEmail": "验证码已发送到邮箱，没收到请看看垃圾邮件。",
-    "newAccountHint": "没有灵策账号也可以直接登录，会自动注册；用邮箱注册时还要设一个登录密码。",
+    "newAccountHint": "未注册的手机号或邮箱会自动注册；新邮箱还要设一个登录密码。",
     "newPassword": "设置登录密码",
     "newPasswordHint": "至少 8 位。以后也可以用这个邮箱和密码登录灵策。",
     "password": "密码",
-    "methods": "登录方式",
-    "tabCode": "验证码",
-    "tabPassword": "密码"
+    "usePassword": "用密码登录",
+    "useCode": "用验证码登录",
+    "missingTarget": "请先输入手机号或邮箱",
+    "missingCode": "请输入 6 位验证码",
+    "missingPassword": "请输入密码"
   },
   "botOnboarding": {
     "chiefName": "Chief",
@@ -229,20 +220,59 @@
     "account": "手机号或邮箱",
     "accountPlaceholder": "灵策智算账号",
     "lynxceHint": "密码只用于向灵策验证身份，不会保存在这台设备上。",
-    "lynxceSubmit": "登录并开始",
+    "lynxceSubmit": "登录",
     "loginTitle": "登录 Octop Bot",
     "loginCloudBody": "用灵策账号登录 Octop Bot 云端。第一次登录会自动开通，Bot 和对话都保存在云端，换设备也能接着用。",
     "loginLynxceBody": "使用首次绑定这台 Octop Bot 的灵策智算账号登录。",
     "startTitle": "开始使用 Octop Bot",
-    "startBody": "用灵策智算账号登录，每个 Bot 都有一台自己的云电脑，用积分付费；没有账号会自动注册。也可以不登录，直接在这台电脑上用。",
-    "lynxceStart": "登录灵策智算",
+    "startBody": "用灵策智算账号登录，没有账号会自动注册。",
+    "lynxceStart": "登录",
     "or": "或",
-    "useLocal": "本机使用，不登录：自己配置模型",
-    "useLocalHint": "用本地 Ollama，或者腾讯云、阿里云百炼、DeepSeek 等厂商的 API Key。数据只存在这台电脑，以后随时可以登录灵策智算。",
+    "useLocal": "不登录，仅在本机使用",
+    "useLocalHint": "隐私隔离，数据只留在这台电脑；需设置本机密码和模型。",
     "localFailed": "没能进入本机账户，请重试。",
     "loginLegacyBody": "这台 Octop Bot 以前用本地密码登录，现在改用灵策智算账号。第一次登录时再输入一次原来的密码，绑定后就只用灵策账号。",
     "legacyPassword": "原来的本地登录密码（只需输入这一次）",
-    "loginUnavailable": "这台服务器还没有开启灵策智算登录。请让管理员升级 Octop Bot。"
+    "loginUnavailable": "这台服务器还没有开启灵策智算登录。请让管理员升级 Octop Bot。",
+    "guide": {
+      "welcomeTitle": "欢迎，我是总管 Chief",
+      "welcomeLead": "你做哪一行，或者做什么工作？选一个，我按它组一支 Bot 团队，再建好群聊。",
+      "reopenHint": "跳过后不再弹出，随时可在左下角账号菜单 → 新手引导 重新打开",
+      "step": "第 {{step}} 步 / 共 {{total}} 步",
+      "skip": "跳过引导",
+      "skipped": "已跳过新手引导。想再看，可在账号菜单 → 新手引导 打开。",
+      "askTitle": "总管还没建好团队",
+      "askHint": "回答总管的问题，或在输入框里再说一次你想要什么。",
+      "buildingTitle": "总管正在组队",
+      "buildingHint": "通常 20–40 秒。建好的 Bot 和群会出现在左侧。",
+      "teamTitle": "「{{name}}」建好了",
+      "teamHint": "新建的群聊和 Bot 已放进左侧分组。进群派第一个活。",
+      "openGroup": "进入群聊",
+      "coachTitle": "你的团队建好了",
+      "coachBody": "点群聊进去，派第一个活。",
+      "groupTitle": "在群里发第一条消息",
+      "groupHint": "总管已经帮你写好一句，直接发送就行，也可以改。想点名某个 Bot，就输入 @ 选它。",
+      "done": "新手引导完成，团队已经开工。随时可在账号菜单 → 新手引导 再看一遍。",
+      "new": "新",
+      "industries": "行业",
+      "other": "其他，自己写",
+      "noteLabel": "补一句具体需求（可选）",
+      "notePlaceholder": "比如：主要做家居用品，走亚马逊美国站",
+      "startTeam": "让总管组队",
+      "askHintRetry": "回答总管的问题，或点「再发一次」让它按你选的行业重新组队。",
+      "retry": "再发一次",
+      "roles": "岗位",
+      "customIndustry": "你做哪一行？",
+      "customIndustryPlaceholder": "比如：宠物店、独立书店",
+      "customRole": "你做什么工作？",
+      "customRolePlaceholder": "比如：摄影师、会计",
+      "request": {
+        "industry": "我做{{label}}。",
+        "role": "我是{{label}}。",
+        "note": "补充：{{note}}。",
+        "team": "请帮我组一支团队，再建好群聊。"
+      }
+    }
   },
   "botClient": {
     "showOrb": "显示悬浮球",
@@ -368,10 +398,13 @@
       "settings": "设置",
       "settingsHint": "模型、外观、语言和通知",
       "capabilitiesHint": "技能、连接器、知识库等",
-      "cloudHint": "电脑关机也能继续跑的任务",
       "lynxceSignIn": "登录灵策智算",
-      "lynxceSignInHint": "每个 Bot 一台云电脑，用积分付费",
-      "lynxceSignOut": "退出灵策智算账号"
+      "lynxceSignOut": "退出灵策智算账号",
+      "credits": "积分",
+      "usage": "用量明细",
+      "localHint": "数据只在这台电脑，不上云。登录灵策智算后可以多端同步，用灵策模型和云电脑。",
+      "accountCenter": "个人中心",
+      "accountCenterHint": "会员、订单和发票"
     },
     "nav": {
       "general": "通用",
@@ -433,6 +466,21 @@
       "autoDownloadHint": "在后台下载新版本，准备好后提示你重启",
       "beta": "接收测试版",
       "betaHint": "提前体验新功能，可能不太稳定"
+    },
+    "settingsGroups": {
+      "account": "账号",
+      "ai": "AI",
+      "other": "其他"
+    },
+    "settingsDescriptions": {
+      "account": "管理账号、积分和用量。",
+      "models": "选择和管理用于对话的模型。",
+      "general": "调整界面外观和语言。",
+      "notifications": "选择接收通知和提示音的方式。",
+      "privacy": "管理桌面功能、隐私和本机导入。",
+      "about": "查看版本、更新和服务信息。",
+      "appearanceHint": "选择界面的显示主题。",
+      "languageHint": "选择界面使用的语言。"
     }
   },
   "octopBot": {
@@ -523,7 +571,19 @@
       "card": "Bot 的电脑",
       "asleep": "休眠中",
       "paused": "已由你接管",
-      "using": "正在使用 {{app}}"
+      "using": "正在使用 {{app}}",
+      "needsPermission": "需要 macOS 授权",
+      "permTitle": "Octop Bot 还没有这台 Mac 的权限",
+      "permBody": "Bot 要看屏幕、操作你允许的应用，需要在「系统设置 → 隐私与安全性」里打开下面的权限。",
+      "permScreen": "屏幕录制",
+      "permScreenHint": "显示这台电脑的画面",
+      "permAccessibility": "辅助功能",
+      "permAccessibilityHint": "让 Bot 在你允许的应用里点击和输入",
+      "permGrant": "去授权",
+      "permRelaunchHint": "打开「屏幕录制」后，要重新启动 Octop Bot 才会生效。",
+      "permRelaunch": "重新启动",
+      "permManual": "请在「系统设置 → 隐私与安全性」里找到 Octop Bot，打开这些权限，然后重新启动 Octop Bot。",
+      "streamFailed": "画面连接失败"
     },
     "imChats": "关联 IM 对话",
     "imEmpty": "配对通道并向它发送一条消息后，即可在此选择该对话。",
@@ -659,6 +719,9 @@
       "mimo": "小米 MiMo",
       "other": "其他模型"
     },
+    "modelRoutes": "{{n}} 条线路",
+    "modelRoute": "线路",
+    "modelRouteN": "线路 {{n}}",
     "searchModels": "搜索模型"
   },
   "app": {
@@ -774,6 +837,9 @@
     "LYNXCE_CODE_TARGET_INVALID": "请输入正确的手机号或邮箱。",
     "LYNXCE_CODE_THROTTLED": "验证码发送太频繁，请稍后再试。",
     "LYNXCE_SIGNUP_PASSWORD_REQUIRED": "这个邮箱还没有灵策账号。请设置一个至少 8 位的登录密码来注册，再用同一个验证码登录。",
+    "LYNXCE_WECHAT_FLOW_EXPIRED": "微信登录已过期，请重新尝试。",
+    "LYNXCE_WECHAT_FAILED": "微信登录失败，请重试。",
+    "LYNXCE_WECHAT_DISABLED": "微信登录暂不可用。",
     "BOT_CLOUD_REQUEST_REJECTED": "灵策云未能执行此操作。",
     "BOT_CLOUD_CREDITS_REQUIRED": "灵策积分不足，到 https://admin.lynxce.cn/recharge 充值后就能继续。",
     "BOT_LYNXCE_DAILY_LIMIT": "今天的灵策用量已到每日上限，北京时间早上 8 点自动恢复。急用的话，可以到灵策账户中心 https://admin.lynxce.cn 调高「Octop Bot」这把 Key 的每日上限。",
@@ -782,6 +848,7 @@
     "BOT_MODEL_KEY_LIMIT": "最多保存 {{limit}} 个 API Key，请先删掉一个。",
     "BOT_COMPUTER_NOT_TAKEN_OVER": "请先接管云电脑，再输入文字或读取它的剪贴板。",
     "BOT_COMPUTER_BUSY": "云电脑暂时都被占满了，没能启动。请过几分钟再试。",
+    "ENDPOINT_NOT_ALLOWED": "这个地址不能用：请填写公网的 HTTPS 地址或域名。",
     "BOT_COMPUTER_OFF": "这个文件在云电脑上，云电脑现在没开。点电脑图标打开电脑后再看。",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "请补充授权灵策充值。当前聊天连接可继续使用。",
     "BOT_LAYOUT_CHANGED": "侧栏布局已更新，请刷新后再试。",
@@ -939,6 +1006,8 @@
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "容器环境下不能设置「允许的存储根目录」。",
     "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{{used}}/{{quota}}）。",
     "AGENT_QUOTA_EXCEEDED": "该账号已达到专家数量上限，请联系管理员提升额度（{{used}}/{{quota}}）。",
+    "BOT_COUNT_LIMIT": "这个账号最多有 {{limit}} 个 Bot，已经满了。删掉不用的 Bot 后再建。",
+    "BOT_GROUP_COUNT_LIMIT": "这个账号最多有 {{limit}} 个群聊，已经满了。删掉不用的群聊后再建。",
     "BACKEND_TYPE_NOT_ALLOWED": "该账号不能使用这些后端类型：{{types}}。",
     "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
     "CAPTCHA_FAILED": "验证码校验失败，请重试。",
@@ -9017,6 +9086,10 @@
     "soundHint": "收到新消息时播放一声短提示音"
   },
   "cloudComputer": {
+    "diskFee": "盘 {{gb}} GB · 每天 {{credits}} 积分",
+    "diskBillingOff": "暂未收费",
+    "reclaimWarning": "云电脑及磁盘文件即将回收；Bot、聊天记录和云存储文件会保留。",
+    "diskOverdue": "磁盘费欠费 {{days}} 天。",
     "section": "云电脑",
     "state": {
       "none": "未开机",
@@ -9051,6 +9124,7 @@
       "open": "打开云电脑画面",
       "starting": "正在启动电脑…",
       "startFailed": "电脑没能启动，请稍后再试。",
+      "retry": "重试",
       "fit": "切换画面比例",
       "expand": "放大",
       "collapse": "收起",
@@ -9133,11 +9207,48 @@
   },
   "botStart": {
     "heroTitle": "一支随叫随到的 AI 团队",
-    "featureComputer": "每个 Bot 一台云电脑，关机后照样干活",
+    "heroSub": "Chief 帮你招 Bot、拉群、分派任务，你只管说要什么。",
+    "featureChief": "Chief 带队：一句话建 Bot、拉群协作",
     "featureDevices": "电脑、手机、网页，同一个团队",
-    "featureModels": "灵策模型、你的 API Key、本地模型，随你选",
+    "featureComputer": "需要时，Bot 自己开一台云电脑干活",
     "lynxceAccount": "灵策智算账号",
-    "recommended": "推荐"
+    "recommended": "推荐 · 多端同步",
+    "wechat": "微信登录",
+    "wechatSignIn": "使用微信登录",
+    "crew": {
+      "finance": {
+        "role": "财务",
+        "done": "对完本月报销，3 笔差异已标出"
+      },
+      "ops": {
+        "role": "运营",
+        "done": "写好今天的 3 条小红书文案"
+      },
+      "admin": {
+        "role": "行政",
+        "done": "订好了周五下午的会议室"
+      },
+      "support": {
+        "role": "客服",
+        "done": "回复了 26 条客户咨询"
+      },
+      "teacher": {
+        "role": "助教",
+        "done": "批改完二班的作文"
+      },
+      "doctor": {
+        "role": "医助",
+        "done": "整理好明天的复诊名单"
+      },
+      "boss": {
+        "role": "老板助理",
+        "done": "把本周日报汇成了一页"
+      },
+      "staff": {
+        "role": "文员",
+        "done": "录完 120 条订单数据"
+      }
+    }
   },
   "botModels": {
     "title": "模型",
@@ -9312,6 +9423,7 @@
     "routinesPick": "同时开启这些例行任务",
     "integrationsAfter": "导入后可以在“能力 → 连接器”里连接{{names}}。",
     "listJoin": "、",
+    "importedPreparing": "已添加 {{name}}，正在准备",
     "imported": "已导入 {{name}}",
     "entry": "Bot 市场",
     "menuEntry": "从 Bot 市场添加",

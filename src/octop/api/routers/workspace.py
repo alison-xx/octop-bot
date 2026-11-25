@@ -29,7 +29,7 @@ from octop.infra.backend.mention_index import collect_mention_paths
 from octop.infra.backend.tree_listing import dedupe_tree_rows
 from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
 from octop.infra.cloud.bot_cloud import files as cloud_files
-from octop.infra.cloud.computers.backend import computer_off
+from octop.infra.cloud.computers.backend import computer_off, left_on_computer
 from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.backend_files import (
@@ -97,6 +97,14 @@ def _keep_computer_off(ws: Any, *paths: str, search: bool = False) -> None:
     from its icon, or the Bot starts it when it works there)."""
     if any(computer_off(ws, path, search=search) for path in paths):
         raise OctopError.localized(ErrorCode.BOT_COMPUTER_OFF)
+
+
+def _missing(ws: Any, io_path: str, message: str) -> OctopError:
+    """A file that is not there: ``BOT_COMPUTER_OFF`` when the Bot's computer, now off, may
+    still hold it (starting the computer brings it back), else ``NOT_FOUND``."""
+    if left_on_computer(ws, io_path):
+        return OctopError.localized(ErrorCode.BOT_COMPUTER_OFF)
+    return OctopError(ErrorCode.NOT_FOUND, message)
 
 
 def _map_workspace_fs_error(exc: Exception, *, operation: str, path: str) -> OctopError:
@@ -466,9 +474,9 @@ async def _read_download(
     try:
         file_blob = await ws.adownload_bytes(io_path)
     except PermissionError as exc:
-        raise OctopError(ErrorCode.NOT_FOUND, f"cannot download {path!r}") from exc
+        raise _missing(ws, io_path, f"cannot download {path!r}") from exc
     if file_blob is None:
-        raise OctopError(ErrorCode.NOT_FOUND, f"cannot download {path!r}") from None
+        raise _missing(ws, io_path, f"cannot download {path!r}") from None
     return io_path.rsplit("/", 1)[-1] or "download.bin", file_blob
 
 
@@ -502,9 +510,9 @@ async def download_link(
     try:
         file_blob = await ws.adownload_bytes(io_path)
     except PermissionError as exc:
-        raise OctopError(ErrorCode.NOT_FOUND, f"cannot download {path!r}") from exc
+        raise _missing(ws, io_path, f"cannot download {path!r}") from exc
     if file_blob is None:
-        raise OctopError(ErrorCode.NOT_FOUND, f"cannot download {path!r}") from None
+        raise _missing(ws, io_path, f"cannot download {path!r}") from None
     fname = io_path.rsplit("/", 1)[-1] or "download.bin"
     url = await asyncio.to_thread(
         cloud_files.publish_download,
@@ -761,7 +769,10 @@ async def import_workspace_archive(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
     _keep_computer_off(ws, ".", search=True)
-    local_ws = resolve_agent_workspace_dir(server, agent_id)
+    # Replace clears the agent's local folder first, for agents whose files live there.
+    local_ws = (
+        resolve_agent_workspace_dir(server, agent_id) if _host_files(server, agent_id) else None
+    )
     result = await import_workspace_zip(
         ws,
         raw,

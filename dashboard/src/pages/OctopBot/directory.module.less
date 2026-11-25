@@ -927,3 +927,30 @@
 :global(html[data-octop-desktop-chrome="mac"]) .directory[data-collapsed] {
   padding-top: var(--window-chrome-top-band, 28px);
 }
+// Onboarding: the team Chief just built glows until the owner moves on.
+.contact[data-onboarding-new="true"] {
+  background: rgba(255, 196, 61, 0.16);
+  box-shadow: 0 0 0 1px rgba(224, 162, 58, 0.45);
+  animation: onboardingGlow 1.8s ease-in-out infinite;
+}
+.freshBadge {
+  flex: none;
+  margin-inline-start: auto;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: #ff5a5f;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+}
+@keyframes onboardingGlow {
+  50% {
+    box-shadow: 0 0 0 4px rgba(255, 196, 61, 0.35);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .contact[data-onboarding-new="true"] {
+    animation: none;
+  }
+}

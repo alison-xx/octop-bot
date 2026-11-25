@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_owner_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
+from octop.api.common.bot_cloud import no_cloud_tenant
 from octop.api.common.workspace import require_running_workspace
 from octop.api.deps import current_user, get_server
 from octop.infra.git import (
@@ -33,7 +34,8 @@ from octop.infra.git.message import generate_commit_message
 from octop.infra.text_assist import assist_models, server_agent_registry
 from octop.infra.utils.locale import resolve_request_locale
 
-router = APIRouter()
+# Host-level operator features: not for cloud tenants.
+router = APIRouter(dependencies=[Depends(no_cloud_tenant)])
 
 
 def _agent_config(row: Any) -> dict[str, Any]:

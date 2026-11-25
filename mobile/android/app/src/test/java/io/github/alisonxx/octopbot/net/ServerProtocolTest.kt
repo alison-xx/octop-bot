@@ -19,7 +19,73 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class ServerProtocolTest {
+    @org.junit.Test
+    fun computerCreditCodesAreRecognized() {
+        org.junit.Assert.assertTrue(ApiException.isCreditsRequired(ApiException.COMPUTER_CREDITS_REQUIRED))
+        org.junit.Assert.assertTrue(ApiException.isCreditsRequired(ApiException.COMPUTER_PAUSED_NO_CREDITS))
+        org.junit.Assert.assertFalse(ApiException.isCreditsRequired(null))
+    }
+
+    @org.junit.Test
+    fun rechargeBodyCarriesOnlyValidOptionalFields() {
+        val body = ServerProtocol.rechargeBody("test-account", 12.1, "image")
+        org.junit.Assert.assertEquals("credits", body["intent"]?.toString()?.trim('"'))
+        org.junit.Assert.assertEquals("android", body["from"]?.toString()?.trim('"'))
+        org.junit.Assert.assertEquals("13", body["need"]?.toString())
+        org.junit.Assert.assertEquals("image", body["reason"]?.toString()?.trim('"'))
+        val invalid = ServerProtocol.rechargeBody("test-account", 0.0, "invalid")
+        org.junit.Assert.assertNull(invalid["need"])
+        org.junit.Assert.assertNull(invalid["reason"])
+    }
+
+    @Test
+    fun creditScenariosAndDetailsSurviveErrors() {
+        for (kind in listOf("text", "image", "video")) {
+            val details = CreditDetails(12.2, 3.0, kind)
+            assertEquals(CreditScenario(kind, 12.2, 3.0), creditScenario(ApiException.CREDITS_REQUIRED, details))
+        }
+        val details = CreditDetails(12.2, 3.0, null)
+        assertEquals("computer", creditScenario(ApiException.COMPUTER_CREDITS_REQUIRED, details)?.reason)
+        assertEquals("paused", creditScenario(ApiException.COMPUTER_PAUSED_NO_CREDITS, details)?.type)
+        assertNull(creditScenario(ApiException.CREDITS_REQUIRED, CreditDetails(null, 3.0, "text")))
+        assertNull(creditScenario(ApiException.CREDITS_REQUIRED, CreditDetails(1.0, null, "text")))
+        // A paused computer needs no figures; starting one needs only `need`.
+        assertEquals("paused", creditScenario(ApiException.COMPUTER_PAUSED_NO_CREDITS, null)?.type)
+        assertEquals(9.0, creditScenario(ApiException.COMPUTER_CREDITS_REQUIRED, CreditDetails(9.0, null, null))!!.need, 0.0)
+        assertNull(creditScenario(ApiException.COMPUTER_CREDITS_REQUIRED, CreditDetails(null, 2.0, null)))
+        assertNull(creditScenario(ApiException.CREDITS_REQUIRED, CreditDetails(1.0, 2.0, "unknown")))
+        val http = ApiException.fromBody(402, """{"error":{"code":"BOT_CLOUD_CREDITS_REQUIRED","details":{"need":12.2,"balance":3,"kind":"image"}}}""")
+        val frame = ServerProtocol.streamError(obj("""{"error_code":"BOT_CLOUD_CREDITS_REQUIRED","error_details":{"need":12.2,"balance":3,"kind":"image"}}"""), null)
+        assertEquals(CreditScenario("image", 12.2, 3.0), creditScenario(http.code, http.details))
+        assertEquals(http.details, frame.details)
+        val provider = ServerProtocol.streamError(obj("""{"error_code":"insufficient_balance"}"""), null)
+        assertEquals(ApiException.Kind.Server, provider.kind)
+        assertEquals("insufficient_balance", provider.code)
+        val empty = ServerProtocol.rechargeBody("account")
+        assertNull(empty["need"])
+        assertNull(empty["reason"])
+        val scenario = creditScenario(frame.code, frame.details)!!
+        val body = ServerProtocol.rechargeBody("account", scenario.need, scenario.reason)
+        assertEquals("13", body["need"].toString())
+        assertEquals("\"image\"", body["reason"].toString())
+    }
+
     private fun obj(text: String) = Http.parse(text) as JsonObject
+
+    @Test
+    fun botPreparationFieldsAndPolling() {
+        val legacy = ServerProtocol.bot(obj("""{"agent_id":"old"}"""))!!
+        val starting = ServerProtocol.bot(obj("""{"agent_id":"new","state":"starting","preparing":true}"""))!!
+        val failed = ServerProtocol.bot(obj("""{"agent_id":"bad","state":"failed","preparing":false,"last_error":"problem"}"""))!!
+        assertTrue(legacy.canSend)
+        assertNull(legacy.state)
+        assertFalse(starting.canSend)
+        assertEquals("starting", starting.state)
+        assertFalse(failed.canSend)
+        assertEquals("problem", failed.lastError)
+        assertTrue(io.github.alisonxx.octopbot.model.shouldPollBots(listOf(legacy, starting, failed)))
+        assertFalse(io.github.alisonxx.octopbot.model.shouldPollBots(listOf(legacy, failed)))
+    }
 
     @Test
     fun historyMergesAssistantSegmentsAndSkipsToolRows() {
@@ -365,6 +431,9 @@ class ServerProtocolTest {
         fun link(url: String, expires: String = "2026-11-24T00:15:00+00:00") =
             Http.parse("""{"url":"$url","expires_at":"$expires"}""")
         assertEquals(good, ServerProtocol.cloudCheckoutUrl(link(good), now))
+        assertEquals("$good&tab=boost", ServerProtocol.cloudCheckoutUrl(link("$good&tab=boost"), now))
+        assertNull(ServerProtocol.cloudCheckoutUrl(link("https://admin.lynxce.cn/recharge"), now))
+        assertNull(ServerProtocol.cloudCheckoutUrl(link("$good&tab=evil"), now))
         assertEquals(good, ServerProtocol.cloudCheckoutUrl(link(good, "2026-11-24T00:15:00.123456Z"), now))
         assertNull(ServerProtocol.cloudCheckoutUrl(link("http://admin.lynxce.cn/recharge?token=$ticket"), now))
         assertNull(ServerProtocol.cloudCheckoutUrl(link("https://admin.lynxce.cn.evil.cn/recharge?token=$ticket"), now))

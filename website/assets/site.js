@@ -124,6 +124,29 @@
     if (e.key === "Escape") setMenu(false);
   });
 
+  const helpMenus = $$(".nav-more");
+  function setHelp(menu, open) {
+    menu.classList.toggle("open", open);
+    $("button", menu).setAttribute("aria-expanded", String(open));
+  }
+  helpMenus.forEach((menu) =>
+    $("button", menu).addEventListener("click", () => setHelp(menu, !menu.classList.contains("open"))),
+  );
+  document.addEventListener("click", (e) => {
+    helpMenus.forEach((menu) => {
+      if (!menu.contains(e.target)) setHelp(menu, false);
+    });
+  });
+  addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    helpMenus.forEach((menu) => {
+      if (menu.classList.contains("open")) {
+        setHelp(menu, false);
+        $("button", menu).focus();
+      }
+    });
+  });
+
   /* ---------------- Toast ---------------- */
   let toastTimer;
   function toast(message) {
@@ -276,6 +299,17 @@
       if (e.target === dialog || e.target.closest(".modal-close")) dialog.close();
     });
     dialog.addEventListener("close", () => dialog.querySelector("video")?.pause());
+  });
+
+  /* WeChat community QR: footer, Help menu, phone menu, changelog and pricing all open it. */
+  const community = $("#community");
+  document.addEventListener("click", (e) => {
+    const trigger = e.target.closest("[data-community]");
+    if (!trigger || !community) return;
+    e.preventDefault();
+    setMenu(false);
+    community.dataset.kind = trigger.dataset.community === "business" ? "business" : "community";
+    openDialog(community);
   });
 
   const lightbox = $("#lightbox");
@@ -743,6 +777,31 @@
 
   /* The manifest decides the current version; releases.json keeps older releases for the changelog
      and stands in while no manifest is published. The static HTML is the last fallback. */
+  function loadReleases() {
+    const live = loadManifest()
+      .then((list) => list.map((r) => ({ ...r, live: true })))
+      .catch(() => []);
+    const listed = fetch("releases.json", { cache: "no-cache" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .catch(() => ({}));
+    return Promise.all([live, listed]).then(([manifestReleases, data]) => {
+      /* releases.json "hidden" lists platforms not to offer yet, e.g. "ios" before the App Store listing is live. */
+      const hidden = new Set(data.hidden || []);
+      const fromManifest = manifestReleases.map((r) => ({ ...r, assets: r.assets.filter((a) => !hidden.has(a.platform)) }));
+      const fromList = data.releases || [];
+      const stable = fromManifest.find((r) => r.channel === "stable");
+      const beta = fromManifest.find((r) => r.channel === "beta");
+      const latest = stable || beta || fromList[0];
+      if (!latest) return null;
+      const seen = new Set();
+      /* For a version in both, keep the hand-written bilingual notes from releases.json. */
+      const history = [...fromList, ...fromManifest]
+        .filter((r) => !seen.has(r.version) && seen.add(r.version))
+        .sort((a, b) => compareVersions(b.version, a.version));
+      return { latest, beta: stable && beta && compareVersions(beta.version, stable.version) > 0 ? beta : null, history, hidden };
+    });
+  }
+
   let site = null;
   function renderReleases() {
     if (!site) return;
@@ -751,30 +810,174 @@
     renderHistory(site.history);
   }
   if ($("[data-download-primary], #platforms, #history")) {
-    const live = loadManifest()
-      .then((list) => list.map((r) => ({ ...r, live: true })))
-      .catch(() => []);
-    const listed = fetch("releases.json", { cache: "no-cache" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .catch(() => ({}));
-    Promise.all([live, listed]).then(([manifestReleases, data]) => {
-      /* releases.json "hidden" lists platforms not to offer yet, e.g. "ios" before the App Store listing is live. */
-      const hidden = new Set(data.hidden || []);
-      const fromManifest = manifestReleases.map((r) => ({ ...r, assets: r.assets.filter((a) => !hidden.has(a.platform)) }));
-      const fromList = data.releases || [];
-      const stable = fromManifest.find((r) => r.channel === "stable");
-      const beta = fromManifest.find((r) => r.channel === "beta");
-      const latest = stable || beta || fromList[0];
-      if (!latest) return;
-      const seen = new Set();
-      /* For a version in both, keep the hand-written bilingual notes from releases.json. */
-      const history = [...fromList, ...fromManifest]
-        .filter((r) => !seen.has(r.version) && seen.add(r.version))
-        .sort((a, b) => compareVersions(b.version, a.version));
-      site = { latest, beta: stable && beta && compareVersions(beta.version, stable.version) > 0 ? beta : null, history };
+    loadReleases().then((loaded) => {
+      if (!loaded) return;
+      site = loaded;
       renderReleases();
     });
     document.addEventListener("langchange", renderReleases);
+  }
+
+  /* ---------------- Changelog page ---------------- */
+  /* The admin console publishes changelog.json next to the signed manifest. Until it does, the page
+     shows the same history as the download page (manifest + releases.json). */
+  const CHANGELOG_URL = `${DOWNLOAD_BASE}changelog.json`;
+  const PLATFORM_NAMES = [
+    ["darwin", "macOS", "macOS"],
+    ["win32", "Windows", "Windows"],
+    ["linux", "Linux", "Linux"],
+    ["ios", "iPhone", "iPhone"],
+    ["android", "Android", "Android"],
+    ["web", "网页版", "Web"],
+    ["server", "服务器", "Server"],
+    ["nas", "NAS", "NAS"],
+  ];
+  const ITEM_TYPES = {
+    highlight: ["亮点", "Highlight"],
+    new: ["新增", "New"],
+    improved: ["改进", "Improved"],
+    fixed: ["修复", "Fixed"],
+  };
+  const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+  const isText = (v) => typeof v === "string" && v.trim() !== "";
+
+  function changelogFromAdmin(data) {
+    if (!data || data.schemaVersion !== 2 || data.product !== "octop-bot" || !Array.isArray(data.releases)) return null;
+    const hidden = new Set(data.hidden || []);
+    const releases = data.releases
+      .filter(
+        (r) =>
+          r &&
+          isText(r.version) &&
+          ["stable", "beta"].includes(r.channel) &&
+          DATE_PATTERN.test(r.date) &&
+          Array.isArray(r.items) &&
+          r.items.every((i) => i && isText(i.zh) && isText(i.en)),
+      )
+      .map((r) => ({
+        version: displayVersion(r.version),
+        channel: r.channel,
+        date: r.date,
+        title: r.title && isText(r.title.zh) && isText(r.title.en) ? r.title : null,
+        lines: {
+          zh: r.items.map((i) => ({ type: ITEM_TYPES[i.type] ? i.type : null, text: i.zh })),
+          en: r.items.map((i) => ({ type: ITEM_TYPES[i.type] ? i.type : null, text: i.en })),
+        },
+        platforms: (Array.isArray(r.platforms) ? r.platforms : []).filter((p) => !hidden.has(p)),
+      }));
+    return releases.length ? releases.sort((a, b) => compareVersions(b.version, a.version)) : null;
+  }
+
+  function changelogFromHistory(loaded) {
+    if (!loaded) return null;
+    return loaded.history.map((r) => ({
+      version: r.version,
+      channel: r.channel,
+      date: r.date,
+      title: null,
+      lines: {
+        zh: (r.notes.zh || []).map((text) => ({ type: null, text })),
+        en: (r.notes.en || []).map((text) => ({ type: null, text })),
+      },
+      platforms: [...new Set((r.assets || []).map((a) => a.platform))].filter((p) => !loaded.hidden.has(p)),
+    }));
+  }
+
+  function formatDay(day) {
+    const [y, m, d] = day.split("-").map(Number);
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return t(`${y} 年 ${m} 月 ${d} 日`, `${months[m - 1]} ${d}, ${y}`);
+  }
+
+  const changelogList = $("#changelog-list");
+  if (changelogList) {
+    let releases = null;
+    let platform = "all";
+    const filterBox = $("#changelog-filter");
+    /* Text from changelog.json and the release lists is only ever set with textContent. */
+    const node = (tag, className, text) => {
+      const el = document.createElement(tag);
+      if (className) el.className = className;
+      if (text !== undefined) el.textContent = text;
+      return el;
+    };
+    const empty = (zh, en) => node("p", "cl-empty", t(zh, en));
+    const render = () => {
+      if (!releases) return;
+      const present = PLATFORM_NAMES.filter(([key]) => releases.some((r) => r.platforms.includes(key)));
+      if (!present.some(([key]) => key === platform)) platform = "all";
+      filterBox.replaceChildren(
+        ...[["all", "全部", "All"], ...present].map(([key, zh, en]) => {
+          const btn = node("button", "", t(zh, en));
+          btn.type = "button";
+          btn.dataset.platform = key;
+          btn.setAttribute("aria-pressed", String(key === platform));
+          return btn;
+        }),
+      );
+      const shown = releases.filter((r) => platform === "all" || r.platforms.includes(platform));
+      $("#changelog-count").textContent = t(`共 ${shown.length} 个版本`, `${shown.length} releases`);
+      if (!shown.length) {
+        changelogList.replaceChildren(empty("这个平台还没有更新记录。", "No releases for this platform yet."));
+        return;
+      }
+      changelogList.replaceChildren(
+        ...shown.map((r) => {
+          const article = node("article", "cl-release");
+          article.id = "v" + r.version;
+          const time = node("time", "", formatDay(r.date));
+          time.dateTime = r.date;
+          const body = node("div");
+          const heading = node("h2", "cl-version", r.version);
+          if (r === releases[0]) heading.append(node("span", "badge", t("最新", "Latest")));
+          heading.append(
+            node("span", "badge neutral", r.channel === "beta" ? t("测试版", "Beta") : t("正式版", "Stable")),
+          );
+          body.append(heading);
+          if (r.title) body.append(node("p", "cl-title", r.title[lang] || r.title.zh));
+          const list = node("ul");
+          for (const line of r.lines[lang].length ? r.lines[lang] : r.lines.zh) {
+            const item = node("li");
+            if (line.type) {
+              const tag = node("span", "cl-type", t(...ITEM_TYPES[line.type]));
+              tag.dataset.type = line.type;
+              item.append(tag);
+            }
+            item.append(document.createTextNode(line.text));
+            list.append(item);
+          }
+          body.append(list);
+          const names = PLATFORM_NAMES.filter(([key]) => r.platforms.includes(key));
+          if (names.length) {
+            const box = node("div", "cl-platforms");
+            box.append(...names.map(([, zh, en]) => node("span", "", t(zh, en))));
+            body.append(box);
+          }
+          article.append(time, body);
+          return article;
+        }),
+      );
+    };
+    filterBox.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-platform]");
+      if (!btn) return;
+      platform = btn.dataset.platform;
+      render();
+    });
+    fetch(CHANGELOG_URL, { cache: "no-cache" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then(changelogFromAdmin)
+      .catch(() => null)
+      .then((admin) => admin || loadReleases().then(changelogFromHistory))
+      .then((list) => {
+        releases = list && list.length ? list : null;
+        if (releases) render();
+        else
+          changelogList.replaceChildren(
+            empty("暂时读不到更新日志，请稍后再试。", "The changelog could not be loaded. Please try again later."),
+          );
+      });
+    document.addEventListener("langchange", render);
   }
 
   document.addEventListener("click", (e) => {
@@ -902,4 +1105,48 @@
   applyLang(lang);
   root.classList.remove("i18n-wait");
   root.dataset.ready = "1";
+})();
+
+/* Shared account navigation. */
+(() => {
+  const auth = window.OctopAuth;
+  if (!auth) return;
+  const tools = document.querySelector(".header-tools"), mobile = document.querySelector(".mobile-nav");
+  const zh = () => document.documentElement.dataset.lang !== "en";
+  let profile = null, quota = null, generation = 0;
+  function label(cn, en) { return zh() ? cn : en; }
+  function render() {
+    document.querySelectorAll(".auth-nav").forEach((el) => el.remove());
+    const session = auth.session();
+    if (!session && !auth.config.loginEnabled) return;
+    for (const parent of [tools, mobile]) {
+      if (!parent) continue;
+      const box = document.createElement("div"); box.className = "auth-nav";
+      if (!session) {
+        const login = document.createElement("a"); login.href = "/login.html?next=" + encodeURIComponent(auth.safePath(location.pathname + location.search + location.hash)); login.textContent = label("登录", "Sign in"); box.append(login);
+      } else {
+        const details = document.createElement("details"), summary = document.createElement("summary");
+        const avatar = document.createElement("span"); avatar.className = "auth-avatar";
+        const name = profile?.name || profile?.nickname || session.user?.name || session.user?.nickname || "U";
+        if (profile?.avatarUrl && /^https:\/\//i.test(profile.avatarUrl)) { const img = document.createElement("img"); img.src = profile.avatarUrl; img.alt = ""; avatar.append(img); } else avatar.textContent = String(name).slice(0, 1);
+        const balance = document.createElement("span"); const left = Number(quota?.creditsRemaining ?? quota?.balance ?? quota?.remaining); balance.textContent = `✦ ${Number.isFinite(left) ? left.toLocaleString("en-US") : "—"}`;
+        summary.append(avatar, balance); details.append(summary);
+        const menu = document.createElement("div"); menu.className = "auth-menu";
+        const account = document.createElement("a"); account.href = "/account.html"; account.textContent = label("个人中心", "Account");
+        const logout = document.createElement("button"); logout.type = "button"; logout.textContent = label("退出登录", "Sign out"); logout.addEventListener("click", () => { profile = null; quota = null; auth.logout(); });
+        menu.append(account, logout); details.append(menu); box.append(details);
+      }
+      if (parent === tools) parent.insertBefore(box, parent.querySelector(".btn-primary")); else parent.prepend(box);
+    }
+  }
+  async function update() {
+    const id = ++generation; profile = null; quota = null; render();
+    if (!auth.session()) return;
+    const results = await Promise.allSettled([auth.api("/api/user/profile"), auth.api("/api/user/quota")]);
+    if (id !== generation || !auth.session()) return;
+    if (results[0].status === "fulfilled") profile = results[0].value;
+    if (results[1].status === "fulfilled") quota = results[1].value;
+    render();
+  }
+  auth.onChange(update); document.addEventListener("langchange", render); auth.ready.then(update);
 })();

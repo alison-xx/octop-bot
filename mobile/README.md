@@ -5,8 +5,11 @@ They share no code, only this design and the wire contract in [PROTOCOL.md](PROT
 
 ## Ways to connect
 
-The start page puts the Lynxce account first (a card with 验证码 / 密码 tabs, as on the web), then
-"Use without signing in", with "Connect my own server" as a quiet link at the bottom.
+The start page follows the desktop sign-in (brand banner with Chief, then the Lynxce account): one
+"phone or email" field whose icon follows what is typed, a code field with "Get code" inside it, and
+a "Sign in with password" link to switch. A new phone or email is registered on first sign-in. There
+is no third-party sign-in on the phones. Below a divider: "Use without signing in", and "Connect my own
+server" as a quiet link at the bottom. Signing in with a field missing shakes that field and focuses it.
 
 1. **Lynxce account (default).** Sign in with a 灵策智算 phone/email and a code or password. When Octop Bot
    cloud (`https://bot.lynxce.cn`) answers, the phone signs in there and gets the cloud's Bots, groups and
@@ -45,6 +48,16 @@ Three groups, like the desktop:
 - **本地模型 · 免费** (phone only). Ollama or LM Studio by address (`192.168.1.8` → `:11434/v1`); the
   phone talks to it directly. Not shown when signed in to a server, which runs the chat itself.
 
+The chat balance warning appears below 1,000 credits. Closing it hides it for that wallet for 24 hours,
+across app restarts. Out-of-credits cards follow the server's code and `details`: chat, images and video
+show what the step needs and the balance, starting a cloud computer shows what it needs, and a computer
+paused for credits says its files are kept; missing details fall back to the generic text. A personal API
+key's balance error points to the provider and never shows our top-up. Android: the first shortage adds a
+one-time note on top-ups versus monthly member credits; top-up from a card sends `need` (rounded up) and
+`reason` to the cloud checkout, other entry points send neither, and direct Lynxce checkout opens the
+top-up tab (`tab=boost`) after the URL check. iOS: the card offers only the App Store packs, and only
+while `CreditPurchases.inApp` is on (off in this build); no web checkout or external links.
+
 The desktop app's built-in server listens on `127.0.0.1` only, so phones connect to a NAS/Docker
 deployment (`deploy/docker`, `fnos/`), not to the desktop app.
 
@@ -70,6 +83,9 @@ Grok-style: dark-first, chat-first, one big character.
   Server mode adds a Groups section with member-character clusters. Long-press a row: edit look (and
   persona/delete for phone-local Bots), voice mode. A floating waveform button opens voice mode with
   the last Bot. Every Bot keeps its own live chat, so several can reply at once.
+  A server Bot being imported shows “Getting ready…” in place of its preview; a Bot whose agent
+  failed (`state` "failed", which also covers a missing or broken model) shows "Couldn't start" and Retry. The directory refreshes every 1.5 seconds while any Bot is
+  preparing and the app is in the foreground. Older servers and phone-local Bots remain ready.
 - **Chat screen** (pushed from the directory). Top bar: back · mini character + name ("Replying…"
   while it works; tap to edit the look) · history (that Bot's conversations as a sheet: New chat,
   swipe to delete) · voice · new chat.
@@ -79,6 +95,9 @@ Grok-style: dark-first, chat-first, one big character.
   full-width Markdown with a 26 pt character beside the first line; a collapsible "Thought for a
   moment" row for reasoning; small chips for tool steps ("Using web_search…" / "Used web_search").
   Long-press a message: copy, read aloud, retry (assistant, last one).
+  While a server Bot is preparing or failed, the composer and voice entry are disabled. The chat
+  shows "This Bot is getting ready…", or "Couldn't start" with the server's `last_error` under it and
+  Retry; it becomes available after a refresh.
 - **Composer.** Floating pill at the bottom: `+` (photo library / camera) · multiline field ("Ask
   anything") · mic when empty / send (filled arrow) when there is text / stop (square) while
   streaming. Picked photos show as removable thumbnails above the field.
@@ -97,8 +116,14 @@ Grok-style: dark-first, chat-first, one big character.
   (sent as `mention_ids`). Header shows member characters; info sheet shows goal and shared memory.
   New group: name + pick members; Chief (or the first member) is the admin.
 - **Settings.** A grouped list, top to bottom:
-  - *Account card* (not a row): Chief character 56 pt, account name (headline), connection line
-    ("Lynxce cloud" or the server's host:port), and on Lynxce a balance chip.
+  - *Account card* (not a row). Signed in to Lynxce: avatar, account name, membership tier and
+    Lynxce id, the balance in large type with the part that expires (and when) and the permanent part,
+    and "Credits and usage". Until Lynxce's member profile arrives only the name and total show.
+    Android adds renew/join and top-up buttons that open the website's pricing page (top-up opens its
+    packs, `#credits`); its 个人中心 link stays hidden until the website's account centre is live
+    (`ACCOUNT_CENTRE_OPEN`). iOS has no 个人中心 entry and never mentions the website (App Store 3.1.1).
+    Otherwise: Chief character 56 pt, account name and connection line ("this phone" or the server's
+    host:port).
   - *General*: language (follow system / 简体中文 / English — switches live, also drives
     `Accept-Language` and speech recognition), appearance (follow system / dark / light), chat text
     size (small / standard / large = 0.9 / 1.0 / 1.15 × body), haptics (on by default).

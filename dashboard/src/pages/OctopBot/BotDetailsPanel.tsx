@@ -4,8 +4,6 @@ import {
   BarChart3,
   Blocks,
   CalendarClock,
-  Cloud,
-  UploadCloud,
   ChevronRight,
   Cpu,
   History,
@@ -29,7 +27,6 @@ import { canAccessPath, userCan } from "../../utils/permissions";
 import { apiErrorMessage } from "../../utils/apiError";
 import {
   BOT_CAPABILITY_UPSTREAM,
-  BOT_CLOUD,
   BOT_SETTINGS,
   botCapabilityPath,
 } from "../../utils/botClientRoute";
@@ -162,41 +159,7 @@ export default function BotDetailsPanel({
     (["skills", "connectors"] as const).some((s) =>
       canAccessPath(user, BOT_CAPABILITY_UPSTREAM[s]),
     );
-  const canUseBotInCloud =
-    botOnly &&
-    !bot.is_private &&
-    agent?.is_owner &&
-    !agent.bridge &&
-    agent.kind !== "managed";
   const actions = [
-    ...(canUseBotInCloud
-      ? [
-          {
-            icon: Cloud,
-            label: t("botCloud.workWithBot"),
-            open: () =>
-              navigate(BOT_CLOUD, {
-                state: { from: location.pathname, botId: bot.agent_id },
-              }),
-          },
-        ]
-      : []),
-    ...(canUseBotInCloud && threadId
-      ? [
-          {
-            icon: UploadCloud,
-            label: t("botCloud.importChat"),
-            open: () =>
-              navigate(BOT_CLOUD, {
-                state: {
-                  from: location.pathname,
-                  botId: bot.agent_id,
-                  importThreadId: threadId,
-                },
-              }),
-          },
-        ]
-      : []),
     { icon: History, label: t("octopBot.history"), open: onHistory },
     ...(canOpenCapabilities
       ? [
@@ -242,6 +205,7 @@ export default function BotDetailsPanel({
     value: modelOptionValue(m),
     id: m.model,
     name: m.name,
+    group: m.provider_name,
   }));
   if (modelValue && !items.some((item) => item.value === modelValue)) {
     items.push({ value: modelValue, id: modelValue });
@@ -417,19 +381,6 @@ export default function BotDetailsPanel({
         name={bot.name}
         threadId={threadId}
         edition={edition}
-        onOpenCloud={
-          canUseBotInCloud
-            ? (job) =>
-                navigate(BOT_CLOUD, {
-                  state: {
-                    from: location.pathname,
-                    botId: bot.agent_id,
-                    tab: "schedules",
-                    pausedTimerId: job?.id,
-                  },
-                })
-            : undefined
-        }
         onClose={() => setActivity(null)}
       />
     ) : activity === "usage" && canViewUsage ? (

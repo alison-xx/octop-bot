@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from importlib import resources
 from importlib.resources.abc import Traversable
 from typing import Any
@@ -12,6 +13,8 @@ _WORKSPACE_TOKEN = b"{{OCTOP_WORKSPACE}}"
 _SKILLS_TOKEN = b"{{OCTOP_SKILLS}}"
 _BUILTIN_TOKEN = b"{{OCTOP_BUILTIN_SKILLS}}"
 _PACKAGE = "octop.infra.agents.builtin_skills"
+_RENDER_VERSION = b"1"
+_VERSION_MARKER = f"{OCTOP_BUILTIN_SKILLS_ROOT}/.octop-version"
 
 # Built-ins that depend on software an execution environment may lack (for
 # office-documents: python-docx/openpyxl/python-pptx, LibreOffice, Poppler).
@@ -94,6 +97,20 @@ async def sync_octop_builtin_skills(workspace: Any) -> list[str]:
     builtin_rel = workspace.system_rel(OCTOP_BUILTIN_SKILLS_ROOT)
     skills_path = agent_facing_workspace_path(workspace, skills_rel).encode("utf-8")
     builtin_path = agent_facing_workspace_path(workspace, builtin_rel).encode("utf-8")
+    digest = hashlib.sha256()
+    for value in (_RENDER_VERSION, workspace_path, skills_path, builtin_path):
+        digest.update(len(value).to_bytes(8, "big"))
+        digest.update(value)
+    for path, data in sorted(uploads):
+        for value in (path.encode("utf-8"), data):
+            digest.update(len(value).to_bytes(8, "big"))
+            digest.update(value)
+    version = digest.hexdigest()
+    previous_version = await workspace.aread_text(_VERSION_MARKER)
+    if previous_version == version:
+        return sorted(skill_names)
+    if previous_version is not None:
+        await workspace.adelete(_VERSION_MARKER)
     uploads = [
         (
             path,
@@ -111,6 +128,7 @@ async def sync_octop_builtin_skills(workspace: Any) -> list[str]:
         path = f"{OCTOP_BUILTIN_SKILLS_ROOT}/{name}"
         if await workspace.aexists(path):
             await workspace.adelete(path)
+    await workspace.awrite_text(_VERSION_MARKER, version, force=True)
     return sorted(skill_names)
 
 

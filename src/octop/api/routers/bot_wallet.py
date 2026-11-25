@@ -26,6 +26,16 @@ class CheckoutRequest(BaseModel):
         max_length=256,
         description="Model connection ID returned with the displayed balance.",
     )
+    origin: str | None = Field(
+        default=None,
+        alias="from",
+        max_length=16,
+        description=(
+            "Client asking: desktop, web or android. After paying, Lynxce's checkout offers a "
+            "way back to the official result page, which uses this to return to the client. "
+            "Other values are ignored."
+        ),
+    )
 
 
 @router.get("", summary="Read the credit balance of my connected Lynxce account")
@@ -42,7 +52,12 @@ async def recharge(
 ) -> wallet.CheckoutLink:
     response.headers["Cache-Control"] = "private, no-store"
     return await wallet.recharge(
-        services, user.id, body.source, body.expected_account_id, body.expected_connection_id
+        services,
+        user.id,
+        body.source,
+        body.expected_account_id,
+        body.expected_connection_id,
+        body.origin,
     )
 
 

@@ -12,6 +12,8 @@ export const ChatRouteContext = createContext<{
     size: number,
     working: boolean,
   ) => React.ReactNode;
+  /** Shown right above the composer (Octop Bot onboarding). */
+  composerTop?: React.ReactNode;
 } | null>(null);
 
 export const useEmbeddedChat = () => useContext(ChatRouteContext);

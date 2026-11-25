@@ -17,6 +17,8 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 if TYPE_CHECKING:
     from octop_harness.backends.workspace import BackendWorkspace
 
@@ -83,14 +85,17 @@ def is_media_push_tool(name: str | None) -> bool:
     return tool_name_base(name or "").lower() in MEDIA_PUSH_TOOL_BASES
 
 
-def _delivers_media(message: Any, *, chunk_name: str | None) -> bool:
+def _delivers_media(message: Any, *, chunk_name: str | None, marker_ok: bool = True) -> bool:
     """Allowlisted tool names, or the managed ``send_file_to_user`` marker.
 
     An external ACP agent reports its own title for the MCP call. The loopback
-    result still carries ``octop_delivery`` so the file reaches the user.
+    result still carries ``octop_delivery`` so the file reaches the user. Agents
+    without external agents (``marker_ok=False``, a cloud tenant's) go by name only.
     """
     if is_media_push_tool(tool_message_name(message, chunk_name=chunk_name)):
         return True
+    if not marker_ok:
+        return False
     for block in iter_media_blocks(extract_message_content(message)):
         if block.get("octop_delivery") == "send_file_to_user":
             return True
@@ -907,6 +912,23 @@ async def read_media_block_bytes(
     return data, guessed
 
 
+# Largest file a cloud tenant's tool result may deliver by URL.
+MAX_FETCHED_MEDIA_BYTES = 50 * 1024 * 1024
+
+
+async def _fetch_public(url: str) -> bytes | None:
+    from octop.infra.utils.ssrf_guard import UnsafeOutboundUrl, safe_request  # noqa: PLC0415
+
+    try:
+        response = await safe_request("GET", url, timeout=30.0)
+    except (UnsafeOutboundUrl, httpx.HTTPError):
+        logger.info("tool media URL not delivered: not a reachable public https address")
+        return None
+    if response.status_code != 200 or len(response.content) > MAX_FETCHED_MEDIA_BYTES:
+        return None
+    return response.content
+
+
 async def block_to_content_part(
     block: dict[str, Any],
     *,
@@ -939,6 +961,15 @@ async def block_to_content_part(
         file_bytes = await read_file_url_bytes(
             workspace, raw_url, filename=filename, mime=mime, host_files=host_files
         )
+        if file_bytes is None:
+            return None
+        data_field = base64.b64encode(file_bytes).decode("ascii")
+        if not mime:
+            mime = mimetypes.guess_type(filename or raw_url)[0] or "application/octet-stream"
+    elif raw_url.startswith(("http://", "https://")) and not host_files:
+        # A cloud tenant's agent: the server fetches it (public https only, pinned, bounded)
+        # and hands the channel bytes, never the address.
+        file_bytes = await _fetch_public(raw_url)
         if file_bytes is None:
             return None
         data_field = base64.b64encode(file_bytes).decode("ascii")
@@ -1010,7 +1041,7 @@ async def media_events_from_tool_result(
 
     chunk_name = chunk.get("name") if isinstance(chunk.get("name"), str) else None
     for message in messages:
-        if not _delivers_media(message, chunk_name=chunk_name):
+        if not _delivers_media(message, chunk_name=chunk_name, marker_ok=host_files):
             continue
         for block in iter_media_blocks(extract_message_content(message)):
             try:

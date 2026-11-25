@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from octop.api.common.bot_cloud import no_cloud_tenant
 from octop.api.common.workspace import (
     coerce_read_content,
     require_agent_workspace,
@@ -27,7 +28,8 @@ from octop.infra.agents.file_checkpoints import (
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.paths import PathLayout
 
-router = APIRouter()
+# Host-level operator features: not for cloud tenants.
+router = APIRouter(dependencies=[Depends(no_cloud_tenant)])
 logger = logging.getLogger(__name__)
 
 

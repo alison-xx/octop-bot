@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <script src="assets/boot.js?v=1"></script>
+  <title data-en="Pricing · Octop Bot">定价 · Octop Bot</title>
+  <meta name="description" content="Octop Bot 会员套餐、加油包和按量单价。本机 Bot 免费，云端协同按积分计费。" data-en-content="Octop Bot memberships, credit packs and pay-as-you-go prices. Bots on your computer are free; the cloud is billed in credits.">
+  <meta name="theme-color" content="#f7f6f2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="定价 · Octop Bot">
+  <meta property="og:description" content="Octop Bot 会员套餐、加油包和按量单价。">
+  <meta property="og:image" content="https://octop-bot.lynxce.cn/assets/art/team.webp">
+  <meta property="og:url" content="https://octop-bot.lynxce.cn/pricing.html">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="https://octop-bot.lynxce.cn/pricing.html">
+  <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="assets/site.css?v=19">
+  <script src="assets/auth.js?v=2" defer></script>
+  <script src="assets/site.js?v=17" defer></script>
+  <script src="assets/pricing.js?v=7" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
+
+  <header class="header">
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="assets/app-icon.webp" alt="" width="30" height="30">Octop Bot</a>
+      <nav class="nav" aria-label="主导航" data-en-aria-label="Main">
+        <a href="features.html" data-en="Features">功能</a>
+        <a href="market.html" data-en="Bot Market">Bot 市场</a>
+        <a aria-current="page" href="pricing.html" data-en="Pricing">定价</a>
+        <div class="nav-more">
+          <button type="button" aria-expanded="false" aria-controls="help-menu"><span data-en="Help">帮助</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+          <div class="nav-menu" id="help-menu">
+            <a href="guide.html"><b data-en="Guide">使用指南</b><small data-en="From install to your first Bot">从安装到第一个 Bot</small></a>
+            <a href="changelog.html"><b data-en="Changelog">更新日志</b><small data-en="What changed in each release">每个版本改了什么</small></a>
+            <a href="guide.html#faq"><b data-en="FAQ">常见问题</b><small data-en="Install, accounts and everyday use">安装、账号和日常使用</small></a>
+            <a href="#community" data-community><b data-en="Join the community">加入社群</b><small data-en="The Octop Bot community on WeChat">扫码进 Octop Bot 用户群</small></a>
+          </div>
+        </div>
+      </nav>
+      <div class="header-tools">
+        <div class="gh-stars"><a class="gh-star" href="https://github.com/alison-xx/octop-bot" title="github.com/alison-xx/octop-bot"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop Bot">Octop Bot</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="alison-xx/octop-bot">6</b></span></a><a class="gh-star upstream" href="https://github.com/TencentCloud/Octop" title="github.com/TencentCloud/Octop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop">Octop</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="TencentCloud/Octop">12.4k</b></span></a></div>
+        <a class="web-link" href="https://bot.lynxce.cn" data-en="Web app">网页版</a>
+        <button class="icon-btn lang-btn" type="button">EN</button>
+        <button class="icon-btn theme-btn" type="button" aria-label="外观"></button>
+        <a class="btn btn-primary btn-sm" href="download.html" data-en="Download">下载</a>
+        <button class="icon-btn menu-btn" type="button" aria-expanded="false" aria-controls="mobile-nav" aria-label="菜单" data-en-aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8h16M4 16h16"/></svg></button>
+      </div>
+    </div>
+    <nav class="mobile-nav" id="mobile-nav" aria-label="主导航" data-en-aria-label="Main">
+      <a href="features.html" data-en="Features">功能</a>
+      <a href="market.html" data-en="Bot Market">Bot 市场</a>
+      <a href="pricing.html" data-en="Pricing">定价</a>
+      <a href="guide.html" data-en="Guide">使用指南</a>
+      <a href="changelog.html" data-en="Changelog">更新日志</a>
+      <a href="guide.html#faq" data-en="FAQ">常见问题</a>
+      <a href="#community" data-community data-en="Join the community">加入社群</a>
+      <a href="https://bot.lynxce.cn" data-en="Web app">网页版</a>
+      <div class="gh-stars"><a class="gh-star" href="https://github.com/alison-xx/octop-bot" title="github.com/alison-xx/octop-bot"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop Bot">Octop Bot</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="alison-xx/octop-bot">6</b></span></a><a class="gh-star upstream" href="https://github.com/TencentCloud/Octop" title="github.com/TencentCloud/Octop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop">Octop</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="TencentCloud/Octop">12.4k</b></span></a></div>
+      <a class="btn btn-primary" href="download.html" data-en="Download Octop Bot">下载 Octop Bot</a>
+    </nav>
+  </header>
+
+    <main id="main">
+    <section class="page-hero wrap price-hero">
+      <span class="eyebrow" data-en="Pricing">定价</span>
+      <h1 class="display" data-en="Bots run free on your computer. &lt;br&gt;Pay only for the cloud.">Bot 在你电脑上免费跑<br>云端协同按需付费</h1>
+      <p class="lead" data-en="Bots on your computer use your own models and machine, and cost no credits. With a Lynxce account, text, images, video and cloud computers are billed in credits; members get credits every month.">本机 Bot 用你自己的模型和电脑，不花积分。登录灵策账号后，文本对话、作图、做视频和云电脑按积分计费；会员每月送积分，解锁更多协同能力。</p>
+      <div class="price-tabs" id="price-tabs" role="tablist">
+        <button type="button" id="tab-plans" role="tab" aria-controls="v-plans" data-view="plans" aria-selected="true" data-en="Membership">会员套餐</button>
+        <button type="button" id="tab-packs" role="tab" aria-controls="v-packs" data-view="packs" aria-selected="false" tabindex="-1" data-en="Credit packs">加油包</button>
+        <button type="button" id="tab-enterprise" role="tab" aria-controls="v-enterprise" data-view="enterprise" aria-selected="false" tabindex="-1" data-en="Enterprise">企业定制</button>
+      </div>
+    </section>
+
+    <section class="wrap" id="v-plans" role="tabpanel" aria-labelledby="tab-plans">
+      <div class="cycle-wrap">
+        <div class="cycle" id="cycle" role="group" aria-label="付款周期" data-en-aria-label="Billing period">
+          <button type="button" data-cycle="month" aria-pressed="true" data-en="Monthly">月付</button>
+          <button type="button" data-cycle="year" aria-pressed="false" data-en="Yearly &lt;em&gt;10% off for now&lt;/em&gt;">年付<em>限时 9 折</em></button>
+        </div>
+      </div>
+      <div class="plans" id="plans"></div>
+      <p class="price-note" id="plans-note"></p>
+    </section>
+
+    <section class="wrap" id="v-packs" role="tabpanel" aria-labelledby="tab-packs" hidden>
+      <div class="buy">
+        <div>
+          <h2 class="h3" data-en="Top up when you run low">积分不够时，临时补一点</h2>
+          <p class="price-sub" data-en="Packs suit an occasional top-up and are usable in Octop Bot and Lynxce; for regular use a membership gives you more.">加油包适合偶尔补充，Octop 与灵策通用；常用的话会员每月送积分更划算。</p>
+          <div class="packs" id="packs"></div>
+          <label class="pack custom">
+            <b data-en="Custom">自定义</b>
+            <span class="custom-input">¥ <input id="custom-amount" inputmode="numeric" autocomplete="off" placeholder="10–5,000" aria-label="自定义金额" data-en-aria-label="Custom amount"></span>
+            <small id="custom-hint" aria-live="polite"></small>
+          </label>
+        </div>
+        <aside class="summary">
+          <div class="summary-head"><b data-en="Credit pack">加油包</b><span class="tag-soft" data-en="One-off">一次性购买</span></div>
+          <div class="summary-price" id="pack-price">¥50</div>
+          <div class="line"><span data-en="Credits">到账</span><b id="pack-credits"></b></div>
+          <div class="line"><span data-en="Use">使用</span><b id="pack-days"></b></div>
+          <div class="line"><span data-en="Usable in Octop Bot and Lynxce">Octop 与灵策通用</span></div>
+          <div class="line"><span data-en="With membership">和会员</span><b data-en="Stacks">可叠加使用</b></div>
+          <a class="btn btn-primary" id="pack-buy" href="#"></a>
+          <p data-en="Pay with WeChat Pay, Alipay or card (Visa, Mastercard…)">支持微信、支付宝、银行卡（Visa / Mastercard 等）</p>
+          <p class="price-sub" data-en="Until checkout opens here, top up inside the Octop Bot app.">网页购买开通前，可以先在 Octop Bot 客户端里充值。</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="wrap" id="v-enterprise" role="tabpanel" aria-labelledby="tab-enterprise" hidden>
+      <div class="enterprise" aria-labelledby="enterprise-title">
+        <div class="enterprise-head">
+          <span class="eyebrow" data-en="For teams and companies">面向团队和企业</span>
+          <h2 class="h3" id="enterprise-title" data-en="Enterprise">企业定制</h2>
+          <p class="enterprise-price" data-en="Tailored to you">按需定制</p>
+          <p class="price-sub" data-en="Run Octop Bot on your own servers, with your own accounts and models, set up around how your team works.">把 Octop Bot 装在你自己的服务器上，用自己的账号体系和模型，按你们的业务流程配好 Bot 团队。</p>
+          <button type="button" class="btn btn-primary" data-community="business" data-en="Talk to us on WeChat">加微信咨询</button>
+        </div>
+        <ul class="enterprise-list">
+          <li><b data-en="Private deployment">私有部署</b><span data-en="On your own servers or intranet; data stays with you.">装在自己的服务器或内网，数据不出你的环境。</span></li>
+          <li><b data-en="Accounts and access">账号和权限</b><span data-en="Many members with roles, and sign-in through LDAP or SSO.">多成员、按角色分权限，支持 LDAP、SSO 单点登录。</span></li>
+          <li><b data-en="Your choice of models">模型自选</b><span data-en="Your own provider keys or privately hosted models.">接你自己的模型 Key，或私有化部署的模型。</span></li>
+          <li><b data-en="Bots for your work">按业务定制</b><span data-en="Bots, skills and workflows set up for your team's jobs.">按岗位和流程定制 Bot、技能和工作流。</span></li>
+          <li><b data-en="Hands-on setup">专人对接</b><span data-en="Someone works with you from setup to go-live.">从部署到上线，有专人跟进。</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="wrap price-section">
+      <h2 class="h3" data-en="Pay as you go">按量单价</h2>
+      <p class="price-sub" data-en="Everything is settled in credits; Bots on your computer use your own models and machine and cost nothing.">所有消耗都用积分结算；本机 Bot 用自己的模型和电脑，不花积分。</p>
+      <div class="rates" id="rates"></div>
+      <div class="model-tabs" id="model-tabs" role="group" aria-label="模型价格" data-en-aria-label="Model prices">
+        <button type="button" data-tab="text" aria-pressed="true" data-en="Text">文本</button>
+        <button type="button" data-tab="image" aria-pressed="false" data-en="Images">作图</button>
+        <button type="button" data-tab="video" aria-pressed="false" data-en="Video">视频</button>
+      </div>
+      <div class="model-table"><table><thead><tr id="model-head"></tr></thead><tbody id="model-body"></tbody></table></div>
+    </section>
+
+    <section class="wrap price-section" style="padding-bottom:96px">
+      <h2 class="h3" data-en="Questions">常见问题</h2>
+      <div class="faq">
+        <details><summary data-en="Do Bots on my computer cost anything?">本机 Bot 收费吗？</summary><div class="answer"><p data-en="No. Bots that stay on your computer use your own model keys or local models and your own machine, and never use credits.">不收。留在你电脑上的 Bot 用你自己的模型 Key 或本地模型和你的电脑，不扣积分。</p></div></details>
+        <details><summary data-en="Which credits are used first?">积分先扣哪部分？</summary><div class="answer"><p data-en="Of the credits you can use in Octop Bot, the ones that expire first are used first.">在 Octop Bot 里能用的积分中，先到期的先用。</p></div></details>
+        <details><summary data-en="Where can credits be used?">积分在哪里能用？</summary><div class="answer"><p data-en="Membership credits (monthly credits, first-month bonuses and credits delivered monthly on yearly plans) are for Octop Bot only and expire monthly. Sign-up trial credits are also for Octop Bot only. Credits bought as packs, top-ups or in the iOS app are shared and work in both Octop Bot and Lynxce. Credits already in your account before memberships launch count as shared and never expire.">会员积分（每月积分、首月加赠、年付按月到账的积分）只能在 Octop Bot 用，按月过期；注册体验积分也只能在 Octop Bot 用。加油包、充值和 iOS 内购买的积分是通用积分，Octop Bot 和灵策都能用。会员上线前账户里已有的积分，全部算通用积分，永久有效。</p></div></details>
+        <details><summary data-en="Do credits expire?">积分会过期吗？</summary><div class="answer"><p data-en="Monthly membership credits last one month and the 100 trial credits last 14 days; packs are ready right away and stack with a membership.">会员每月积分 1 个月有效，体验的 100 积分 14 天有效；加油包到账即用，可与会员叠加。</p></div></details>
+        <details><summary data-en="Does my membership renew automatically?">会员会自动续费吗？</summary><div class="answer"><p data-en="Not yet. We remind you 3 days before it ends, and you renew by hand.">暂时不会。到期前 3 天提醒你，手动续费即可。</p></div></details>
+        <details><summary data-en="Can I get an invoice?">能开发票吗？</summary><div class="answer"><p data-en="Yes. After paying, request one from the order in your Lynxce account.">可以。付款后在灵策账户的订单里申请。</p></div></details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="index.html"><img src="assets/app-icon.webp" alt="" width="30" height="30">Octop Bot</a>
+          <p data-en="One sentence, a whole AI team. A free, open-source desktop app.">一句话，组建你的 AI 团队。免费开源的桌面客户端。</p>
+        </div>
+        <div>
+          <h4 data-en="Product">产品</h4>
+          <ul>
+            <li><a href="features.html" data-en="Features">功能</a>
+        <a href="market.html" data-en="Bot Market">Bot 市场</a></li>
+            <li><a href="pricing.html" data-en="Pricing">定价</a></li>
+            <li><a href="download.html" data-en="Download">下载</a></li>
+            <li><a href="https://bot.lynxce.cn" data-en="Web app ↗">网页版 ↗</a></li>
+            <li><a href="changelog.html" data-en="Changelog">更新日志</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 data-en="Resources">资源</h4>
+          <ul>
+            <li><a href="guide.html" data-en="Getting started">快速上手</a></li>
+            <li><a href="guide.html#faq" data-en="FAQ">常见问题</a></li>
+            <li><a href="privacy.html" data-en="Privacy">隐私政策</a></li>
+            <li><a href="auto-renew.html" data-en="Auto-renewal terms">自动续费协议</a></li>
+            <li><a href="https://github.com/alison-xx/octop-bot/blob/main/docs/octop-bot.md" data-en="Full guide (Chinese) ↗">完整文档 ↗</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 data-en="Community">社区</h4>
+          <ul>
+            <li><button type="button" class="link-btn" data-community data-en="Join the community">加入社群</button></li>
+            <li><a href="https://github.com/alison-xx/octop-bot">GitHub ↗</a></li>
+            <li><a href="https://github.com/alison-xx/octop-bot/issues" data-en="Report an issue ↗">问题反馈 ↗</a></li>
+            <li><a href="https://lynxce.cn" data-en="Lynxce ↗">灵策智算 ↗</a></li>
+            <li><a href="https://octop.cloud/" data-en="Octop project ↗">Octop 项目 ↗</a></li>
+            <li><a href="https://github.com/TencentCloud/Octop" data-en="Octop on GitHub ↗">Octop · GitHub ↗</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© <span data-year>2026</span> Octop Bot · MIT License</span>
+        <span data-en="Made with care for small teams.">为小团队用心打造。</span>
+      </div>
+    </div>
+  </footer>
+
+  <dialog class="modal" id="film" aria-label="介绍片" data-en-aria-label="Product film">
+    <button class="modal-close" type="button" aria-label="关闭" data-en-aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <video controls playsinline preload="none"></video>
+  </dialog>
+  <dialog class="modal light" id="lightbox" aria-label="查看大图" data-en-aria-label="Enlarged screenshot">
+    <button class="modal-close" type="button" aria-label="关闭" data-en-aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <img alt="">
+  </dialog>
+  <dialog class="modal community" id="community" aria-label="加入社群" data-en-aria-label="Join the community">
+    <button class="modal-close" type="button" aria-label="关闭" data-en-aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <div class="community-card">
+      <img src="assets/community-qr.png" width="240" height="242" alt="Octop Bot 用户群的微信二维码" data-en-alt="WeChat QR code for the Octop Bot community">
+      <p class="for-community" data-en="Scan with WeChat to join the Octop Bot community">扫码加好友，拉你进 Octop Bot 用户群</p>
+      <p class="for-business" data-en="Scan with WeChat and mention “Enterprise”. We will get back to you soon.">扫码加好友，备注「企业定制」，我们会尽快联系你</p>
+      <small class="touch-hint" data-en="On a phone, press and hold the code to scan it.">手机上长按二维码识别</small>
+    </div>
+  </dialog>
+</body>
+</html>

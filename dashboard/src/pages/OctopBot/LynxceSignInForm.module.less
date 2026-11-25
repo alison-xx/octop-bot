@@ -1,71 +1,180 @@
+// Lynxce sign-in form: one target field, the code (or password), a hint row and the brand button.
 .form {
+  // Chief's rose: the Bot client's own accent is neutral black and white.
+  --chief-rose: #e85d75;
   width: 100%;
   display: grid;
-  gap: 6px;
+  gap: 10px;
   text-align: start;
+  :global(.octop-input-affix-wrapper) {
+    height: 46px;
+    padding-inline: 12px 8px;
+    border-radius: 11px;
+    font-size: 15px;
+  }
+  :global(.octop-input-prefix) {
+    margin-inline-end: 10px;
+  }
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.icon {
+  color: var(--fn-text-tertiary);
+}
+.iconActive {
+  color: var(--chief-rose);
+}
+.code :global(input) {
+  font-variant-numeric: tabular-nums;
+  &:not(:placeholder-shown) {
+    letter-spacing: 2px;
+  }
+}
+.send:global(.octop-btn) {
+  height: 30px;
+  padding: 0 8px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  &:not(:disabled) {
+    color: var(--chief-rose);
+  }
+}
+.hintRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: -2px;
+  small {
+    color: var(--fn-text-tertiary);
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+}
+.error {
+  color: var(--fn-color-error, #d4380d) !important;
+}
+.switch {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--chief-rose);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  &:hover {
+    text-decoration: underline;
+  }
+  &:focus-visible {
+    outline: 2px solid var(--fn-border-focus);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+.newPassword {
+  display: grid;
+  gap: 6px;
   label {
     font-size: 13px;
     font-weight: 600;
   }
   small {
     color: var(--fn-text-secondary);
-    line-height: 1.55;
-  }
-  > :global(.ant-btn-primary) {
-    margin-top: 8px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
+    font-size: 12.5px;
   }
 }
-.codeRow {
-  display: flex;
+// The way in: Chief's rose, always clickable, with clear hover and press states.
+.form > .submit:global(.octop-btn) {
+  height: 48px;
+  margin-top: 4px;
+  border: 0;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
-  :global(.ant-input) {
-    flex: 1;
-    min-width: 0;
-    letter-spacing: 2px;
-    font-variant-numeric: tabular-nums;
+  font-size: 15.5px;
+  font-weight: 650;
+  color: #fff;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--chief-rose) 92%, #fff),
+    color-mix(in srgb, var(--chief-rose) 78%, #000)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 6px 16px -6px color-mix(in srgb, var(--chief-rose) 70%, transparent);
+  transition:
+    filter 0.15s,
+    transform 0.12s,
+    box-shadow 0.15s;
+  &:hover {
+    color: #fff;
+    filter: brightness(1.06);
+  }
+  &:active {
+    transform: translateY(1px);
+    filter: brightness(0.96);
+  }
+  &:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--chief-rose) 35%, transparent);
+    outline-offset: 2px;
+  }
+  svg {
+    margin-inline-start: 6px;
+    transition: transform 0.15s;
+  }
+  &:hover svg {
+    transform: translateX(3px);
   }
 }
-.send {
-  flex: none;
-  min-width: 104px;
-  font-variant-numeric: tabular-nums;
+.shake {
+  animation: shake 0.32s;
 }
-.tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  padding: 4px;
-  margin-bottom: 8px;
-  border-radius: 10px;
-  background: var(--fn-bg-tertiary);
-  button {
-    height: 34px;
-    border: 0;
-    border-radius: 7px;
-    background: transparent;
-    color: var(--fn-text-secondary);
-    font: inherit;
-    font-size: 13px;
-    cursor: pointer;
-    transition:
-      background 0.15s,
-      color 0.15s;
-    &:hover {
-      color: var(--fn-text-primary);
-    }
-    &:focus-visible {
-      outline: 2px solid var(--fn-border-focus);
-      outline-offset: 1px;
-    }
+.shakeAgain {
+  animation: shakeAgain 0.32s;
+}
+@keyframes shakeAgain {
+  20%,
+  60% {
+    transform: translateX(-4px);
   }
-  [aria-pressed="true"] {
-    background: var(--fn-bg-container);
-    color: var(--fn-text-primary);
-    font-weight: 600;
-    box-shadow: var(--fn-shadow-xs);
+  40%,
+  80% {
+    transform: translateX(4px);
   }
+}
+@keyframes shake {
+  20%,
+  60% {
+    transform: translateX(-4px);
+  }
+  40%,
+  80% {
+    transform: translateX(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shake,
+  .shakeAgain {
+    animation: none;
+  }
+}
+// Dark themes use a light brand tint; deepen it so white text keeps its contrast.
+:global(html[data-theme="dark"]) .form > .submit:global(.octop-btn) {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--chief-rose) 62%, #5a0f24),
+    color-mix(in srgb, var(--chief-rose) 46%, #5a0f24)
+  );
 }

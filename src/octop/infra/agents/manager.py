@@ -194,7 +194,8 @@ def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
 
 # Builtin tools that drive the server's own browser or screen. A cloud tenant's Bot works on its
 # own cloud computer instead (``cloud_computer``), never on the operator's machine.
-TENANT_HOST_TOOLS = frozenset({"browser_use", "desktop_screenshot"})
+# Builtin tools that run on the server itself rather than in the tenant's own space.
+TENANT_HOST_TOOLS = frozenset({"browser_use", "desktop_screenshot", "acp_runner", "web_fetch"})
 
 
 def tools_disabled_set(cfg: dict[str, Any]) -> set[str]:
@@ -915,6 +916,23 @@ class AgentManager:
             )
 
             kind = spec.kind if spec.kind in {"expert", "team", "managed"} else "expert"
+            tenant = spec.user_id is not None and self._cloud_tenant(spec.user_id)
+            if tenant:
+                from octop.infra.cloud.bot_cloud.tenant_config import (  # noqa: PLC0415
+                    strip_tenant_input,
+                )
+
+                if kind == "managed":
+                    raise OctopError.localized(ErrorCode.FORBIDDEN)
+                if kind != "team" and spec.user_id is not None:
+                    # A cloud account owns at most MAX_BOTS Bots; Bots on this computer are unlimited.
+                    from octop.infra.agents.bot_limits import assert_bot_capacity  # noqa: PLC0415
+
+                    assert_bot_capacity(self._repos.user_repo, self._repos.agent_repo, spec.user_id)
+                # Only what a tenant may set; the server picks the folder, backend and layout.
+                config = strip_tenant_input(config)
+                # On a cloud server a tenant's agents stay its own.
+                spec = replace(spec, is_shared=False)
             if kind == "managed":
                 from octop.infra.agents.managed import (  # noqa: PLC0415
                     apply_managed_backend,
@@ -1190,10 +1208,25 @@ class AgentManager:
         if pin_workspace_dir and "workspace_dir" in current_raw:
             out["workspace_dir"] = current_raw["workspace_dir"]
         if row is not None and row.user_id is not None and self._cloud_tenant(row.user_id):
-            from octop.infra.cloud.bot_cloud import files as cloud_files  # noqa: PLC0415
+            from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
+                DEFAULT_SYSTEM_FILES_PATH,
+                default_workspace_for_chat_agent,
+            )
+            from octop.infra.cloud.bot_cloud.tenant_config import (  # noqa: PLC0415
+                enforce_tenant_config,
+            )
 
-            # Whatever an edit sends, a cloud tenant's agent stays on its object-store prefix.
-            out["backend"] = cloud_files.agent_backend(row.user_id, agent_id)
+            # Whatever an edit (or an internal persist) sends, a cloud tenant's agent keeps only
+            # what a tenant may set, on its object-store prefix, in the server's folder for it.
+            out = enforce_tenant_config(
+                out,
+                user_id=row.user_id,
+                agent_id=agent_id,
+                workspace_dir=default_workspace_for_chat_agent(agent_id),
+                system_files_path=str(
+                    current_raw.get("system_files_path") or DEFAULT_SYSTEM_FILES_PATH
+                ),
+            )
         return out
 
     async def update(self, agent_id: str, **kwargs: Any) -> AgentRow:
@@ -1319,6 +1352,9 @@ class AgentManager:
 
         if shared and is_private_bot(existing):
             raise OctopError(ErrorCode.FORBIDDEN, "private bot cannot be shared")
+        if shared and self._cloud_tenant(existing.user_id):
+            # On a cloud server a tenant's agents stay its own.
+            raise OctopError.localized(ErrorCode.FORBIDDEN)
         self._repos.agent_repo.set_shared(agent_id, shared)
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
@@ -2355,7 +2391,7 @@ class AgentManager:
             assert self._harness_manager is not None
             factory = self._harness_manager.shared_factory
             if account is not None:
-                config = account.harness_config(config, self._account_services())
+                config = account.harness_config(config, self._account_services(), agent_id)
                 request = account.request(request)
                 factory = None
             agent = await asyncio.to_thread(
@@ -4337,6 +4373,45 @@ class AgentManager:
             logger.exception("Bootstrap graph refresh failed for agent %s", agent_id)
             self._bootstrap_graph_refresh_pending.add(agent_id)
 
+    def _tenant_config(self, row: AgentRow, cfg: dict[str, Any]) -> dict[str, Any]:
+        """The config a cloud tenant's agent runs with (see bot_cloud/tenant_config.py).
+
+        A stored config that differs (an older row, another write path) is rewritten first, so
+        everything below (folder resolution, reloads) reads the same one.
+        """
+        from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
+            DEFAULT_SYSTEM_FILES_PATH,
+            default_workspace_for_chat_agent,
+        )
+        from octop.infra.cloud.bot_cloud.tenant_config import (  # noqa: PLC0415
+            enforce_tenant_config,
+        )
+
+        assert row.user_id is not None
+        safe = enforce_tenant_config(
+            cfg,
+            user_id=row.user_id,
+            agent_id=row.agent_id,
+            workspace_dir=default_workspace_for_chat_agent(row.agent_id),
+            system_files_path=str(cfg.get("system_files_path") or DEFAULT_SYSTEM_FILES_PATH),
+        )
+        stored = parse_config_json(row.config_json)
+        stored_safe = enforce_tenant_config(
+            stored,
+            user_id=row.user_id,
+            agent_id=row.agent_id,
+            workspace_dir=safe["workspace_dir"],
+            system_files_path=safe["system_files_path"],
+        )
+        if stored_safe != stored and self._repos.agent_repo.get(row.agent_id) is not None:
+            logger.warning(
+                "cloud tenant agent %s: config keys %s not allowed; removed",
+                row.agent_id,
+                sorted(set(stored) - set(stored_safe)),
+            )
+            self._repos.agent_repo.update_config(row.agent_id, config_json=json.dumps(stored_safe))
+        return safe
+
     def _agent_config_dict(self, row: AgentRow) -> dict[str, Any]:
         cfg = parse_config_json(row.config_json)
         return overlay_skill_package_ids(cfg, row)
@@ -4347,10 +4422,27 @@ class AgentManager:
         *,
         cfg: dict[str, Any] | None = None,
         workspace_dir: Path | None = None,
+        room: Path | None = None,
     ) -> Any:
         if cfg is None:
             cfg = self._agent_config_dict(row)
         backend_spec = cfg.get("backend")
+        if row.user_id is not None and self._cloud_tenant(row.user_id):
+            from octop.infra.cloud.bot_cloud.files import BACKEND_TYPE  # noqa: PLC0415
+
+            # A tenant's agent always runs on its object-store backend, or (as a group member)
+            # on the group room's own folder that the server set up.
+            in_room = (
+                room is not None
+                and isinstance(backend_spec, dict)
+                and backend_spec.get("type") == "filesystem"
+                and backend_spec.get("root_dir") == str(room)
+                and backend_spec.get("virtual_mode") is True
+            )
+            if not in_room and not (
+                isinstance(backend_spec, dict) and backend_spec.get("type") == BACKEND_TYPE
+            ):
+                raise OctopError.localized(ErrorCode.FORBIDDEN)
         if workspace_dir is None:
             workspace_dir = self.resolve_workspace_dir(row.agent_id)
         if row.user_id is not None:
@@ -4423,6 +4515,7 @@ class AgentManager:
         cfg: dict[str, Any] | None = None,
         workspace_dir: Path | None = None,
         allow_ephemeral_remote: bool = False,
+        room: Path | None = None,
     ) -> Any:
         """Resolve :class:`BackendWorkspace` for *row* without a running harness agent."""
         from octop_harness.backends.workspace import BackendWorkspace  # noqa: PLC0415
@@ -4436,7 +4529,7 @@ class AgentManager:
         if workspace_dir is None:
             workspace_dir = self.resolve_workspace_dir(row.agent_id)
         backend = self._prepare_docker_backend(
-            self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir),
+            self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir, room=room),
             row,
         )
         if self._spec_is_opensandbox(backend) and not allow_ephemeral_remote:
@@ -4722,6 +4815,13 @@ class AgentManager:
                         f"{briefing}\n\nTeam notes (reference):\n{notes}".strip()
                     )
                     req["configurable"] = configurable
+                from octop.infra.agents.bot_onboarding import onboarding_briefing
+
+                guide = onboarding_briefing(self._account_services(), int(uid), agent_id)
+                if guide:
+                    briefing = configurable.get(CONFIG_KEY) or ""
+                    configurable[CONFIG_KEY] = f"{briefing}\n\n{guide}".strip()
+                    req["configurable"] = configurable
         agent_cfg = self.get_config(agent_id)
         plugins_cfg = agent_cfg.get("plugins")
         tool_configs = collect_plugin_tool_configs(
@@ -4779,7 +4879,11 @@ class AgentManager:
         acp_user_id = row.user_id
         if acp_user_id is None:
             acp_user_id = self._connector_user_override.get(row.agent_id)
-        runners = self._acp_settings.load_runners(acp_user_id) if acp_user_id is not None else {}
+        runners = (
+            self._acp_settings.load_runners(acp_user_id)
+            if acp_user_id is not None and not self._cloud_tenant(acp_user_id)
+            else {}
+        )
         acp_config = runtime_acp_config(runners)
         runner = cfg.get("managed_runner")
         runner_id = runner.strip() if isinstance(runner, str) else ""
@@ -4838,6 +4942,8 @@ class AgentManager:
         )
 
         cfg = self._agent_config_dict(row)
+        if row.user_id is not None and self._cloud_tenant(row.user_id):
+            cfg = self._tenant_config(row, cfg)
         raw = cfg.get("workspace_dir")
         stored = self._repos.agent_repo.get(row.agent_id) is not None
         if room_workspace is not None:
@@ -4901,7 +5007,9 @@ class AgentManager:
             if persisted:
                 cfg = persisted
 
-        backend = self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir)
+        backend = self._backend_spec_for_row(
+            row, cfg=cfg, workspace_dir=workspace_dir, room=room_workspace
+        )
         if getattr(row, "kind", None) == "managed":
             # The ACP runner is the agent. Reuse the workspace and runner
             # binding; do not assemble the expert tool or bootstrap stack.
@@ -4917,6 +5025,7 @@ class AgentManager:
             cfg=cfg,
             workspace_dir=workspace_dir,
             allow_ephemeral_remote=self._spec_is_opensandbox(backend),
+            room=room_workspace,
         )
 
         from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
@@ -5173,7 +5282,9 @@ class AgentManager:
                 owner = row.user_id
                 agent_middleware.append(
                     LynxceMediaTools(
-                        lynxce_media_tools(ws, lambda: media_auth(account_services, owner))
+                        lynxce_media_tools(
+                            ws, lambda: media_auth(account_services, owner), bot_id=row.agent_id
+                        )
                     )
                 )
         # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.
@@ -5189,8 +5300,11 @@ class AgentManager:
             acp_user_id = row.user_id
             if acp_user_id is None:
                 acp_user_id = self._connector_user_override.get(row.agent_id)
+            # Runners are an operator setting; cloud tenants get none.
             runners_dict = (
-                self._acp_settings.load_runners(acp_user_id) if acp_user_id is not None else {}
+                self._acp_settings.load_runners(acp_user_id)
+                if acp_user_id is not None and not self._cloud_tenant(acp_user_id)
+                else {}
             )
             acp_config = runtime_acp_config(runners_dict)
 
