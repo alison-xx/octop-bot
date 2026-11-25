@@ -385,6 +385,10 @@ MAX_RUNNING_COMPUTERS_PER_USER = 2
 STARTING_STALE_SECONDS = 10 * 60
 
 
+class ComputerUnavailable(OSError):
+    """The requested existing instance cannot currently accept Bot work."""
+
+
 class ComputerManager:
     def __init__(
         self,
@@ -1224,7 +1228,9 @@ class ComputerManager:
     # Work
 
     @contextmanager
-    def _working(self, agent_id: str, user_id: int, seed: Seeder | None) -> Iterator[str]:
+    def _working(
+        self, agent_id: str, user_id: int, seed: Seeder | None, *, start: bool = True
+    ) -> Iterator[str]:
         # Admission precedes ensure_running, so a handoff cannot cut between admission and I/O.
         with self._lock(agent_id):
             self._observe_use(agent_id, user_id)
@@ -1232,14 +1238,29 @@ class ComputerManager:
                 self._busy[agent_id] = self._busy.get(agent_id, 0) + 1
         instance = None
         try:
-            instance = self.ensure_running(agent_id, user_id, seed)
+            if start:
+                instance = self.ensure_running(agent_id, user_id, seed)
+            else:
+                with self._lock(agent_id):
+                    record = self.record(agent_id, user_id)
+                    if (
+                        not record.running
+                        or not record.instance_id
+                        or record.controlled(self._clock())
+                    ):
+                        raise ComputerUnavailable(
+                            "The cloud computer is paused or under human control."
+                        )
+                    instance = record.instance_id
             yield instance
         finally:
             with self._lock(agent_id):
                 with self._guard:
                     self._busy[agent_id] -= 1
                 if instance is not None:
-                    self.touch(agent_id, user_id)
+                    record = self.record(agent_id, user_id)
+                    if record.running and record.instance_id == instance:
+                        self.touch(agent_id, user_id)
 
     def run(
         self,
@@ -1322,9 +1343,10 @@ class ComputerManager:
         work: Callable[[ComputerDriver, str], T],
         *,
         seed: Seeder | None = None,
+        start: bool = True,
     ) -> T:
-        """Do something on the running computer (computer use); it counts as busy meanwhile."""
-        with self._working(agent_id, user_id, seed) as instance:
+        """Use one instance. An inspection may only borrow an already running computer."""
+        with self._working(agent_id, user_id, seed, start=start) as instance:
             return work(self._driver, instance)
 
     def write(

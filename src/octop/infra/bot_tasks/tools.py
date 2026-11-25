@@ -121,6 +121,8 @@ def task_tools(store: TaskStore) -> list[StructuredTool]:
                         "updated_at": now,
                     }
                 )
+                if task.goal != current.goal or task.criteria != current.criteria:
+                    task.invalidate_review()
                 note = "Task revised."
         except ValidationError as exc:
             return f"Refused: {exc.errors()[0].get('msg', 'invalid task')}"
@@ -140,9 +142,12 @@ def task_tools(store: TaskStore) -> list[StructuredTool]:
         proof = evidence.strip()
         if not proof:
             return "Refused: give the evidence you observed (or, for skipped, the reason)."
-        task.criteria[criterion - 1] = Criterion(
+        checked = Criterion(
             text=task.criteria[criterion - 1].text, status=status, evidence=proof[:1000]
         )
+        if checked != task.criteria[criterion - 1]:
+            task.invalidate_review()
+        task.criteria[criterion - 1] = checked
         task.updated_at = task.checked_at = time.time()
         return snapshot(store.save(thread, task))
 

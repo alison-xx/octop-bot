@@ -21,6 +21,8 @@ export interface FileCardProps {
   size?: number | null;
   /** URL of the bytes for a large preview (image / PDF page / text excerpt). */
   previewUrl?: string;
+  /** Authenticated first-page image of the exact delivered Office revision. */
+  thumbnailUrl?: string;
   onOpen?: () => void;
   onDownload?: () => void;
   downloading?: boolean;
@@ -49,6 +51,7 @@ export default function FileCard({
   mime,
   size,
   previewUrl,
+  thumbnailUrl,
   onOpen,
   onDownload,
   downloading,
@@ -88,7 +91,14 @@ export default function FileCard({
   );
 
   const preview =
-    showPreview && previewUrl && previewKind ? (
+    thumbnailUrl && !previewFailed ? (
+      <FilePreview
+        url={thumbnailUrl}
+        name={name}
+        kind="image"
+        onUnavailable={() => setPreviewFailed(true)}
+      />
+    ) : showPreview && previewUrl && previewKind ? (
       <FilePreview
         url={previewUrl}
         name={name}

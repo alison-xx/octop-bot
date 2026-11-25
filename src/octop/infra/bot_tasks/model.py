@@ -37,6 +37,7 @@ class Deliverable(BaseModel):
     path: str = Field(max_length=1000)
     size: int = 0
     version: int = 1
+    preview: str | None = Field(default=None, max_length=128)
     facts: list[dict[str, int | str]] = Field(default_factory=list, max_length=10)
     at: float = Field(default_factory=time.time)
 
@@ -74,6 +75,7 @@ class Task(BaseModel):
     checked_at: float | None = None
     reviewed_at: float | None = None
     reviews: int = 0
+    review_status: Literal["passed", "issues", "unverified"] | None = None
     review: str = Field(default="", max_length=1000)
     deliverables: list[Deliverable] = Field(default_factory=list, max_length=30)
     delivery_failures: dict[str, Literal["open", "validation"]] = Field(
@@ -98,10 +100,17 @@ class Task(BaseModel):
             self.checked_at is not None and self.reviewed_at < self.checked_at
         )
 
+    def invalidate_review(self) -> None:
+        if self.review_status is not None:
+            self.review_status = "unverified"
+            self.reviewed_at = None
+            self.review = ""
+
     def verdict(self) -> TaskStatus:
         return (
             "done"
             if not self.open_issues
+            and self.review_status not in ("issues", "unverified")
             and self.criteria
             and all(c.status == "passed" for c in self.criteria)
             else "partial"

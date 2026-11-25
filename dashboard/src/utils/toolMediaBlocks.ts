@@ -208,6 +208,25 @@ export function agentIdFromWorkspacePath(path: string): string | null {
   return match?.[1] ?? null;
 }
 
+export type ToolFileItem = {
+  url: string;
+  filename?: string;
+  thumbnailUrl?: string;
+};
+
+export function officeThumbnailUrl(
+  agentId: string | null | undefined,
+  path: unknown,
+): string | undefined {
+  if (
+    !agentId ||
+    typeof path !== "string" ||
+    !/^outbound\/office-previews\/[a-f0-9]{64}\.jpg$/.test(path)
+  )
+    return undefined;
+  return workspaceDownloadUrl(agentId, path);
+}
+
 /**
  * Build a workspace download URL.
  *
@@ -427,7 +446,7 @@ export function resolveToolMediaUrl(
 export interface StructuredToolMedia {
   images: ToolMediaItem[];
   videos: ToolMediaItem[];
-  files: Array<{ url: string; filename?: string }>;
+  files: ToolFileItem[];
   textOutput: string;
   feedback?: ToolExecutionFeedback;
 }
@@ -583,7 +602,7 @@ export function parseStructuredToolOutput(
 
     const images: ToolMediaItem[] = [];
     const videos: ToolMediaItem[] = [];
-    const files: Array<{ url: string; filename?: string }> = [];
+    const files: ToolFileItem[] = [];
     const textParts: string[] = [];
 
     for (const typedBlock of blocks) {
@@ -667,6 +686,10 @@ export function parseStructuredToolOutput(
           files.push({
             url: workspaceDownloadUrl(agentId, rel),
             filename,
+            thumbnailUrl: officeThumbnailUrl(
+              agentId,
+              typedBlock.office_preview_path,
+            ),
           });
           continue;
         }
@@ -808,7 +831,7 @@ export function collectToolMediaFromOutput(
 ): {
   images: ToolMediaItem[];
   videos: ToolMediaItem[];
-  files: Array<{ url: string; filename?: string }>;
+  files: ToolFileItem[];
 } {
   const structured = parseStructuredToolOutput(output, agentId);
   return {
@@ -831,7 +854,7 @@ export function collectToolMediaFromToolData(
 ): {
   images: ToolMediaItem[];
   videos: ToolMediaItem[];
-  files: Array<{ url: string; filename?: string }>;
+  files: ToolFileItem[];
 } {
   const fromOutput = collectToolMediaFromOutput(toolData?.output, agentId);
   const images = [...fromOutput.images];

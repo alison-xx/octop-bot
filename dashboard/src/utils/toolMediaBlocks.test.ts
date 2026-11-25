@@ -219,3 +219,22 @@ it("omits Markdown delimiters around an image path in a tool result", () => {
     "/generated/首页.png",
   );
 });
+
+it("uses the delivered Office revision thumbnail within the speaker's own workspace", () => {
+  const path = "outbound/office-previews/" + "a".repeat(64) + ".jpg";
+  const block = {
+    type: "file",
+    path: "generated/report.docx",
+    filename: "report.docx",
+    source: { type: "url", url: "file:///generated/report.docx" },
+    office_preview_path: path,
+  };
+  const parse = (source: object) =>
+    parseStructuredToolOutput(JSON.stringify(source), "speaker").files[0];
+  expect(parse(block)?.thumbnailUrl).toBe(
+    workspaceDownloadUrl("speaker", path),
+  );
+  expect(
+    parse({ ...block, office_preview_path: undefined })?.thumbnailUrl,
+  ).toBeUndefined();
+});

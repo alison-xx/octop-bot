@@ -49,6 +49,7 @@ export interface BotDeliverable {
   path: string;
   size: number;
   version: number;
+  preview?: string | null;
   facts?: BotDeliverableFact[];
   at: number;
 }
@@ -74,6 +75,7 @@ export interface BotTask {
   /** Independent reviews of a deep task, and what the last one found. */
   reviews?: number;
   review?: string;
+  review_status?: "passed" | "issues" | "unverified" | null;
   /** Files handed to the user during the task, after they passed the checks. */
   deliverables?: BotDeliverable[];
   delivery_failures?: Record<string, "open" | "validation">;

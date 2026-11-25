@@ -5352,6 +5352,7 @@ class AgentManager:
                     archive=archive,
                     user_repo=self._repos.user_repo,
                     owner=row.user_id,
+                    office_preview=getattr(ws.backend, "office_preview", None) if tenant else None,
                 )
             )
             if computer_tools:

@@ -21,7 +21,7 @@ apt-get install -y --no-install-recommends \
   python3-pip python3-dev python3-tk python3-venv python3-pyatspi gir1.2-atspi-2.0 at-spi2-core \
   nginx git curl wget unzip ca-certificates \
   fonts-noto-cjk fonts-noto-color-emoji language-pack-zh-hans \
-  libreoffice-calc libreoffice-writer libreoffice-impress
+  libreoffice-calc libreoffice-writer libreoffice-impress poppler-utils bubblewrap
 
 # A browser: Chrome when Google's download host is reachable, else Firefox ESR.
 if wget -q -T 60 -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb; then

@@ -11,6 +11,8 @@ import {
   Pause,
   X,
 } from "lucide-react";
+import AuthImage from "../../components/AuthImage";
+import { officeThumbnailUrl } from "../../utils/toolMediaBlocks";
 import { QuoteMessageContext } from "../Chat/ChatRouteContext";
 import Markdown from "../../components/Markdown";
 import FileTypeIcon from "../../components/FileCard/FileTypeIcon";
@@ -153,7 +155,13 @@ function Steps({
   );
 }
 
-function Deliverables({ items }: { items: BotDeliverable[] }) {
+function Deliverables({
+  items,
+  agentId,
+}: {
+  items: BotDeliverable[];
+  agentId?: string | null;
+}) {
   const { t } = useTranslation();
   // A file sent again replaces its earlier version in the list.
   const latest = new Map<string, BotDeliverable>();
@@ -161,16 +169,25 @@ function Deliverables({ items }: { items: BotDeliverable[] }) {
   return (
     <ul className={styles.deliverables}>
       {[...latest.values()].map((item) => {
+        const thumbnailUrl = officeThumbnailUrl(agentId, item.preview);
         const facts = (item.facts ?? []).map((fact) =>
           t(`botTask.fact.${fact.k}`, { count: fact.n, w: fact.w, h: fact.h }),
         );
         return (
           <li key={item.name} className={styles.deliverable}>
-            <FileTypeIcon
-              kind={fileTypeOf(item.name)}
-              label={fileTypeLabel(item.name)}
-              size={28}
-            />
+            {thumbnailUrl ? (
+              <AuthImage
+                url={thumbnailUrl}
+                alt={item.name}
+                className={styles.officePreview}
+              />
+            ) : (
+              <FileTypeIcon
+                kind={fileTypeOf(item.name)}
+                label={fileTypeLabel(item.name)}
+                size={28}
+              />
+            )}
             <span className={styles.deliverableBody}>
               <span className={styles.deliverableName} title={item.name}>
                 {middleEllipsis(item.name, 40)}
@@ -297,7 +314,13 @@ export default function BotTaskCard({
  * The delivery report, where the task finished: did it meet each criterion (with the
  * evidence), what is not done, and what the Bot decided by itself.
  */
-export function BotTaskReport({ task }: { task: BotTask }) {
+export function BotTaskReport({
+  task,
+  agentId,
+}: {
+  task: BotTask;
+  agentId?: string | null;
+}) {
   const { t } = useTranslation();
   const duration = useDuration(task, false);
   const [showReview, setShowReview] = useState(false);
@@ -323,7 +346,7 @@ export function BotTaskReport({ task }: { task: BotTask }) {
       {Boolean(task.deliverables?.length) && (
         <>
           <h4 className={styles.sectionTitle}>{t("botTask.deliverables")}</h4>
-          <Deliverables items={task.deliverables ?? []} />
+          <Deliverables items={task.deliverables ?? []} agentId={agentId} />
         </>
       )}
       {Object.entries(task.delivery_failures ?? {}).map(([name, reason]) => (
@@ -344,6 +367,16 @@ export function BotTaskReport({ task }: { task: BotTask }) {
             ))}
           </ul>
         </>
+      )}
+      {(task.review_status === "issues" ||
+        task.review_status === "unverified") && (
+        <p className={styles.evidence}>
+          {t(
+            task.review_status === "issues"
+              ? "botTask.reviewIssues"
+              : "botTask.reviewUnverified",
+          )}
+        </p>
       )}
       {Boolean(task.reviews && task.review) && (
         <>
