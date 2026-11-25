@@ -1127,9 +1127,9 @@
       } else {
         const details = document.createElement("details"), summary = document.createElement("summary");
         const avatar = document.createElement("span"); avatar.className = "auth-avatar";
-        const name = profile?.name || profile?.nickname || session.user?.name || session.user?.nickname || "U";
+        const name = profile?.displayName || profile?.name || profile?.nickname || session.user?.displayName || session.user?.name || session.user?.nickname || "U";
         if (profile?.avatarUrl && /^https:\/\//i.test(profile.avatarUrl)) { const img = document.createElement("img"); img.src = profile.avatarUrl; img.alt = ""; avatar.append(img); } else avatar.textContent = String(name).slice(0, 1);
-        const balance = document.createElement("span"); const left = Number(quota?.creditsRemaining ?? quota?.balance ?? quota?.remaining); balance.textContent = `✦ ${Number.isFinite(left) ? left.toLocaleString("en-US") : "—"}`;
+        const balance = document.createElement("span"); const left = quota?.availableCredits ?? quota?.creditsRemaining; balance.textContent = `✦ ${Number.isFinite(left) ? left.toLocaleString("en-US") : "—"}`;
         summary.append(avatar, balance); details.append(summary);
         const menu = document.createElement("div"); menu.className = "auth-menu";
         const account = document.createElement("a"); account.href = "/account.html"; account.textContent = label("个人中心", "Account");
@@ -1148,5 +1148,7 @@
     if (results[1].status === "fulfilled") quota = results[1].value;
     render();
   }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && auth.session()) update(); });
+  window.addEventListener("pageshow", event => { if (event.persisted && auth.session()) update(); });
   auth.onChange(update); document.addEventListener("langchange", render); auth.ready.then(update);
 })();
