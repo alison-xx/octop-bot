@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 from filelock import AsyncFileLock
 
-from octop.infra.auth import lynxce_cloud, lynxce_compute
+from octop.infra.auth import lynxce_cloud
 from octop.infra.crypto.fernet import decrypt_json, encrypt_json
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -381,8 +381,7 @@ async def delete_account(services: SharedServices, users: UserManager, user: Use
     )
     await users.disable(user.username, reason=DELETION_PENDING)
     await asyncio.to_thread(forget_model_key, services, user.id)
-    await asyncio.to_thread(lynxce_cloud.forget_session, services, user.id)
-    await asyncio.to_thread(lynxce_compute.forget, services, user.id)
+    await lynxce_cloud.forget_account_grants(services, user.id)
     days = data.get("coolingDays") if isinstance(data, dict) else None
     return days if isinstance(days, int) else 7
 

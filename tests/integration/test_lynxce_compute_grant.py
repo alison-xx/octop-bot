@@ -66,6 +66,10 @@ class ServerExchange:
 
 @pytest.fixture
 def exchange(upstream: Upstream, monkeypatch: pytest.MonkeyPatch) -> ServerExchange:  # noqa: F811
+    from octop.api.routers import auth_lynxce
+
+    monkeypatch.setattr(auth_lynxce, "_token_login_ips", {})
+    monkeypatch.setattr(auth_lynxce, "_token_login_accounts", {})
     service = ServerExchange(upstream)
     monkeypatch.setenv("OCTOP_BOT_COMPUTE_SERVICE_KEY", "test-service")
     monkeypatch.setattr(
@@ -138,3 +142,148 @@ async def test_revoked_or_expired_compute_grant_cannot_fall_back_to_web_billing(
         assert expired.value.code == ErrorCode.BOT_CLOUD_SESSION_REQUIRED
         assert (await client.post(LOGIN, json={"access_token": _lynxce_jwt()})).status_code == 409
         assert exchange.billing_tokens == []
+
+
+async def test_cooling_off_reauthorization_survives_restart(
+    tmp_octop_home: Path, exchange: ServerExchange
+) -> None:
+    phone = ACCOUNT.removeprefix("lx-")
+    body = {"access_token": _lynxce_jwt(), "server_code": "original"}
+    async with octop_client(tmp_octop_home) as (client, server):
+        signed = await _sign_in(client, phone)
+        uid = signed["user"]["id"]
+        storage = f"lynxce.compute.user.{uid}"
+        response = await client.post(LOGIN, json=body)
+        assert response.status_code == 200 and response.json()["user"]["id"] == uid
+        first_key = server.services.secret_repo.get(storage + ".fernet")
+        assert first_key
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        assert (await client.post("/api/octop-bot/account/delete", headers=auth)).status_code == 200
+        assert server.services.user_repo.get(uid).disabled
+        assert server.services.secret_repo.get(storage) is None
+        assert server.services.secret_repo.get(storage + ".fernet") is None
+
+        assert (await _sign_in(client, phone))["user"]["id"] == uid
+        body["server_code"] = "new-device-consent"
+        assert (await client.post(LOGIN, json=body)).status_code == 200
+        new_key = server.services.secret_repo.get(storage + ".fernet")
+        assert new_key and new_key != first_key
+
+    async with octop_client(tmp_octop_home) as (client, restarted):
+        assert (await client.post(LOGIN, json={"access_token": _lynxce_jwt()})).status_code == 200
+        grant = lynxce_compute.load(restarted.services, uid)
+        assert grant is not None
+        lynxce_compute.save(restarted.services, uid, replace(grant, expires_at=0))
+        await lynxce_cloud.tenant_call(restarted.services, uid, "POST", RESERVE, {})
+        assert exchange.refreshes == 1 and exchange.billing_tokens == ["Bearer compute-1"]
+        restarted.services.user_repo.delete(uid)
+        assert restarted.services.secret_repo.get(storage) is None
+        assert restarted.services.secret_repo.get(storage + ".fernet") is None
+
+
+async def test_withdrawal_waits_for_a_refresh_and_late_rebind_cannot_restore_disabled_user(
+    tmp_octop_home: Path, exchange: ServerExchange, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async with octop_client(tmp_octop_home) as (client, srv):
+        response = await client.post(
+            LOGIN, json={"access_token": _lynxce_jwt(), "server_code": "a"}
+        )
+        assert response.status_code == 200, response.text
+        uid = response.json()["user"]["id"]
+        services = srv.services
+        grant = lynxce_compute.load(services, uid)
+        assert grant is not None
+        lynxce_compute.save(services, uid, replace(grant, expires_at=0))
+        started, finish = asyncio.Event(), asyncio.Event()
+        original = lynxce_cloud._server_exchange
+
+        async def delayed(path, body):
+            started.set()
+            await finish.wait()
+            return await original(path, body)
+
+        monkeypatch.setattr(lynxce_cloud, "_server_exchange", delayed)
+        refresh = asyncio.create_task(
+            lynxce_cloud.computer_billing_connected(services, uid, ACCOUNT)
+        )
+        await asyncio.wait_for(started.wait(), 2)
+        await srv.user_manager.disable(services.user_repo.get(uid).username)
+        withdrawal = asyncio.create_task(lynxce_cloud.forget_account_grants(services, uid))
+        await asyncio.sleep(0)
+        assert not withdrawal.done()
+        finish.set()
+        with pytest.raises(OctopError):
+            await refresh
+        await withdrawal
+        with pytest.raises(OctopError):
+            await lynxce_cloud.keep_compute_grant(services, uid, grant)
+        assert lynxce_compute.load(services, uid) is None
+        assert services.secret_repo.get(f"lynxce.compute.user.{uid}.fernet") is None
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "refresh",
+        "disk-generic",
+        "disk-unrelated",
+        "disk-missing-code",
+        "disk-confirmed",
+        "after-refresh",
+    ],
+)
+async def test_scoped_disk_receipt_is_distinct_from_a_payment_status_during_refresh(
+    tmp_octop_home: Path, exchange: ServerExchange, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    from octop.infra.cloud.computers import DiskBalanceInsufficient
+
+    disk = "/api/billing/octop-bot/compute/disk/charge"
+    balance = {"code": 40204, "error": {"code": "insufficient_balance"}}
+    async with octop_client(tmp_octop_home) as (client, srv):
+        result = await client.post(
+            LOGIN, json={"access_token": _lynxce_jwt(), "server_code": "consent"}
+        )
+        assert result.status_code == 200
+        uid = result.json()["user"]["id"]
+        calls = []
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            path = req.url.path
+            calls.append(path)
+            if path == disk:
+                if failure == "disk-missing-code":
+                    return httpx.Response(402, json={"error": {"code": "insufficient_balance"}})
+                if calls.count(disk) == 1 and failure in {"refresh", "after-refresh"}:
+                    return httpx.Response(401)
+                body = (
+                    balance
+                    if failure in {"disk-confirmed", "after-refresh"}
+                    else (
+                        {} if failure == "disk-generic" else {"error": {"code": "grant_required"}}
+                    )
+                )
+                return httpx.Response(402, json=body)
+            if path == "/api/auth/login-codes/refresh" and failure == "refresh":
+                return httpx.Response(402, json=balance)
+            return exchange(req)
+
+        monkeypatch.setattr(
+            lynxce_cloud,
+            "_client",
+            lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
+        with pytest.raises(OctopError) as error:
+            await lynxce_cloud.tenant_call(
+                srv.services,
+                uid,
+                "POST",
+                disk,
+                {"computerId": "own", "day": "2026-11-25", "sizeGb": 3},
+            )
+        confirmed = failure in {"disk-confirmed", "after-refresh"}
+        assert isinstance(error.value, DiskBalanceInsufficient) == confirmed
+        assert (error.value.code == ErrorCode.BOT_CLOUD_CREDITS_REQUIRED) == confirmed
+        assert calls.count(disk) == (2 if failure == "after-refresh" else 1)
+        assert ("/api/auth/login-codes/refresh" in calls) == (
+            failure in {"refresh", "after-refresh"}
+        )

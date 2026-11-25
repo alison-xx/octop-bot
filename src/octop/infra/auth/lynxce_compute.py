@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
-from octop.infra.crypto.fernet import decrypt_json, encrypt_json
+from cryptography.fernet import Fernet, InvalidToken
+
 from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -67,14 +69,27 @@ def load(services: SharedServices, user_id: int) -> ComputeGrant | None:
     key = _key(user_id)
     repo = services.secret_repo
     blob = repo.get(key)
-    return ComputeGrant(**decrypt_json(repo, key + ".fernet", blob)) if blob else None
+    if blob is None:
+        return None
+    # This per-account key is erased on withdrawal; decryption must never recreate it.
+    raw = repo.get(key + ".fernet")
+    if raw is None:
+        raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED)
+    try:
+        return ComputeGrant(**json.loads(Fernet(raw).decrypt(blob)))
+    except InvalidToken:
+        raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED) from None
 
 
 def save(services: SharedServices, user_id: int, grant: ComputeGrant) -> None:
     key = _key(user_id)
     repo = services.secret_repo
-    repo.put(key, encrypt_json(repo, key + ".fernet", asdict(grant)))
-    if services.user_repo.get(user_id) is None:
+    # A consent can be withdrawn and reissued in the same process. Read its current
+    # durable wrapping key even if this account was previously authorized by this worker.
+    raw = repo.get_or_create(key + ".fernet", Fernet.generate_key)
+    repo.put(key, Fernet(raw).encrypt(json.dumps(asdict(grant)).encode()))
+    user = services.user_repo.get(user_id)
+    if user is None or user.disabled:
         forget(services, user_id)
         raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
 
