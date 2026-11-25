@@ -35,7 +35,7 @@ class InboxResponse(BaseModel):
     "/inbox",
     summary="Cards waiting for me",
     description="Questions, approvals and takeovers that the signed-in user's Bots are waiting "
-    "on, newest first. Cards live in the server process: a restart clears the list.",
+    "on, newest first. Pending cards remain available after a restart until answered or expired.",
     response_model=InboxResponse,
 )
 async def read_inbox(

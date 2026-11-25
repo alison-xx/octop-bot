@@ -119,3 +119,148 @@ async def test_room_link_routes_one_conversation_and_deduplicates_replies(
     assert (await client.put(other, headers=alice, json=params)).status_code == 200
     assert (await client.delete(other.rsplit("/", 1)[0], headers=alice)).status_code == 204
     assert await receive(observed) == ["Direct"]
+
+
+@pytest.mark.parametrize("chat_type", ["group", "dm"])
+async def test_logged_in_owner_reviews_im_handoff(env_alice_bob_agent, monkeypatch, chat_type):
+    client, server, alice, _, bot = env_alice_bob_agent
+    rt = server.app_runtime
+    monkeypatch.setenv("OCTOP_BOT_CLOUD", "1")
+    calls = []
+    sample = "Review sample sheet 17"
+    policies = rt.gateway.processor.hitl_coordinator.session_policies
+
+    async def model(_agent, request):
+        # A saved generic preference belongs to the signed-in owner.
+        thread = request["thread_id"]
+        policies.set(thread, {"mode": "allow_all"})
+        assert not policies.allows(thread, "sample_review")
+        yield {
+            "type": "hitl_required",
+            "request": {
+                "action_requests": [{"name": "sample_review", "description": sample, "args": {}}],
+                "review_configs": [
+                    {"action_name": "sample_review", "allowed_decisions": ["approve", "reject"]}
+                ],
+            },
+        }
+
+    async def resume(agent_id, thread_id, decisions):
+        calls.append((agent_id, thread_id, decisions))
+        yield {"type": "token", "content": "Sample reviewed."}
+
+    monkeypatch.setattr(rt.agent_registry, "stream", model)
+    monkeypatch.setattr(rt.agent_registry, "resume_hitl", resume)
+    owner = server.services.agent_repo.get(bot).user_id
+    channel = server.services.channel_repo.create(
+        channel_id="sample-inbox",
+        agent_id=bot,
+        user_id=owner,
+        name="Sample IM",
+        kind="telegram",
+        config_json="{}",
+    )
+    msg = InboundMessage(
+        channel_id=channel,
+        channel_type="telegram",
+        tenant_id=bot,
+        channel_subject=ChannelSubject("sample-conversation", chat_type=chat_type),
+        content=[TextContent(text="Please prepare the fictional sample for review.")],
+        metadata={"chat_type": chat_type},
+    )
+    events = [event async for event in rt.gateway.processor(msg)]
+    inbox = await client.get("/api/octop-bot/inbox", headers=alice)
+    inbox.raise_for_status()
+    (card,) = [item for item in inbox.json()["items"] if item["agent_id"] == bot]
+    assert card["text"] == sample
+    assert all(not event.metadata.get("octop_hitl_pending_id") for event in events)
+    assert all(
+        sample not in str(event.content) and card["pending_id"] not in str(event)
+        for event in events
+    )
+    assert any(
+        "inbox" in str(event.content).lower() or "待办" in str(event.content) for event in events
+    )
+    decisions = [{"type": "approve"}]
+    response = await client.post(
+        f"/api/agents/{bot}/chat/hitl/resume",
+        headers=alice,
+        json={
+            "thread_id": card["thread_id"],
+            "pending_id": card["pending_id"],
+            "decisions": decisions,
+        },
+    )
+    response.raise_for_status()
+    assert calls == [(bot, card["thread_id"], decisions)]
+    assert "Sample reviewed." in response.text
+    assert (await client.get("/api/octop-bot/inbox", headers=alice)).json()["items"] == []
+
+
+async def test_hosted_dm_contact_can_answer_an_ordinary_question(env_alice_bob_agent, monkeypatch):
+    client, server, alice, _, bot = env_alice_bob_agent
+    monkeypatch.setenv("OCTOP_BOT_CLOUD", "1")
+    rt = server.app_runtime
+    owner = server.services.agent_repo.get(bot).user_id
+    question = "Which sample color should I use?"
+    decisions = []
+
+    async def model(*_args):
+        yield {
+            "type": "hitl_required",
+            "request": {
+                "action_requests": [
+                    {
+                        "name": "ask_user_question",
+                        "args": {
+                            "questions": [
+                                {
+                                    "header": "Sample color",
+                                    "question": question,
+                                    "options": [{"label": "Blue"}, {"label": "Green"}],
+                                }
+                            ]
+                        },
+                    }
+                ],
+                "review_configs": [
+                    {"action_name": "ask_user_question", "allowed_decisions": ["respond"]}
+                ],
+            },
+        }
+
+    async def resume(_agent, _thread, answer):
+        decisions.extend(answer)
+        yield {"type": "token", "content": "The sample is blue."}
+
+    monkeypatch.setattr(rt.agent_registry, "stream", model)
+    monkeypatch.setattr(rt.agent_registry, "resume_hitl", resume)
+    channel = server.services.channel_repo.create(
+        channel_id="sample-dm",
+        agent_id=bot,
+        user_id=owner,
+        name="Sample direct chat",
+        kind="telegram",
+        config_json="{}",
+    )
+
+    def message(text):
+        return InboundMessage(
+            channel_id=channel,
+            channel_type="telegram",
+            tenant_id=bot,
+            channel_subject=ChannelSubject("sample-contact", chat_type="direct"),
+            content=[TextContent(text=text)],
+            metadata={"chat_type": "dm"},
+        )
+
+    prompt = [e async for e in rt.gateway.processor(message("Help me choose a sample color."))]
+    assert any(question in str(e.content) for e in prompt)
+    reply = [e async for e in rt.gateway.processor(message("Blue"))]
+    assert (
+        len(decisions) == 1
+        and decisions[0]["type"] == "respond"
+        and "Blue" in decisions[0]["message"]
+    )
+    assert any("The sample is blue." in str(e.content) for e in reply)
+    assert (await client.get("/api/octop-bot/inbox", headers=alice)).json()["items"] == []

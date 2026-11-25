@@ -4,16 +4,28 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from anyio import create_memory_object_stream
 from langchain_core.messages import AIMessage
 from octop_gateway.media import MediaBackend
 from octop_gateway.models import MessageEvent
 
-from octop.i18n import channel_tool_hint_end, channel_tool_hint_start, tool_display_name
-from octop.infra.gateway.hitl.format import format_hitl_card, normalize_hitl_request
+from octop.i18n import channel_tool_hint_end, channel_tool_hint_start, tool_display_name, tr
+from octop.infra.agents.security.hitl_session import im_approval_scope
+from octop.infra.cloud.computers.handoff import (
+    BackgroundComputerTurn,
+    background_computer_turn,
+)
+from octop.infra.desktop import bot_cloud_enabled
+from octop.infra.gateway.hitl.format import (
+    format_hitl_card,
+    needs_owner_decision,
+    normalize_hitl_request,
+)
 from octop.infra.gateway.hitl.stream_compat import install_harness_hitl_compat
 from octop.infra.gateway.media.tool_media import (
     media_events_from_tool_result,
@@ -22,6 +34,7 @@ from octop.infra.gateway.media.tool_media import (
 )
 from octop.infra.gateway.process.agent_resolve import harness_workspace_for_agent
 from octop.infra.gateway.process.usage_record import UsageTracker
+from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.history.projection import TurnHistoryTracker
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, normalize_locale
 from octop.infra.utils.stream_close import close_event_stream
@@ -97,6 +110,7 @@ async def _project_chunks(
     projection_state: StreamProjectionState | None,
     hitl_coordinator: HitlChannelCoordinator | None,
     hitl_ctx: HitlStreamContext | None,
+    turn: BackgroundComputerTurn | None = None,
 ) -> AsyncIterator[MessageEvent]:
     loc = normalize_locale(str(locale))
     tool_state = _ToolProjectionState()
@@ -207,17 +221,25 @@ async def _project_chunks(
                 request = {}
             request = normalize_hitl_request(request)
             if hitl_coordinator is not None and hitl_ctx is not None:
-                record = hitl_coordinator.register_from_request(request, ctx=hitl_ctx)
-                request["pending_id"] = record.pending_id
-                card = format_hitl_card(
-                    record.action_requests,
-                    pending_id=record.pending_id,
-                    locale=loc,
+                record = await hitl_coordinator.register_waiting_turn(
+                    request, ctx=hitl_ctx, turn=turn
                 )
+                request["pending_id"] = record.pending_id
                 if projection_state is not None:
                     projection_state.hitl_paused = True
                     projection_state.hitl_pending_id = record.pending_id
-                yield MessageEvent.text(card, metadata={"octop_hitl_pending_id": record.pending_id})
+                if hitl_ctx.group_inbox or (
+                    not ThreadRegistry.is_virtual_channel(hitl_ctx.channel_type)
+                    and needs_owner_decision(record.action_requests, hosted=bot_cloud_enabled())
+                ):
+                    yield MessageEvent.text(tr("slash.hitl.owner_inbox", loc))
+                else:
+                    card = format_hitl_card(
+                        record.action_requests, pending_id=record.pending_id, locale=loc
+                    )
+                    yield MessageEvent.text(
+                        card, metadata={"octop_hitl_pending_id": record.pending_id}
+                    )
             return
 
         elif ctype == "state_update":
@@ -288,7 +310,7 @@ async def _persist_turn_file_changes(
         )
 
 
-async def project_stream(
+def project_stream(
     agent_manager: AgentManager,
     agent_id: str,
     request: dict[str, Any],
@@ -303,37 +325,21 @@ async def project_stream(
 ) -> AsyncIterator[MessageEvent]:
     del media_backend  # IM tool media uses agent.backend directly
     thread_id = hitl_ctx.thread_id if hitl_ctx is not None else ""
-    source = agent_manager.stream(agent_id, request)
-    chunks = _with_session_auto_approve(
-        source,
-        agent_manager=agent_manager,
-        agent_id=agent_id,
-        thread_id=thread_id,
-        hitl_coordinator=hitl_coordinator,
-    )
-    chunk_stream = _project_chunks(
-        chunks,
-        agent_manager=agent_manager,
-        agent_id=agent_id,
-        locale=locale,
+    return _project_turn(
+        agent_manager,
+        agent_id,
+        thread_id,
+        lambda: agent_manager.stream(agent_id, request),
         usage_tracker=usage_tracker,
         history_tracker=history_tracker,
+        locale=locale,
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,
     )
-    try:
-        async for ev in chunk_stream:
-            yield ev
-    finally:
-        await close_event_stream(chunk_stream)
-        if chunks is not source:
-            await close_event_stream(chunks)
-        await close_event_stream(source)
-        await _persist_turn_file_changes(agent_manager, agent_id, thread_id, history_tracker)
 
 
-async def project_resume_stream(
+def project_resume_stream(
     agent_manager: AgentManager,
     agent_id: str,
     thread_id: str,
@@ -346,31 +352,112 @@ async def project_resume_stream(
     hitl_coordinator: HitlChannelCoordinator | None = None,
     hitl_ctx: HitlStreamContext | None = None,
 ) -> AsyncIterator[MessageEvent]:
-    source = agent_manager.resume_hitl(agent_id, thread_id, decisions)
-    chunks = _with_session_auto_approve(
-        source,
-        agent_manager=agent_manager,
-        agent_id=agent_id,
-        thread_id=thread_id,
-        hitl_coordinator=hitl_coordinator,
-    )
-    chunk_stream = _project_chunks(
-        chunks,
-        agent_manager=agent_manager,
-        agent_id=agent_id,
-        locale=locale,
+    return _project_turn(
+        agent_manager,
+        agent_id,
+        thread_id,
+        lambda: agent_manager.resume_hitl(agent_id, thread_id, decisions),
         usage_tracker=usage_tracker,
         history_tracker=history_tracker,
+        locale=locale,
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,
     )
+
+
+async def _project_turn(
+    agent_manager: AgentManager,
+    agent_id: str,
+    thread_id: str,
+    open_source: Callable[[], AsyncIterator[dict[str, Any]]],
+    *,
+    usage_tracker: UsageTracker | None,
+    history_tracker: TurnHistoryTracker | None,
+    locale: str | Locale,
+    projection_state: StreamProjectionState | None,
+    hitl_coordinator: HitlChannelCoordinator | None,
+    hitl_ctx: HitlStreamContext | None,
+) -> AsyncIterator[MessageEvent]:
+    external_im = (
+        hitl_ctx is not None
+        and hitl_ctx.channel_type not in ("", "unknown")
+        and not ThreadRegistry.is_virtual_channel(hitl_ctx.channel_type)
+    )
+    owner_required = bool(
+        external_im and hitl_ctx and (hitl_ctx.group_inbox or bot_cloud_enabled())
+    )
+
+    async def events(turn: BackgroundComputerTurn | None) -> AsyncIterator[MessageEvent]:
+        source = open_source()
+        chunks = _with_session_auto_approve(
+            source,
+            agent_manager=agent_manager,
+            agent_id=agent_id,
+            thread_id=thread_id,
+            hitl_coordinator=None if owner_required else hitl_coordinator,
+        )
+        chunk_stream = _project_chunks(
+            chunks,
+            agent_manager=agent_manager,
+            agent_id=agent_id,
+            locale=locale,
+            usage_tracker=usage_tracker,
+            history_tracker=history_tracker,
+            projection_state=projection_state,
+            hitl_coordinator=hitl_coordinator,
+            hitl_ctx=hitl_ctx,
+            turn=turn,
+        )
+        try:
+            async for ev in chunk_stream:
+                yield ev
+        finally:
+            await close_event_stream(chunk_stream)
+            if chunks is not source:
+                await close_event_stream(chunks)
+            await close_event_stream(source)
+            await _persist_turn_file_changes(agent_manager, agent_id, thread_id, history_tracker)
+
+    if (
+        hitl_ctx is None
+        or hitl_coordinator is None
+        or not external_im
+        or (hitl_coordinator.store.repo is None and not owner_required)
+    ):
+        stream = events(None)
+        try:
+            async for event in stream:
+                yield event
+        finally:
+            await close_event_stream(stream)
+        return
+
+    # The transport can consume each event in a different task. Keep the wake handle
+    # in one producer task for the entire model run, including cancellation and cleanup.
+    send, receive = create_memory_object_stream[MessageEvent](0)
+
+    async def produce(ctx: HitlStreamContext) -> None:
+        async with send:
+            with (
+                im_approval_scope(owner_required=owner_required),
+                background_computer_turn(ctx.user_id, agent_id, thread_id) as turn,
+            ):
+                stream = events(turn)
+                try:
+                    async for event in stream:
+                        await send.send(event)
+                finally:
+                    await close_event_stream(stream)
+
+    producer = asyncio.create_task(produce(hitl_ctx))
     try:
-        async for ev in chunk_stream:
-            yield ev
+        async with receive:
+            async for event in receive:
+                yield event
+        await producer
     finally:
-        await close_event_stream(chunk_stream)
-        if chunks is not source:
-            await close_event_stream(chunks)
-        await close_event_stream(source)
-        await _persist_turn_file_changes(agent_manager, agent_id, thread_id, history_tracker)
+        if not producer.done():
+            producer.cancel()
+        with suppress(asyncio.CancelledError):
+            await producer

@@ -3669,6 +3669,7 @@
     "lastStatusOk": "Succeeded",
     "lastStatusError": "Failed",
     "lastStatusMissed": "Missed",
+    "lastStatusExpired": "Waiting for your input expired",
     "lastStatusWaiting": "Needs you",
     "oneShotEnableBlocked": "That time has already passed. Pick a future time before enabling it again.",
     "form": {

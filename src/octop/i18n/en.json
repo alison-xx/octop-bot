@@ -66,6 +66,7 @@
       "role": "What this job usually involves: {hint}"
     },
     "approval": {
+      "expired": "The waiting period ended. The Bot has stopped waiting for your reply.",
       "title": "Needs your OK",
       "header": "Confirm",
       "question": "The Bot wants to {action}: {target}\n{detail}",
@@ -141,6 +142,7 @@
       "done": "Resumed {short}."
     },
     "hitl": {
+      "owner_inbox": "The Bot owner can review this request in their inbox after signing in.",
       "card_title": "⚠️ Tool approval required",
       "card_intro": "The agent wants to run the following tool(s):",
       "action_line": "{index}. **{name}**",
@@ -949,6 +951,7 @@
       "custom": "Custom"
     },
     "waiting": {
+      "expired": "The scheduled task needed your input. The 24-hour wait expired and the requested action was not approved. The next scheduled run may proceed.",
       "needs_you": "The scheduled task “{name}” needs you. Open this Bot's chat to continue (within 24 hours).",
       "still": "The scheduled task “{name}” is still waiting for you from its last run, so this run was skipped."
     }
