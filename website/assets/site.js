@@ -680,8 +680,6 @@
         <div class="platform-head">${icon}<div><h3 class="h3">${title}</h3><small class="muted">${sub}</small></div>${detected ? `<span class="badge">${t("你的系统", "Your system")}</span>` : ""}</div>
         ${body}</article>`;
 
-  const staticMac = $("[data-stable-mac]");
-
   function renderPlatforms(latest, beta) {
     const box = $("#platforms");
     if (!box) return;
@@ -796,10 +794,6 @@
       }
     }
     box.innerHTML = cards.join("");
-    // The offline catalog predates the signed stable Mac package in the static HTML.
-    if (!macRel && !site.stable && staticMac && !site.hidden.has("darwin")) {
-      box.prepend(staticMac);
-    }
     $$("[data-intel-note]").forEach((el) => (el.hidden = Boolean(intel)));
   }
 
@@ -845,14 +839,14 @@
       });
       const stable = fromManifest.find((r) => r.channel === "stable");
       const beta = fromManifest.find((r) => r.channel === "beta");
-      const latest = stable || beta || fromList[0];
+      const latest = stable || fromList.find((r) => r.channel === "stable") || beta || fromList[0];
       if (!latest) return null;
       const seen = new Set();
       /* For a version in both, keep the hand-written bilingual notes from releases.json. */
       const history = [...fromList, ...fromManifest]
         .filter((r) => !seen.has(r.version) && seen.add(r.version))
         .sort((a, b) => compareVersions(b.version, a.version));
-      return { latest, stable, beta: beta && (!stable || compareVersions(beta.version, stable.version) > 0) ? beta : null, history, hidden };
+      return { latest, beta: beta && (!stable || compareVersions(beta.version, stable.version) > 0) ? beta : null, history, hidden };
     });
   }
 
