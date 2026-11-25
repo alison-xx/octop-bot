@@ -590,6 +590,51 @@ yourself: when a site asks for them, leave the screen on that step and call \
 `request_takeover`."""
 
 
+def capture_after_action(
+    driver: ComputerDriver,
+    instance: str,
+    action: Action,
+    *,
+    x: float | None = None,
+    y: float | None = None,
+    x2: float | None = None,
+    y2: float | None = None,
+    text: str | None = None,
+    keys: str | None = None,
+    direction: Literal["up", "down", "left", "right"] | None = None,
+    amount: int = 5,
+    button: Literal["left", "middle", "right"] = "left",
+    seconds: float = 1.0,
+) -> tuple[str, bytes]:
+    """Run the input (if any) and capture its result on the same desktop."""
+    script = ""
+    if action == "wait":
+        time.sleep(max(0.0, min(float(seconds), 10.0)))
+        done = f"Waited {min(float(seconds), 10.0):g}s."
+    elif action == "screenshot":
+        done = "Screenshot taken."
+    else:
+        script = action_script(
+            action,
+            x=x,
+            y=y,
+            x2=x2,
+            y2=y2,
+            text=text,
+            keys=keys,
+            direction=direction,
+            amount=amount,
+            button=button,
+        )
+        navigates = action in ("click", "double_click") or (
+            action == "key" and "enter" in parse_keys(keys or "x")
+        )
+        settle = NAVIGATION_SETTLE_SECONDS if navigates else SETTLE_SECONDS
+        script += f"time.sleep({settle})\n"
+        done = f"Did {action}."
+    return done, snapshot(driver, instance, script)
+
+
 def computer_use_tool(
     manager: ComputerManager,
     agent_id: str,
@@ -713,32 +758,21 @@ def computer_use_tool(
                 region = (float(x or 0), float(y or 0), float(x2 or 0), float(y2 or 0))
                 image = zoom_image(driver.screenshot(instance), region)
                 return _with_image(tool_call_id, "Zoomed region attached.", image, "Zoomed region")
-            script = ""
-            if action == "wait":
-                time.sleep(max(0.0, min(float(seconds), 10.0)))
-                done = f"Waited {min(float(seconds), 10.0):g}s."
-            elif action == "screenshot":
-                done = "Screenshot taken."
-            else:
-                script = action_script(
-                    action,
-                    x=x,
-                    y=y,
-                    x2=x2,
-                    y2=y2,
-                    text=text,
-                    keys=keys,
-                    direction=direction,
-                    amount=amount,
-                    button=button,
-                )
-                navigates = action in ("click", "double_click") or (
-                    action == "key" and "enter" in parse_keys(keys or "x")
-                )
-                settle = NAVIGATION_SETTLE_SECONDS if navigates else SETTLE_SECONDS
-                script += f"time.sleep({settle})\n"
-                done = f"Did {action}."
-            image = snapshot(driver, instance, script)
+            done, image = capture_after_action(
+                driver,
+                instance,
+                action,
+                x=x,
+                y=y,
+                x2=x2,
+                y2=y2,
+                text=text,
+                keys=keys,
+                direction=direction,
+                amount=amount,
+                button=button,
+                seconds=seconds,
+            )
             stuck = watch.after(action, image)
             if stuck:
                 done = f"{done} {stuck}"
