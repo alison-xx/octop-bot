@@ -174,6 +174,8 @@ class ThreadRepo:
         session_key: str,
         title: str | None = None,
         last_active: int | None = None,
+        created_at: int | None = None,
+        pinned: bool = False,
         initial_messages: Iterable[ThreadMessageInput] = (),
         restore_entry: tuple[str, str] | None = None,
     ) -> None:
@@ -181,8 +183,8 @@ class ThreadRepo:
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO threads(thread_id, agent_id, user_id, channel_type, "
-                "session_key, title, last_active, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "session_key, title, last_active, created_at, pinned) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     thread_id,
                     agent_id,
@@ -191,7 +193,8 @@ class ThreadRepo:
                     session_key,
                     clip_thread_title(title) if title else None,
                     ts if last_active is None else last_active,
-                    ts,
+                    ts if created_at is None else created_at,
+                    bool_int(pinned),
                 ),
             )
             conn.execute(

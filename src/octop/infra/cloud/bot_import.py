@@ -225,6 +225,12 @@ def preview(services: SharedServices, owner: int, bot_id: str, thread_id: str) -
     return _snapshot(services, owner, bot_id, thread_id).preview
 
 
+def hosted_session_id(owner: int, bot_id: str, thread_id: str) -> str:
+    """The stable ID used when exporting a local conversation to Lynxce."""
+    name = json.dumps(["octop-bot/import/v1", owner, bot_id, thread_id], separators=(",", ":"))
+    return f"octop-bot-v1-{uuid5(NAMESPACE_URL, name)}"
+
+
 async def import_chat(
     services: SharedServices, owner: int, bot_id: str, thread_id: str, body: ImportRequest
 ) -> Imported:
@@ -233,8 +239,7 @@ async def import_chat(
     caps = await workspace.capabilities()
     if not caps.enabled or body.model not in caps.models:
         raise OctopError.localized(ErrorCode.BOT_CLOUD_REQUEST_REJECTED, status=422)
-    name = json.dumps(["octop-bot/import/v1", owner, bot_id, thread_id], separators=(",", ":"))
-    sid = f"octop-bot-v1-{uuid5(NAMESPACE_URL, name)}"
+    sid = hosted_session_id(owner, bot_id, thread_id)
     path = f"/api/user/web-chat-sessions/{sid}"
     existing: set[tuple[str, str]] = set()
     model = body.model

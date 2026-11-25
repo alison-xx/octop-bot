@@ -1364,6 +1364,229 @@ async def test_tenant_group_member_builds_in_its_room(
         assert unbounded.value.code == _Code.FORBIDDEN
 
 
+@pytest.fixture
+def legacy_graph(tmp_path: Path) -> Any:
+    from langgraph.graph import END, START, MessagesState, StateGraph
+    from octop_memory import Memory
+
+    opened = []
+
+    def open_graph() -> tuple[Any, Any]:
+        memory = Memory(
+            namespace="legacy-mobile",
+            backend="sqlite",
+            backend_config={"db_path": str(tmp_path / "checkpoints.sqlite")},
+        )
+        opened.append(memory)
+        builder = StateGraph(MessagesState)
+        builder.add_node(
+            "answer",
+            lambda state: {"messages": [("ai", f"{len(state['messages'])} messages in context")]},
+        )
+        builder.add_edge(START, "answer")
+        builder.add_edge("answer", END)
+        return memory, builder.compile(checkpointer=memory)
+
+    yield open_graph
+    for memory in opened:
+        memory.backend.close()
+
+
+async def test_legacy_mobile_history_restores_per_account_without_replacing_cloud_chats(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, legacy_graph: Any
+) -> None:
+    import socket
+
+    from octop.infra.cloud import legacy_conversations
+    from octop.infra.errors import ErrorCode, OctopError
+
+    account_a, account_b = "13800000001", "13800000002"
+    sid = "octop-bot-v1-00000000-0000-4000-8000-000000000001"
+    incomplete = "octop-bot-v1-00000000-0000-4000-8000-000000000002"
+    stamp = "2026-11-20T01:00:00Z"
+    items = [
+        {
+            "role": "user" if n % 2 == 0 else "assistant",
+            "content": f"message {n}",
+            "createdAt": stamp,
+        }
+        for n in range(129)
+    ]
+    items[0]["content"] = "A" * 40000
+    items[1].update(thinking="thinking", model="archived", status="failed")
+    path = "/api/octop-bot/cloud/legacy-conversations/restore"
+    sessions = "/api/user/web-chat-sessions"
+    unplanned: list[str] = []
+
+    def deny(*_args: Any, **_kwargs: Any) -> Any:
+        unplanned.append("network")
+        raise AssertionError("Unexpected network call in cloud restore fixture")
+
+    for obj, name in [
+        (socket, "getaddrinfo"),
+        (socket.socket, "connect"),
+        (socket.socket, "connect_ex"),
+    ]:
+        monkeypatch.setattr(obj, name, deny)
+    monkeypatch.setattr(
+        cloud_files,
+        "harness_spec",
+        lambda spec, config=None: {
+            "type": "filesystem",
+            "root_dir": str(tmp_octop_home / "object-store" / spec["agent_id"]),
+            "virtual_mode": True,
+        },
+    )
+    reads: list[tuple[str, str]] = []
+    profile_id: str | None = None
+
+    def respond(req: httpx.Request) -> httpx.Response:
+        route = req.url.path
+        account = req.headers.get("Authorization", "").removeprefix("Bearer access-")
+        if route == "/api/user/profile":
+            return httpx.Response(
+                200, json={"code": 0, "data": {"id": profile_id or "lx-" + account}}
+            )
+        if route == sessions or route.startswith(sessions + "/"):
+            assert req.method == "GET" and account in (account_a, account_b)
+            reads.append((account, route))
+            rows = items if account == account_a else [{"role": "user", "content": "B private"}]
+            if route == sessions:
+                data: Any = (
+                    {"items": [{"id": "unrelated-session"}], "nextCursor": "older"}
+                    if "cursor" not in req.url.params
+                    else {
+                        "items": [
+                            {"id": sid, "updatedAt": stamp, "messageCount": len(rows)},
+                            {"id": incomplete, "updatedAt": stamp, "messageCount": 1000},
+                        ],
+                        "nextCursor": None,
+                    }
+                )
+            else:
+                data = {
+                    "id": route.rsplit("/", 1)[-1],
+                    "title": "Legacy",
+                    "updatedAt": stamp,
+                    "items": rows,
+                }
+            return httpx.Response(200, json={"code": 0, "data": data})
+        return upstream(req)
+
+    monkeypatch.setattr(
+        cloud, "_client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    )
+    async with octop_client(tmp_octop_home) as (client, server):
+
+        async def login(account: str) -> dict[str, str]:
+            result = await _sign_in(client, account)
+            return {"Authorization": "Bearer " + result["access_token"]}
+
+        async def restore(auth: dict[str, str], cursor: str | None = None) -> dict[str, Any]:
+            reply = await client.post(path, headers=auth, json={"cursor": cursor})
+            reply.raise_for_status()
+            return reply.json()
+
+        alice = await login(account_a)
+        workspace = (await client.get("/api/octop-bot/workspace", headers=alice)).json()
+        chief = workspace["chief_id"]
+        directory = f"/api/agents/{chief}/threads"
+        native = (await client.post(directory, headers=alice)).json()["thread_id"]
+        first = await restore(alice)
+        assert first["scanned"] == 1 and not first["threads"]
+        # Fail between checkpoint batches, while the reserved thread is still private.
+        checkpoint_write = legacy_conversations.write_checkpoint_messages
+        batch_count = 0
+
+        async def fail_second_batch(harness: Any, *, thread_id: str, messages: list[Any]) -> None:
+            nonlocal batch_count
+            batch_count += 1
+            if batch_count == 2:
+                raise OctopError.localized(ErrorCode.NETWORK_ERROR)
+            await checkpoint_write(harness, thread_id=thread_id, messages=messages)
+
+        registry = server.app_runtime.agent_registry
+        try:
+            harness = registry.get_agent(chief)
+        except OctopError:
+            await registry.start(chief)
+            harness = registry.get_agent(chief)
+        memory, harness.graph = legacy_graph()
+
+        async def discard_unpublished(aid: str, tid: str, *, reclaim: bool) -> None:
+            assert aid == chief and not reclaim and server.services.thread_repo.get(tid) is None
+            await memory.adelete_thread(tid)
+
+        with monkeypatch.context() as interrupted:
+            interrupted.setattr(
+                legacy_conversations, "write_checkpoint_messages", fail_second_batch
+            )
+            failed = await client.post(path, headers=alice, json={"cursor": first["next_cursor"]})
+            assert failed.status_code == 502
+        assert [
+            row["thread_id"] for row in (await client.get(directory, headers=alice)).json()
+        ] == [native]
+        with monkeypatch.context() as recovering:
+            recovering.setattr(registry, "delete_thread_checkpoint", discard_unpublished)
+            simultaneous = await asyncio.gather(
+                restore(alice, first["next_cursor"]), restore(alice, first["next_cursor"])
+            )
+            assert sorted(p["restored"] for p in simultaneous) == [0, 1]
+            second = next(p for p in simultaneous if p["restored"])
+            assert simultaneous[0]["threads"] == simultaneous[1]["threads"]
+
+        assert second["restored"] == 1 and second["skipped"] == 1 and not second["next_cursor"]
+        linked = second["threads"][0]
+        assert linked["legacy_id"] == sid and linked["agent_id"] == chief
+        tid = linked["thread_id"]
+        assert tid != native
+        row = server.services.thread_repo.get(tid)
+        assert row and not row.contributed
+        assert server.services.thread_message_repo.head(tid) == len(items)
+        cls = server.app_runtime.agent_registry.get_agent(chief)
+        state = await cls.graph.aget_state({"configurable": {"thread_id": tid}})
+        checkpoint = state.values["messages"]
+        assert [m.content for m in checkpoint] == [m["content"] for m in items]
+        assert checkpoint[1].response_metadata["lynxce_legacy"]["status"] == "failed"
+        # A newly opened native Octop SQLite checkpointer resumes the whole conversation.
+        _, reopened = legacy_graph()
+        continued = await reopened.ainvoke(
+            {"messages": [("human", "continue")]}, {"configurable": {"thread_id": tid}}
+        )
+        assert continued["messages"][-1].content == "130 messages in context"
+
+        head = await client.get(f"{directory}/{tid}/history", headers=alice, params={"limit": 2})
+        assert [m["content"][0]["text"] for m in head.json()["messages"]] == [
+            "message 127",
+            "message 128",
+        ]
+        bob = await login(account_b)
+        stale = await client.post(path, headers=bob, json={"cursor": first["next_cursor"]})
+        assert stale.status_code == 409
+        bpage = await restore(bob)
+        other = (await restore(bob, bpage["next_cursor"]))["threads"][0]
+        assert (other["thread_id"], other["agent_id"]) != (tid, chief)
+        assert (await client.get(f"{directory}/{tid}/history", headers=bob)).status_code in (
+            403,
+            404,
+        )
+        alice = await login(account_a)
+        retry = await restore(alice, (await restore(alice))["next_cursor"])
+        assert retry["existing"] == 1 and retry["restored"] == 0 and retry["threads"] == [linked]
+        assert {v["thread_id"] for v in (await client.get(directory, headers=alice)).json()} >= {
+            native,
+            tid,
+        }
+        assert server.services.thread_message_repo.head(tid) == len(items)
+        profile_id = "outdated-account-binding"
+        prior_reads = list(reads)
+        mismatch = await client.post(path, headers=alice, json={})
+        assert mismatch.json()["error"]["code"] == "BOT_CLOUD_ACCOUNT_REQUIRED"
+        assert reads == prior_reads
+    assert reads.count((account_a, sessions + "/" + sid)) == 2
+    assert not unplanned
+
+
 class _Computer:
     """A cloud-computer provider that answers instantly (no Tencent Cloud)."""
 
