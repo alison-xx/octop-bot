@@ -227,6 +227,21 @@ class ServerBackend(
         http: OkHttpClient = client,
     ): JsonElement = Http.parse(raw(method, path, query, body, http).decodeToString())
 
+    override suspend fun accountPhoto(): AccountPhoto? {
+        if (isCloud) {
+            runCatching { json("GET", "/api/octop-bot/cloud/account").asObject() }.getOrNull()?.let {
+                return AccountPhoto.cloud(it)
+            }
+        }
+        val me = json("GET", "/api/auth/me").asObject() ?: return null
+        val photo = AccountPhoto.owner(me)
+        val local = AccountPhoto.localAvatar(me) ?: return photo
+        val bytes = runCatching {
+            raw("GET", local.first, local.second, http = client.newBuilder().followRedirects(false).build())
+        }.getOrNull()
+        return photo.copy(localImage = bytes)
+    }
+
     // Lynxce wallet (Octop Bot cloud only)
 
     @Volatile private var walletAccount: String? = null

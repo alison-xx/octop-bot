@@ -151,10 +151,45 @@ enum ISO8601 {
     }
 }
 
+struct AccountPhoto {
+    let name: String?
+    let url: URL?
+    var localImage: Data?
+
+    init(name: String?, url: String?) {
+        let display = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.name = display?.isEmpty == false ? display : nil
+        let candidate = url.flatMap { URL(string: $0) }
+        self.url = candidate.flatMap {
+            $0.scheme?.lowercased() == "https" && $0.host != nil && $0.user == nil && $0.password == nil ? $0 : nil
+        }
+    }
+
+    static func localAvatar(_ me: [String: Any]) -> (path: String, query: [String: String])? {
+        guard let id = me["id"] as? Int, id > 0, let raw = me["avatar_url"] as? String else { return nil }
+        let path = "/api/users/\(id)/avatar"
+        if raw == path { return (path, [:]) }
+        guard raw.hasPrefix(path + "?"), let parts = URLComponents(string: raw), parts.fragment == nil,
+              let items = parts.queryItems, items.count == 1, items[0].name == "v", let value = items[0].value else { return nil }
+        return (path, ["v": value])
+    }
+
+    static func direct(_ profile: [String: Any], accountId: String) -> AccountPhoto? {
+        guard profile["id"] as? String == accountId else { return nil }
+        return AccountPhoto(name: profile["displayName"] as? String, url: profile["avatarUrl"] as? String)
+    }
+
+    static func cloud(_ profile: [String: Any]) -> AccountPhoto {
+        guard profile["connected"] as? Bool == true else { return AccountPhoto(name: nil, url: nil) }
+        return AccountPhoto(name: profile["display_name"] as? String, url: profile["avatar_url"] as? String)
+    }
+}
+
 /// Where this phone talks to: the Lynxce cloud with a personal account, or a self-hosted Octop server.
 protocol ChatBackend: AnyObject {
     var supportsGroups: Bool { get }
     var accountName: String { get }
+    func accountPhoto() async -> AccountPhoto?
 
     func bots() async throws -> [BotProfile]
     func conversations(for bot: BotProfile) async throws -> [ConversationSummary]
@@ -186,6 +221,8 @@ protocol ChatBackend: AnyObject {
 }
 
 extension ChatBackend {
+    func accountPhoto() async -> AccountPhoto? { nil }
+
     func resume(
         _ pause: HitlPause, decisions: [[String: Any]], conversation: String, bot: BotProfile
     ) -> AsyncThrowingStream<StreamEvent, Error> {
