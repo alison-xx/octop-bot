@@ -171,15 +171,18 @@
     const box = $("#plans");
     if (!box || !pricing) return;
     const m = media();
+    const expanded = new Set([...box.querySelectorAll("details[open]")].map((details) => details.dataset.plan));
     box.replaceChildren(
       ...pricing.plans.map((plan) => {
         const card = node("article", "plan" + (plan.tag ? " hot" : ""));
-        if (plan.tag) card.append(node("span", "tag", pick(plan.tag)));
-        card.append(node("h3", "", pick(plan.name)));
+        const header = node("div", "plan-heading");
+        header.append(node("h3", "", pick(plan.name)));
+        if (plan.tag) header.append(node("span", "tag", pick(plan.tag)));
+        card.append(header);
 
         const amount = node("div", "amount");
         const yearly = cycle === "year" && plan.yearly;
-        amount.append(document.createTextNode(plan.monthly === 0 ? "¥0" : money(yearly ? plan.yearly : plan.monthly)));
+        amount.append(node("span", "currency", "¥"), node("strong", "", num(yearly ? plan.yearly : plan.monthly)));
         if (plan.monthly) amount.append(node("small", "", yearly ? t("/年", "/yr") : t("/月", "/mo")));
         card.append(amount);
 
@@ -199,16 +202,15 @@
         const credits = node("div", "credits");
         if (animate) {
           amount.classList.add("pricing-enter");
-          credits.classList.add("pricing-enter");
         }
         const main = node("div", "row");
-        if (plan.creditsNote) main.append(node("span", "", "✦ " + pick(plan.creditsNote)));
+        if (plan.creditsNote) main.append(node("span", "", pick(plan.creditsNote)));
         else {
-          main.append(node("span", "", "✦ " + t(`${num(plan.credits)} 积分每月`, `${num(plan.credits)} credits a month`)));
+          main.append(node("span", "", t(`每月 ${num(plan.credits)} 积分`, `${num(plan.credits)} credits a month`)));
           main.append(node("em", "", t("1 个月有效", "valid 1 month")));
         }
         credits.append(main);
-        if (plan.bonus) credits.append(node("div", "row gift", "🎁 " + pick(plan.bonus)));
+        if (plan.bonus) credits.append(node("div", "row gift", pick(plan.bonus)));
         card.append(credits);
 
         const button = node(plan.monthly === 0 ? "a" : "button", "btn " + (plan.tag ? "btn-primary" : "btn-ghost"));
@@ -226,6 +228,11 @@
         }
         card.append(button);
 
+        const highlights = node("ul", "perks plan-highlights");
+        const details = node("details", "plan-details");
+        details.dataset.plan = plan.id;
+        details.open = expanded.has(plan.id);
+        details.append(node("summary", "", t("全部权益", "All benefits")));
         const perks = node("ul", "perks");
         perks.append(perkRow(t("文本模型", "Text models"), t("全部可用模型", "All available models")));
         const images = m.perImage ? Math.floor(plan.credits / m.perImage) : null;
@@ -252,10 +259,12 @@
             join.dataset.community = "";
             row.querySelector("b").replaceChildren(join);
           }
-          perks.append(row);
+          if (["cloudBots", "computers", "storage"].includes(key)) highlights.append(row);
+          else perks.append(row);
         }
         perks.append(perkRow(t("本机 Bot", "Local Bots"), t("不限、不扣积分", "Unlimited, no credits")));
-        card.append(perks);
+        details.append(perks);
+        card.append(highlights, details);
         return card;
       }),
     );
@@ -335,7 +344,7 @@
           : "—",
       ],
       [t("云电脑", "Cloud computer"), t(`标准 ${r.computerStandardPerMinute} 积分/分钟，专业 ${r.computerProPerMinute} 积分/分钟`, `Standard ${r.computerStandardPerMinute}, Pro ${r.computerProPerMinute} credits per minute`)],
-      [t("云电脑磁盘", "Computer disk"), t(`${r.diskPerGbDay} 积分/GB·天`, `${r.diskPerGbDay} credits per GB per day`)],
+      [t("云电脑磁盘", "Computer disk"), t(`计费启用后为 ${r.diskPerGbDay} 积分/GB·天`, `When disk billing is enabled: ${r.diskPerGbDay} credits per GB per day`)],
     ];
     $("#rates").replaceChildren(
       ...rates.map(([name, text]) => {
@@ -425,8 +434,8 @@
     const active = group.querySelector('[aria-selected="true"], [aria-pressed="true"]');
     if (!active || !active.offsetWidth) return;
     const indicator = group.querySelector(".segment-indicator");
-    indicator.style.setProperty("--indicator-scale", active.offsetWidth);
-    indicator.style.transform = `translateX(${active.offsetLeft}px) scaleX(${active.offsetWidth})`;
+    indicator.style.width = `${active.offsetWidth}px`;
+    indicator.style.transform = `translateX(${active.offsetLeft}px)`;
     if (!indicator.classList.contains("ready")) {
       requestAnimationFrame(() => requestAnimationFrame(() => indicator.classList.add("ready")));
     }
@@ -468,7 +477,7 @@
       positionIndicator($("#cycle"));
       renderPlans(true);
     }
-    const p = e.target.closest(".pack");
+    const p = e.target.closest("button.pack[data-yuan]");
     if (p) {
       pack = Number(p.dataset.yuan);
       customAmount = "";
