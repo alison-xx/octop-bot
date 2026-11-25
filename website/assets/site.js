@@ -844,7 +844,7 @@
   /* The manifest decides the current version; releases.json keeps older releases for the changelog
      and stands in while no manifest is published. The static HTML is the last fallback. */
   function mergeReleases(manifestReleases, data) {
-    /* releases.json "hidden" lists platforms not to offer yet, e.g. "ios" before the App Store listing is live. */
+    /* The site archive controls which package platforms are visible, including signed assets. */
     const hidden = new Set(data.hidden || []);
     const fromManifest = manifestReleases.map((r) => ({ ...r, assets: r.assets.filter((a) => !hidden.has(a.platform)) }));
     const fromList = (data.releases || []).map((r) => {
@@ -866,9 +866,11 @@
 
   async function loadReleases(onAvailable) {
     let manifestReleases = [];
-    let archive = {};
+    let archive = null;
     let loaded = null;
     function update() {
+      // The site archive can hide even a signed package. Wait for its policy or a failed lookup.
+      if (!archive) return;
       loaded = mergeReleases(manifestReleases, archive);
       if (loaded) onAvailable?.(loaded);
     }
@@ -881,8 +883,10 @@
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null)
       .then((data) => {
-        if (!Array.isArray(data?.releases)) return;
-        archive = data;
+        archive = {
+          releases: Array.isArray(data?.releases) ? data.releases : [],
+          hidden: Array.isArray(data?.hidden) ? data.hidden : [],
+        };
         update();
       });
     await Promise.all([live, listed]);
