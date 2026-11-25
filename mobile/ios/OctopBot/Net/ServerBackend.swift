@@ -8,6 +8,7 @@ final class ServerBackend: ChatBackend {
         var displayName: String
         /// Octop Bot cloud (bot.lynxce.cn): signed in with Lynxce, which it keeps for the wallet.
         var cloud: Bool?
+        var signupExpiryDay: String? = nil
     }
 
     /// Octop Bot cloud, run by Lynxce.
@@ -16,6 +17,8 @@ final class ServerBackend: ChatBackend {
 
     private static let sessionKey = "server.session"
     private(set) var session: Session
+    var signupCredits: Double?
+    var signupExpiryDay: String? { session.signupExpiryDay }
     private var voice: (stt: Bool, tts: Bool)?
     private var sockets: [String: URLSessionWebSocketTask] = [:]
 
@@ -150,25 +153,31 @@ final class ServerBackend: ChatBackend {
         // Never the username (`sso_…`, `owner`): with no display name the UI shows a generic name.
         let name = displayName(user)
         // Octop Bot cloud says so in its sign-in response; it then also serves the Lynxce wallet.
-        let session = Session(baseURL: base, token: token, displayName: name, cloud: body["cloud"] as? Bool == true ? true : nil)
+        let session = Session(baseURL: base, token: token, displayName: name, cloud: body["cloud"] as? Bool == true ? true : nil,
+                              signupExpiryDay: body["cloud"] as? Bool == true ? signupExpiryDayUTC(body) : nil)
         Keychain.setCodable(session, for: sessionKey)
-        return ServerBackend(session: session)
+        let backend = ServerBackend(session: session)
+        backend.signupCredits = backend.isCloud ? newSignupCredits(body) : nil
+        return backend
     }
 
     static func displayName(_ user: [String: Any]?) -> String {
         ((user?["display_name"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Re-read the display name: it may change on the server, and older sign-ins saved the username.
-    /// Returns whether it changed.
-    @discardableResult
-    func refreshProfile() async -> Bool {
-        guard let me = try? await json(.get, "/api/auth/me") as? [String: Any] else { return false }
-        let name = Self.displayName(me)
-        guard name != session.displayName else { return false }
-        session.displayName = name
-        Keychain.setCodable(session, for: Self.sessionKey)
-        return true
+    func accountPhoto() async -> AccountPhoto? {
+        if isCloud, let profile = try? await json(.get, "/api/octop-bot/cloud/account") as? [String: Any] {
+            return AccountPhoto.cloud(profile)
+        }
+        guard let me = try? await json(.get, "/api/auth/me") as? [String: Any] else { return nil }
+        var photo = AccountPhoto(name: Self.displayName(me), url: me["avatar_url"] as? String)
+        if let local = AccountPhoto.localAvatar(me),
+           let request = try? HTTP.request(url(local.path, query: local.query), method: .get, headers: authHeaders),
+           let (bytes, response) = try? await HTTP.session.data(for: request, delegate: NoAvatarRedirect()),
+           (response as? HTTPURLResponse)?.statusCode == 200 {
+            photo.localImage = bytes
+        }
+        return photo
     }
 
     private static func anonymous(_ base: URL, _ method: HTTPMethod, _ path: String, json: Any? = nil) async throws -> [String: Any] {
@@ -768,5 +777,13 @@ struct ServerFrameMapper {
             return APIError(kind: .server, status: 500, message: L("error.providerBalance"))
         }
         return APIError(kind: .server, status: 500, message: text)
+    }
+}
+
+
+private final class NoAvatarRedirect: NSObject, URLSessionTaskDelegate {
+    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                                newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
     }
 }

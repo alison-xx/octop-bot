@@ -467,6 +467,13 @@ final class TimeTests: XCTestCase {
 private final class FakeBackend: ChatBackend {
     var supportsGroups: Bool { false }
     var accountName: String { "tester" }
+    var photo: AccountPhoto?
+    var delayPhoto = false
+    var pendingPhoto: CheckedContinuation<Void, Never>?
+    func accountPhoto() async -> AccountPhoto? {
+        if delayPhoto { await withCheckedContinuation { pendingPhoto = $0 } }
+        return photo
+    }
     var sent: [String] = []
     var replies: [AsyncThrowingStream<StreamEvent, Error>.Continuation] = []
 
@@ -488,6 +495,60 @@ private final class FakeBackend: ChatBackend {
 
 @MainActor
 final class QueueTests: XCTestCase {
+    func testAccountPhotoBelongsToTheActiveSession() async {
+        let app = AppModel()
+        let first = FakeBackend()
+        first.photo = AccountPhoto.direct(["id": "a", "displayName": "  林一 ", "avatarUrl": "https://photos.example/a"], accountId: "a")
+        await app.use(first)
+        await app.photoRefresh?.value
+        let local = AccountPhoto.localAvatar(["id": 7, "avatar_url": "/api/users/7/avatar?v=123"])
+        XCTAssertEqual(local?.path, "/api/users/7/avatar")
+        XCTAssertEqual(local?.query, ["v": "123"])
+        for wrong in ["/api/users/8/avatar?v=123", "//elsewhere.example/api/users/7/avatar", "/api/users/7/avatar?v=1&u=2"] {
+            XCTAssertNil(AccountPhoto.localAvatar(["id": 7, "avatar_url": wrong]))
+        }
+        XCTAssertEqual(app.accountSummary.name, "林一")
+        XCTAssertEqual(app.accountSummary.avatarURL?.host, "photos.example")
+        XCTAssertNil(AccountPhoto.direct(["id": "a", "avatarUrl": "https://photos.example/a"], accountId: "b"))
+
+        let next = FakeBackend()
+        next.photo = AccountPhoto.cloud(["connected": true, "display_name": "Zoe", "avatar_url": "file:///private/a"])
+        await app.use(next)
+        await app.photoRefresh?.value
+        XCTAssertEqual(app.accountSummary.name, "Zoe")
+        XCTAssertNil(app.accountSummary.avatarURL)
+        next.photo = AccountPhoto.cloud(["connected": true, "display_name": "Zoe", "avatar_url": "https://photos.example/b"])
+        await app.refresh()
+        await app.photoRefresh?.value
+        XCTAssertEqual(app.accountSummary.avatarURL?.path, "/b")
+        next.photo = AccountPhoto.cloud(["connected": false, "avatar_url": "https://photos.example/b"])
+        await app.refresh()
+        await app.photoRefresh?.value
+        XCTAssertNil(app.accountSummary.avatarURL)
+        await app.signOut()
+        XCTAssertNil(app.accountPhotoURL)
+    }
+
+    func testSlowPhotoDoesNotBlockAccountStartupOrLeakIntoNextSession() async {
+        let app = AppModel()
+        let first = FakeBackend()
+        first.delayPhoto = true
+        first.photo = AccountPhoto(name: "first", url: "https://photos.example/first")
+        await app.use(first)
+        XCTAssertEqual(app.phase, .ready)
+        XCTAssertFalse(app.bots.isEmpty)
+        XCTAssertNil(app.accountPhotoURL)
+        let oldRequest = app.photoRefresh
+        let second = FakeBackend()
+        second.photo = AccountPhoto(name: "next", url: nil)
+        await app.use(second)
+        await app.photoRefresh?.value
+        first.pendingPhoto?.resume()
+        await oldRequest?.value
+        XCTAssertEqual(app.accountName, "next")
+        XCTAssertNil(app.accountPhotoURL)
+    }
+
     func testPreparingAndFailedBotsDoNotSend() async {
         let app = AppModel()
         let backend = FakeBackend()
@@ -609,6 +670,8 @@ final class AppUpdaterTests: XCTestCase {
 
 /// A Lynxce wallet that sells packs and has App Store purchases switched on, counting what is asked.
 private final class SellingAccount: CreditAccount {
+    var signupCredits: Double?
+    var signupExpiryDay: String?
     var packRequests = 0
     var intents = 0
 
@@ -1232,5 +1295,21 @@ final class LynxceSignupSourceTests: XCTestCase {
         XCTAssertEqual(signedIn["X-Lynxce-Signup-Site"], "octop-bot")
         XCTAssertEqual(signedIn["Authorization"], "Bearer t")
         XCTAssertEqual(signedIn["X-Lynxce-Iap-App"], "cn.lynxce.octopbot")
+    }
+}
+
+@MainActor
+final class SignupCreditNoticeTests: XCTestCase {
+    func testOnlyGrantedCreditsOnNewAccountsAreShown() {
+        let grant = ["credits": 125.5]
+        XCTAssertEqual(newSignupCredits(["isNewUser": true, "signupGrant": grant]), 125.5)
+        XCTAssertNil(newSignupCredits(["isNewUser": false, "signupGrant": grant]))
+        XCTAssertNil(newSignupCredits(["isNewUser": 1, "signupGrant": grant]))
+        XCTAssertNil(newSignupCredits(["isNewUser": true]))
+        XCTAssertEqual(signupExpiryDayUTC(["isNewUser": true, "signupGrant": ["credits": 100, "expiresAt": "2026-12-09T01:00:00+08:00"]]), "2026-12-08")
+        XCTAssertNil(signupExpiryDayUTC(["isNewUser": true, "signupGrant": grant]))
+        for invalid: Any in [true, "100", -1, 0, Double.infinity] as [Any] {
+            XCTAssertNil(newSignupCredits(["isNewUser": true, "signupGrant": ["credits": invalid]]))
+        }
     }
 }

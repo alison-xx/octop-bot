@@ -11,6 +11,8 @@ from octop.infra.utils.locale import Locale, normalize_locale
 
 
 class ErrorCode(StrEnum):
+    BOT_PLAN_UNAVAILABLE = "BOT_PLAN_UNAVAILABLE"
+    BOT_RECHARGE_RATE_LIMITED = "BOT_RECHARGE_RATE_LIMITED"
     AUTH_FAILED = "AUTH_FAILED"
     MISSING_CREDENTIALS = "MISSING_CREDENTIALS"
     TOKEN_EXPIRED = "TOKEN_EXPIRED"
@@ -234,6 +236,8 @@ _DEFAULT_STATUS: dict[ErrorCode, int] = {
     ErrorCode.LOGIN_LOCKED: 429,
     ErrorCode.USERNAME_TAKEN: 409,
     ErrorCode.EMAIL_TAKEN: 409,
+    ErrorCode.BOT_PLAN_UNAVAILABLE: 400,
+    ErrorCode.BOT_RECHARGE_RATE_LIMITED: 429,
     ErrorCode.EMAIL_INVALID: 400,
     ErrorCode.PASSWORD_SAME_AS_OLD: 400,
     ErrorCode.PASSWORD_NOT_SET: 400,

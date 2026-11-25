@@ -298,6 +298,8 @@ Octop 后端返回 pricing.html?from=desktop&need=1200&reason=image#ticket=…
 | `reason` | 否 | 只用于文案：`text` / `image` / `video` / `computer` / `disk` / `plan_limit`，和 §8.4 错误码的类别一致 |
 | `code` / `ticket` | 以后 | 一次性码只在第二步出现，个人中心使用片段参数 `code`，充值页使用片段参数 `ticket`；兑换时将码放在请求体中。 |
 
+服务端现已接受这四个字段，当前仅追加 `tab=boost`；`need` 和 `reason` 留给后续价格页使用。
+
 - Octop 后端和 Android 对打开地址的校验改成精确匹配：现在是 `admin.lynxce.cn/recharge`，受限会话上线后换成官网 `pricing.html`。
 
 ## 6. 复用灵策（按盘点）
