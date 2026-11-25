@@ -1,10 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authApi, type AuthStatus } from "../../api/modules/auth";
-import { getAuthToken, setAuthToken } from "../../api/request";
+import { clearAuthToken, getAuthToken } from "../../api/request";
+import { botWebLogin } from "../../api/modules/botWebLogin";
 import BotLogin from "./BotLogin";
+import BotLoginPreview from "./BotLoginPreview";
 
 vi.mock("react-i18next", () => {
   const t = (key: string) => key;
@@ -40,6 +42,10 @@ function open() {
       <Routes>
         <Route path="/login" element={<BotLogin />} />
         <Route path="/octop-bot" element={<h1>Workspace</h1>} />
+        <Route
+          path="/octop-bot/groups/project"
+          element={<h1>Project group</h1>}
+        />
         <Route path="/setup" element={<h1>Setup</h1>} />
       </Routes>
     </MemoryRouter>,
@@ -48,11 +54,45 @@ function open() {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  vi.spyOn(botWebLogin, "config").mockResolvedValue({
+    enabled: false,
+    url: "",
+    state: "",
+  });
   vi.spyOn(authApi, "getAuthStatus").mockResolvedValue(ready);
 });
-afterEach(() => setAuthToken(null));
+afterEach(() => {
+  clearAuthToken();
+  sessionStorage.clear();
+  window.history.replaceState(null, "", "/");
+});
 
 describe("Bot web sign-in", () => {
+  it("cycles the demos, keeping the current conversation while reading or signing in", () => {
+    vi.useFakeTimers();
+    try {
+      const onUse = vi.fn();
+      const view = render(<BotLoginPreview modalOpen={false} onUse={onUse} />);
+      const question = (scene: string) =>
+        screen.getByText(`botPreview.scenes.${scene}.question`);
+      expect(question("retail")).toBeVisible();
+      act(() => vi.advanceTimersByTime(14000));
+      expect(question("sales")).toBeVisible();
+      view.rerender(<BotLoginPreview modalOpen onUse={onUse} />);
+      act(() => vi.advanceTimersByTime(28000));
+      expect(question("sales")).toBeVisible();
+      view.rerender(<BotLoginPreview modalOpen={false} onUse={onUse} />);
+      fireEvent.click(screen.getByRole("button", { name: "botPreview.next" }));
+      act(() => vi.advanceTimersByTime(28000));
+      expect(question("launch")).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: "botPreview.play" }));
+      act(() => vi.advanceTimersByTime(14000));
+      expect(question("retail")).toBeVisible();
+      expect(onUse).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("offers Lynxce sign-in to everyone on Octop Bot cloud", async () => {
     vi.spyOn(authApi, "getLynxceIdentityStatus").mockResolvedValue({
       enabled: true,
@@ -61,11 +101,129 @@ describe("Bot web sign-in", () => {
     });
     open();
     expect(
-      await screen.findByText("botOnboarding.loginCloudBody"),
+      await screen.findByRole("main", { name: "botPreview.workspace" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(botWebLogin.config).not.toHaveBeenCalled();
+    await userEvent.click(
+      screen.getByRole("button", { name: "botPreview.openComputer" }),
+    );
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByText("botWebLogin.intro")).toBeInTheDocument();
     expect(screen.queryByLabelText("botOnboarding.legacyPassword")).toBeNull();
   });
 
+  it("returns to the preview during a slow login and ignores the late session", async () => {
+    vi.spyOn(authApi, "getLynxceIdentityStatus").mockResolvedValue({
+      enabled: true,
+      claimed: false,
+      cloud: true,
+    });
+    let complete!: () => void;
+    const login = vi.spyOn(authApi, "lynxceLogin").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = () => resolve(session as never);
+        }),
+    );
+    open();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "botPreview.composer" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "botWebLogin.passwordMode" }),
+    );
+    fireEvent.change(screen.getByLabelText("lynxceSignIn.account"), {
+      target: { value: "alice" },
+    });
+    const password = screen.getByLabelText("lynxceSignIn.password");
+    fireEvent.change(password, { target: { value: "secret-pass" } });
+    fireEvent.submit(password.closest("form")!);
+    expect(login).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await act(async () => {
+      complete();
+    });
+    expect(
+      screen.getByRole("main", { name: "botPreview.workspace" }),
+    ).toBeVisible();
+    expect(getAuthToken()).toBe("");
+  });
+  it.each(["wechat", "workbuddy"] as const)(
+    "redeems the %s callback once and resumes the saved Bot",
+    async (provider) => {
+      vi.stubEnv("VITE_OCTOP_BOT_WEB", "1");
+      vi.spyOn(authApi, "getLynxceIdentityStatus").mockResolvedValue({
+        enabled: true,
+        claimed: false,
+        cloud: true,
+      });
+      sessionStorage.setItem(
+        "octop.bot.login-return",
+        "/octop-bot/groups/project",
+      );
+      sessionStorage.setItem(
+        "octop.cloud.web.login.v1",
+        JSON.stringify({ provider, state: "tab-state", time: Date.now() }),
+      );
+      const exchange = vi
+        .spyOn(botWebLogin, "exchange")
+        .mockResolvedValue({ access_token: "issued" });
+      window.history.replaceState(
+        null,
+        "",
+        "/login#provider=" + provider + "&code=sample&state=tab-state",
+      );
+      open();
+      expect(
+        await screen.findByRole("heading", { name: "Project group" }),
+      ).toBeInTheDocument();
+      expect(exchange).toHaveBeenCalledTimes(1);
+      expect(exchange).toHaveBeenCalledWith(
+        provider,
+        "sample",
+        "tab-state",
+        "en",
+      );
+      expect(window.location.hash).toBe("");
+      expect(sessionStorage.getItem("octop.cloud.web.login.v1")).toBeNull();
+      expect(getAuthToken()).toBe("issued");
+      vi.unstubAllEnvs();
+    },
+  );
+
+  it.each(["cancelled", "expired"] as const)(
+    "keeps conventional sign-in available after a %s callback",
+    async (reason) => {
+      vi.spyOn(authApi, "getLynxceIdentityStatus").mockResolvedValue({
+        enabled: true,
+        claimed: false,
+        cloud: true,
+      });
+      const exchange = vi.spyOn(botWebLogin, "exchange");
+      if (reason === "cancelled")
+        sessionStorage.setItem(
+          "octop.cloud.web.login.v1",
+          JSON.stringify({
+            provider: "wechat",
+            state: "tab-state",
+            time: Date.now(),
+          }),
+        );
+      window.history.replaceState(
+        null,
+        "",
+        "/login#provider=wechat&state=tab-state&" +
+          (reason === "cancelled" ? "error=access_denied" : "code=sample"),
+      );
+      open();
+      expect(
+        await screen.findByText("botWebLogin." + reason),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("lynxceSignIn.target")).toBeEnabled();
+      expect(exchange).not.toHaveBeenCalled();
+    },
+  );
   it("signs the bound owner in with their Lynxce account", async () => {
     vi.spyOn(authApi, "getLynxceIdentityStatus").mockResolvedValue({
       enabled: true,
@@ -76,7 +234,7 @@ describe("Bot web sign-in", () => {
       .mockResolvedValue(session as never);
     open();
     await userEvent.click(
-      await screen.findByRole("button", { name: "lynxceSignIn.usePassword" }),
+      await screen.findByRole("button", { name: "botWebLogin.passwordMode" }),
     );
     await userEvent.type(
       screen.getByLabelText("lynxceSignIn.account"),
@@ -147,6 +305,9 @@ describe("Bot web sign-in", () => {
       )
       .mockResolvedValue(session as never);
     open();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "botPreview.composer" }),
+    );
     await userEvent.type(
       await screen.findByLabelText("lynxceSignIn.target"),
       "new@b.cn",
@@ -163,9 +324,11 @@ describe("Bot web sign-in", () => {
       "",
       undefined,
     );
-    expect(await screen.findByText("Set a password")).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText("lynxceSignIn.newPassword"),
+    ).toBeInTheDocument();
     const submit = screen.getByRole("button", {
-      name: "botOnboarding.loginTitle",
+      name: "botWebLogin.submit",
     });
     await userEvent.type(
       screen.getByLabelText("lynxceSignIn.newPassword"),
@@ -206,7 +369,7 @@ describe("Bot web sign-in", () => {
       "old-pass",
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "lynxceSignIn.usePassword" }),
+      screen.getByRole("button", { name: "botWebLogin.passwordMode" }),
     );
     await userEvent.type(
       screen.getByLabelText("lynxceSignIn.account"),

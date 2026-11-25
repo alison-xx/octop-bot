@@ -5,23 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script src="assets/boot.js?v=1"></script>
   <title data-en="Bot Market · Octop Bot">Bot 市场 · Octop Bot</title>
-  <meta name="description" content="30 个按行业准备好的 Bot：电商、内容、营销、销售、财务、法务、招聘、教育、研发和个人生活。一键导入 Octop Bot。" data-en-content="30 ready-made Bots by industry: e-commerce, content, marketing, sales, finance, legal, recruiting, education, engineering and personal life. Import into Octop Bot in one click.">
+  <meta name="description" content="按任务挑选 Bot 模板。先看工作方法和示例问题，再选择网页版或兼容的桌面客户端，导入后用自己的资料发起第一件事。" data-en-content="Choose a bot for a task, inspect its playbook and sample prompts, then import it on the web or in a compatible desktop app.">
   <meta name="theme-color" content="#f7f6f2" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Bot 市场 · Octop Bot">
-  <meta property="og:description" content="30 个按行业准备好的 Bot：电商、内容、营销、销售、财务、法务、招聘、教育、研发和个人生活。一键导入 Octop Bot。">
+  <meta property="og:description" content="按任务挑选 Bot 模板。先看工作方法和示例问题，再选择网页版或兼容的桌面客户端，导入后用自己的资料发起第一件事。" data-en-content="Choose a bot for a task, inspect its playbook and sample prompts, then import it on the web or in a compatible desktop app.">
   <meta property="og:image" content="https://octop-bot.lynxce.cn/assets/art/team.webp">
   <meta property="og:url" content="https://octop-bot.lynxce.cn/market.html">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="canonical" href="https://octop-bot.lynxce.cn/market.html">
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="stylesheet" href="assets/site.css?v=19">
-  <script src="assets/auth.js?v=2" defer></script>
-  <script src="assets/site.js?v=17" defer></script>
-  <link rel="stylesheet" href="assets/market.css?v=1">
-  <script src="assets/market.js?v=1" defer></script>
+  <link rel="stylesheet" href="assets/site.css?v=account-avatar-1">
+  <script src="assets/auth.js?v=4" defer></script>
+  <script src="assets/site.js?v=platform-releases-3" defer></script>
+  <link rel="stylesheet" href="assets/market.css?v=2">
+  <script src="assets/market.js?v=3" defer></script>
 </head>
 <body>
   <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
@@ -36,7 +36,7 @@
         <div class="nav-more">
           <button type="button" aria-expanded="false" aria-controls="help-menu"><span data-en="Help">帮助</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
           <div class="nav-menu" id="help-menu">
-            <a href="guide.html"><b data-en="Guide">使用指南</b><small data-en="From install to your first Bot">从安装到第一个 Bot</small></a>
+            <a href="guide.html"><b data-en="Guide">使用指南</b><small data-en="Try a first task with Chief">跟 Chief 做第一件事</small></a>
             <a href="changelog.html"><b data-en="Changelog">更新日志</b><small data-en="What changed in each release">每个版本改了什么</small></a>
             <a href="guide.html#faq"><b data-en="FAQ">常见问题</b><small data-en="Install, accounts and everyday use">安装、账号和日常使用</small></a>
             <a href="#community" data-community><b data-en="Join the community">加入社群</b><small data-en="The Octop Bot community on WeChat">扫码进 Octop Bot 用户群</small></a>
@@ -62,6 +62,7 @@
       <a href="#community" data-community data-en="Join the community">加入社群</a>
       <a href="https://bot.lynxce.cn" data-en="Web app">网页版</a>
       <div class="gh-stars"><a class="gh-star" href="https://github.com/alison-xx/octop-bot" title="github.com/alison-xx/octop-bot"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop Bot">Octop Bot</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="alison-xx/octop-bot">6</b></span></a><a class="gh-star upstream" href="https://github.com/TencentCloud/Octop" title="github.com/TencentCloud/Octop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span class="label" data-en="Octop">Octop</span><span class="count"><svg class="star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><b data-stars="TencentCloud/Octop">12.4k</b></span></a></div>
+      <a href="https://apps.apple.com/app/id6838257776" data-en="iPhone / iPad on the App Store">从 App Store 下载 iPhone / iPad 版</a>
       <a class="btn btn-primary" href="download.html" data-en="Download Octop Bot">下载 Octop Bot</a>
     </nav>
   </header>
@@ -69,13 +70,14 @@
   <main id="main" class="market">
     <section class="page-hero wrap market-hero" data-market-home>
       <span class="eyebrow" data-en="Bot Market">Bot 市场</span>
-      <h1 class="display" data-en="Give every Bot a job.">给每个 Bot 一份工作。</h1>
-      <p class="lead" data-en="Ready-made Bots for real jobs in ten industries. Each comes with working rules, industry knowledge, skills and routines. Import one into Octop Bot and start right away.">十个行业里准备好的现成 Bot，每个都带着工作守则、行业知识、技能和例行任务。导入 Octop Bot，马上就能开工。</p>
+      <h1 class="display" data-en="Find a bot for the job at hand.">为手头这件事找个 Bot。</h1>
+      <p class="lead" data-en="Need a title for a new product? Search for Listing Copywriter. Turning an interview into a clip? Try Short Video Director. Open a template to see its sample prompts and how it works before adding it to your team.">要给新品写标题，搜「商品上新文案」。要把采访剪成短片，试试「短视频编导」。点开模板先看它会问哪些问题、怎样交稿，再决定要不要加入团队。</p>
     </section>
 
     <div class="market-bar" data-market-home>
       <div class="wrap market-bar-inner">
-        <div class="market-tabs" role="tablist" aria-label="分类" data-en-aria-label="Categories"></div>
+        <div class="market-tabs" role="group" aria-label="分类" data-en-aria-label="Categories"></div>
+        <select class="market-role m-tab" aria-label="按岗位筛选" data-en-aria-label="Filter by role"></select>
         <label class="market-search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input type="search" placeholder="搜索 Bot" data-en-placeholder="Search Bots" aria-label="搜索 Bot" data-en-aria-label="Search Bots">
@@ -89,7 +91,7 @@
     <section class="wrap market-make" data-market-home>
       <div class="card">
         <h3 class="h3" data-en="Don't see your job?">没有找到合适的？</h3>
-        <p data-en="Tell Chief what you need in one sentence and it sets up a Bot for you. Or create one yourself and give it your own rules.">在 Octop Bot 里跟 Chief 说一句你要什么样的帮手，它会帮你建好。也可以自己新建一个，写上你的工作方法。</p>
+        <p data-en="Tell Chief which task keeps coming up, what information you usually have and what you need back. You can also start from a template and adapt its instructions to your work.">在通讯录找 Chief，告诉它你反复要做哪件事、通常有哪些材料、希望拿到什么成品。也可以从一个模板开始，把它的工作要求改成适合自己的版本。</p>
         <div class="links"><a class="link" href="download.html" data-en="Download Octop Bot →">下载 Octop Bot →</a><a class="link" href="https://bot.lynxce.cn" data-en="Open the web app ↗">打开网页版 ↗</a></div>
       </div>
     </section>
@@ -105,21 +107,19 @@
       </a>
       <a class="market-choice" data-target="desktop" href="#">
         <strong data-en="Desktop app">桌面客户端</strong>
-        <span data-en="Opens Octop Bot on this computer. Needs the latest version.">在这台电脑上打开 Octop Bot，需要最新版本。</span>
+        <span data-en="Open the template in the Mac app from version 1.0.5. On desktop version 1.0.4, choose the web app above.">Mac 1.0.5 起可以在客户端导入模板。使用 1.0.4 桌面版时，请选上方的网页版。</span>
       </a>
       <p class="market-dialog-foot"><span data-en="No app yet?">还没有安装？</span> <a class="link" href="download.html" data-en="Download →">去下载 →</a></p>
       <button class="icon-btn market-dialog-close" value="close" aria-label="关闭" data-en-aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </form>
   </dialog>
 
-  </main>
-
   <footer class="footer">
     <div class="wrap">
       <div class="footer-grid">
         <div class="footer-brand">
           <a class="brand" href="index.html"><img src="assets/app-icon.webp" alt="" width="30" height="30">Octop Bot</a>
-          <p data-en="One sentence, a whole AI team. A free, open-source desktop app.">一句话，组建你的 AI 团队。免费开源的桌面客户端。</p>
+          <p data-en="An open-source AI team led by Chief.">由 Chief 带队的开源 AI 团队。</p>
         </div>
         <div>
           <h4 data-en="Product">产品</h4>
@@ -128,6 +128,7 @@
         <a href="market.html" aria-current="page" data-en="Bot Market">Bot 市场</a></li>
             <li><a href="pricing.html" data-en="Pricing">定价</a></li>
             <li><a href="download.html" data-en="Download">下载</a></li>
+            <li><a href="https://apps.apple.com/app/id6838257776" data-en="iPhone / iPad · App Store ↗">iPhone / iPad · App Store ↗</a></li>
             <li><a href="https://bot.lynxce.cn" data-en="Web app ↗">网页版 ↗</a></li>
             <li><a href="changelog.html" data-en="Changelog">更新日志</a></li>
           </ul>

@@ -353,4 +353,8 @@ Stop the old server before upgrading an installation with a v2 archive. Keep che
 retention disabled if the old server must run with the new Harness before migration.
 Restore a system backup containing a v2 archive with the offline backup CLI, then start Octop.
 
+`OCTOP_WS_QUERY_TOKEN` defaults to `1`, allowing legacy JWT query parameters on
+streaming endpoints and `access_token` on HTTP requests. Set it to `0` after
+clients have moved to streaming tickets and authorization headers.
+
 Cloud operations can be enabled with `OCTOP_OPS_KEY_SHA256`, the hexadecimal SHA-256 digest of a dedicated random service key. Set `OCTOP_OPS_ALLOWED_IPS` to a comma-separated list of allowed IP addresses or CIDR ranges to restrict callers. Keep the key outside this configuration and block public access at the reverse proxy. See the team operations specification for deployment details.

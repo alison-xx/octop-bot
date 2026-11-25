@@ -107,9 +107,10 @@ it.each([cloud, model])(
           }
         : { source: "cloud", expected_account_id: "user-a" };
     expect(api.mock.calls[1][0]).toBe("/octop-bot/wallet/recharge");
-    expect(JSON.parse(String(api.mock.calls[1][1]?.body))).toEqual(
-      expectedBody,
-    );
+    expect(JSON.parse(String(api.mock.calls[1][1]?.body))).toEqual({
+      ...expectedBody,
+      from: "web",
+    });
   },
 );
 
@@ -206,3 +207,24 @@ it("handles an initial network failure without showing zero or enabling checkout
   fireEvent.click(button("refresh"));
   expect(await screen.findByText("1,234.5")).toBeInTheDocument();
 });
+
+it.each([
+  [{ botOnly: true, supportsRechargeReturn: true }, "desktop"],
+  [{ botOnly: true }, undefined],
+])(
+  "only advertises a desktop return for capable shells",
+  async (bridge, expected) => {
+    vi.stubGlobal("octopDesktop", bridge);
+    try {
+      const { lynxceWalletApi } = await import(
+        "../../api/modules/lynxceWallet"
+      );
+      await lynxceWalletApi.recharge(cloud);
+      expect(JSON.parse(String(api.mock.calls.at(-1)?.[1]?.body)).from).toBe(
+        expected,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);

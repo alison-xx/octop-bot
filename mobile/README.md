@@ -48,6 +48,8 @@ Three groups, like the desktop:
 - **本地模型 · 免费** (phone only). Ollama or LM Studio by address (`192.168.1.8` → `:11434/v1`); the
   phone talks to it directly. Not shown when signed in to a server, which runs the chat itself.
 
+After registration, the mobile apps show the trial credits actually granted by Lynxce. When the login response includes an expiry, the account card keeps the UTC date for that session. Older server responses and restored sessions skip this notice.
+
 The chat balance warning appears below 1,000 credits. Closing it hides it for that wallet for 24 hours,
 across app restarts. Out-of-credits cards follow the server's code and `details`: chat, images and video
 show what the step needs and the balance, starting a cloud computer shows what it needs, and a computer

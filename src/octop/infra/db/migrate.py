@@ -2427,6 +2427,12 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads.
     Version 18 adds ``user_role`` templates and non-FK role id/name snapshots.
     """
+    if version == 28:
+        if _table_exists(db, "users"):
+            _ensure_column(db, "users", "session_version", "INTEGER NOT NULL DEFAULT 0")
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     if version == 2:
         if _table_exists(db, "cron_jobs"):
             _ensure_column(

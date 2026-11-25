@@ -87,6 +87,7 @@
     <string name="chat_failed">回复失败</string>
     <string name="chat_read_aloud">朗读</string>
     <string name="chat_retry">重试</string>
+    <string name="chat_load_earlier">加载更早的消息</string>
     <string name="chat_jump_latest">回到最新</string>
     <string name="chat_listening">正在听…</string>
     <string-array name="suggestions_default">
@@ -124,6 +125,7 @@
 
     <string name="bot_new">新建 Bot</string>
     <string name="bot_edit">修改形象</string>
+    <string name="home_no_match">没有匹配的 Bot 或群聊</string>
     <string name="home_search">搜索</string>
     <string name="bot_edit_title">编辑 Bot</string>
     <string name="bot_name">名字</string>
@@ -529,4 +531,13 @@
     <string name="bot_preparing">准备中…</string>
     <string name="bot_preparing_chat">Bot 正在准备，稍等片刻</string>
     <string name="bot_start_failed">启动失败</string>
+    <string name="checkout_balance_increased">余额增加了 %1$s 积分，当前余额 %2$s。</string>
+    <string name="signup_credit_notice">已到账 %1$s 体验积分，仅限 Octop 使用。</string>
+    <string name="signup_credit_expiry">体验积分到期日：%1$s（UTC）</string>
+    <string name="signup_credit_notice_until">已到账 %1$s 体验积分，仅限 Octop 使用。到期日：%2$s（UTC）。</string>
+    <string name="history_reauthenticate">请登录 Octop Bot 云端，找回这个灵策账号已保存的历史会话。</string>
+    <string name="history_restore">找回旧版会话</string>
+    <string name="history_restored">已完成查找，已找回的会话可在历史中查看。</string>
+    <string name="history_restore_incomplete">部分旧记录暂时无法恢复，可以重试。</string>
+    <string name="history_restore_retry">会话恢复暂未完成，可在会话历史中重试。</string>
 </resources>

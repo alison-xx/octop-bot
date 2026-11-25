@@ -1,3 +1,5 @@
+import i18n from "i18next";
+import { message } from "@/utils/antdMessage";
 import { useEffect, useSyncExternalStore } from "react";
 import {
   lynxceWalletApi,
@@ -58,6 +60,8 @@ export function refreshCredits(): Promise<void> {
       }
       const wallet = await lynxceWalletApi.balance(source);
       if (run !== generation) return;
+      if (wallet.status === "available" && Number.isFinite(wallet.credits))
+        reportCheckoutBalance(wallet);
       set(
         wallet.status === "available" && Number.isFinite(wallet.credits)
           ? { status: "ready", wallet }
@@ -74,6 +78,7 @@ export function refreshCredits(): Promise<void> {
 
 /** Forget the balance (sign-out, account switch). */
 export function resetCredits() {
+  checkout = null;
   generation += 1;
   inflight = null;
   set({ status: "idle", wallet: null });
@@ -82,6 +87,36 @@ export function resetCredits() {
 function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+export const RECHARGE_RETURN = "octop:bot:recharge-return";
+let checkout: { wallet: LynxceWallet; expires: number } | null = null;
+
+export function rememberCheckout(wallet: LynxceWallet, expiresAt: string) {
+  checkout = { wallet, expires: Date.parse(expiresAt) };
+}
+
+export function reportCheckoutBalance(wallet: LynxceWallet) {
+  if (!checkout) return;
+  if (Date.now() >= checkout.expires) {
+    checkout = null;
+    return;
+  }
+  const before = checkout.wallet;
+  if (
+    before.source !== wallet.source ||
+    before.account_id !== wallet.account_id ||
+    before.connection_id !== wallet.connection_id ||
+    wallet.credits <= before.credits
+  )
+    return;
+  checkout = null;
+  void message.success(
+    i18n.t("botCredits.balanceIncreased", {
+      added: formatCredits(wallet.credits - before.credits, i18n.language),
+      value: formatCredits(wallet.credits, i18n.language),
+    }),
+  );
 }
 
 let watchers = 0;
@@ -102,11 +137,13 @@ export function useLynxceCredits(): CreditsState {
     if (state.status === "idle") void refreshCredits();
     if (watchers++ === 0) {
       window.addEventListener("focus", onFocus);
+      window.addEventListener(RECHARGE_RETURN, onFocus);
       document.addEventListener("visibilitychange", onVisible);
     }
     return () => {
       if (--watchers === 0) {
         window.removeEventListener("focus", onFocus);
+        window.removeEventListener(RECHARGE_RETURN, onFocus);
         document.removeEventListener("visibilitychange", onVisible);
       }
     };

@@ -11,10 +11,14 @@ import intro from "./BotClientSetup.module.less";
  */
 export default function ThirdPartySignIn({
   disabled,
+  wechatStatus,
+  workbuddyStatus,
   onWechat,
   onWorkbuddy,
 }: {
   disabled: boolean;
+  wechatStatus?: string;
+  workbuddyStatus?: string;
   onWechat?: () => void;
   onWorkbuddy?: () => void;
 }) {
@@ -31,23 +35,29 @@ export default function ThirdPartySignIn({
         {onWechat && (
           <Button
             size="large"
-            disabled={disabled}
-            aria-label={t("botStart.wechatSignIn")}
+            disabled={disabled || !!wechatStatus}
+            aria-label={[t("botStart.wechatSignIn"), wechatStatus]
+              .filter(Boolean)
+              .join(" · ")}
             onClick={onWechat}
           >
             <img src={wechatMark} alt="" />
             {t(both ? "botStart.wechat" : "botStart.wechatSignIn")}
+            {wechatStatus && <small>{wechatStatus}</small>}
           </Button>
         )}
         {onWorkbuddy && (
           <Button
             size="large"
-            disabled={disabled}
-            aria-label={t("botCloud.workbuddySignIn")}
+            disabled={disabled || !!workbuddyStatus}
+            aria-label={[t("botCloud.workbuddySignIn"), workbuddyStatus]
+              .filter(Boolean)
+              .join(" · ")}
             onClick={onWorkbuddy}
           >
             <img src={workbuddyMark} alt="" />
             {both ? "WorkBuddy" : t("botCloud.workbuddySignIn")}
+            {workbuddyStatus && <small>{workbuddyStatus}</small>}
           </Button>
         )}
       </div>
