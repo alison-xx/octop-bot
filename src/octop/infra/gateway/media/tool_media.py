@@ -299,6 +299,20 @@ def _workspace_rel_from_preview(preview: str) -> str | None:
     return None
 
 
+def _materialized_workspace_key(block: dict[str, Any]) -> str | None:
+    """A delivered media block pairs its workspace key with a temporary local file URI."""
+    path = block.get("path")
+    url, _, _ = _block_file_refs(block)
+    if not isinstance(path, str) or not url.startswith("file://"):
+        return None
+    key = _workspace_media_key(path)
+    if key and file_url_to_abs_path(url).replace("\\", "/").endswith(
+        "/.harness-materialize/" + key
+    ):
+        return key
+    return None
+
+
 def _resolve_block_workspace_rel(block: dict[str, Any], preview: str = "") -> str | None:
     """Return inbound/outbound relative path when present (image/media convention)."""
     raw_path = block.get("path")
@@ -337,7 +351,7 @@ def _block_with_preview_url(block: dict[str, Any], preview: str) -> dict[str, An
     """
     btype = str(block.get("type") or "file")
     _, mime, _ = _block_file_refs(block)
-    rel = _resolve_block_workspace_rel(block, preview)
+    rel = _materialized_workspace_key(block) or _resolve_block_workspace_rel(block, preview)
 
     if btype == "file":
         return _slim_file_block(block, rel=rel, mime=mime)
@@ -418,6 +432,9 @@ def enrich_media_block_preview(block: Any, *, agent_id: str) -> Any:
         if path:
             return _slim_file_block(block, rel=path, mime=mime)
         # Fall through to try deriving a path from file:// URL fields.
+    elif key := _materialized_workspace_key(block):
+        _, mime, _ = _block_file_refs(block)
+        return _block_with_preview_url(block, media_preview_url(agent_id, key, mime))
     elif block.get("preview_url"):
         return block
     raw_url, mime, _ = _block_file_refs(block)
@@ -568,6 +585,8 @@ async def _enrich_block_with_backend(
     if not isinstance(block, dict) or block.get("type") not in _MEDIA_BLOCK_TYPES:
         return block
     btype = str(block.get("type") or "")
+    if btype != "file" and _materialized_workspace_key(block):
+        return enrich_media_block_preview(block, agent_id=agent_id)
     # File blocks may already be path-only (no preview_url).
     if block.get("preview_url") and btype != "file":
         return block
@@ -800,6 +819,8 @@ async def attachment_frames_from_tool_result(
         if not _delivers_media(message, chunk_name=chunk_name):
             continue
         for block in iter_media_blocks(extract_message_content(message)):
+            if block.get("type") != "file" and _materialized_workspace_key(block):
+                block = enrich_media_block_preview(block, agent_id=agent_id)
             preview_url = block.get("preview_url")
             if not isinstance(preview_url, str) or not preview_url:
                 raw_url, mime, filename = _block_file_refs(block)
