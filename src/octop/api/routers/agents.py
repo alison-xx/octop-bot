@@ -19,6 +19,7 @@ from octop.api.common.agent_runtime import AgentRuntimeFields, persisted_agent_s
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.common.workspace import require_agent_workspace
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.error_display import visible_agent_error
 from octop.infra.agents.experts.avatar import (
     agent_avatar_api_path,
     delete_workspace_avatar,
@@ -190,6 +191,7 @@ def _row_dict(
     row: Any,
     *,
     viewer_user_id: int | None = None,
+    viewer: Any,
     owner_username: str | None = None,
     bootstrap_pending: bool | None = None,
     server: Any | None = None,
@@ -218,7 +220,9 @@ def _row_dict(
         "default_model": row.default_model,
         "system_prompt": row.system_prompt,
         "state": row.last_state or "unknown",
-        "last_error": row.last_error,
+        "last_error": visible_agent_error(
+            row.agent_id, row.last_error, is_admin=viewer.is_admin, locale=viewer.locale
+        ),
         "config": public_cfg,
         "icon": row.icon,
         "template_name": row.template_name,
@@ -305,6 +309,7 @@ async def list_agents(
             _row_dict(
                 r,
                 viewer_user_id=user.id,
+                viewer=user,
                 owner_username=username_by_id.get(r.user_id) if r.user_id is not None else None,
                 bootstrap_pending=_bootstrap_pending_for(server, r.agent_id),
                 server=server,
@@ -333,6 +338,7 @@ async def list_agents(
             _row_dict(
                 r,
                 viewer_user_id=user.id,
+                viewer=user,
                 owner_username=(
                     shared_owner_username_by_id.get(r.user_id) if r.user_id is not None else None
                 ),
@@ -406,6 +412,7 @@ async def create_agent(
     return _row_dict(
         row,
         viewer_user_id=user.id,
+        viewer=user,
         owner_username=user.username,
         bootstrap_pending=_bootstrap_pending_for(server, row.agent_id),
         server=server,
@@ -445,6 +452,7 @@ async def get_agent(
     return _row_dict(
         row,
         viewer_user_id=user.id,
+        viewer=user,
         owner_username=_owner_username(server, row),
         bootstrap_pending=_bootstrap_pending_for(server, agent_id),
         server=server,
@@ -524,6 +532,7 @@ async def patch_agent(
     return _row_dict(
         row,
         viewer_user_id=user.id,
+        viewer=user,
         owner_username=user.username,
         bootstrap_pending=_bootstrap_pending_for(server, agent_id),
         server=server,
@@ -666,7 +675,9 @@ async def agent_status(
     cron_jobs = server.app_runtime.cron_manager.list_by_agent(agent_id)
     return {
         "state": row.last_state or "unknown",
-        "last_error": row.last_error,
+        "last_error": visible_agent_error(
+            row.agent_id, row.last_error, is_admin=user.is_admin, locale=user.locale
+        ),
         "channels": [{"id": c.channel_id, "kind": c.kind, "name": c.name} for c in channels],
         "cron_jobs": [
             {"id": j.cron_id, "prompt": j.prompt, "trigger": j.trigger} for j in cron_jobs

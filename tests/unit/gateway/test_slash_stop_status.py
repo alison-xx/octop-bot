@@ -108,3 +108,18 @@ async def test_status_english_when_locale_en(ctx):
     sink = BufferSink()
     await dispatcher.handle(SlashCommand("status", ""), slash_ctx, sink)
     assert "Session status" in "\n".join(sink.lines)
+
+
+async def test_status_hides_cloud_tenant_error(ctx, monkeypatch):
+    slash_ctx, manager, registry, sk = ctx
+    monkeypatch.setenv("OCTOP_BOT_CLOUD", "1")
+    slash_ctx.agent_repo.set_state("a1", "failed", error="test-secret upstream failure")
+    manager.get_row.return_value = slash_ctx.agent_repo.get("a1")
+    await registry.get_or_create_by_key(
+        session_key=sk, agent_id="a1", user_id=1, channel_type="feishu"
+    )
+    sink = BufferSink()
+    await build_default_dispatcher().handle(SlashCommand("status", ""), slash_ctx, sink)
+    result = "\n".join(sink.lines)
+    assert "Bot 启动失败，请稍后重试。" in result
+    assert "test-secret" not in result
