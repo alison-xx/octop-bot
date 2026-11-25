@@ -104,6 +104,7 @@
   const capability = (m) => (m.supportsImage ? 1 : 0) + (m.supportsThinking ? 1 : 0);
   const compareRoutes = (a, b) =>
     Number(isCompat(a)) - Number(isCompat(b)) || capability(b) - capability(a) || (costRank(a) === costRank(b) ? 0 : costRank(a) < costRank(b) ? -1 : 1);
+  const routeKey = (route) => route.routeId || route.modelId;
   function groupTextModels(models) {
     const families = new Map();
     const choices = new Map();
@@ -143,6 +144,7 @@
 
   let pricing = null;
   let catalog = null;
+  let liveCatalog = false;
   let ratesVisible = false;
   let cycle = "month";
   let pack = 50;
@@ -338,6 +340,23 @@
 
   /* ---------- unit prices and model price table ---------- */
   let modelTab = "text";
+  // Lynxce publishes these amounts per million tokens already, for this specific route.
+  function rateDescription(route) {
+    let schedule = (route.description || "").split("峰谷计费：").slice(1).join("").trim();
+    let prices = route.pricingDescription;
+    if (en()) {
+      prices = prices.replace(
+        /^每百万 Token 积分价：空闲输入 ([\d.]+)、输出 ([\d.]+)、缓存命中 ([\d.]+)；高峰输入 ([\d.]+)、输出 ([\d.]+)、缓存命中 ([\d.]+)。$/,
+        "Credits per million tokens. Off-peak input $1, output $2, cache hit $3. Peak input $4, output $5, cache hit $6.",
+      );
+      schedule = schedule
+        .replace("中国法定节假日全天为空闲；", "Chinese public holidays are off-peak all day. ")
+        .replace(/北京时间周一至周五 ([\d:–]+)、([\d:–]+) 为高峰，其余时间（含周末）为空闲。/, "Peak hours are Monday–Friday, $1 and $2 Beijing time. All other times, including weekends, are off-peak.")
+        .replace("按每次调用开始时的时段计费。", " The rate is set when the call starts.");
+    }
+    return [prices, schedule].filter(Boolean).join(" ");
+  }
+
   function renderRates() {
     if (!ratesVisible) return;
     if (!pricing) return;
@@ -364,6 +383,9 @@
       }),
     );
     document.querySelectorAll("#model-tabs button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tab === modelTab)));
+    $("#catalog-source").textContent = !catalog ? "" : liveCatalog
+      ? t("灵策实时价目，表中单价为本次查询时的价格。", "Live Lynxce prices at the time of this lookup.")
+      : t("灵策价目快照。表中单价为保存时的价格，分时线路按调用时适用的费率结算。", "Saved Lynxce prices. The table shows rates at the time of capture. Time-based rates apply when a call starts.");
     const head = $("#model-head");
     const body = $("#model-body");
     const cells = (brand, ...values) => {
@@ -386,9 +408,8 @@
     if (modelTab === "text") {
       head.replaceChildren(...[t("模型", "Model"), t("输入 / 百万 token", "Input / 1M tokens"), t("输出 / 百万 token", "Output / 1M tokens")].map((h) => node("th", "", h)));
       body.replaceChildren(
-        ...groupTextModels(catalog?.textModels || []).map((choice) => {
-          const index = Math.min(routePick.get(choice.key) || 0, choice.routes.length - 1);
-          const route = choice.routes[index];
+        ...groupTextModels(catalog?.textModels || []).flatMap((choice) => {
+          const route = choice.routes.find((r) => routeKey(r) === routePick.get(choice.key)) || choice.routes[0];
           const tr = cells([choice.name, route.modelId, route.providerLabel], choice.name, perMillion(route.creditsPerKInputTokens), perMillion(route.creditsPerKOutputTokens));
           if (choice.routes.length > 1) {
             const lines = node("span", "model-lines");
@@ -398,8 +419,8 @@
               const b = node("button", "", t(`线路 ${i + 1}`, `Route ${i + 1}`));
               b.type = "button";
               b.dataset.choice = choice.key;
-              b.dataset.route = String(i);
-              b.setAttribute("aria-pressed", String(i === index));
+              b.dataset.route = routeKey(r);
+              b.setAttribute("aria-pressed", String(r === route));
               b.title = t(
                 `输入 ${perMillion(r.creditsPerKInputTokens)} · 输出 ${perMillion(r.creditsPerKOutputTokens)}${r.supportsImage ? " · 识图" : ""}${r.supportsThinking ? " · 思考" : ""}`,
                 `Input ${perMillion(r.creditsPerKInputTokens)} · output ${perMillion(r.creditsPerKOutputTokens)}${r.supportsImage ? " · vision" : ""}${r.supportsThinking ? " · thinking" : ""}`,
@@ -408,7 +429,12 @@
             });
             tr.querySelector(".model-cell").append(lines);
           }
-          return tr;
+          if (!route.pricingDescription) return [tr];
+          const detailRow = node("tr");
+          const detail = node("td", "muted", rateDescription(route));
+          detail.colSpan = 3;
+          detailRow.append(detail);
+          return [tr, detailRow];
         }),
       );
     } else if (modelTab === "image") {
@@ -477,7 +503,7 @@
     }
     const line = e.target.closest(".model-lines button");
     if (line) {
-      routePick.set(line.dataset.choice, Number(line.dataset.route));
+      routePick.set(line.dataset.choice, line.dataset.route);
       renderRates();
       return;
     }
@@ -580,26 +606,33 @@
   }
 
   loadPlans();
-  // The local snapshot supplies estimates without waiting for the cross-origin catalog.
-  const localCatalog = getJson("data/pricing-catalog.json").then((body) => {
-    catalog = body.data;
-    updateEstimates();
-  }).catch(() => {});
-
-  async function showRates() {
-    ratesVisible = true;
-    await localCatalog;
-    renderRates();
+  function showCatalog(data, fromLive) {
+    if (liveCatalog && !fromLive) return;
+    if (![data?.textModels, data?.imageModels, data?.videoModels].every((rows) => Array.isArray(rows) && rows.every((r) => typeof r?.modelId === "string"))) return;
+    if (!data.textModels.every((r) => [r.description, r.pricingDescription].every((v) => v == null || typeof v === "string"))) return;
+    const previous = catalog;
+    catalog = data;
+    liveCatalog = fromLive;
     try {
-      const live = await getJson(CATALOG_URL, 5000);
-      if (live?.code === 0 && live.data && JSON.stringify(live.data) !== JSON.stringify(catalog)) {
-        catalog = live.data;
-        updateEstimates();
-        renderRates();
-      }
+      updateEstimates();
+      renderRates();
     } catch {
-      // The local snapshot remains available.
+      catalog = previous;
+      liveCatalog = false;
+      updateEstimates();
+      renderRates();
     }
+  }
+
+  // The snapshot supplies estimates immediately. Once the table is visible, either source may finish first.
+  getJson("data/pricing-catalog.json").then((body) => showCatalog(body.data, false)).catch(() => {});
+
+  function showRates() {
+    ratesVisible = true;
+    renderRates();
+    getJson(CATALOG_URL, 5000).then((body) => {
+      if (body?.code === 0) showCatalog(body.data, true);
+    }).catch(() => {});
   }
   if ("IntersectionObserver" in window) {
     const observer = new IntersectionObserver(([entry]) => {
