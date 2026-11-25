@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, cast
@@ -39,6 +40,7 @@ _SLIDING_RENEW_REMAINING_FRACTION = 2 / 3
 
 # Paths that bypass JWT middleware (setup wizard, health, login).
 _JWT_EXEMPT_PREFIXES = (
+    "/api/ops/",  # Dedicated operations key and IP checks apply to the entire router.
     "/api/setup/",
     "/api/health/",
     "/api/i18n/",
@@ -125,7 +127,9 @@ def extract_raw_token(
 ) -> str | None:
     if authorization and authorization.lower().startswith("bearer "):
         return authorization[7:].strip()
-    if access_token:
+    from octop.api.common.stream_auth import query_tokens_enabled
+
+    if access_token and query_tokens_enabled():
         return access_token
     return None
 
@@ -173,6 +177,15 @@ def resolve_user_from_token(server: OctopServer, token: str) -> User:
     current_password_version = int(row.password_version) if row is not None else 0
     if claim_password_version != current_password_version:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid token")
+    try:
+        session_version = int(payload.get("sv", 0))
+        auth_time = int(payload.get("auth_time", payload["iat"]))
+    except (TypeError, ValueError, KeyError) as exc:
+        raise OctopError(ErrorCode.AUTH_FAILED, "invalid token") from exc
+    if row is None or session_version != row.session_version:
+        raise OctopError(ErrorCode.AUTH_FAILED, "invalid token")
+    if auth_time > int(time.time()) or int(time.time()) >= auth_time + 30 * 86400:
+        raise OctopError(ErrorCode.TOKEN_EXPIRED, "token expired")
     return user
 
 
@@ -194,7 +207,12 @@ def maybe_sliding_renew_token(server: OctopServer, token: str, user: User) -> st
         row = server.services.user_repo.get(user.id)
         if row is not None and int(row.mfa_version) != 0:
             return None
-    ttl = int(server.services.config.access_token_ttl_seconds)
+    resolve_user_from_token(server, token)
+    auth_time = int(payload.get("auth_time", payload["iat"]))
+    ttl = min(
+        int(server.services.config.access_token_ttl_seconds),
+        auth_time + 30 * 86400 - int(time.time()),
+    )
     remaining = int(payload["exp"]) - int(time.time())
     threshold = max(1, int(ttl * _SLIDING_RENEW_REMAINING_FRACTION))
     if remaining >= threshold:
@@ -214,12 +232,27 @@ def maybe_sliding_renew_token(server: OctopServer, token: str, user: User) -> st
         ttl_seconds=ttl,
         mfa_version=mfa_version,
         password_version=password_version,
+        session_version=int(row.session_version) if row is not None else 0,
+        auth_time=auth_time,
     )
 
 
 def authenticate_request(request: Request, server: OctopServer) -> User:
+    from octop.api.common.stream_auth import consume_ticket
+
+    authorization = request.headers.get("authorization")
+    ticket = request.query_params.get("ticket")
+    ticket_route = request.method == "GET" and (
+        request.url.path == "/api/mcp/agents"
+        or re.fullmatch(r"/api/agents/[^/]+/threads/[^/]+/trajectory/stream", request.url.path)
+        is not None
+    )
+    if ticket and not authorization and ticket_route:
+        user = cast("User", consume_ticket(server, ticket, "sse"))
+        request.state.octop_ticket_authenticated = True
+        return user
     raw = extract_raw_token(
-        authorization=request.headers.get("authorization"),
+        authorization=authorization,
         access_token=request.query_params.get("access_token"),
     )
     if not raw:
@@ -236,10 +269,7 @@ async def current_user(
     cached = getattr(request.state, "octop_user", None)
     if cached is not None:
         return cast("User", cached)
-    raw = extract_raw_token(authorization=authorization, access_token=access_token)
-    if not raw:
-        raise OctopError(ErrorCode.MISSING_CREDENTIALS, "missing credentials")
-    return resolve_user_from_token(server, raw)
+    return authenticate_request(request, server)
 
 
 def require_permission(key: str) -> Callable[..., Awaitable[User]]:

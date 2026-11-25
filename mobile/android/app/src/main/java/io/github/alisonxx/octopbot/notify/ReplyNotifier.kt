@@ -34,7 +34,7 @@ class ReplyNotifier(private val context: Context) {
     val isInForeground: Boolean
         get() = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
 
-    fun replyFinished(botId: String, botName: String, text: String) {
+    fun replyFinished(botId: String, threadId: String?, botName: String, text: String) {
         if (isInForeground) return
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -43,9 +43,10 @@ class ReplyNotifier(private val context: Context) {
         val open = Intent(context, MainActivity::class.java)
             .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra(MainActivity.EXTRA_BOT, botId)
+            .putExtra(MainActivity.EXTRA_THREAD, threadId)
         val pending = PendingIntent.getActivity(
             context,
-            botId.hashCode(),
+            (threadId ?: botId).hashCode(),
             open,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )

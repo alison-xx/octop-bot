@@ -104,12 +104,16 @@ class LynxceBackend(
         }
         val body = data.asObject()
         val access = body?.str("accessToken") ?: throw ApiException(ApiException.Kind.Unauthorized, 401)
-        grant = grant.copy(accessToken = access, refreshToken = body.str("refreshToken") ?: grant.refreshToken)
-        store.setLynxceGrant(grant)
+        val next = grant.copy(accessToken = access, refreshToken = body.str("refreshToken") ?: grant.refreshToken)
+        if (!store.replaceLynxceGrant(grant, next)) throw ApiException(ApiException.Kind.Unauthorized, 401)
+        grant = next
         grant
     }
 
     private fun sessionPath(id: String) = "/api/user/web-chat-sessions/" + java.net.URLEncoder.encode(id, "UTF-8")
+
+    override suspend fun accountPhoto(): AccountPhoto? =
+        call("GET", "/api/user/profile").asObject()?.let { AccountPhoto.direct(it, grant.accountId) }
 
     // Bots and conversations
 

@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from octop.infra.extensions import extension_public_paths
 
 _OPEN_PREFIXES = (
+    "/api/ops/",  # Protected by the dedicated operations dependency.
     "/api/setup/",
     "/api/health/",
     # Bot web build claims a fresh instance by signing in with Lynxce.

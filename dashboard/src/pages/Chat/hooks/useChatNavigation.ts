@@ -1,4 +1,10 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useLocation } from "react-router-dom";
 import { useChatNavigate } from "../ChatRouteContext";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
@@ -23,7 +29,10 @@ interface UseChatNavigationParams {
   prefillInputRef: React.MutableRefObject<string>;
   loadHistory: (threadId: string) => Promise<void>;
   clearMessages: () => void;
-  ensureThreadInList: (threadId: string) => Promise<ThreadProbeResult>;
+  ensureThreadInList: (
+    threadId: string,
+    stillCurrent?: () => boolean,
+  ) => Promise<ThreadProbeResult>;
   fetchSessions: (activeId?: string) => Promise<Session[]>;
   refreshAgents: (opts?: { silent?: boolean }) => Promise<void>;
 }
@@ -167,10 +176,23 @@ export function useChatNavigation({
     prefillInputRef,
   ]);
 
-  const ensureThreadAttemptRef = useRef<string | null>(null);
-  useEffect(() => {
+  const ensureThreadAttemptRef = useRef<symbol | null>(null);
+  const [threadMetadataFailed, setThreadMetadataFailed] = useState(false);
+  const retryThreadMetadata = useCallback(() => {
     ensureThreadAttemptRef.current = null;
-  }, [resolvedAgentId]);
+    setThreadMetadataFailed(false);
+  }, []);
+  useEffect(() => {
+    if (!threadMetadataFailed) return;
+    window.addEventListener("online", retryThreadMetadata);
+    return () => window.removeEventListener("online", retryThreadMetadata);
+  }, [threadMetadataFailed, retryThreadMetadata]);
+  useLayoutEffect(() => {
+    setThreadMetadataFailed(false);
+    return () => {
+      ensureThreadAttemptRef.current = null;
+    };
+  }, [resolvedAgentId, threadId]);
 
   useEffect(() => {
     if (!resolvedAgentId || !threadId || sessionsLoading) return;
@@ -181,20 +203,26 @@ export function useChatNavigation({
       return;
     }
     if (sessions.some((s) => s.id === threadId)) {
+      setThreadMetadataFailed(false);
       ensureThreadAttemptRef.current = null;
       return;
     }
+    if (threadMetadataFailed) return;
     // Thread missing from the visible page (or list is empty after load).
     // Probe the API — only rewrite the URL when the probe confirms absence.
     // Do not treat a still-loading / failed list as "deleted".
-    const attemptKey = `${resolvedAgentId}:${threadId}`;
-    if (ensureThreadAttemptRef.current === attemptKey) {
+    const attemptKey = Symbol(threadId);
+    if (ensureThreadAttemptRef.current !== null) {
       return;
     }
     ensureThreadAttemptRef.current = attemptKey;
-    void ensureThreadInList(threadId).then((result) => {
+    void ensureThreadInList(
+      threadId,
+      () => ensureThreadAttemptRef.current === attemptKey,
+    ).then((result) => {
       if (ensureThreadAttemptRef.current !== attemptKey) return;
       // Only rewrite when the probe confirms absence — keep URL on found/unknown.
+      if (result === "unknown") setThreadMetadataFailed(true);
       if (result !== "missing") return;
       const preferred = pickPreferredSession(sessions);
       if (preferred) {
@@ -213,6 +241,7 @@ export function useChatNavigation({
     sessionsLoading,
     navigate,
     ensureThreadInList,
+    threadMetadataFailed,
   ]);
 
   const resetNavForAgentSwitch = () => {
@@ -224,5 +253,10 @@ export function useChatNavigation({
     initialNavDone.current = agentId;
   };
 
-  return { resetNavForAgentSwitch, markInitialNavDone };
+  return {
+    resetNavForAgentSwitch,
+    markInitialNavDone,
+    threadMetadataFailed,
+    retryThreadMetadata,
+  };
 }

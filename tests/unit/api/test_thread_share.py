@@ -131,7 +131,7 @@ async def test_public_share_hides_internal_ids(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(
         share_mod,
         "_load_projected_thread_messages",
-        lambda *_args, **_kwargs: (raw, True),
+        lambda *_args, **_kwargs: (raw, True, "5"),
     )
 
     out = await share_mod.get_public_share("a" * 24, server=server)

@@ -275,6 +275,129 @@ async def test_each_lynxce_account_gets_its_own_tenant(
         assert await provider.api_key() == "sk-test-1"  # type: ignore[operator]
 
 
+async def test_three_cloud_sessions_share_a_paged_conversation(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import socket
+    import time
+    from types import SimpleNamespace
+
+    from langchain_core.messages import AIMessage, HumanMessage
+    from octop_harness import HarnessAgent
+
+    from octop.infra.auth import tokens
+    from tests.support.http import chat_ws_path, ws_connect
+
+    # HTTP and WS run inside ASGI. Every external dependency uses a local
+    # stand-in, so this fixture needs neither DNS nor TCP, including proxies.
+    attempted_connections: list[str] = []
+
+    def deny_network(*_args: Any, **_kwargs: Any) -> Any:
+        attempted_connections.append("unconfigured connection")
+        raise AssertionError("The cloud conversation fixture attempted a network connection")
+
+    monkeypatch.setattr(socket, "getaddrinfo", deny_network)
+    monkeypatch.setattr(socket.socket, "connect", deny_network)
+    monkeypatch.setattr(socket.socket, "connect_ex", deny_network)
+    monkeypatch.setattr(
+        cloud_files,
+        "harness_spec",
+        lambda spec, config=None: {
+            "type": "filesystem",
+            "root_dir": str(tmp_octop_home / "object-store" / spec["agent_id"]),
+            "virtual_mode": True,
+        },
+    )
+
+    async with octop_client(tmp_octop_home) as (client, server):
+        issuance_times = iter(range(int(time.time()) - 4, int(time.time()) + 1))
+
+        async def login(phone: str) -> dict[str, str]:
+            # Access JWTs for a user issued in the same second are identical.
+            with monkeypatch.context() as clock:
+                clock.setattr(tokens, "time", SimpleNamespace(time=lambda: next(issuance_times)))
+                session = await _sign_in(client, phone)
+            return {"Authorization": f"Bearer {session['access_token']}"}
+
+        ios, android, web = [await login("13800000001") for _ in range(3)]
+        assert len({s["Authorization"] for s in (ios, android, web)}) == 3
+        other_account = await login("13800000002")
+        created = await client.post(
+            "/api/agents", headers=ios, json={"name": "Shared conversation"}
+        )
+        created.raise_for_status()
+        aid = created.json()["agent_id"]
+        directory = f"/api/agents/{aid}/threads"
+        thread_ids = []
+        for auth in (ios, android):
+            new = await client.post(directory, headers=auth)
+            new.raise_for_status()
+            thread_ids.append(new.json()["thread_id"])
+        tid = thread_ids[0]
+        history = f"{directory}/{tid}/history"
+        (
+            await client.patch(f"{directory}/{tid}", headers=ios, json={"title": "Shared topic"})
+        ).raise_for_status()
+        pages = [
+            (await client.get(directory, headers=web, params={"limit": 1, "offset": n})).json()
+            for n in (0, 1)
+        ]
+        assert {p[0]["thread_id"] for p in pages} == set(thread_ids)
+
+        agent = server.app_runtime.agent_registry.get_agent(aid)
+        # Cloud tenants get a per-turn account-bound harness instance.
+        monkeypatch.setattr(HarnessAgent, "stream", lambda self, request: agent.stream(request))
+        app = client._octop_app  # type: ignore[attr-defined]
+
+        async def turn(auth: dict[str, str], label: str) -> None:
+            agent.chunks = [
+                {"type": "token", "node": "agent", "content": f"reply {label}"},
+                {
+                    "type": "state_update",
+                    "data": {
+                        "messages": [
+                            HumanMessage(content=label, id=f"user-{label}"),
+                            AIMessage(content=f"reply {label}", id=f"assistant-{label}"),
+                        ]
+                    },
+                },
+            ]
+            async with ws_connect(app, chat_ws_path(aid, auth)) as socket:
+                await socket.send_json({"type": "subscribe", "thread_id": tid})
+                assert await socket.receive_json() == {
+                    "type": "turn_status",
+                    "thread_id": tid,
+                    "active": False,
+                }
+                await socket.send_json({"type": "user_turn", "text": label, "thread_id": tid})
+                assert (await socket.drain_turn())[-1]["type"] == "done"
+
+        await turn(ios, "one")
+        latest = (await client.get(history, headers=android, params={"limit": 1})).json()
+        assert [m["id"] for m in latest["messages"]] == ["assistant-one"]
+        assert latest["has_more"] and latest["next_cursor"]
+        await turn(android, "two")
+        older = (
+            await client.get(history, headers=web, params={"cursor": latest["next_cursor"]})
+        ).json()
+        assert [m["id"] for m in older["messages"]] == ["user-one"]
+        assert not older["has_more"] and older["next_cursor"] is None
+        await turn(web, "three")
+
+        for auth in (ios, android, web):
+            synced = (await client.get(history, headers=auth)).json()
+            assert synced["thread_id"] == tid and not synced["history_loading"]
+            assert [m["id"] for m in synced["messages"]] == [
+                f"{role}-{label}"
+                for label in ("one", "two", "three")
+                for role in ("user", "assistant")
+            ]
+            assert [m["history_seq"] for m in synced["messages"]] == list(range(1, 7))
+        assert (await client.get(directory, headers=other_account)).status_code in (403, 404)
+        assert (await client.get(history, headers=other_account)).status_code in (403, 404)
+    assert not attempted_connections
+
+
 async def test_tenants_cannot_reach_the_host(tmp_octop_home: Path, upstream: Upstream) -> None:
     async with octop_client(tmp_octop_home) as (client, srv):
         signed_in = await _sign_in(client, "13800000003")
@@ -455,6 +578,14 @@ async def test_screen_tickets_are_owner_only_and_single_use(
         ).status_code == 404
         ticket = (await client.post(path + "/screen", headers=mine)).json()
         assert ticket["ws_path"].startswith(path + "/screen/ws?ticket=")
+        assert ticket["session_transport"] == "path"
+        desktop = (
+            await client.post(
+                path + "/screen", headers={**mine, "X-Octop-Screen-Transport": "header"}
+            )
+        ).json()
+        assert desktop["session_transport"] == "header"
+        assert desktop["session_expires_in"] == 1800
 
         # Typing and the clipboard go through the screen session, with no sign-in (the
         # phone apps' screen page has none), and only while the user has taken over.
@@ -483,9 +614,9 @@ async def test_screen_tickets_are_owner_only_and_single_use(
         from octop.api.routers import bot_computers
 
         one_time = ticket["ws_path"].split("ticket=", 1)[1]
-        assert one_time in bot_computers._tickets
-        bot_computers._tickets.pop(one_time)
-        assert one_time not in bot_computers._tickets
+        assert one_time in bot_computers._screen_sessions.tickets
+        bot_computers._screen_sessions.tickets.pop(one_time)
+        assert one_time not in bot_computers._screen_sessions.tickets
 
 
 async def test_a_revoked_model_key_is_replaced_at_the_next_sign_in(
@@ -1156,6 +1287,7 @@ async def test_tenant_connector_and_channel_addresses_are_public(
             ("gitea", {"base_url": "http://172.17.0.1:3000", "token": "x"}),
             ("ragflow", {"base_url": "https://100.100.100.200/", "api_key": "x"}),
             ("obsidian-cli", {"binary_path": "/bin/sh"}),
+            ("gitea", {"note": "http://10.0.0.1/x"}),
         ):
             for path in ("/api/connectors/test-credentials", "/api/connector-instances"):
                 got = await client.post(
@@ -1174,6 +1306,13 @@ async def test_tenant_connector_and_channel_addresses_are_public(
             json={"kind": "mqtt", "name": "m", "config": {"host": "127.0.0.1"}},
         )
         assert channel.status_code == 400, channel.text
+        channel = await client.post(
+            f"/api/agents/{bot.agent_id}/channels",
+            headers=auth,
+            json={"kind": "mqtt", "name": "m", "config": {"note": "http://10.0.0.1/x"}},
+        )
+        assert channel.status_code == 400, channel.text
+        assert channel.json()["error"]["code"] == "ENDPOINT_NOT_ALLOWED"
 
 
 async def test_tenant_group_member_builds_in_its_room(
@@ -1435,3 +1574,69 @@ async def test_legacy_mobile_history_restores_per_account_without_replacing_clou
         assert reads == prior_reads
     assert reads.count((account_a, sessions + "/" + sid)) == 2
     assert not unplanned
+
+
+@pytest.mark.parametrize("transport", ["path", "header"])
+async def test_signed_in_screen_renewal_keeps_its_original_deadline(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, transport: str
+) -> None:
+    import websockets
+
+    from octop.api import deps
+    from octop.api.routers import bot_computers
+    from octop.infra.agents.manager import AgentCreateSpec
+    from tests.support.http import ws_connect
+    from tests.unit.api.test_bot_computer_screen_ws import Manager
+    from tests.unit.api.test_bot_computer_screen_ws import Upstream as ScreenUpstream
+
+    manager = Manager()
+    starts: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        manager, "ensure_running", lambda a, u: starts.append((a, u)), raising=False
+    )
+    monkeypatch.setattr(manager, "read_clipboard", lambda a, u: "联调样例", raising=False)
+    monkeypatch.setattr(bot_computers, "computer_manager", lambda services: manager)
+    monkeypatch.setattr(websockets, "connect", lambda *a, **k: ScreenUpstream())
+    async with octop_client(tmp_octop_home) as (client, srv):
+        account = await _sign_in(client, "13800000050")
+        uid = account["user"]["id"]
+        bot = await srv.app_runtime.agent_registry.create(
+            AgentCreateSpec(user_id=uid, name="Screen QA"), defer_bootstrap=True
+        )
+        token = account["access_token"]
+        agent_id = bot.agent_id
+        path = f"/api/octop-bot/computers/{agent_id}/screen"
+        auth = {"Authorization": f"Bearer {token}"}
+        options = {"X-Octop-Screen-Transport": "header"} if transport == "header" else {}
+        opened = await client.post(path, headers={**auth, **options})
+        assert opened.status_code == 200
+        ticket = opened.json()
+        assert (ticket["session_transport"], ticket["session_expires_in"]) == (transport, 1800)
+        header = {"X-Octop-Screen-Session": ticket["session"]}
+        # Exercise the regular sliding renewal response with a shortened test threshold.
+        monkeypatch.setattr(deps, "_SLIDING_RENEW_REMAINING_FRACTION", 1.1)
+        await asyncio.sleep(1.01)
+        credential = await client.get("/api/auth/me", headers=auth)
+        assert credential.status_code == 200
+        next_token = credential.headers[deps.ACCESS_TOKEN_RESPONSE_HEADER]
+        assert next_token != token
+        renewed_auth = {"Authorization": f"Bearer {next_token}"}
+        if transport == "header":
+            clipboard = "/api/octop-bot/screen-sessions/clipboard"
+            renewal = {"headers": {**renewed_auth, **header}}
+        else:
+            clipboard = f"/api/octop-bot/screen-sessions/{ticket['session']}/clipboard"
+            header = {}
+            renewal = {"headers": renewed_auth, "json": {"session": ticket["session"]}}
+        registry = bot_computers._screen_sessions
+        deadline = registry.sessions[ticket["session"]].expires_at
+        manager.takeover = True
+        async with ws_connect(client._octop_app, ticket["ws_path"]):
+            renewed = await client.post(path + "/renew", **renewal)
+            assert renewed.status_code == 204
+            assert registry.sessions[ticket["session"]].expires_at == deadline
+            assert (await client.get(clipboard, headers=header)).json() == {"text": "联调样例"}
+        assert manager.handed_back
+        assert (await client.get(clipboard, headers=header)).status_code == 404
+        assert (await client.post(path + "/renew", **renewal)).status_code == 404
+        assert starts == [(agent_id, uid)]

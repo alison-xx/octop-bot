@@ -77,7 +77,7 @@
     if (options.body !== undefined) headers.set("Content-Type", "application/json");
     const accessToken = options.auth !== false ? current?.token : null;
     if (accessToken) headers.set("Authorization", "Bearer " + accessToken);
-    const response = await fetch(new URL(path, base.origin), { method: options.method || "GET", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body), redirect: "error" });
+    const response = await fetch(new URL(path, base.origin), { method: options.method || "GET", headers, cache: options.cache, body: options.body === undefined ? undefined : JSON.stringify(options.body), redirect: "error" });
     let payload = {}; try { payload = await response.json(); } catch (_) {}
     if (options.auth !== false) assertSession(epoch);
     if (response.status === 401 && options.auth !== false && current && retry) {

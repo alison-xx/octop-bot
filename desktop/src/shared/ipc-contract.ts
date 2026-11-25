@@ -112,6 +112,7 @@ export const IPC_CHANNELS = {
   windowsMenuModel: "octop:windows-menu:model",
   windowsMenuInvoke: "octop:windows-menu:invoke",
   openBotSettings: "octop:bot:open-settings",
+  botRechargeReturn: "octop:bot:recharge-return",
   botShortcut: "octop:bot:shortcut",
   showBotOrb: "octop:bot:show-orb",
   openServerPicker: "octop:bot:open-server-picker",

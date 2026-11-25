@@ -32,6 +32,14 @@ enum Keychain {
         return out as? Data
     }
 
+    /// A delayed rotation or logout may only change the exact credential that initiated it.
+    @discardableResult
+    static func replace<T: Codable & Equatable>(_ expected: T, with next: T?, for key: String) -> Bool {
+        guard codable(T.self, for: key) == expected else { return false }
+        if let next { setCodable(next, for: key) } else { set(nil, for: key) }
+        return true
+    }
+
     static func setCodable<T: Encodable>(_ value: T?, for key: String) {
         set(value.flatMap { try? JSONEncoder().encode($0) }, for: key)
     }

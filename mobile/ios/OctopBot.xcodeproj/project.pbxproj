@@ -23,11 +23,13 @@
 		2B28871028EA4B40CBC4DAEE /* OctopBotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 185F69E704AE68F0C0ED11C1 /* OctopBotTests.swift */; };
 		2CCBCC317754D53E26034F28 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15BBCE5B206951E544D4FD60 /* Keychain.swift */; };
 		37F1A56BA2414A8FA7B4E481 /* DeviceConnectors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8D888B29FE0171BEBE71EB /* DeviceConnectors.swift */; };
+		39A7792624494E64A56C4EE9 /* StoreKitSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13D2328B5BED98051A76BC48 /* StoreKitSetupTests.swift */; };
 		41B9ABBCAFF713FEA04C284C /* HTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1E4C98857F2A9A92FA53F6 /* HTTP.swift */; };
 		490AFBA8AFF905E354E54003 /* ModelSourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD1756C8C39D74C44CAA49DC /* ModelSourcesView.swift */; };
 		4BACAF514D63D9CBB1311E3D /* CreditStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BFCE63FDD2FE3C02C5B5158 /* CreditStore.swift */; };
 		50D8356BA21790C2FFF46F1D /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2022CECD87289127591F30D /* AppUpdater.swift */; };
 		553DE571AD3DA45038FF89FF /* CompletionChat.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFA9F70320ADB3FE7A4ED21C /* CompletionChat.swift */; };
+		5D2AECE4E4D5170F8A22EECF /* CreditPacks.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 8B0D044DCA559D07FCE3738E /* CreditPacks.storekit */; };
 		5E31F9FF32F06FBE952A0A9F /* octop-mascot.webp in Resources */ = {isa = PBXBuildFile; fileRef = 7B4198C3433D9E46B368560D /* octop-mascot.webp */; };
 		60F09A2E479DE5872452964A /* FileOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = E35158BD983E0060775BA507 /* FileOpener.swift */; };
 		61864BBBDBAF326EBC51EAD0 /* FileAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10FF5FBFB12C25C04EE30FDB /* FileAttachment.swift */; };
@@ -42,6 +44,7 @@
 		871A5E282D3F9B836B3A0901 /* ServerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 853AB250E633AC85F64B4B8E /* ServerBackend.swift */; };
 		8AD1B6205CE7292AE3297C8A /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B26B5219B243FA949E1B4CC /* MarkdownText.swift */; };
 		94F0BEE560698A2E757BFE90 /* ChatScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0D4BB60CF5FB920280CF55 /* ChatScreen.swift */; };
+		9AEA58AEBA2EEA3F4621653A /* CreditPacks.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 8B0D044DCA559D07FCE3738E /* CreditPacks.storekit */; };
 		A53EA84F3C4475B95A47F587 /* Voice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C235A1CAB3877508B396E0E7 /* Voice.swift */; };
 		A92EDF4C2FD34A513BAC2B1E /* LaunchSplash@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = 485730F843527F6DB74B2288 /* LaunchSplash@3x.png */; };
 		ABC1C4B78D4E12D40A46D64A /* ChatSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B348FA18444D7D35A387C8 /* ChatSession.swift */; };
@@ -59,6 +62,7 @@
 		DB504ED3D1733302B3F10D9E /* CreditAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5466325A942736154E927DB0 /* CreditAccount.swift */; };
 		DEC5AC974DAE214BF6C67D43 /* Hitl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44AA9D2522DD5EC8E5320048 /* Hitl.swift */; };
 		DEC9A2364E12C86351B28398 /* LaunchSplash@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 7D05B2CADB1735B180DD738F /* LaunchSplash@1x.png */; };
+		E2BDE23556DA2FCDEF509EF0 /* PendingHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 613EB1BE0AD6FCB0DEE632BE /* PendingHistory.swift */; };
 		E4D12A2503C63875BFFB19EA /* LynxceBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */; };
 		F2ED60F819DD51A46615A4E4 /* CloudComputerFloat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 226FEDB7E21C711880C1281F /* CloudComputerFloat.swift */; };
 		F3F52925138F82147211FBC8 /* DeviceBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FD0386C1154594D3587BBE1 /* DeviceBackend.swift */; };
@@ -74,12 +78,20 @@
 			remoteGlobalIDString = 1E344C9E9C9E088DA2A5AF82;
 			remoteInfo = OctopBot;
 		};
+		78F6CEE573A1BDAFA6F8535D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 10285DBCF2D20B8FBFA652B6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1E344C9E9C9E088DA2A5AF82;
+			remoteInfo = OctopBot;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		07983C65452A324E84BBF59A /* LocalBots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalBots.swift; sourceTree = "<group>"; };
 		0F893BED1AA06082EA47DBE2 /* AddModelKeySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddModelKeySheet.swift; sourceTree = "<group>"; };
 		10FF5FBFB12C25C04EE30FDB /* FileAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileAttachment.swift; sourceTree = "<group>"; };
+		13D2328B5BED98051A76BC48 /* StoreKitSetupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitSetupTests.swift; sourceTree = "<group>"; };
 		15BBCE5B206951E544D4FD60 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		185F69E704AE68F0C0ED11C1 /* OctopBotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OctopBotTests.swift; sourceTree = "<group>"; };
 		1BFCE63FDD2FE3C02C5B5158 /* CreditStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditStore.swift; sourceTree = "<group>"; };
@@ -101,6 +113,7 @@
 		5466325A942736154E927DB0 /* CreditAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditAccount.swift; sourceTree = "<group>"; };
 		5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LynxceBackend.swift; sourceTree = "<group>"; };
 		60FE975D80457770F2B56FE7 /* CreditsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditsView.swift; sourceTree = "<group>"; };
+		613EB1BE0AD6FCB0DEE632BE /* PendingHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingHistory.swift; sourceTree = "<group>"; };
 		64A1DD83356759A7465B69ED /* HitlCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitlCard.swift; sourceTree = "<group>"; };
 		687A510E1D53E5F2DED96BFF /* CloudComputerSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudComputerSection.swift; sourceTree = "<group>"; };
 		6F77470F5AE016E9DEF759F6 /* LaunchSplash@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LaunchSplash@2x.png"; sourceTree = "<group>"; };
@@ -111,6 +124,7 @@
 		7D05B2CADB1735B180DD738F /* LaunchSplash@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LaunchSplash@1x.png"; sourceTree = "<group>"; };
 		7F42D68AD0EF0EE042F76EBF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		853AB250E633AC85F64B4B8E /* ServerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerBackend.swift; sourceTree = "<group>"; };
+		8B0D044DCA559D07FCE3738E /* CreditPacks.storekit */ = {isa = PBXFileReference; path = CreditPacks.storekit; sourceTree = "<group>"; };
 		8FD0386C1154594D3587BBE1 /* DeviceBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceBackend.swift; sourceTree = "<group>"; };
 		9735A9518666F7DBF0C0A976 /* OctopBot.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OctopBot.entitlements; sourceTree = "<group>"; };
 		9D571B602D444EEE48A8962B /* soft-characters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "soft-characters.json"; sourceTree = "<group>"; };
@@ -130,6 +144,7 @@
 		DFA4F9D2603084616EA20193 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		DFA9F70320ADB3FE7A4ED21C /* CompletionChat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionChat.swift; sourceTree = "<group>"; };
 		DFF2C65122F117E4F482A0E3 /* ModelSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSources.swift; sourceTree = "<group>"; };
+		E2213C733AEB9FD3C9793B99 /* OctopBotStoreKitSetupTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OctopBotStoreKitSetupTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E35158BD983E0060775BA507 /* FileOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOpener.swift; sourceTree = "<group>"; };
 		E4335F1C15013619D4383185 /* DeviceFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceFormat.swift; sourceTree = "<group>"; };
 		E47EB786F0FC7601BFB45245 /* ImageViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewer.swift; sourceTree = "<group>"; };
@@ -145,9 +160,18 @@
 			isa = PBXGroup;
 			children = (
 				AF1323D2375BE7D9A6DD5B99 /* OctopBot */,
+				124ECDFEEBECBE9BF37BF0C8 /* OctopBotStoreKitSetupTests */,
 				9D64B23DB0D3B0296C73026A /* OctopBotTests */,
 				DC2CD5F8FF885BE63A61FD71 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		124ECDFEEBECBE9BF37BF0C8 /* OctopBotStoreKitSetupTests */ = {
+			isa = PBXGroup;
+			children = (
+				13D2328B5BED98051A76BC48 /* StoreKitSetupTests.swift */,
+			);
+			path = OctopBotStoreKitSetupTests;
 			sourceTree = "<group>";
 		};
 		2BF4BBBE23349A38E92F1B15 /* Net */ = {
@@ -160,6 +184,7 @@
 				ED1E4C98857F2A9A92FA53F6 /* HTTP.swift */,
 				5A0EDCE5BCCD43E9A472C3D4 /* LynxceBackend.swift */,
 				DFF2C65122F117E4F482A0E3 /* ModelSources.swift */,
+				613EB1BE0AD6FCB0DEE632BE /* PendingHistory.swift */,
 				853AB250E633AC85F64B4B8E /* ServerBackend.swift */,
 				3360C9BF7AE6466E31224253 /* ToolCalls.swift */,
 			);
@@ -196,6 +221,7 @@
 		9D64B23DB0D3B0296C73026A /* OctopBotTests */ = {
 			isa = PBXGroup;
 			children = (
+				8B0D044DCA559D07FCE3738E /* CreditPacks.storekit */,
 				185F69E704AE68F0C0ED11C1 /* OctopBotTests.swift */,
 			);
 			path = OctopBotTests;
@@ -288,6 +314,7 @@
 			isa = PBXGroup;
 			children = (
 				75A1511FD9AC865EEFAC5AC4 /* OctopBot.app */,
+				E2213C733AEB9FD3C9793B99 /* OctopBotStoreKitSetupTests.xctest */,
 				B376C8BCAD0157318169A260 /* OctopBotTests.xctest */,
 			);
 			name = Products;
@@ -315,6 +342,25 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		091F5D2FE3E45102DF3C1823 /* OctopBotStoreKitSetupTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 75E37AC2BCA2A3F12DB4F123 /* Build configuration list for PBXNativeTarget "OctopBotStoreKitSetupTests" */;
+			buildPhases = (
+				D331DC144F3378AE2CF802D2 /* Sources */,
+				FDF8884F6D0E7DCE13BE5E96 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B901AD8C3F583FA13B55CD17 /* PBXTargetDependency */,
+			);
+			name = OctopBotStoreKitSetupTests;
+			packageProductDependencies = (
+			);
+			productName = OctopBotStoreKitSetupTests;
+			productReference = E2213C733AEB9FD3C9793B99 /* OctopBotStoreKitSetupTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		1E344C9E9C9E088DA2A5AF82 /* OctopBot */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 07F877B4C85D5CE3533DF9DD /* Build configuration list for PBXNativeTarget "OctopBot" */;
@@ -338,6 +384,7 @@
 			buildConfigurationList = 189F00353816406FE427C09E /* Build configuration list for PBXNativeTarget "OctopBotTests" */;
 			buildPhases = (
 				F437881A54CCB9D24A41C3D7 /* Sources */,
+				895819D4BB0CA9E67D27B6D8 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -360,6 +407,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					091F5D2FE3E45102DF3C1823 = {
+						DevelopmentTeam = F7URANQHX7;
+					};
 					1E344C9E9C9E088DA2A5AF82 = {
 						DevelopmentTeam = F7URANQHX7;
 						ProvisioningStyle = Automatic;
@@ -386,6 +436,7 @@
 			targets = (
 				1E344C9E9C9E088DA2A5AF82 /* OctopBot */,
 				5A2C288FC6F01256E5AD548C /* OctopBotTests */,
+				091F5D2FE3E45102DF3C1823 /* OctopBotStoreKitSetupTests */,
 			);
 		};
 /* End PBXProject section */
@@ -407,6 +458,22 @@
 				5E31F9FF32F06FBE952A0A9F /* octop-mascot.webp in Resources */,
 				1817702AC266425468DBAA87 /* own-key-vendors.json in Resources */,
 				130DA3D3E41D2DEBBF1B8002 /* soft-characters.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		895819D4BB0CA9E67D27B6D8 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5D2AECE4E4D5170F8A22EECF /* CreditPacks.storekit in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FDF8884F6D0E7DCE13BE5E96 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9AEA58AEBA2EEA3F4621653A /* CreditPacks.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -455,12 +522,21 @@
 				06D222EA88F08977C5F70343 /* OctopBotApp.swift in Sources */,
 				D79859D85ACC51E337C24629 /* OnboardingView.swift in Sources */,
 				B771D743DC4B5E39F8C6F4EF /* Panels.swift in Sources */,
+				E2BDE23556DA2FCDEF509EF0 /* PendingHistory.swift in Sources */,
 				1FDC57332E69AE769E1243A7 /* Preferences.swift in Sources */,
 				871A5E282D3F9B836B3A0901 /* ServerBackend.swift in Sources */,
 				19E2EB24C0D7CC125AC821D9 /* Theme.swift in Sources */,
 				CD7616B5467A4A99D9892C05 /* ToolCalls.swift in Sources */,
 				A53EA84F3C4475B95A47F587 /* Voice.swift in Sources */,
 				C4FEC5251E5ED4CB56B08AA8 /* VoiceModeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D331DC144F3378AE2CF802D2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				39A7792624494E64A56C4EE9 /* StoreKitSetupTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -479,6 +555,11 @@
 			isa = PBXTargetDependency;
 			target = 1E344C9E9C9E088DA2A5AF82 /* OctopBot */;
 			targetProxy = 2A2F63C3FF6969A06A210477 /* PBXContainerItemProxy */;
+		};
+		B901AD8C3F583FA13B55CD17 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1E344C9E9C9E088DA2A5AF82 /* OctopBot */;
+			targetProxy = 78F6CEE573A1BDAFA6F8535D /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -692,6 +773,42 @@
 			};
 			name = Release;
 		};
+		EAFAD02D072CD3AD13B786C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = cn.lynxce.octopbot.storekitsetup;
+				SDKROOT = iphoneos;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OctopBot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/OctopBot";
+			};
+			name = Debug;
+		};
+		EDEF9E723E2F517BD5B71C66 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = cn.lynxce.octopbot.storekitsetup;
+				SDKROOT = iphoneos;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OctopBot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/OctopBot";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -709,6 +826,15 @@
 			buildConfigurations = (
 				6656E2D7DA49B9EF990DE920 /* Debug */,
 				A0D9CA0AFF675FD835A5AA2E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		75E37AC2BCA2A3F12DB4F123 /* Build configuration list for PBXNativeTarget "OctopBotStoreKitSetupTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EAFAD02D072CD3AD13B786C1 /* Debug */,
+				EDEF9E723E2F517BD5B71C66 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

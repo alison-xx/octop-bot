@@ -41,7 +41,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from octop.api.common.bot_cloud import is_cloud_tenant
-from octop.api.deps import resolve_user_from_token
+from octop.api.common.stream_auth import stream_user
 from octop.api.routers.browser.harness import (
     harness_list_tabs,
     harness_page_url,
@@ -396,11 +396,8 @@ async def browser_stream_ws(
     height: int = Query(default=800),
 ) -> None:
     server = websocket.app.state.octop_server
-    if not token:
-        await websocket.close(code=4001, reason="missing token")
-        return
     try:
-        user = resolve_user_from_token(server, token)
+        user = stream_user(server, websocket, "browser_stream", token)
     except Exception as exc:
         await websocket.close(code=4001, reason=f"auth failed: {exc}")
         return

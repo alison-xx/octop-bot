@@ -91,19 +91,18 @@ class AttachmentActions(
     val openImage: (FileAttachment) -> Unit,
     val share: (FileAttachment) -> Unit,
     val save: (FileAttachment) -> Unit,
-)
+) {
+    internal val previews = LruCache<String, PreviewContent>(24)
+}
 
 private const val MAX_IMAGE_BYTES = 30L * 1024 * 1024
 private const val MAX_PDF_BYTES = 20L * 1024 * 1024
 private const val MAX_TEXT_BYTES = 1L * 1024 * 1024
 
-private sealed interface PreviewContent {
+internal sealed interface PreviewContent {
     class Picture(val bitmap: ImageBitmap) : PreviewContent
     class Excerpt(val lines: List<String>) : PreviewContent
 }
-
-/** Decoded previews, so scrolling a chat doesn't decode the same file again. */
-private val previewCache = LruCache<String, PreviewContent>(24)
 
 /** One card, or a horizontal row of cards when a reply carries several files. */
 @Composable
@@ -128,7 +127,7 @@ private fun AttachmentCard(file: FileAttachment, actions: AttachmentActions, sin
         if (size == null && previewKind != FilePreview.Image) size = actions.size(file)
     }
     val targetPx = with(LocalDensity.current) { 320.dp.roundToPx() }.coerceAtMost(1080)
-    val preview by produceState(previewCache.get(file.url), file.url, size) {
+    val preview by produceState(actions.previews.get(file.url), file.url, size) {
         if (value != null) return@produceState
         val known = size
         val allowed = when (previewKind) {
@@ -140,7 +139,7 @@ private fun AttachmentCard(file: FileAttachment, actions: AttachmentActions, sin
         if (!allowed) return@produceState
         val local = actions.previewFile(file) ?: return@produceState
         value = withContext(Dispatchers.IO) { runCatching { loadPreview(previewKind, local, targetPx) }.getOrNull() }
-            ?.also { previewCache.put(file.url, it) }
+            ?.also { actions.previews.put(file.url, it) }
     }
     var menu by remember { mutableStateOf(false) }
     val click = Modifier.combinedClickable(

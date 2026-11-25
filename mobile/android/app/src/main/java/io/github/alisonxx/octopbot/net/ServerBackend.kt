@@ -1,6 +1,7 @@
 package io.github.alisonxx.octopbot.net
 
 import io.github.alisonxx.octopbot.device.DeviceToolbox
+import io.github.alisonxx.octopbot.model.HitlRequest
 import io.github.alisonxx.octopbot.model.BotProfile
 import io.github.alisonxx.octopbot.model.ChatMessage
 import io.github.alisonxx.octopbot.model.ConversationSummary
@@ -18,6 +19,8 @@ import io.github.alisonxx.octopbot.store.AppStore
 import io.github.alisonxx.octopbot.store.ServerSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -27,6 +30,7 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -40,14 +44,15 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.net.URLEncoder
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /** A self-hosted Octop Bot server (NAS / Docker web build): its Bots, tools, memory and groups. */
 class ServerBackend(
-    session: ServerSession,
+    initialSession: ServerSession,
     private val store: AppStore,
 ) : ChatBackend, CreditAccount {
-    @Volatile private var session = session
+    @Volatile private var session = initialSession
     override var signupCredits: Double? = null
     override val signupExpiryDay get() = session.signupExpiryDay
     private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -62,6 +67,8 @@ class ServerBackend(
     override val accountName: String? get() = ServerProtocol.personName(session.displayName)
     /** The full server address, e.g. `http://10.0.2.2:18790`. */
     val baseUrl: String get() = session.baseUrl
+    // Older encrypted sessions have no cache owner. Give the restored session a fresh namespace.
+    val attachmentScope = session.baseUrl + "\u0000" + requireNotNull(session.attachmentCacheId)
     /** Octop Bot cloud: Lynxce sign-in, and the server keeps the Lynxce wallet. */
     val isCloud: Boolean get() = session.cloud
     /** host, plus the port when it isn't the scheme's default (e.g. `10.0.2.2:18790`). */
@@ -78,12 +85,19 @@ class ServerBackend(
     }).build()
     private val slowClient = client.withReadTimeout(900)
 
+    private val renewalLock = Mutex()
+
     private fun adoptRenewedToken(response: Response) {
         val renewed = response.header("X-Octop-Access-Token")?.takeIf { it.isNotBlank() } ?: return
-        if (renewed == session.token) return
-        session = session.copy(token = renewed)
-        val saved = session
-        background.launch { store.setServerSession(saved) }
+        val requested = response.request.header("Authorization") ?: return
+        background.launch {
+            renewalLock.withLock {
+                val previous = session
+                if (requested != "Bearer ${previous.token}" || previous.token == renewed) return@withLock
+                val next = previous.copy(token = renewed)
+                if (store.replaceServerSession(previous, next)) session = next
+            }
+        }
     }
 
     companion object {
@@ -183,7 +197,7 @@ class ServerBackend(
             val name = user?.str("display_name")?.trim().orEmpty()
             // Octop Bot cloud says so in its sign-in response.
             val cloud = body.bool("cloud") == true
-            val session = ServerSession(base, token, name, cloud, if (cloud) signupExpiryDayUTC(body) else null)
+            val session = ServerSession(base, token, name, cloud, if (cloud) signupExpiryDayUTC(body) else null, attachmentCacheId = UUID.randomUUID().toString())
             store.setServerSession(session)
             return ServerBackend(session, store).also { it.signupCredits = if (session.cloud) newSignupCredits(body) else null }
         }
@@ -224,6 +238,46 @@ class ServerBackend(
         body: RequestBody? = null,
         http: OkHttpClient = client,
     ): JsonElement = Http.parse(raw(method, path, query, body, http).decodeToString())
+
+    override suspend fun accountPhoto(): AccountPhoto? {
+        if (isCloud) {
+            runCatching { json("GET", "/api/octop-bot/cloud/account").asObject() }.getOrNull()?.let {
+                return AccountPhoto.cloud(it)
+            }
+        }
+        val me = json("GET", "/api/auth/me").asObject() ?: return null
+        val photo = AccountPhoto.owner(me)
+        val local = AccountPhoto.localAvatar(me) ?: return photo
+        val bytes = runCatching {
+            raw("GET", local.first, local.second, http = client.newBuilder().followRedirects(false).build())
+        }.getOrNull()
+        return photo.copy(localImage = bytes)
+    }
+
+    val isOfficialCloud: Boolean get() = isCloud && baseUrl.trimEnd('/') == ServerProtocol.LYNXCE_CLOUD.trimEnd('/')
+
+    @Volatile private var verifiedHistoryOwner: String? = null
+
+    suspend fun rememberedThread(bot: String): String? =
+        if (isOfficialCloud) store.rememberedThread(legacyHistoryOwner(), bot) else null
+
+    fun rememberThread(bot: String, thread: String?) {
+        verifiedHistoryOwner?.let { store.rememberThread(it, bot, thread) }
+    }
+
+    suspend fun legacyHistoryOwner(): String {
+        verifiedHistoryOwner?.let { return it }
+        if (!isOfficialCloud) throw ApiException.badResponse()
+        val profile = json("GET", "/api/octop-bot/cloud/account").asObject() ?: throw ApiException.badResponse()
+        return profile.str("account_id")?.takeIf { it.isNotEmpty() && profile.bool("connected") == true }?.also { verifiedHistoryOwner = it }
+            ?: throw ApiException.badResponse()
+    }
+
+    suspend fun restoreLegacyHistory(): Boolean = ServerProtocol.restoreLegacyPages { cursor ->
+        call("POST", "/api/octop-bot/cloud/legacy-conversations/restore", buildJsonObject {
+            cursor?.let { put("cursor", it) }
+        }).asObject() ?: throw ApiException.badResponse()
+    }
 
     // Lynxce wallet (Octop Bot cloud only)
 
@@ -285,6 +339,25 @@ class ServerBackend(
         val wsPath = ticket?.str("ws_path")
         return wsPath?.let { ServerProtocol.screenPage(baseUrl, botId, it, ticket?.str("session"), control) }
             ?: throw ApiException.badResponse()
+    }
+
+    suspend fun keepScreenBound(page: String, botId: String) {
+        val handle = page.toHttpUrl().queryParameter("session") ?: return
+        var boundToken: String? = null
+        while (true) {
+            kotlinx.coroutines.delay(3_000)
+            val current = session.token
+            if (current == boundToken) continue
+            try {
+                raw("POST", "/api/octop-bot/computers/" + segment(botId) + "/screen/renew",
+                    body = Http.body(buildJsonObject { put("session", handle) }))
+                boundToken = current
+            } catch (error: ApiException) {
+                if (error.status in setOf(401, 403, 404)) return
+            } catch (_: java.io.IOException) {
+                // Retry on the next tick while this screen is open.
+            }
+        }
     }
 
     /** Octop Bot cloud: a short-lived object-store link for a file a Bot linked to. */
@@ -406,23 +479,54 @@ class ServerBackend(
 
     // Threads
 
-    override suspend fun conversations(bot: BotProfile): List<ConversationSummary> =
-        ServerProtocol.conversations(json("GET", agent(bot) + "/threads", mapOf("limit" to "50")), bot.id)
+    override suspend fun conversations(bot: BotProfile): List<ConversationSummary> {
+        val rows = mutableListOf<JsonElement>()
+        val seen = mutableSetOf<String>()
+        var offset = 0
+        var window: Int? = null
+        while (true) {
+            val limit = window ?: 50
+            val query = mapOf("limit" to limit.toString(), "offset" to (if (window == null) offset else 0).toString())
+            val page = json("GET", agent(bot) + "/threads", query).asArray() ?: break
+            val added = page.filter { it.asObject()?.str("thread_id")?.let(seen::add) == true }
+            rows += added
+            if (page.size < limit) break
+            if (window != null) {
+                if (added.isEmpty()) break
+                window = limit * 2
+            } else if (added.isEmpty()) {
+                // Older servers ignore offset but support requesting a larger window.
+                window = offset + 50
+            } else offset += page.size
+        }
+        return ServerProtocol.conversations(JsonArray(rows), bot.id)
+    }
+
+    data class Position(val offset: Int = 0, val cursor: String? = null)
+    data class Page(val rows: JsonArray, val next: Position?, val pending: HitlRequest?)
+
+    suspend fun historyPage(thread: String, bot: BotProfile, position: Position = Position()): Page {
+        val limit = 50
+        val query = mapOf("limit" to limit.toString()) + (position.cursor?.let { "cursor" to it } ?: ("offset" to position.offset.toString()))
+        repeat(20) {
+            val body = json("GET", agent(bot) + "/threads/${segment(thread)}/history", query).asObject() ?: throw ApiException.badResponse()
+            if (body.bool("history_loading") != true) {
+                val next = if (body.bool("has_more") == true) Position(position.offset + (body.long("limit")?.toInt() ?: limit), body.str("next_cursor")) else null
+                return Page(body.arr("messages") ?: JsonArray(emptyList()), next, ServerProtocol.hitlRequest(body["hitl_pending"], toolLabels()))
+            }
+            delay((body.long("history_retry_after_ms") ?: 800).coerceIn(300, 3000))
+        }
+        throw ApiException.network()
+    }
+
+    suspend fun historyMessages(rows: JsonArray, bot: BotProfile) = ServerProtocol.history(rows, toolLabels(), bot.id)
 
     override suspend fun messages(conversation: ConversationSummary, bot: BotProfile): List<ChatMessage> =
         transcript(conversation, bot).messages
 
     override suspend fun transcript(conversation: ConversationSummary, bot: BotProfile): Transcript {
-        repeat(20) {
-            val page = ServerProtocol.historyPage(
-                json("GET", agent(bot) + "/threads/${segment(conversation.id)}/history", mapOf("limit" to "50")),
-                toolLabels(),
-                agentId = bot.id,
-            )
-            if (!page.loading) return Transcript(page.messages, page.pending)
-            delay(page.retryAfterMs.coerceIn(300, 3000))
-        }
-        return Transcript(emptyList(), pending = null)
+        val page = historyPage(conversation.id, bot)
+        return Transcript(historyMessages(page.rows, bot), page.pending)
     }
 
     override suspend fun deleteConversation(conversation: ConversationSummary, bot: BotProfile) {
@@ -433,6 +537,7 @@ class ServerBackend(
 
     override fun send(
         text: String,
+        messageId: String,
         images: List<ImageAttachment>,
         bot: BotProfile,
         conversation: String?,
@@ -450,9 +555,35 @@ class ServerBackend(
             ServerProtocol.imageContent(text, images.mapIndexed { index, image -> upload(image, index, bot) })
         }
         val frames = Channel<String>(Channel.UNLIMITED)
+        val socket = threadSocket(bot, frames)
+        sockets[threadId] = socket
+        val pinger = launch {
+            while (true) {
+                delay(25_000)
+                socket.send(ServerProtocol.ping.toString())
+            }
+        }
+        try {
+            socket.send(ServerProtocol.userTurn(threadId, text, content, model, deviceTools, messageId).toString())
+            val mapper = ServerProtocol.FrameMapper(toolLabels())
+            for (raw in frames) {
+                val frame = Http.parse(raw).asObject() ?: continue
+                when (val outcome = mapper.map(frame, threadId)) {
+                    is ServerProtocol.FrameMapper.Outcome.Events -> outcome.events.forEach { send(it) }
+                    ServerProtocol.FrameMapper.Outcome.Finished -> return@channelFlow
+                }
+            }
+        } finally {
+            pinger.cancel()
+            sockets.remove(threadId)
+            socket.close(1000, null)
+        }
+    }
+
+    private fun threadSocket(bot: BotProfile, frames: Channel<String>): WebSocket {
         val wsUrl = url(agent(bot) + "/chat/ws", mapOf("token" to session.token))
             .replaceFirst("https://", "wss://").replaceFirst("http://", "ws://")
-        val socket = Http.client.newWebSocket(
+        return Http.client.newWebSocket(
             Http.request(wsUrl).build(),
             object : WebSocketListener() {
                 override fun onMessage(webSocket: WebSocket, text: String) {
@@ -468,27 +599,40 @@ class ServerBackend(
                 }
             },
         )
-        sockets[threadId] = socket
-        val pinger = launch {
-            while (true) {
-                delay(25_000)
-                socket.send(ServerProtocol.ping.toString())
-            }
-        }
+    }
+
+    sealed interface Observation {
+        data class Status(val active: Boolean, val turn: String?) : Observation
+        data class User(val row: ChatMessage) : Observation
+        data object Finished : Observation
+        data class Delta(val event: StreamEvent) : Observation
+    }
+
+    fun observe(thread: String, bot: BotProfile): Flow<Observation> = channelFlow {
+        val frames = Channel<String>(Channel.UNLIMITED)
+        val socket = threadSocket(bot, frames)
         try {
-            socket.send(ServerProtocol.userTurn(threadId, text, content, model, deviceTools).toString())
-            val mapper = ServerProtocol.FrameMapper(toolLabels())
+            socket.send(buildJsonObject { put("type", "subscribe"); put("thread_id", thread) }.toString())
+            var mapper = ServerProtocol.FrameMapper(toolLabels())
             for (raw in frames) {
                 val frame = Http.parse(raw).asObject() ?: continue
-                when (val outcome = mapper.map(frame, threadId)) {
-                    is ServerProtocol.FrameMapper.Outcome.Events -> outcome.events.forEach { send(it) }
-                    ServerProtocol.FrameMapper.Outcome.Finished -> return@channelFlow
+                if (frame.str("thread_id") != thread) continue
+                when (frame.str("type")) {
+                    "turn.started", "turn.resumed" -> send(Observation.Status(true, frame.str("turn_id")))
+                    "turn_status" -> send(Observation.Status(frame.bool("active") == true, frame.str("turn_id")))
+                    "user" -> send(Observation.User(ChatMessage(id = frame.str("message_id") ?: java.util.UUID.randomUUID().toString(),
+                        role = io.github.alisonxx.octopbot.model.MessageRole.User, text = frame.str("content").orEmpty())))
+                    "turn.ended" -> {
+                        send(Observation.Finished)
+                        mapper = ServerProtocol.FrameMapper(toolLabels())
+                    }
+                    else -> (mapper.map(frame, thread) as? ServerProtocol.FrameMapper.Outcome.Events)?.events?.forEach {
+                        send(Observation.Delta(it))
+                    }
                 }
             }
         } finally {
-            pinger.cancel()
-            sockets.remove(threadId)
-            socket.close(1000, null)
+            socket.cancel()
         }
     }
 
@@ -516,6 +660,7 @@ class ServerBackend(
             withContext(Dispatchers.IO) {
                 call.await().use { response ->
                     if (!response.isSuccessful) throw ApiException.fromBody(response.code, response.body.string())
+                    var complete = false
                     response.body.source().forEachSseEvent { event ->
                         val frame = Http.parse(event.data).asObject() ?: return@forEachSseEvent true
                         when (val outcome = mapper.map(frame, conversation)) {
@@ -523,9 +668,13 @@ class ServerBackend(
                                 outcome.events.forEach { send(it) }
                                 true
                             }
-                            ServerProtocol.FrameMapper.Outcome.Finished -> false
+                            ServerProtocol.FrameMapper.Outcome.Finished -> {
+                                complete = true
+                                false
+                            }
                         }
                     }
+                    if (!complete) throw ApiException.network()
                     // `done` ends the reply; whatever follows is dropped, not drained.
                     call.cancel()
                 }

@@ -70,6 +70,39 @@ def test_pg_migrate_and_user_roundtrip() -> None:
 
 @requires_postgresql
 @pytest.mark.postgresql
+def test_pg_session_version_migration_records_028(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.db import migrate
+    from octop.infra.db.pool import PostgresPool
+    from octop.infra.db.repos.users import UserRepo
+
+    # Later migrations can advance the watermark and mask a missing update in 028.
+    through_028 = [(n, path) for n, path in migrate._discover("postgresql") if n <= 28]
+    monkeypatch.setattr(migrate, "_discover", lambda dialect: through_028)
+    pool = PostgresPool(_conninfo())
+    try:
+        _reset_public_schema(pool)
+        migrate.run_migrations(pool)
+        assert migrate._current_version(pool) == 28
+        uid = UserRepo(pool).create(username="pg_session_version", password_hash="x", role="user")
+        with pool.connect() as conn:
+            conn.execute("UPDATE users SET session_version = 3 WHERE id = ?", (uid,))
+            conn.execute("UPDATE _schema_version SET version = 27")
+
+        # A partially upgraded installation already has the column and live session counters.
+        for _ in range(2):
+            migrate.run_migrations(pool)
+            assert migrate._current_version(pool) == 28
+            with pool.connect() as conn:
+                row = conn.execute(
+                    "SELECT session_version FROM users WHERE id = ?", (uid,)
+                ).fetchone()
+                assert row[0] == 3
+    finally:
+        pool.close()
+
+
+@requires_postgresql
+@pytest.mark.postgresql
 def test_pg_control_plane_repo_smoke() -> None:
     """Exercise the main control-plane repos on a live PG schema."""
     from octop.infra.db.migrate import run_migrations
