@@ -130,7 +130,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     /** A recharge link is being fetched; the button ignores further taps. */
     val recharging: StateFlow<Boolean> = _recharging
     /** The recharge page was opened; coming back refreshes the balance. */
-    private var rechargeOpened = false
+    private var pendingRecharge: Pair<CreditAccount, Double?>? = null
     /** The app comes back to the foreground: the balance may have changed on the website or another device. */
     private var pollJob: Job? = null
     private val foreground = LifecycleEventObserver { _, event ->
@@ -334,7 +334,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         _balance.value = null
         _walletKey.value = null
         _usage.value = null
-        rechargeOpened = false
+        pendingRecharge = null
     }
 
     fun signOut(notice: String? = null, reopenServer: Boolean = false) {
@@ -509,12 +509,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
     }
 
     /** The activity resumed; back from the recharge page, the new balance shows. */
-    fun appResumed() {
-        if (!rechargeOpened) return
-        rechargeOpened = false
+    fun appResumed(explicitReturn: Boolean = false) {
+        val checkout = pendingRecharge
+        if (checkout == null) {
+            if (explicitReturn) refreshBalance()
+            return
+        }
+        pendingRecharge = null
+        val (account, before) = checkout
+        if (creditAccount !== account) return
         balanceJob?.cancel()
-        balanceJob = null
-        refreshBalance()
+        balanceJob = viewModelScope.launch {
+            loadBalance(account)
+            val after = (_balance.value as? BalanceState.Value)?.credits
+            if (creditAccount === account && before != null && after != null && after > before) {
+                notice(resources.getString(R.string.checkout_balance_increased, LynxceProtocol.formatCredits(after - before), LynxceProtocol.formatCredits(after)))
+            }
+        }
     }
 
     val attachmentFiles = AttachmentFiles(application)
@@ -581,7 +592,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         viewModelScope.launch {
             runCatching { account.checkoutUrl(scenario) }
                 .onSuccess {
-                    rechargeOpened = true
+                    if (creditAccount !== account) return@onSuccess
+                    pendingRecharge = account to (_balance.value as? BalanceState.Value)?.credits
                     open(it)
                 }
                 .onFailure { notice(rechargeFailure(it)) }

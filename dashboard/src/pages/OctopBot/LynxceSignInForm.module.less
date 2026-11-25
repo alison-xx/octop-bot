@@ -178,3 +178,56 @@
     color-mix(in srgb, var(--chief-rose) 46%, #5a0f24)
   );
 }
+
+.webForm {
+  --chief-rose: #ac3758;
+  gap: 8px;
+  :global(.octop-input-affix-wrapper) {
+    font-size: 16px;
+  }
+  .submit:global(.octop-btn) {
+    background: #a83355;
+    box-shadow: none;
+  }
+  .hintRow {
+    margin-top: 0;
+    small {
+      color: var(--subtle);
+    }
+  }
+}
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 5px;
+}
+.modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 10px;
+  padding: 4px;
+  background: #f3f1f2;
+  margin-bottom: 6px;
+  button {
+    background: none;
+    border: 0;
+    border-radius: 7px;
+    color: var(--subtle);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 550;
+    cursor: pointer;
+    min-height: 38px;
+  }
+  button[aria-pressed="true"] {
+    color: var(--ink);
+    background: var(--paper);
+    box-shadow: 0 1px 4px #35132120;
+  }
+}
+:global(html[data-theme="dark"]) .webForm {
+  --chief-rose: #fa9ab2;
+  .modes {
+    background: #171618;
+  }
+}

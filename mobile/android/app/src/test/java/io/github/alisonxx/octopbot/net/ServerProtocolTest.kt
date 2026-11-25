@@ -59,6 +59,14 @@ class ServerProtocolTest {
         assertEquals("b", rows[2].asObject()?.str("id"))
     }
 
+    @Test fun onlyTheExactCheckoutCallbackIsAccepted() {
+        val url = "octop-bot://recharge/done"
+        assertTrue(io.github.alisonxx.octopbot.isRechargeReturn(url))
+        for (invalid in listOf(null, "$url?paid=true", "$url#order", "$url/", url.replace("done", "other"))) {
+            assertFalse(io.github.alisonxx.octopbot.isRechargeReturn(invalid))
+        }
+    }
+
     @org.junit.Test
     fun computerCreditCodesAreRecognized() {
         org.junit.Assert.assertTrue(ApiException.isCreditsRequired(ApiException.COMPUTER_CREDITS_REQUIRED))
