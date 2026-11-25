@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import os
+import sys
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, BinaryIO
 
 from filelock import FileLock
 
@@ -74,13 +75,16 @@ class SingleComputerController:
     """
 
     def __init__(self, database: Path) -> None:
-        import fcntl  # noqa: PLC0415
-
         database = database.resolve()
         path = database.with_name(database.name + ".computer-controllers")
         self._join = FileLock(str(path) + ".lock")
         self._generation = uuid.uuid4().hex.encode()
         self._pid = os.getpid()
+        self._file: BinaryIO
+        if sys.platform == "win32":
+            raise NotImplementedError("Single-controller detection requires POSIX flock")
+        import fcntl  # noqa: PLC0415
+
         with self._join:
             self._file = path.open("a+b")
             fcntl.flock(self._file, fcntl.LOCK_SH)
