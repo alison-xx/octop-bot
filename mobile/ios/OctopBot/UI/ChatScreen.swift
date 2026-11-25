@@ -707,7 +707,7 @@ struct Composer: View {
             }
             HStack(alignment: .bottom, spacing: 6) {
                 PhotosPicker(selection: $photos, maxSelectionCount: 4, matching: .images) {
-                    Image(systemName: "plus").font(.title3.weight(.medium)).frame(width: 40, height: 40)
+                    Image(systemName: "plus").font(.title3.weight(.medium)).frame(width: 44, height: 44)
                 }
                 .foregroundStyle(Palette.text)
                 .accessibilityLabel(Text("chat.attach"))
@@ -758,33 +758,38 @@ struct Composer: View {
     @ViewBuilder
     private var trailingButton: some View {
         let empty = chat.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty
-        if chat.isSavingHistory && empty {
-            ProgressView().frame(width: 36, height: 36)
+        if chat.isSavingHistory {
+            ProgressView().frame(width: 44, height: 44)
                 .accessibilityLabel(Text("chat.savingHistory"))
-                .padding(.bottom, 2)
-        } else if chat.isStreaming && empty {
+        } else if chat.isStreaming {
             Button { chat.stop() } label: {
                 Image(systemName: "stop.fill").font(.callout).frame(width: 36, height: 36)
                     .background(Palette.text, in: Circle()).foregroundStyle(Palette.background)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .accessibilityLabel(Text("chat.stop"))
-            .padding(.bottom, 2)
-        } else if empty {
+        }
+        if !empty {
+            sendButton
+        } else if !chat.isStreaming {
             Button(action: toggleDictation) {
                 Image(systemName: recorder.isRecording ? "stop.circle.fill" : "mic")
                     .font(.title3)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
                     .foregroundStyle(recorder.isRecording ? .red : Palette.text)
             }
             .accessibilityLabel(Text("chat.dictate"))
-        } else {
-            Button(action: send) {
-                Image(systemName: "arrow.up").font(.callout.weight(.bold)).frame(width: 36, height: 36)
-                    .background(Palette.text, in: Circle()).foregroundStyle(Palette.background)
-            }
-            .accessibilityIdentifier("send")
-            .padding(.bottom, 2)
         }
+    }
+
+    private var sendButton: some View {
+        Button(action: send) {
+            Image(systemName: "arrow.up").font(.callout.weight(.bold)).frame(width: 36, height: 36)
+                .background(Palette.text, in: Circle()).foregroundStyle(Palette.background)
+                .frame(width: 44, height: 44).contentShape(Rectangle())
+        }
+        .accessibilityLabel(Text("chat.send"))
+        .accessibilityIdentifier("send")
     }
 
     private func send() {
