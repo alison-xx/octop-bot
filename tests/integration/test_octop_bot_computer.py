@@ -1,6 +1,7 @@
 """Verify the granted user, application, delivery mode and handoff at the tool boundary."""
 
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -125,6 +126,63 @@ async def test_computer_authorization_handoff_and_window_lease(env_alice_bob_age
     assert (await client.get(path, headers=alice)).status_code == 403
     with pytest.raises(OctopError):
         await run("windows")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action", "discovery", "update"),
+    [("read", "apps", "handoff"), ("windows", "windows", "configure")],
+)
+async def test_new_window_grant_cancels_pending_discovery(
+    env_alice_bob_agent, monkeypatch, action, discovery, update
+):
+    _, server, _, _, bot = env_alice_bob_agent
+    runtime = server.app_runtime
+    repos = server.services.repos
+    owner = repos.agent_repo.get(bot).user_id
+    computer = runtime.agent_registry.bot_computer
+    await runtime.user_manager.set_permissions("alice", ["desktop"])
+    editor = AllowedApp(id="sample.editor", name="Editor")
+    monkeypatch.setattr(computer, "available", lambda: True)
+    monkeypatch.setattr(computer, "permissions_needed", lambda: [])
+    started, finish = asyncio.Event(), asyncio.Event()
+
+    async def apps():
+        return {1: editor}
+
+    async def windows(pid):
+        return [{"window_id": 2}]
+
+    monkeypatch.setattr(computer.native, "apps", apps)
+    monkeypatch.setattr(computer.native, "windows", windows)
+    read = AsyncMock(return_value=[])
+    monkeypatch.setattr(computer.native, "read", read)
+    await computer.configure(repos, owner, bot, "view", [editor.id])
+    original = getattr(computer.native, discovery)
+
+    async def delayed(*args):
+        started.set()
+        await asyncio.wait_for(finish.wait(), timeout=4)
+        return await original(*args)
+
+    monkeypatch.setattr(computer.native, discovery, delayed)
+    pending = asyncio.create_task(
+        computer.run(repos, owner, bot, action, editor.id, 1, 2, "", "", False)
+    )
+    await asyncio.wait_for(started.wait(), timeout=4)
+    if update == "configure":
+        await computer.configure(repos, owner, bot, "background", [editor.id])
+    else:
+        for paused in (True, False):
+            await asyncio.to_thread(computer.pause, repos, owner, bot, paused)
+    finish.set()
+    with pytest.raises(OctopError) as stopped:
+        await pending
+    assert stopped.value.status == 403
+    read.assert_not_awaited()
+    assert (owner, bot) not in computer.observed
+    listed = await computer.run(repos, owner, bot, "windows", "", 0, 0, "", "", False)
+    assert [w["app_id"] for w in listed] == [editor.id]
 
 
 @pytest.mark.asyncio
