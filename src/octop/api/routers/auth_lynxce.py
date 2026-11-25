@@ -393,6 +393,13 @@ async def lynxce_session_login(
 
 
 class LynxceTokenLoginBody(BaseModel):
+    server_code: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=1024,
+        repr=False,
+        description="A single-use authorization code for this account’s computer billing.",
+    )
     access_token: str = Field(
         min_length=1,
         max_length=32768,
@@ -408,8 +415,8 @@ class LynxceTokenLoginBody(BaseModel):
         "Octop Bot cloud only. The desktop app, signed in with Lynxce, gets a token for this "
         "account here so its Bots can use cloud computers (shadow Bots, "
         "`/api/octop-bot/remote-bots`). Unlike `session-login`, the Lynxce session is not "
-        "handed over. The account must have signed in here before (web, phones, or the "
-        "desktop's one-time check), so this server has its own Lynxce session for billing; "
+        "handed over. A server_code authorizes computer billing for a new account. Without it, an "
+        "existing billing authorization or cloud sign-in is required; "
         "otherwise `BOT_CLOUD_SESSION_REQUIRED` (409): sign in once with "
         "`/lynxce/code-login` or `/lynxce/login`, then call this again."
     ),
@@ -441,16 +448,9 @@ async def lynxce_token_login(
         METRICS.inc("token_login_without_src_total")
     _limit_token_login(_token_login_accounts, str(account), 10)
     services = server.services
-    row = await asyncio.to_thread(cloud_accounts.tenant_for_account, services, account)
-    if row is not None and row.disabled:
-        raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403)
-    connected = (
-        row is not None
-        and (await asyncio.to_thread(lynxce_cloud.cloud_status, services, row.id)).connected
+    user = await cloud_accounts.desktop_computer_user(
+        services, server.user_manager, account, body.server_code
     )
-    user = server.user_manager.get_by_id(row.id) if connected and row is not None else None
-    if user is None:
-        raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED)
     from octop.api.routers.auth import _user_json  # noqa: PLC0415
 
     secret = services.secret_repo.get("jwt")

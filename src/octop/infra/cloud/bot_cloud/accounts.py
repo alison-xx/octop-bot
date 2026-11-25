@@ -294,6 +294,29 @@ def tenant_for_account(services: SharedServices, account_id: str) -> Any | None:
     return services.user_repo.get_by_sso(int(provider.id), account_id)
 
 
+async def desktop_computer_user(
+    services: SharedServices, users: UserManager, account_id: str, server_code: str | None
+) -> User:
+    row = await asyncio.to_thread(tenant_for_account, services, account_id)
+    if row is not None and row.disabled:
+        raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403)
+    if server_code is not None:
+        grant = await lynxce_cloud.redeem_compute_code(account_id, server_code)
+        provider_id = await asyncio.to_thread(_provider_id, services)
+        user = await users.resolve_or_create_sso_user(
+            provider_id=provider_id, subject=account_id, claims={}
+        )
+        await lynxce_cloud.keep_compute_grant(services, user.id, grant)
+        return user
+    if row is not None and await lynxce_cloud.computer_billing_connected(
+        services, row.id, account_id
+    ):
+        connected_user = await asyncio.to_thread(users.get_by_id, row.id)
+        if connected_user is not None:
+            return connected_user
+    raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED)
+
+
 async def provision(
     services: SharedServices,
     users: UserManager,
@@ -358,7 +381,7 @@ async def delete_account(services: SharedServices, users: UserManager, user: Use
     )
     await users.disable(user.username, reason=DELETION_PENDING)
     await asyncio.to_thread(forget_model_key, services, user.id)
-    await asyncio.to_thread(lynxce_cloud.forget_session, services, user.id)
+    await lynxce_cloud.forget_account_grants(services, user.id)
     days = data.get("coolingDays") if isinstance(data, dict) else None
     return days if isinstance(days, int) else 7
 
