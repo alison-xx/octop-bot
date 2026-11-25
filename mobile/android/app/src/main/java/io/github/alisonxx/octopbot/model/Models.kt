@@ -86,6 +86,7 @@ class ImageAttachment(val uri: String, val jpeg: ByteArray)
 /** Incremental output of one reply. */
 sealed interface StreamEvent {
     data class Conversation(val id: String) : StreamEvent
+    data class TurnStarted(val id: String) : StreamEvent
     data class Text(val delta: String) : StreamEvent
     data class Thinking(val delta: String) : StreamEvent
     data class Tool(val id: String, val name: String, val done: Boolean) : StreamEvent

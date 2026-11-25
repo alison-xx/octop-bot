@@ -390,7 +390,7 @@ object ServerProtocol {
     }
 
     /** [deviceTools]: the phone's tools that are on (PROTOCOL §C); sent on every turn so the server can drop them. */
-    fun userTurn(threadId: String, text: String, content: JsonElement, model: String?, deviceTools: List<String> = emptyList()): JsonObject = buildJsonObject {
+    fun userTurn(threadId: String, text: String, content: JsonElement, model: String?, deviceTools: List<String> = emptyList(), messageId: String = UUID.randomUUID().toString()): JsonObject = buildJsonObject {
         put("type", "user_turn")
         put("thread_id", threadId)
         put("text", text)
@@ -398,7 +398,7 @@ object ServerProtocol {
             addJsonObject {
                 put("role", "user")
                 put("content", content)
-                put("id", UUID.randomUUID().toString())
+                put("id", messageId)
             }
         }
         model?.let { put("model", it) }
@@ -546,6 +546,7 @@ object ServerProtocol {
             val frameThread = frame.str("thread_id")
             if (frameThread != null && frameThread != threadId) return Outcome.Events(emptyList())
             return when (frame.str("type")) {
+                "turn.started", "turn.resumed" -> Outcome.Events(listOfNotNull(frame.str("turn_id")?.let(StreamEvent::TurnStarted)))
                 "token" -> text(frame) { StreamEvent.Text(it) }
                 "reasoning" -> text(frame) { StreamEvent.Thinking(it) }
                 "tool_call_chunk" -> {

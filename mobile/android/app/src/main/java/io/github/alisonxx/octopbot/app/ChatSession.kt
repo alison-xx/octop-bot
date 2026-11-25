@@ -92,6 +92,14 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
             return if (at < 0) emptyList() else history.drop(at + 1)
         }
 
+        fun hasCommittedReply(history: List<ChatMessage>): Boolean {
+            val tail = committedTail(history)
+            val user = rows.firstOrNull { it.role == MessageRole.User } ?: return tail.any { it.role == MessageRole.Assistant }
+            val at = tail.indexOfLast { it.id == user.id || (it.role == MessageRole.User && it.text == user.text) }
+            if (at < 0) return anchor?.id == user.id && tail.any { it.role == MessageRole.Assistant }
+            return tail.drop(at + 1).any { it.role == MessageRole.Assistant }
+        }
+
         fun merged(history: List<ChatMessage>): List<ChatMessage> {
             val tail = committedTail(history)
             return history + rows.filterNot { row -> tail.any { it.id == row.id || (it.role == row.role && it.text == row.text) } }
@@ -99,10 +107,12 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
     }
 
     private var observedTurn: ObservedTurn? = null
+    private var durableAnchor: ChatMessage? = null
 
     private fun observedHistory(history: List<ChatMessage>): List<ChatMessage> {
+        durableAnchor = history.lastOrNull()
         val turn = observedTurn ?: return history
-        if (turn.ended && turn.committedTail(history).any { it.role == MessageRole.Assistant }) {
+        if (turn.ended && turn.hasCommittedReply(history)) {
             observedTurn = null
             return history
         }
@@ -126,11 +136,11 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
     fun openLatest() {
         val first = !opened
         val revision = historyRevision
-        opened = true
         scope.launch {
             val saved = if (first) runCatching { (host.backend as? ServerBackend)?.rememberedThread(botId) }.getOrNull() else null
             val rows = runCatching { loadConversations() }.getOrNull() ?: return@launch
             if (revision != historyRevision || _state.value.streaming || _state.value.loading) return@launch
+            opened = true
             val current = _state.value.conversationId
             val personal = rows.firstOrNull { it.id == saved && it.owned == true }
             val fallback = if (host.backend is ServerBackend) ConversationSummary.personalDefault(rows) else rows.firstOrNull()
@@ -160,7 +170,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
         val bot = bot ?: return
         val revision = ++historyRevision
         val changed = _state.value.conversationId != conversation.id
-        if (changed) observedTurn = null
+        if (changed) { observedTurn = null; durableAnchor = null }
         if (changed) { historyRows = JsonArray(emptyList()); older = null }
         _state.update { it.copy(conversationId = conversation.id, messages = if (changed) emptyList() else it.messages, loading = true,
             hasOlder = older != null, loadingOlder = false, hitl = if (changed) null else it.hitl) }
@@ -178,14 +188,13 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
                     fresh = ServerProtocol.joinHistory(prior.rows, fresh)
                     next = prior.next
                 }
-                val previousCount = historyRows.size
                 if (next == null) {
                     historyRows = fresh
                     older = null
                 } else {
                     historyRows = ServerProtocol.joinHistory(historyRows, fresh)
                     if (historyRows.size == fresh.size) older = next
-                    else older = older?.let { if (it.cursor != null) it else it.copy(offset = it.offset + (historyRows.size - previousCount).coerceAtLeast(0)) }
+                    else older = older?.let { if (it.cursor != null) it else it.copy(offset = historyRows.size) }
                 }
                 Transcript(server.historyMessages(historyRows, bot), page.pending)
             }
@@ -240,7 +249,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
                 val saved = server.historyMessages(historyRows, bot)
                 _state.update { it.copy(messages = saved) }
             }
-            return ObservedTurn(id, _state.value.messages.lastOrNull()).also { observedTurn = it }
+            return ObservedTurn(id, durableAnchor).also { observedTurn = it }
         }
         suspend fun finish() {
             observedTurn?.ended = true
@@ -260,7 +269,12 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
                             if (event.active) {
                                 val prior = observedTurn?.id
                                 if (event.turn != null && prior != null && event.turn != prior) finish()
-                                turn(event.turn)
+                                val prefix = turn(event.turn).rows.lastOrNull()
+                                if (prefix?.role == MessageRole.Assistant) {
+                                    _state.update { state -> state.copy(messages = state.messages.map {
+                                        if (it.id == prefix.id) it.copy(status = MessageStatus.Streaming) else it
+                                    }) }
+                                }
                             } else finish()
                         }
                         ServerBackend.Observation.Finished -> finish()
@@ -295,6 +309,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
         (host.backend as? ServerBackend)?.rememberThread(botId, null)
         if (_state.value.streaming) return
         observedTurn = null
+        durableAnchor = null
         opened = true
         historyRevision++
         older = null
@@ -356,7 +371,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
         _state.update { it.copy(loading = false, loadingOlder = false) }
         val history = state.messages.filter { it.role != MessageRole.Note }
         val user = ChatMessage(role = MessageRole.User, text = text, images = images.map { it.uri })
-        stream(bot, listOf(user)) { host.backend.send(user.text, images, bot, state.conversationId, history, host.model(), host.device) }
+        stream(bot, listOf(user)) { host.backend.send(user.text, user.id, images, bot, state.conversationId, history, host.model(), host.device) }
     }
 
     // Questions and approvals (server mode)
@@ -439,7 +454,9 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
         val reply = ChatMessage(role = MessageRole.Assistant, text = "", status = MessageStatus.Streaming)
         _state.update { it.copy(messages = it.messages + before + reply, streaming = true, motion = BotMotion.Working) }
         host.replyStarted(botId)
+        val anchor = durableAnchor
         job = scope.launch {
+            var turnId: String? = null
             var status: MessageStatus = MessageStatus.Done
             try {
                 var events = events()
@@ -448,7 +465,11 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
                     var reads: HitlRequest? = null
                     events.collect { event ->
                         if (token != run) return@collect
-                        if (event is StreamEvent.Hitl && runsAlone(event.request)) reads = event.request else apply(reply.id, event)
+                        when {
+                            event is StreamEvent.TurnStarted -> turnId = event.id
+                            event is StreamEvent.Hitl && runsAlone(event.request) -> reads = event.request
+                            else -> apply(reply.id, event)
+                        }
                     }
                     val request = reads ?: break
                     val conversation = _state.value.conversationId ?: break
@@ -460,6 +481,14 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
                 throw cancelled
             } catch (error: Throwable) {
                 val kind = (error as? ApiException)?.kind
+                if (token == run && kind == ApiException.Kind.Network && host.backend is ServerBackend) {
+                    val partial = _state.value.messages.lastOrNull { it.id == reply.id }
+                    if (partial != null && (turnId != null || partial.text.isNotEmpty() || partial.thinking.isNotEmpty())) {
+                        val rows = before.filter { it.role == MessageRole.User }.toMutableList()
+                        rows.add(partial)
+                        observedTurn = ObservedTurn(turnId, anchor, rows)
+                    }
+                }
                 val credits = kind == ApiException.Kind.Credits
                 val limit = kind == ApiException.Kind.DailyLimit
                 val apiError = error as? ApiException
@@ -493,7 +522,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
                     is StreamEvent.Thinking -> message.copy(thinking = message.thinking + event.delta).also { motion = BotMotion.Thinking }
                     is StreamEvent.Tool -> message.copy(tools = upsert(message.tools, event))
                     is StreamEvent.Attachment -> message.copy(attachments = FileCards.merge(message.attachments, listOf(event.file)))
-                    is StreamEvent.Conversation, is StreamEvent.Hitl -> message
+                    is StreamEvent.Conversation, is StreamEvent.TurnStarted, is StreamEvent.Hitl -> message
                 }
             }
             state.copy(messages = messages, motion = motion)

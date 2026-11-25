@@ -510,10 +510,15 @@ private final class FakeBackend: ChatBackend {
     var replies: [AsyncThrowingStream<StreamEvent, Error>.Continuation] = []
 
     func bots() async throws -> [BotProfile] { [BotProfile(id: "b", name: "B", look: .fallback, isChief: true)] }
-    func conversations(for bot: BotProfile) async throws -> [ConversationSummary] { [] }
+    var listFailures = 0
+    var directory: [ConversationSummary] = []
+    func conversations(for bot: BotProfile) async throws -> [ConversationSummary] {
+        if listFailures > 0 { listFailures -= 1; throw APIError.network }
+        return directory
+    }
     func messages(in conversation: ConversationSummary, bot: BotProfile) async throws -> [ChatMessage] { [] }
     func models() async throws -> [ModelOption] { [] }
-    func send(_ text: String, images: [Data], to bot: BotProfile, conversation: String?, history: [ChatMessage], model: String?) -> AsyncThrowingStream<StreamEvent, Error> {
+    func send(_ text: String, messageId: String, images: [Data], to bot: BotProfile, conversation: String?, history: [ChatMessage], model: String?) -> AsyncThrowingStream<StreamEvent, Error> {
         sent.append(text)
         return AsyncThrowingStream { replies.append($0) }
     }
@@ -546,6 +551,38 @@ final class QueueTests: XCTestCase {
         XCTAssertEqual(current.merged([previous, user]).map(\.id), ["old", "u", "reply"])
         XCTAssertTrue(current.committedTail([previous, user]).allSatisfy { $0.role != .assistant })
         XCTAssertEqual(current.committedTail([previous, user, partial]).map(\.id), ["u", "reply"])
+    }
+
+    func testFirstDirectoryFailureRetriesButExplicitlyNewChatRemainsEmpty() async throws {
+        let app = AppModel(), backend = FakeBackend()
+        await app.use(backend)
+        let bot = try XCTUnwrap(app.bots.first)
+        let session = app.session(for: bot)
+        backend.directory = [.init(id: "only", title: "Saved", updatedAt: nil, botId: bot.id)]
+        backend.listFailures = 1
+        await session.showConversation()
+        XCTAssertNil(session.conversationId)
+        await session.showConversation()
+        XCTAssertEqual(session.conversationId, "only")
+        session.newChat()
+        await session.showConversation()
+        XCTAssertNil(session.conversationId)
+    }
+
+    func testInterruptedSenderUsesTheDurableAnchorAndCompletesOnItsOwnUserTurn() throws {
+        var mapper = ServerFrameMapper()
+        guard case .events(let events) = try mapper.map(["type": "turn.started", "turn_id": "run"]),
+              case .turnStarted("run")? = events.first else { return XCTFail("Missing sender turn ID") }
+        let prior = ChatMessage(id: "prior", role: .assistant, text: "previous")
+        let question = ChatMessage(id: "local-user", role: .user, text: "question")
+        let partial = ChatMessage(id: "local-reply", role: .assistant, text: "prefix", status: .streaming)
+        let turn = ChatSession.ObservedTurn(id: "run", anchor: prior, rows: [question, partial])
+        let other = ChatMessage(id: "other", role: .assistant, text: "previous completed turn")
+        let savedUser = ChatMessage(id: "saved-user", role: .user, text: "question")
+        let savedReply = ChatMessage(id: "saved-reply", role: .assistant, text: "prefix and complete response")
+        XCTAssertFalse(turn.hasCommittedReply([prior, other, savedUser]))
+        XCTAssertEqual(turn.merged([prior, savedUser]).last?.id, "local-reply")
+        XCTAssertTrue(turn.hasCommittedReply([prior, savedUser, savedReply]))
     }
 
     func testHistoryPageOverlapPreservesOrderAndReplacesTheCurrentVersion() {

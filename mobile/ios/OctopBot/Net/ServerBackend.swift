@@ -627,7 +627,7 @@ final class ServerBackend: ChatBackend {
     }
 
     func send(
-        _ text: String, images: [Data], to bot: BotProfile, conversation: String?,
+        _ text: String, messageId: String, images: [Data], to bot: BotProfile, conversation: String?,
         history: [ChatMessage], model: String?
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -652,7 +652,7 @@ final class ServerBackend: ChatBackend {
                     }
                     var turn: [String: Any] = [
                         "type": "user_turn", "thread_id": threadId, "text": text,
-                        "messages": [["role": "user", "content": content, "id": UUID().uuidString]],
+                        "messages": [["role": "user", "content": content, "id": messageId]],
                     ]
                     if let model { turn["model"] = model }
                     // Health, Calendar and Reminders run on this phone (PROTOCOL.md §C).
@@ -876,6 +876,8 @@ struct ServerFrameMapper {
 
     mutating func map(_ frame: [String: Any]) throws -> Outcome {
         switch frame["type"] as? String {
+        case "turn.started", "turn.resumed":
+            return .events((frame["turn_id"] as? String).map { [.turnStarted($0)] } ?? [])
         case "token":
             let text = frame["content"] as? String ?? ""
             return .events(text.isEmpty ? [] : [.text(text)])
