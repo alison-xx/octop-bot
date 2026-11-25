@@ -24,11 +24,11 @@ from pydantic import BaseModel, Field
 from starlette.websockets import WebSocketState
 
 from octop.api.common.bot_cloud import is_cloud_tenant, no_cloud_tenant
+from octop.api.common.stream_auth import stream_user
 from octop.api.deps import (
     current_user,
     get_server,
     require_permission,
-    resolve_user_from_token,
 )
 from octop.i18n.domains.voice import realtime_error_message
 from octop.infra.errors import ErrorCode, OctopError
@@ -290,11 +290,8 @@ async def stream_transcription(
     ``interim`` / ``final`` / ``done`` / ``error`` JSON messages.
     """
     server = websocket.app.state.octop_server
-    if not token:
-        await websocket.close(code=4001, reason="missing token")
-        return
     try:
-        user = resolve_user_from_token(server, token)
+        user = stream_user(server, websocket, "voice", token)
     except OctopError as exc:
         await websocket.close(code=4001, reason=f"auth failed: {exc.code.value}")
         return

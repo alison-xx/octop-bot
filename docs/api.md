@@ -14,10 +14,16 @@ described in [Chat (WebSocket)](#chat-websocket).
 |--------|-------|
 | `Authorization` | `Bearer <access_token>` from `POST /api/auth/login` |
 
+Clients can request a single-use streaming ticket with `POST /api/auth/ws-ticket`,
+using the Bearer header and a JSON body such as `{ "purpose": "chat_ws" }`.
+Pass the returned value as `?ticket=...` when opening that stream; it expires
+within 60 seconds and is bound to its purpose. SSE clients use `sse`.
+
 Tokens expire after `OCTOP_ACCESS_TOKEN_TTL` seconds (default 24 h).
 An authenticated request renews the token once less than two-thirds of that
 lifetime remains, so active use extends the session from the last renewal.
-Changing the password invalidates outstanding tokens; the change-password
+Sessions have a maximum lifetime of 30 days. Logout and logout-all invalidate
+all of the user’s access sessions. Changing the password invalidates outstanding tokens; the change-password
 response returns a replacement in `X-Octop-Access-Token`.
 Rotating the JWT secret (`octop admin rotate-jwt-secret`) invalidates
 every outstanding token immediately. Login attempts are rate-limited

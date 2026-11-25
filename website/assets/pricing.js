@@ -143,6 +143,7 @@
 
   let pricing = null;
   let catalog = null;
+  let ratesVisible = false;
   let cycle = "month";
   let pack = 50;
   let customAmount = "";
@@ -167,78 +168,74 @@
     return li;
   }
 
-  function renderPlans(animate = false) {
+  function updateBilling(card, plan) {
+    const amount = card.querySelector(".amount");
+    const renew = card.querySelector(".renew");
+    const yearly = cycle === "year" && plan.yearly;
+    amount.replaceChildren(node("span", "currency", "¥"), node("strong", "", num(yearly ? plan.yearly : plan.monthly)));
+    if (plan.monthly) amount.append(node("small", "", yearly ? t("/年", "/yr") : t("/月", "/mo")));
+    if (!plan.monthly) renew.textContent = t("免费", "Free");
+    else if (yearly) {
+      renew.replaceChildren(node("s", "", money(plan.monthly * 12)), document.createTextNode(
+        " · " + t(`折合 ${money(Math.round(plan.yearly / 12))}/月`, `${money(Math.round(plan.yearly / 12))}/mo`) +
+        " · " + t("手动续费", "renew by hand"),
+      ));
+    } else renew.textContent = t("到期前 3 天提醒，手动续费", "Reminder 3 days before it ends; renew by hand");
+  }
+
+  function renderPlans() {
     const box = $("#plans");
     if (!box || !pricing) return;
-    const m = media();
+    const expanded = new Set([...box.querySelectorAll("details[open]")].map((details) => details.dataset.plan));
     box.replaceChildren(
       ...pricing.plans.map((plan) => {
         const card = node("article", "plan" + (plan.tag ? " hot" : ""));
-        if (plan.tag) card.append(node("span", "tag", pick(plan.tag)));
-        card.append(node("h3", "", pick(plan.name)));
+        const header = node("div", "plan-heading");
+        header.append(node("h3", "", pick(plan.name)));
+        if (plan.tag) header.append(node("span", "tag", pick(plan.tag)));
+        card.append(header);
 
-        const amount = node("div", "amount");
-        const yearly = cycle === "year" && plan.yearly;
-        amount.append(document.createTextNode(plan.monthly === 0 ? "¥0" : money(yearly ? plan.yearly : plan.monthly)));
-        if (plan.monthly) amount.append(node("small", "", yearly ? t("/年", "/yr") : t("/月", "/mo")));
-        card.append(amount);
-
-        const renew = node("div", "renew");
-        if (plan.monthly === 0) renew.textContent = t("免费", "Free");
-        else if (yearly) {
-          renew.append(
-            node("s", "", money(plan.monthly * 12)),
-            document.createTextNode(
-              " · " + t(`折合 ${money(Math.round(plan.yearly / 12))}/月`, `${money(Math.round(plan.yearly / 12))}/mo`) +
-                " · " + t("手动续费", "renew by hand"),
-            ),
-          );
-        } else renew.textContent = t("到期前 3 天提醒，手动续费", "Reminder 3 days before it ends; renew by hand");
-        card.append(renew);
+        card.append(node("div", "amount"), node("div", "renew"));
+        updateBilling(card, plan);
 
         const credits = node("div", "credits");
-        if (animate) {
-          amount.classList.add("pricing-enter");
-          credits.classList.add("pricing-enter");
-        }
         const main = node("div", "row");
-        if (plan.creditsNote) main.append(node("span", "", "✦ " + pick(plan.creditsNote)));
+        if (plan.creditsNote) main.append(node("span", "", pick(plan.creditsNote)));
         else {
-          main.append(node("span", "", "✦ " + t(`${num(plan.credits)} 积分每月`, `${num(plan.credits)} credits a month`)));
+          main.append(node("span", "", t(`每月 ${num(plan.credits)} 积分`, `${num(plan.credits)} credits a month`)));
           main.append(node("em", "", t("1 个月有效", "valid 1 month")));
         }
         credits.append(main);
-        if (plan.bonus) credits.append(node("div", "row gift", "🎁 " + pick(plan.bonus)));
+        if (plan.bonus) credits.append(node("div", "row gift", pick(plan.bonus)));
         card.append(credits);
 
-        const button = node("a", "btn " + (plan.tag ? "btn-primary" : "btn-ghost"));
+        const button = node(plan.monthly === 0 ? "a" : "button", "btn " + (plan.tag ? "btn-primary" : "btn-ghost"));
         if (plan.monthly === 0) {
           button.textContent = t("免费开始", "Start free");
           button.href = "https://bot.lynxce.cn";
         } else {
-          button.textContent = t("即将开通", "Coming soon");
-          button.setAttribute("aria-disabled", "true");
-          button.classList.add("disabled");
+          button.type = "button";
+          button.disabled = !(pricing.membershipOpen && window.OctopAuth.config.checkoutEnabled);
+          button.dataset.checkout = "member";
+          if (button.disabled) button.classList.add("disabled");
+          button.textContent = button.disabled
+            ? t("即将开通", "Coming soon")
+            : t("去收银台选套餐", "Choose a plan at checkout");
         }
         card.append(button);
 
+        const highlights = node("ul", "perks plan-highlights");
+        const details = node("details", "plan-details");
+        details.dataset.plan = plan.id;
+        details.open = expanded.has(plan.id);
+        details.append(node("summary", "", t("全部权益", "All benefits")));
         const perks = node("ul", "perks");
         perks.append(perkRow(t("文本模型", "Text models"), t("全部可用模型", "All available models")));
-        const images = m.perImage ? Math.floor(plan.credits / m.perImage) : null;
-        const videos = m.perSecond ? Math.floor(plan.credits / (m.perSecond * VIDEO_SECONDS)) : null;
-        perks.append(
-          perkRow(
-            t("作图", "Images"),
-            pick(plan.image) + (images !== null ? t(` · 约 ${num(images)} 张`, ` · about ${num(images)}`) : ""),
-          ),
-          perkRow(
-            t("做视频", "Videos"),
-            pick(plan.video) +
-              (videos !== null
-                ? t(` · 约 ${num(videos)} 条 ${VIDEO_SECONDS} 秒视频`, ` · about ${num(videos)} × ${VIDEO_SECONDS}s`)
-                : ""),
-          ),
-        );
+        const imageRow = perkRow(t("作图", "Images"), pick(plan.image));
+        const videoRow = perkRow(t("做视频", "Videos"), pick(plan.video));
+        imageRow.className = "plan-image";
+        videoRow.className = "plan-video";
+        perks.append(imageRow, videoRow);
         for (const [key, value] of plan.perks) {
           const row = perkRow(t(...PERK_LABELS[key]), pick(value));
           if (key === "support" && value && value.zh === "社群") {
@@ -248,13 +245,34 @@
             join.dataset.community = "";
             row.querySelector("b").replaceChildren(join);
           }
-          perks.append(row);
+          if (["cloudBots", "computers", "storage"].includes(key)) highlights.append(row);
+          else perks.append(row);
         }
         perks.append(perkRow(t("本机 Bot", "Local Bots"), t("不限、不扣积分", "Unlimited, no credits")));
-        card.append(perks);
+        details.append(perks);
+        card.append(highlights, details);
         return card;
       }),
     );
+    updateEstimates();
+  }
+
+  function updateEstimates() {
+    if (!pricing) return;
+    const m = media();
+    document.querySelectorAll("#plans .plan").forEach((card, index) => {
+      const plan = pricing.plans[index];
+      const images = num(Math.floor(plan.credits / m.perImage));
+      const videos = num(Math.floor(plan.credits / (m.perSecond * VIDEO_SECONDS)));
+      card.querySelector(".plan-image b").textContent = pick(plan.image) +
+        (m.perImage ? t(` · 约 ${images} 张`, ` · about ${images}`) : "");
+      card.querySelector(".plan-video b").textContent = pick(plan.video) +
+        (m.perSecond ? t(` · 约 ${videos} 条 ${VIDEO_SECONDS} 秒视频`, ` · about ${videos} × ${VIDEO_SECONDS}s`) : "");
+    });
+    updatePlanNote(m);
+  }
+
+  function updatePlanNote(m) {
     const note = $("#plans-note");
     if (note) {
       note.textContent = m.imageName
@@ -263,25 +281,30 @@
             `Monthly credits last one month; yearly plans are paid once and credits arrive monthly. Image and video counts use the current default models (${m.imageName}, ${m.videoName}) and are estimates.`,
           )
         : t("月度积分 1 个月有效，年付一次付清、积分按月到账。", "Monthly credits last one month; yearly plans are paid once and credits arrive monthly.");
-      note.textContent += " " + t("会员积分仅限 Octop 使用", "Membership credits are for Octop Bot only");
+      note.textContent += " " + t("会员积分仅限 Octop 使用。", "Membership credits are for Octop Bot only.");
+      if (cycle === "year") note.textContent += " " + t("年付升档请联系客服。", "Contact support to upgrade a yearly plan.");
     }
-    document.querySelectorAll("#cycle button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.cycle === cycle)));
   }
 
   /* ---------- packs ---------- */
   function renderPacks() {
     const box = $("#packs");
     if (!box || !pricing) return;
-    box.replaceChildren(
+    if (!box.childElementCount) box.append(
       ...pricing.packs.map((yuan) => {
         const b = node("button", "pack");
         b.type = "button";
         b.dataset.yuan = String(yuan);
-        b.setAttribute("aria-pressed", String(!customAmount && yuan === pack));
-        b.append(node("b", "", money(yuan)), node("span", "", "✦ " + t(`${num(yuan * pricing.creditsPerYuan)} 积分`, `${num(yuan * pricing.creditsPerYuan)} credits`)));
+        b.append(node("b", "", money(yuan)), node("span"));
         return b;
       }),
     );
+    for (const button of box.children) {
+      const amount = Number(button.dataset.yuan);
+      const credits = num(amount * pricing.creditsPerYuan);
+      button.setAttribute("aria-pressed", String(!customAmount && amount === pack));
+      button.querySelector("span").textContent = t(`${credits} 积分`, `${credits} credits`);
+    }
     const { min, max } = pricing.customPack;
     const custom = Number(customAmount);
     const customOk = customAmount !== "" && Number.isInteger(custom) && custom >= min && custom <= max;
@@ -316,6 +339,7 @@
   /* ---------- unit prices and model price table ---------- */
   let modelTab = "text";
   function renderRates() {
+    if (!ratesVisible) return;
     if (!pricing) return;
     const m = media();
     const r = pricing.rates;
@@ -330,7 +354,7 @@
           : "—",
       ],
       [t("云电脑", "Cloud computer"), t(`标准 ${r.computerStandardPerMinute} 积分/分钟，专业 ${r.computerProPerMinute} 积分/分钟`, `Standard ${r.computerStandardPerMinute}, Pro ${r.computerProPerMinute} credits per minute`)],
-      [t("云电脑磁盘", "Computer disk"), t(`${r.diskPerGbDay} 积分/GB·天`, `${r.diskPerGbDay} credits per GB per day`)],
+      [t("云电脑磁盘", "Computer disk"), t(`计费启用后为 ${r.diskPerGbDay} 积分/GB·天`, `When disk billing is enabled: ${r.diskPerGbDay} credits per GB per day`)],
     ];
     $("#rates").replaceChildren(
       ...rates.map(([name, text]) => {
@@ -410,25 +434,6 @@
 
   /* ---------- views: plans or packs ---------- */
   const VIEW_HASH = { plans: "", packs: "#credits", enterprise: "#enterprise" };
-  const segments = [$("#price-tabs"), $("#cycle")];
-  for (const group of segments) {
-    const indicator = node("span", "segment-indicator");
-    indicator.setAttribute("aria-hidden", "true");
-    group.prepend(indicator);
-  }
-  function positionIndicator(group) {
-    const active = group.querySelector('[aria-selected="true"], [aria-pressed="true"]');
-    if (!active || !active.offsetWidth) return;
-    const indicator = group.querySelector(".segment-indicator");
-    indicator.style.setProperty("--indicator-scale", active.offsetWidth);
-    indicator.style.transform = `translateX(${active.offsetLeft}px) scaleX(${active.offsetWidth})`;
-    if (!indicator.classList.contains("ready")) {
-      requestAnimationFrame(() => requestAnimationFrame(() => indicator.classList.add("ready")));
-    }
-  }
-  function positionIndicators() {
-    segments.forEach(positionIndicator);
-  }
   let currentView = null;
   function showView(view, animate = true) {
     const changed = currentView !== view;
@@ -442,12 +447,10 @@
       panel.hidden = name !== view;
       panel.classList.remove("pricing-enter");
       if (name === view && changed && animate) {
-        void panel.offsetWidth;
-        panel.classList.add("pricing-enter");
+          panel.classList.add("pricing-enter");
       }
     }
     currentView = view;
-    positionIndicators();
   }
 
   document.addEventListener("click", (e) => {
@@ -460,10 +463,12 @@
     if (c && cycle !== c.dataset.cycle) {
       cycle = c.dataset.cycle;
       document.querySelectorAll("#cycle button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.cycle === cycle)));
-      positionIndicator($("#cycle"));
-      renderPlans(true);
+      if (pricing) {
+        document.querySelectorAll("#plans .plan").forEach((card, index) => updateBilling(card, pricing.plans[index]));
+        updatePlanNote(media());
+      }
     }
-    const p = e.target.closest(".pack");
+    const p = e.target.closest("button.pack[data-yuan]");
     if (p) {
       pack = Number(p.dataset.yuan);
       customAmount = "";
@@ -481,15 +486,19 @@
       modelTab = m.dataset.tab;
       renderRates();
     }
-    if (e.target.closest("#pack-buy")) {
+    const checkout = e.target.closest('#pack-buy, [data-checkout="member"]');
+    if (checkout) {
       e.preventDefault();
-      if (!pricing?.packsOpen || !window.OctopAuth.config.checkoutEnabled || e.target.closest(".disabled")) return;
+      const membership = checkout.dataset.checkout === "member";
       const auth = window.OctopAuth;
-      if (!auth.requireLogin("/pricing.html#credits")) return;
-      checkoutBody(auth).then((body) => auth.api("/api/billing/recharge/checkout-link", { method: "POST", body })).then((data) => {
+      const open = membership ? pricing?.membershipOpen : pricing?.packsOpen;
+      if (!open || !auth.config.checkoutEnabled || checkout.disabled || checkout.classList.contains("disabled")) return;
+      if (!auth.requireLogin(membership ? "/pricing.html" : "/pricing.html#credits")) return;
+      checkoutBody(auth, membership).then((body) => auth.api("/api/billing/recharge/checkout-link", { method: "POST", body })).then((data) => {
         const url = new URL(data.url);
         if (url.origin !== "https://admin.lynxce.cn" || url.pathname !== "/recharge" || url.username || url.password) throw new Error("Invalid checkout URL");
-        url.searchParams.append("tab", "boost"); location.assign(url.href);
+        url.searchParams.set("tab", membership ? "member" : "boost");
+        location.assign(url.href);
       }).catch(() => { alert(t("无法打开收银台，请稍后重试。", "Unable to open checkout. Please try again.")); });
     }
     if (e.target.closest("a.disabled")) e.preventDefault();
@@ -497,8 +506,9 @@
   /* checkout-link takes site and returnUrl, plus either packageId (Lynxce's pack with the same
      price, from its octop_bot catalog) or amountYuan (custom amount, 10–5000), never both.
      Each is sent only once its switch is on; without them the cashier asks for the amount. */
-  async function checkoutBody(auth) {
+  async function checkoutBody(auth, membership) {
     const body = { site: "octopbot", returnUrl: "https://octop-bot.lynxce.cn/pay/result.html" };
+    if (membership) return body;
     const cfg = auth.config;
     const custom = Number(customAmount);
     if (customAmount) {
@@ -520,8 +530,8 @@
     customAmount = e.target.value.trim();
     renderPacks();
   });
-  $("#price-tabs").addEventListener("keydown", (e) => {
-    const buttons = [...$("#price-tabs").querySelectorAll('[role="tab"]')];
+  function switchWithKeyboard(e) {
+    const buttons = [...e.currentTarget.querySelectorAll("button")];
     const index = buttons.indexOf(e.target);
     if (index < 0) return;
     let next;
@@ -533,40 +543,72 @@
     e.preventDefault();
     buttons[next].focus();
     buttons[next].click();
-  });
+  }
+  $("#price-tabs").addEventListener("keydown", switchWithKeyboard);
+  $("#cycle").addEventListener("keydown", switchWithKeyboard);
   document.addEventListener("langchange", () => {
     renderAll();
-    positionIndicators();
   });
-  window.addEventListener("resize", positionIndicators);
-  document.fonts.ready.then(positionIndicators);
-  document.fonts.addEventListener("loadingdone", positionIndicators);
   window.addEventListener("hashchange", () => {
     const view = Object.keys(VIEW_HASH).find((name) => VIEW_HASH[name] === location.hash);
     if (view) showView(view);
   });
   showView(Object.keys(VIEW_HASH).find((name) => VIEW_HASH[name] === location.hash) || "plans", false);
-  window.OctopAuth.ready.then(async () => { await window.OctopAuth.redeemHash("recharge"); renderPacks(); });
+  window.OctopAuth.ready.then(async () => {
+    await window.OctopAuth.redeemHash("recharge");
+    if (pricing && window.OctopAuth.config.checkoutEnabled) renderPlans();
+    renderPacks();
+  });
 
   const getJson = (url, timeoutMs = 8000) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    return fetch(url, { cache: "no-cache", signal: ctrl.signal })
+    return fetch(url, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .finally(() => clearTimeout(timer));
   };
-  // Plans render as soon as the finalized prices arrive; image and video counts fill in when the
-  // model prices do (live, or the bundled copy if Lynxce is slow or unreachable).
-  getJson("data/pricing.json?v=2").then((plans) => {
-    pricing = plans;
-    renderAll();
-  });
-  getJson(CATALOG_URL, 5000)
-    .then((body) => (body && body.code === 0 && body.data ? body.data : Promise.reject("bad")))
-    .catch(() => getJson("data/pricing-catalog.json").then((body) => body.data))
-    .then((models) => {
-      catalog = models;
+  async function loadPlans() {
+    try {
+      pricing = await getJson("data/pricing.json?v=2");
       renderAll();
-    })
-    .catch(() => {});
+    } catch {
+      const retry = node("button", "btn btn-ghost", t("重新加载套餐", "Reload plans"));
+      retry.type = "button";
+      retry.addEventListener("click", loadPlans, { once: true });
+      $("#plans").replaceChildren(retry);
+    }
+  }
+
+  loadPlans();
+  // The local snapshot supplies estimates without waiting for the cross-origin catalog.
+  const localCatalog = getJson("data/pricing-catalog.json").then((body) => {
+    catalog = body.data;
+    updateEstimates();
+  }).catch(() => {});
+
+  async function showRates() {
+    ratesVisible = true;
+    await localCatalog;
+    renderRates();
+    try {
+      const live = await getJson(CATALOG_URL, 5000);
+      if (live?.code === 0 && live.data && JSON.stringify(live.data) !== JSON.stringify(catalog)) {
+        catalog = live.data;
+        updateEstimates();
+        renderRates();
+      }
+    } catch {
+      // The local snapshot remains available.
+    }
+  }
+  if ("IntersectionObserver" in window) {
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      observer.disconnect();
+      showRates();
+    }, { rootMargin: "320px" });
+    observer.observe($("#rates"));
+  } else {
+    showRates();
+  }
 })();

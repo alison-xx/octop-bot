@@ -70,6 +70,20 @@ class Manager:
         return None
 
 
+def _screen_server() -> SimpleNamespace:
+    return SimpleNamespace(
+        _started=True,
+        services=SimpleNamespace(
+            user_repo=SimpleNamespace(
+                get=lambda _: SimpleNamespace(
+                    disabled=False, session_version=0, password_version=0, mfa_version=0
+                )
+            ),
+            agent_repo=SimpleNamespace(get=lambda _: SimpleNamespace(user_id=7)),
+        ),
+    )
+
+
 @pytest.fixture
 def relay(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, Manager, Upstream]:
     import websockets
@@ -83,13 +97,20 @@ def relay(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, Manager, Upstrea
     app = FastAPI()
     app.include_router(bot_computers.router, prefix="/api/octop-bot")
     app.include_router(bot_computers.session_router, prefix="/api/octop-bot")
-    app.state.octop_server = SimpleNamespace(services=None, _started=True)
+    app.state.octop_server = _screen_server()
     return TestClient(app), manager, upstream
 
 
+def binding(agent_id: str = "bot-a") -> bot_computers.StreamSession:
+    return bot_computers.StreamSession(7, 0, 0, 0, time.time() + 3600, agent_id)
+
+
 def ticket(agent_id: str = "bot-a", *, ttl: float = 60) -> str:
-    value, session = bot_computers._screen_sessions.issue(agent_id, 7, "path")
-    bot_computers._screen_sessions.tickets[value] = (agent_id, session, time.monotonic() + ttl)
+    from dataclasses import replace
+
+    registry = bot_computers._screen_sessions
+    value, _ = registry.issue(agent_id, binding(agent_id), "path")
+    registry.tickets[value] = replace(registry.tickets[value], expires=time.monotonic() + ttl)
     return value
 
 
@@ -194,7 +215,8 @@ async def test_cancel_waits_for_handback_and_reaps_relay_tasks(
     monkeypatch.setattr(websockets, "connect", lambda *a, **k: upstream)
 
     class Socket:
-        app = SimpleNamespace(state=SimpleNamespace(octop_server=SimpleNamespace(services=None)))
+        state = SimpleNamespace()
+        app = SimpleNamespace(state=SimpleNamespace(octop_server=_screen_server()))
 
         async def accept(self, **kwargs: Any) -> None:
             pass
@@ -267,7 +289,8 @@ async def test_cancel_during_initial_read_hands_back(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(bot_computers, "computer_manager", lambda services: manager)
 
     class Socket:
-        app = SimpleNamespace(state=SimpleNamespace(octop_server=SimpleNamespace(services=None)))
+        state = SimpleNamespace()
+        app = SimpleNamespace(state=SimpleNamespace(octop_server=_screen_server()))
 
         async def accept(self, **kwargs: Any) -> None:
             pass
@@ -337,7 +360,7 @@ def test_desktop_pastes_and_reads_only_while_its_screen_is_open(
     monkeypatch.setattr(manager, "paste_text", paste, raising=False)
     monkeypatch.setattr(manager, "read_clipboard", read, raising=False)
     registry = bot_computers._screen_sessions
-    single_use, session = registry.issue("bot-a", 7, "header")
+    single_use, session = registry.issue("bot-a", binding(), "header")
     headers = {"X-Octop-Screen-Session": session}
     assert registry.lookup(session, "header") is None
     with client.websocket_connect(path("bot-a", single_use)):
@@ -356,21 +379,22 @@ def test_desktop_pastes_and_reads_only_while_its_screen_is_open(
 
 
 def test_screen_heartbeats_cannot_extend_absolute_lifetime(monkeypatch: pytest.MonkeyPatch) -> None:
-    from octop.infra.cloud.computers import screen_sessions
+    from octop.api.common import screen_sessions
 
     now = 100.0
     monkeypatch.setattr(screen_sessions.time, "monotonic", lambda: now)
     registry = screen_sessions.ScreenSessions()
-    single_use, session = registry.issue("bot-a", 7, "header")
-    assert registry.connect(single_use, "bot-a") == (
+    single_use, session = registry.issue("bot-a", binding(), "header")
+    assert registry.consume(single_use, "bot-a") == (
         session,
-        7,
-        now + screen_sessions.ABSOLUTE_SECONDS,
+        registry.sessions[session],
     )
+    registry.sessions[session].connected = True
+    assert registry.sessions[session].expires_at == now + screen_sessions.ABSOLUTE_SECONDS
     for _ in range(screen_sessions.ABSOLUTE_SECONDS // 30 - 1):
         now += 30
         registry.refresh(session)
-        assert registry.lookup(session, "header") == ("bot-a", 7)
+        assert registry.lookup(session, "header") is registry.sessions[session]
     now += 30
     registry.refresh(session)
     assert registry.lookup(session, "header") is None
@@ -380,7 +404,7 @@ def test_open_screen_hands_back_when_issued_lifetime_ends(relay: Any) -> None:
     client, manager, _ = relay
     manager.takeover = True
     registry = bot_computers._screen_sessions
-    ticket_id, session = registry.issue("bot-a", 7, "header")
+    ticket_id, session = registry.issue("bot-a", binding(), "header")
     # Bound the already-issued ticket's remaining lifetime for this ordinary open/close run.
     registry.sessions[session].expires_at = time.monotonic() + 1
     with client.websocket_connect(path("bot-a", ticket_id)) as ws:

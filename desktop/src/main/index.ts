@@ -1107,6 +1107,10 @@ function openDeepLink(url: string): void {
     return;
   }
   revealAppWindow();
+  if (path === BOT_HOME_PATH) {
+    win.webContents.send(IPC_CHANNELS.botRechargeReturn);
+    return;
+  }
   const theme = resolveWindowChromeTheme(settingsStore.load().themeBackground);
   void win.loadURL(dashboardOrigin ? dashboardEntryUrl(theme.scheme ?? theme.mode, origin, path) : origin + path);
 }
