@@ -49,6 +49,26 @@ data class ServerSession(
     val attachmentCacheId: String? = null,
 )
 
+/** Upgrade the encrypted row inside one DataStore edit, sharing its ordering with login and logout. */
+internal suspend fun restoreServerSession(
+    store: DataStore<Preferences>,
+    key: Preferences.Key<String>,
+    open: (String) -> String?,
+    seal: (String) -> String,
+): ServerSession? {
+    var restored: ServerSession? = null
+    store.edit { prefs ->
+        val plain = prefs[key]?.let(open) ?: return@edit
+        val session = Http.json.decodeFromString(ServerSession.serializer(), plain)
+        restored = if (session.attachmentCacheId == null) {
+            val upgraded = session.copy(attachmentCacheId = UUID.randomUUID().toString())
+            prefs[key] = seal(Http.json.encodeToString(ServerSession.serializer(), upgraded))
+            upgraded
+        } else session
+    }
+    return restored
+}
+
 data class UserSettings(
     val readAloud: Boolean = false,
     val notifications: Boolean = true,
@@ -153,7 +173,7 @@ class AppStore(context: Context, private val box: SecretBox = SecretBox()) {
         seal(Keys.lynxce, grant?.let { Http.json.encodeToString(LynxceGrant.serializer(), it) })
 
     suspend fun serverSession(): ServerSession? =
-        sealed(Keys.server)?.let { Http.json.decodeFromString(ServerSession.serializer(), it) }
+        restoreServerSession(store, Keys.server, box::open, box::seal)
     suspend fun setServerSession(session: ServerSession?) =
         seal(Keys.server, session?.let { Http.json.encodeToString(ServerSession.serializer(), it) })
 

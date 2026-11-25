@@ -66,7 +66,7 @@ class ServerBackend(
     /** The full server address, e.g. `http://10.0.2.2:18790`. */
     val baseUrl: String get() = session.baseUrl
     // Older encrypted sessions have no cache owner. Give the restored session a fresh namespace.
-    val attachmentScope = session.baseUrl + "\u0000" + (session.attachmentCacheId ?: UUID.randomUUID().toString())
+    val attachmentScope = session.baseUrl + "\u0000" + requireNotNull(session.attachmentCacheId)
     /** Octop Bot cloud: Lynxce sign-in, and the server keeps the Lynxce wallet. */
     val isCloud: Boolean get() = session.cloud
     /** host, plus the port when it isn't the scheme's default (e.g. `10.0.2.2:18790`). */
