@@ -165,18 +165,19 @@ final class ServerBackend: ChatBackend {
         ((user?["display_name"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Re-read the display name: it may change on the server, and older sign-ins saved the username.
-    /// Returns whether it changed.
-    @discardableResult
-    func refreshProfile() async -> Bool {
-        guard let me = try? await json(.get, "/api/auth/me") as? [String: Any] else { return false }
-        let name = Self.displayName(me)
-        guard name != session.displayName else { return false }
-        var next = session
-        next.displayName = name
-        guard Keychain.replace(session, with: next, for: Self.sessionKey) else { return false }
-        session = next
-        return true
+    func accountPhoto() async -> AccountPhoto? {
+        if isCloud, let profile = try? await json(.get, "/api/octop-bot/cloud/account") as? [String: Any] {
+            return AccountPhoto.cloud(profile)
+        }
+        guard let me = try? await json(.get, "/api/auth/me") as? [String: Any] else { return nil }
+        var photo = AccountPhoto(name: Self.displayName(me), url: me["avatar_url"] as? String)
+        if let local = AccountPhoto.localAvatar(me),
+           let request = try? HTTP.request(url(local.path, query: local.query), method: .get, headers: authHeaders),
+           let (bytes, response) = try? await HTTP.session.data(for: request, delegate: NoAPIRedirect()),
+           (response as? HTTPURLResponse)?.statusCode == 200 {
+            photo.localImage = bytes
+        }
+        return photo
     }
 
     private static func anonymous(_ base: URL, _ method: HTTPMethod, _ path: String, json: Any? = nil) async throws -> [String: Any] {

@@ -111,6 +111,9 @@ class LynxceBackend(
 
     private fun sessionPath(id: String) = "/api/user/web-chat-sessions/" + java.net.URLEncoder.encode(id, "UTF-8")
 
+    override suspend fun accountPhoto(): AccountPhoto? =
+        call("GET", "/api/user/profile").asObject()?.let { AccountPhoto.direct(it, grant.accountId) }
+
     // Bots and conversations
 
     override suspend fun conversations(bot: BotProfile): List<ConversationSummary> {

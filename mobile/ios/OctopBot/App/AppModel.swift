@@ -24,6 +24,9 @@ final class AppModel {
     var models: [ModelOption] = []
     /// The signed-in person's display name (never an internal username or account id).
     private(set) var accountName = ""
+    private(set) var accountPhotoURL: URL?
+    private(set) var localAccountImage: Data?
+    private(set) var photoRefresh: Task<Void, Never>?
 
     /// The Lynxce wallet balance as shown: loading, failed (retry), or the number of credits.
     enum Balance: Equatable { case loading, failed, value(Double) }
@@ -135,7 +138,7 @@ final class AppModel {
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "demoAccount") { return .demo }
         #endif
-        return AccountSummary(name: accountName, credits: credits, signupExpiryDay: creditAccount?.signupExpiryDay)
+        return AccountSummary(name: accountName, avatarURL: accountPhotoURL, localImage: localAccountImage, credits: credits, signupExpiryDay: creditAccount?.signupExpiryDay)
     }
 
     var credits: Double? {
@@ -174,6 +177,7 @@ final class AppModel {
 
     func use(_ backend: ChatBackend) async {
         CreditStore.shared.clearCatalog()
+        photoRefresh?.cancel()
         self.backend = backend
         CreditStore.shared.start(
             account: { [weak self] in self?.creditAccount },
@@ -181,6 +185,8 @@ final class AppModel {
         )
         sessions = [:]
         accountName = backend.accountName
+        accountPhotoURL = nil
+        localAccountImage = nil
         signedOutNotice = nil
         balance = creditAccount == nil ? nil : .loading
         walletAccount = nil
@@ -269,6 +275,13 @@ final class AppModel {
 
     func refresh() async {
         guard let backend else { return }
+        photoRefresh?.cancel()
+        photoRefresh = Task { [weak self] in
+            guard let photo = await backend.accountPhoto(), !Task.isCancelled, let self, self.backend === backend else { return }
+            accountName = photo.name ?? backend.accountName
+            accountPhotoURL = photo.url
+            localAccountImage = photo.localImage
+        }
         isLoading = true
         defer { if self.backend === backend { isLoading = false } }
         do {
@@ -290,9 +303,6 @@ final class AppModel {
             let refreshedGroups = try? await server.groups()
             guard self.backend === backend else { return }
             groups = refreshedGroups ?? groups
-            await server.refreshProfile()
-            guard self.backend === backend else { return }
-            accountName = server.accountName
         }
         let refreshedModels = try? await backend.models()
         guard self.backend === backend else { return }
@@ -429,6 +439,8 @@ final class AppModel {
 
     func signOut() async {
         CreditStore.shared.clearCatalog()
+        photoRefresh?.cancel()
+        photoRefresh = nil
         for session in sessions.values { session.cancel() }
         sessions = [:]
         let leaving = backend
@@ -441,6 +453,8 @@ final class AppModel {
         walletAccount = nil
         lowBalanceDismissed = false
         accountName = ""
+        accountPhotoURL = nil
+        localAccountImage = nil
         // Previews belong to the account that wrote them.
         previews = [:]
         unread = []
