@@ -10,7 +10,7 @@ import tempfile
 import time
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
-from typing import Annotated, Any, BinaryIO, Literal
+from typing import Annotated, Any, Literal, Protocol
 
 import websockets
 from fastapi import APIRouter, Depends, Header, Request, Response, WebSocket
@@ -415,7 +415,13 @@ class FileWritten(BaseModel):
 _transfer_counts: dict[int, int] = {}
 
 
-async def _transfer_spool(remote: Remote) -> AsyncIterator[BinaryIO]:
+class _BinarySpool(Protocol):
+    def read(self, size: int, /) -> bytes: ...
+    def write(self, data: bytes, /) -> int: ...
+    def seek(self, offset: int, /) -> int: ...
+
+
+async def _transfer_spool(remote: Remote) -> AsyncIterator[_BinarySpool]:
     uid = remote.user_id
     active = _transfer_counts.get(uid, 0)
     if active >= 2:
@@ -430,7 +436,7 @@ async def _transfer_spool(remote: Remote) -> AsyncIterator[BinaryIO]:
             del _transfer_counts[uid]
 
 
-TransferSpool = Annotated[BinaryIO, Depends(_transfer_spool)]
+TransferSpool = Annotated[_BinarySpool, Depends(_transfer_spool)]
 
 
 @router.put("/computers/{agent_id}/files", summary="Write a file to my Bot's cloud workspace")
