@@ -934,8 +934,9 @@ final class CreditTests: XCTestCase {
         XCTAssertEqual(refused?.code, "apple_sandbox_rejected")
         XCTAssertTrue(CreditStore.isFinalRefusal(try XCTUnwrap(refused)))
         // Bought while another Lynxce account was signed in: stays queued for that account.
-        let otherAccount = APIError(kind: .rejected, status: 403, message: nil, code: "apple_account_token_mismatch")
-        XCTAssertFalse(CreditStore.isFinalRefusal(otherAccount))
+        for code in ["apple_account_token_mismatch", "apple_transaction_owned_by_other_account"] {
+            XCTAssertFalse(CreditStore.isFinalRefusal(APIError(kind: .rejected, status: 403, message: nil, code: code)))
+        }
         let noToken = APIError(kind: .rejected, status: 409, message: nil, code: "apple_account_token_missing")
         XCTAssertTrue(CreditStore.isFinalRefusal(noToken))
         // Not configured yet, or offline: tried again later.
