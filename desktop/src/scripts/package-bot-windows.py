@@ -21,7 +21,7 @@ import tomllib
 import zipfile
 from pathlib import Path
 
-from bot_harness_wheel import SHA256, append_requirement
+from bot_harness_wheel import REQUIREMENT, install_harness
 
 SHELL = Path(__file__).resolve().parents[1]
 REPO = SHELL.parent.parent
@@ -79,7 +79,6 @@ def prepare_dependencies(stage: Path, uv: str) -> None:
     for extra in EXTRAS:
         args.extend(["--extra", extra])
     run([*args, "-o", reqs], stdout=subprocess.DEVNULL)
-    append_requirement(reqs)
     packages = portable / "packages"
     install = [
         uv,
@@ -99,6 +98,7 @@ def prepare_dependencies(stage: Path, uv: str) -> None:
     offline = subprocess.run([*install, "--offline"], check=False)
     if offline.returncode:
         run([*install, "--default-index", "https://pypi.org/simple"])
+    install_harness(uv, python, target=packages)
     for dll in (packages / "pywin32_system32").glob("*.dll"):
         shutil.copy2(dll, python.parent / dll.name)
     run([python, "-I", "-B", PORTABLE / "prune_packages.py", packages])
@@ -283,7 +283,7 @@ def main() -> None:
         version,
     )
     cache_key = hashlib.sha256(
-        (REPO / "uv.lock").read_bytes() + (PYTHON_VERSION + str(EXTRAS) + SHA256).encode()
+        (REPO / "uv.lock").read_bytes() + (PYTHON_VERSION + str(EXTRAS) + REQUIREMENT).encode()
     ).hexdigest()[:12]
     stage = SHELL / ".dev-runtime" / "bot-windows" / cache_key
     prepare_dependencies(stage, uv)
