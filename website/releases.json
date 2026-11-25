@@ -4,6 +4,58 @@
   "hidden": [],
   "releases": [
     {
+      "version": "1.0.7",
+      "channel": "beta",
+      "date": "2026-11-26",
+      "tag": "octop-bot-v1.0.7",
+      "notes": {
+        "zh": [
+          "本次测试版适用于 Apple 芯片 Mac 和 NAS。自托管可使用 nas-1.0.7 镜像（amd64 或 arm64）；飞牛用户可从本版发行页下载 Docker 版或对应架构的原生 FPK。",
+          "在配套云服务上，可以为 Mac 上的本机 Bot 选择云电脑，看它工作、接管键盘和鼠标，再把控制权交还给 Bot。对话记录和模型设置仍由 Mac 管理。在灵策托管服务上，这些功能随服务端更新开放。",
+          "本机 Bot 与云电脑互传文件前会请你确认。你接管期间，Bot 会暂停操作这台云电脑。",
+          "修复了 Mac 首次设置时让安装向导自动生成密码，偶尔无法创建本机账号的问题。",
+          "将较长的 Bot 群聊从 Mac 迁到支持新版导入的云服务时，记录会分批传输。中断后重试，可以从上次已确认的位置继续。",
+          "在另一台设备登录同一账号，可以继续同一个云端会话，也可以往前翻阅较早的消息。",
+          "云电脑计费支持按桌面设备授权。设备被移除、被强制退出或授权到期后，再次使用时需要重新授权。",
+          "服务端增加了旧手机会话恢复支持。曾用 1.0.0 手机端直连灵策的用户，需要使用支持恢复的手机客户端，在配套云服务上重新验证同一账号，才能找回当时完整保存在灵策的普通会话。",
+          "Bot 在云电脑上检查本次交付的 Word、Excel 或 PowerPoint 修订稿时，会核对渲染后的页数，并生成首页预览。"
+        ],
+        "en": [
+          "This beta is available for Apple silicon Macs and NAS. For self-hosting, use the nas-1.0.7 image for amd64 or arm64. On fnOS, get the Docker-based FPK or the native FPK for your architecture from the release page.",
+          "With a compatible server, you can choose a cloud computer for a local Bot on your Mac, watch it work, take over the keyboard and mouse, and hand control back. Your Mac still manages your chat history and model settings. These features become available on the Lynxce hosted service as its server update rolls out.",
+          "Octop asks for confirmation before transferring files between your local Bot and its cloud computer. While you have control, the Bot pauses its actions on that computer.",
+          "Fixed an occasional failure to create a local account when the Mac setup assistant generated the password.",
+          "When you move a long Bot group chat from your Mac to a server that supports the new import, messages transfer in batches. If interrupted, retry to continue from the last confirmed batch.",
+          "Sign in to the same account on another device to continue a cloud conversation or read earlier messages.",
+          "Cloud computer billing supports authorization per desktop device. Authorize the device again if it is removed, signed out remotely, or its authorization expires.",
+          "The server adds support for restoring older mobile chats. If you connected directly to Lynxce with the 1.0.0 mobile app, use a compatible mobile client and server and verify the same account again to restore ordinary chats that were fully saved in Lynxce.",
+          "When the Bot checks a revised Word, Excel, or PowerPoint file on its cloud computer, it opens the version being delivered, counts the rendered pages, and creates a first-page preview."
+        ]
+      },
+      "assets": [
+        {
+          "platform": "darwin",
+          "arch": "arm64",
+          "kind": "dmg",
+          "name": "Octop-Bot-1.0.7-mac-arm64.dmg",
+          "sha256": "abd7efbbc7aea97daa3c6e179d4b737aef86eac1dcdda77bc1bfca8bb4a7f926",
+          "size": 356951138,
+          "url": "https://dl.lynxce.cn/releases/octop-bot/1.0.7/Octop-Bot-1.0.7-mac-arm64.dmg"
+        },
+        {
+          "platform": "nas",
+          "kind": "fpk",
+          "name": "Octop-Bot-fnos-1.0.7.fpk",
+          "sha256": "b789d9cda7b6a890962cc48be7f3c9b7c46da37c28e737e8b882580b58b2bbcb",
+          "size": 334611,
+          "url": "https://dl.lynxce.cn/releases/octop-bot/1.0.7/Octop-Bot-fnos-1.0.7.fpk"
+        }
+      ],
+      "nas": {
+        "image": "ghcr.io/alison-xx/octop-bot:nas-1.0.7"
+      }
+    },
+    {
       "version": "1.0.6",
       "channel": "beta",
       "date": "2026-11-25",
