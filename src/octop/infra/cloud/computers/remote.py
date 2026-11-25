@@ -98,7 +98,7 @@ class RemoteCredentials:
                 response = await exchange(grant.access_token)
             if (
                 response.status_code == 409
-                and lynxce_cloud._error_code(response) == "BOT_CLOUD_SESSION_REQUIRED"
+                and lynxce_cloud._response_failure(response).code == "BOT_CLOUD_SESSION_REQUIRED"
             ):
                 # Older Lynxce installations lack the code issuer. Keep interactive
                 # verification available during the staged rollout.
@@ -116,7 +116,8 @@ class RemoteCredentials:
                 response = await exchange(grant.access_token, lynxce_cloud._token(issued, "code"))
                 if response.status_code == 422 or (
                     response.status_code == 409
-                    and lynxce_cloud._error_code(response) == "BOT_CLOUD_SESSION_REQUIRED"
+                    and lynxce_cloud._response_failure(response).code
+                    == "BOT_CLOUD_SESSION_REQUIRED"
                 ):
                     raise OctopError.localized(ErrorCode.BOT_CLOUD_REVERIFY_REQUIRED)
             if response.status_code in (401, 403):
@@ -168,7 +169,7 @@ def _owned(services: SharedServices, user_id: int, agent_id: str) -> AgentRow:
 
 def _failure(response: httpx.Response) -> OctopError:
     # Only forward recognized error codes. Upstream messages can contain submitted data.
-    upstream_code = lynxce_cloud._error_code(response)
+    upstream_code = lynxce_cloud._response_failure(response).code
     if response.status_code == 409 and upstream_code == "BOT_CLOUD_SESSION_REQUIRED":
         return OctopError.localized(ErrorCode.BOT_CLOUD_REVERIFY_REQUIRED)
     if response.status_code == 401:

@@ -1,3 +1,4 @@
+import BotPlacement from "./BotPlacement";
 import { useEffect, useRef, useState } from "react";
 import { Button, Drawer, Grid } from "antd";
 import {
@@ -360,6 +361,13 @@ export default function BotDetailsPanel({
               {t("cloudComputer.section")}
             </h4>
             <CloudComputerCard key={bot.agent_id} botId={bot.agent_id} />
+            {!bot.is_private && (
+              <BotPlacement
+                key={`placement-${bot.agent_id}`}
+                bot={bot.agent_id}
+                defaults
+              />
+            )}
           </section>
         )}
         <section className={styles.block}>

@@ -14,7 +14,9 @@ from octop.api.routers.chat.turn import (
     prepare_dashboard_turn,
     turn_has_content,
 )
+from octop.i18n import tr
 from octop.infra.bridge.peer_turn import PeerTurnRejected, bridge_turn_ws_payload
+from octop.infra.utils.locale import locale_from_user_row
 
 
 @dataclass(frozen=True)
@@ -37,6 +39,10 @@ async def prepare_peer_dashboard_turn(
     ``inbound=None`` so the peer does not enqueue a second turn.
     """
     frame = UserTurnWsFrame.model_validate(bridge_turn_ws_payload(payload))
+    if frame.computer_placement == "local":
+        raise PeerTurnRejected(tr("octop_bot.device_private_chat", locale_from_user_row(user)))
+    # A relay cannot select a paired device or inherit the host Bot's local default.
+    frame.computer_placement = "cloud"
     turn = frame.to_turn_body()
     if not turn_has_content(turn):
         raise PeerTurnRejected("empty message")

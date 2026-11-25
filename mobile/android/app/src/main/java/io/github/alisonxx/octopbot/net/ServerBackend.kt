@@ -49,10 +49,10 @@ import java.util.concurrent.ConcurrentHashMap
 
 /** A self-hosted Octop Bot server (NAS / Docker web build): its Bots, tools, memory and groups. */
 class ServerBackend(
-    session: ServerSession,
+    initialSession: ServerSession,
     private val store: AppStore,
 ) : ChatBackend, CreditAccount {
-    @Volatile private var session = session
+    @Volatile private var session = initialSession
     override var signupCredits: Double? = null
     override val signupExpiryDay get() = session.signupExpiryDay
     private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -339,6 +339,25 @@ class ServerBackend(
         val wsPath = ticket?.str("ws_path")
         return wsPath?.let { ServerProtocol.screenPage(baseUrl, botId, it, ticket?.str("session"), control) }
             ?: throw ApiException.badResponse()
+    }
+
+    suspend fun keepScreenBound(page: String, botId: String) {
+        val handle = page.toHttpUrl().queryParameter("session") ?: return
+        var boundToken: String? = null
+        while (true) {
+            kotlinx.coroutines.delay(3_000)
+            val current = session.token
+            if (current == boundToken) continue
+            try {
+                raw("POST", "/api/octop-bot/computers/" + segment(botId) + "/screen/renew",
+                    body = Http.body(buildJsonObject { put("session", handle) }))
+                boundToken = current
+            } catch (error: ApiException) {
+                if (error.status in setOf(401, 403, 404)) return
+            } catch (_: java.io.IOException) {
+                // Retry on the next tick while this screen is open.
+            }
+        }
     }
 
     /** Octop Bot cloud: a short-lived object-store link for a file a Bot linked to. */

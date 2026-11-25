@@ -1,4 +1,3 @@
-import SafariServices
 import SwiftUI
 
 /// A Bot's cloud computer on Octop Bot cloud: is it running, and pause it to stop paying.
@@ -89,7 +88,7 @@ struct CloudComputerSection: View {
         }
         do {
             let url = try await server.screenURL(botId, control: status?.takeover == true)
-            FileOpener.present(SFSafariViewController(url: url))
+            FileOpener.present(UIHostingController(rootView: EditorComputerScreen(server: server, botId: botId, url: url)))
         } catch {
             screenError = error.localizedDescription
         }
@@ -121,6 +120,28 @@ struct CloudComputerSection: View {
             Haptics.success()
             status = paused
         }
+    }
+}
+
+private struct EditorComputerScreen: View {
+    let server: ServerBackend
+    let botId: String
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScreenWebView(url: url)
+                .navigationTitle("computer.header")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("common.done") { dismiss() }
+                            .accessibilityIdentifier("editorScreenDone")
+                    }
+                }
+        }
+        .task { await server.keepScreenBound(url, agent: botId, standalone: true) }
     }
 }
 
@@ -181,6 +202,24 @@ extension ServerBackend {
         return Self.screenPage(
             base: session.baseURL, agentId: agentId, ticket: ticket,
             screenSession: body?["session"] as? String, control: control)
+    }
+
+    func keepScreenBound(_ page: URL, agent: String, standalone: Bool = false) async {
+        guard let handle = URLComponents(url: page, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "session" })?.value else { return }
+        var boundToken: String? = nil
+        while !Task.isCancelled {
+            // The editor has no chat status polling to refresh the account credential.
+            do { try await Task.sleep(for: .seconds(standalone ? 20 : 3)) } catch { return }
+            let current = session.token
+            guard standalone || current != boundToken else { continue }
+            do {
+                _ = try await raw(.post, computerPath(agent) + "/screen/renew", json: ["session": handle])
+                boundToken = current
+            } catch let error as APIError where [401, 403, 404].contains(error.status) {
+                return
+            } catch { continue }
+        }
     }
 
     nonisolated static func screenPage(
