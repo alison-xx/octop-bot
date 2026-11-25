@@ -54,6 +54,20 @@ struct RootView: View {
                 OnboardingView().transition(.opacity)
             case .ready:
                 HomeView().transition(.opacity)
+                    .overlay(alignment: .top) {
+                        if let notice = model.signupNotice {
+                            Text(verbatim: notice)
+                                .font(.callout)
+                                .padding()
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                .padding(.horizontal)
+                                .task(id: notice) {
+                                    UIAccessibility.post(notification: .announcement, argument: notice)
+                                    try? await Task.sleep(for: .seconds(5))
+                                    if !Task.isCancelled { model.signupNotice = nil }
+                                }
+                        }
+                    }
             }
         }
         .animation(.easeOut(duration: 0.35), value: model.phase)

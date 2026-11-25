@@ -9,6 +9,7 @@ final class LynxceBackend: ChatBackend {
         var displayName: String?
         var accessToken: String
         var refreshToken: String
+        var signupExpiryDay: String? = nil
     }
 
     static let origin = URL(string: "https://api.lynxce.cn")!
@@ -17,6 +18,8 @@ final class LynxceBackend: ChatBackend {
     private static let grantKey = "lynxce.grant"
 
     private(set) var grant: Grant
+    var signupCredits: Double?
+    var signupExpiryDay: String? { grant.signupExpiryDay }
     private let bots: LocalBots
     private var refreshing: Task<Grant, Error>?
 
@@ -106,9 +109,11 @@ final class LynxceBackend: ChatBackend {
             let access = body["accessToken"] as? String,
             let refresh = body["refreshToken"] as? String
         else { throw APIError(kind: .server, status: 502, message: nil) }
-        let grant = Grant(accountId: id, displayName: user["displayName"] as? String, accessToken: access, refreshToken: refresh)
+        let grant = Grant(accountId: id, displayName: user["displayName"] as? String, accessToken: access, refreshToken: refresh, signupExpiryDay: signupExpiryDayUTC(body))
         Keychain.setCodable(grant, for: grantKey)
-        return LynxceBackend(grant: grant)
+        let backend = LynxceBackend(grant: grant)
+        backend.signupCredits = newSignupCredits(body)
+        return backend
     }
 
     // MARK: Transport

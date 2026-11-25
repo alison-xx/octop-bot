@@ -8,6 +8,7 @@ final class ServerBackend: ChatBackend {
         var displayName: String
         /// Octop Bot cloud (bot.lynxce.cn): signed in with Lynxce, which it keeps for the wallet.
         var cloud: Bool?
+        var signupExpiryDay: String? = nil
     }
 
     /// Octop Bot cloud, run by Lynxce.
@@ -16,6 +17,8 @@ final class ServerBackend: ChatBackend {
 
     private static let sessionKey = "server.session"
     private(set) var session: Session
+    var signupCredits: Double?
+    var signupExpiryDay: String? { session.signupExpiryDay }
     private var voice: (stt: Bool, tts: Bool)?
     private var sockets: [String: URLSessionWebSocketTask] = [:]
 
@@ -150,9 +153,12 @@ final class ServerBackend: ChatBackend {
         // Never the username (`sso_…`, `owner`): with no display name the UI shows a generic name.
         let name = displayName(user)
         // Octop Bot cloud says so in its sign-in response; it then also serves the Lynxce wallet.
-        let session = Session(baseURL: base, token: token, displayName: name, cloud: body["cloud"] as? Bool == true ? true : nil)
+        let session = Session(baseURL: base, token: token, displayName: name, cloud: body["cloud"] as? Bool == true ? true : nil,
+                              signupExpiryDay: body["cloud"] as? Bool == true ? signupExpiryDayUTC(body) : nil)
         Keychain.setCodable(session, for: sessionKey)
-        return ServerBackend(session: session)
+        let backend = ServerBackend(session: session)
+        backend.signupCredits = backend.isCloud ? newSignupCredits(body) : nil
+        return backend
     }
 
     static func displayName(_ user: [String: Any]?) -> String {
