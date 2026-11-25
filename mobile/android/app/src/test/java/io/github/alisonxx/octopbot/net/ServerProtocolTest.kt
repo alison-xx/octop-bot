@@ -67,6 +67,26 @@ class ServerProtocolTest {
         assertTrue(turn.hasCommittedReply(listOf(previous, savedUser, partial.copy(id = "saved-reply", text = "prefix and complete response"))))
     }
 
+    @Test fun interruptedDecisionCanFinishInPlaceWithoutAStoredAnswerBubble() {
+        val baseline = io.github.alisonxx.octopbot.model.ChatMessage("saved", MessageRole.Assistant, "Question")
+        val partial = baseline.copy(id = "live", text = "The ans", status = MessageStatus.Streaming)
+        val turn = io.github.alisonxx.octopbot.app.ChatSession.ObservedTurn("run", baseline, mutableListOf(partial), ended = true, resumed = true)
+        assertFalse(turn.hasCommittedReply(listOf(baseline)))
+        assertTrue(turn.hasCommittedReply(listOf(baseline.copy(text = "Question\n\nThe answer"))))
+        assertTrue(turn.hasCommittedReply(listOf(baseline, baseline.copy(id = "new", text = "The answer"))))
+    }
+
+    @Test fun idleBeforeFirstTokenSettlesOnlyAfterHistoryRetries() {
+        val user = io.github.alisonxx.octopbot.model.ChatMessage("q", MessageRole.User, "question")
+        val empty = user.copy(id = "reply", role = MessageRole.Assistant, text = "", status = MessageStatus.Streaming)
+        val turn = io.github.alisonxx.octopbot.app.ChatSession.ObservedTurn("run", null, mutableListOf(user, empty), ended = true)
+        assertFalse(turn.hasCommittedReply(listOf(user)))
+        turn.lastHistoryRetry = true
+        assertTrue(turn.hasCommittedReply(listOf(user)))
+        turn.rows[1] = empty.copy(thinking = "already received")
+        assertFalse(turn.hasCommittedReply(listOf(user)))
+    }
+
     @Test fun historyPageOverlapRetainsNewestVersionAndOriginalOrder() {
         val old = Http.parse("""[{"id":"a"},{"history_seq":2,"content":"partial"}]""").asArray()!!
         val new = Http.parse("""[{"history_seq":2,"content":"finished"},{"id":"b"}]""").asArray()!!

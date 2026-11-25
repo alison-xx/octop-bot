@@ -554,13 +554,17 @@ final class ServerBackend: ChatBackend {
                         throw APIError.from(status: http.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data), details: HTTP.errorDetails(data))
                     }
                     var mapper = ServerFrameMapper(labels: toolLabels, endsOnDone: true)
+                    var complete = false
                     loop: for try await event in SSE.events(bytes) {
                         guard let frame = try? JSONSerialization.jsonObject(with: Data(event.data.utf8)) as? [String: Any] else { continue }
                         switch try mapper.map(frame) {
                         case .events(let events): events.forEach { continuation.yield($0) }
-                        case .finished: break loop
+                        case .finished:
+                            complete = true
+                            break loop
                         }
                     }
+                    guard complete else { throw APIError.network }
                     continuation.yield(.done)
                     continuation.finish()
                 } catch {

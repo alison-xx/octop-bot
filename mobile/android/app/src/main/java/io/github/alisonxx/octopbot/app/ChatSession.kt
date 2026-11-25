@@ -84,7 +84,7 @@ interface ChatHost {
 class ChatSession(private val botId: String, private val scope: CoroutineScope, private val host: ChatHost) {
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state
-    internal data class ObservedTurn(var id: String?, val anchor: ChatMessage?, val rows: MutableList<ChatMessage> = mutableListOf(), var ended: Boolean = false) {
+    internal data class ObservedTurn(var id: String?, val anchor: ChatMessage?, val rows: MutableList<ChatMessage> = mutableListOf(), var ended: Boolean = false, val resumed: Boolean = false, var lastHistoryRetry: Boolean = false) {
         fun committedTail(history: List<ChatMessage>): List<ChatMessage> {
             val previous = anchor ?: return history
             var at = history.indexOfLast { it.id == previous.id }
@@ -94,6 +94,14 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
 
         fun hasCommittedReply(history: List<ChatMessage>): Boolean {
             val tail = committedTail(history)
+            if (lastHistoryRetry && rows.none { it.role == MessageRole.Assistant &&
+                (it.text.isNotEmpty() || it.thinking.isNotEmpty() || it.tools.isNotEmpty() || it.attachments.isNotEmpty()) }) return true
+            if (resumed) {
+                val updated = anchor?.takeIf { it.role == MessageRole.Assistant }?.let { old -> history.lastOrNull { it.id == old.id } }
+                if (updated != null && anchor != null && (updated.text != anchor.text || updated.thinking != anchor.thinking ||
+                    updated.tools != anchor.tools || updated.attachments != anchor.attachments || updated.status != anchor.status)) return true
+                return tail.any { it.role == MessageRole.Assistant }
+            }
             val user = rows.firstOrNull { it.role == MessageRole.User } ?: return tail.any { it.role == MessageRole.Assistant }
             val at = tail.indexOfLast { it.id == user.id || (it.role == MessageRole.User && it.text == user.text) }
             if (at < 0) return anchor?.id == user.id && tail.any { it.role == MessageRole.Assistant }
@@ -243,6 +251,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
             if (current != null && (id == null || current.id == null || current.id == id)) {
                 if (id != null) current.id = id
                 current.ended = false
+                current.lastHistoryRetry = false
                 return current
             }
             if (current != null) {
@@ -255,6 +264,7 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
             observedTurn?.ended = true
             repeat(4) { attempt ->
                 if (_state.value.conversationId != thread || _state.value.streaming) return
+                observedTurn?.lastHistoryRetry = attempt == 3
                 loadMessages(summary)
                 if (observedTurn?.ended != true || attempt == 3) return
                 kotlinx.coroutines.delay(300)
@@ -481,12 +491,13 @@ class ChatSession(private val botId: String, private val scope: CoroutineScope, 
                 throw cancelled
             } catch (error: Throwable) {
                 val kind = (error as? ApiException)?.kind
-                if (token == run && kind == ApiException.Kind.Network && host.backend is ServerBackend) {
+                val disconnected = kind == ApiException.Kind.Network || (kind == null && error is java.io.IOException)
+                if (token == run && disconnected && host.backend is ServerBackend) {
                     val partial = _state.value.messages.lastOrNull { it.id == reply.id }
-                    if (partial != null && (turnId != null || partial.text.isNotEmpty() || partial.thinking.isNotEmpty())) {
-                        val rows = before.filter { it.role == MessageRole.User }.toMutableList()
+                    if (partial != null && (turnId != null || partial.text.isNotEmpty() || partial.thinking.isNotEmpty() || partial.tools.isNotEmpty() || partial.attachments.isNotEmpty())) {
+                        val rows = before.filter { !resumed && it.role == MessageRole.User }.toMutableList()
                         rows.add(partial)
-                        observedTurn = ObservedTurn(turnId, anchor, rows)
+                        observedTurn = ObservedTurn(turnId, anchor, rows, resumed = resumed)
                     }
                 }
                 val credits = kind == ApiException.Kind.Credits
