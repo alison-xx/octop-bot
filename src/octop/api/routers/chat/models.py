@@ -53,6 +53,7 @@ class ChatTurnBody(BaseModel):
     )
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
+    computer_placement: Literal["auto", "cloud", "local"] | None = None
     bot_browser: bool = Field(
         default=False, description="Use the current Bot's isolated browser profile."
     )
@@ -133,6 +134,7 @@ class ChatTurnBody(BaseModel):
             if payload.get("conversation_mode") in ("ask", "plan", "craft")
             else None,
             bot_browser=payload.get("bot_browser") is True,
+            computer_placement=payload.get("computer_placement"),
             device_tools=[str(x) for x in payload["device_tools"]]
             if isinstance(payload.get("device_tools"), list)
             else None,
@@ -173,6 +175,7 @@ class UserTurnWsFrame(BaseModel):
     default_model: str | None = None
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
+    computer_placement: Literal["auto", "cloud", "local"] | None = None
     bot_browser: bool = Field(default=False, strict=True)
     device_tools: list[str] | None = None
     conversation_mode: Literal["ask", "plan", "craft"] | None = None

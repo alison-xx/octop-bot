@@ -39,6 +39,7 @@ FREE_TOOLS = TASK_TOOL_NAMES | {
     "ask_user_question",
     "write_todos",
     "request_takeover",
+    "wait_for_local_device",
     "request_approval",
 }
 # Tools that do real work; reading and looking around never need a plan.

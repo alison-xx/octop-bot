@@ -1,3 +1,4 @@
+import BotPlacement from "./BotPlacement";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -286,9 +287,19 @@ export default function BotChat({
           />
         ) : null;
       },
-      composerTop,
+      composerTop: (
+        <>
+          {composerTop}
+          {!bot.is_private && (
+            <BotPlacement
+              key={bot.agent_id + (threadId ?? "")}
+              bot={bot.agent_id}
+            />
+          )}
+        </>
+      ),
     }),
-    [openSide, openReference, bot, roster, motion, composerTop],
+    [openSide, openReference, bot, roster, motion, composerTop, threadId],
   );
   const standalone = isBotClient();
   const agent = agents.find((a) => a.agent_id === bot.agent_id);
