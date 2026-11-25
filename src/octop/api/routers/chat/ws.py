@@ -27,7 +27,7 @@ from octop.infra.bridge.ids import parse_bridge_agent_id
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.steer import SteerAdmitOk, SteerAdmitReject, SteerCoordinator
 from octop.infra.gateway.steer.types import preview_text
-from octop.infra.gateway.threads import thread_visible_to
+from octop.infra.gateway.threads import ThreadRegistry, thread_visible_to
 from octop.infra.gateway.ws import WS_CHANNEL_ID
 
 logger = logging.getLogger(__name__)
@@ -137,12 +137,19 @@ async def dashboard_chat_ws(
                     subscribe=_subscribe,
                     send=send_frame,
                 )
+                turn_active = hub.is_turn_active(thread_id)
+                state = (
+                    gateway.steer.get_state(thread_id)
+                    if turn_active and row.channel_type == ThreadRegistry.CHANNEL_DASHBOARD
+                    else None
+                )
                 await send_frame(
                     {
                         "type": "turn_status",
                         "thread_id": thread_id,
-                        "active": hub.is_turn_active(thread_id),
-                    },
+                        "active": turn_active,
+                        **({"turn_id": state.turn_id} if state is not None else {}),
+                    }
                 )
                 expired = gateway.steer.sweep_expired(thread_id)
                 if expired is not None:

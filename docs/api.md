@@ -235,11 +235,29 @@ approval card. A park older than 30 minutes is discarded (`park_expired`).
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`    | `/agents/{id}/chat/sessions` | owner | `[{id, thread_id, title, archived, last_active, unread, ...}]` |
-| `POST`   | `/agents/{id}/chat/sessions` | owner | body `{session_key?}` → `{thread_id, session_key}` |
-| `PATCH`  | `/agents/{id}/chat/sessions/{thread_id}` | owner | body `{title?, pinned?}` → updated row |
-| `DELETE` | `/agents/{id}/chat/sessions/{thread_id}` | owner | `204` (archives the active row) |
-| `GET`    | `/agents/{id}/chat/sessions/{thread_id}/history` | owner | paginated message history; `turn_active` tells a reconnecting client whether to re-`subscribe` over the chat WebSocket |
+| `GET` | `/agents/{id}/threads` | agent access | Visible threads ordered by pin, activity and ID. Use `limit` and `offset` to page the array. |
+| `POST` | `/agents/{id}/threads` | agent access | Returns `{thread_id, session_key}`. Pass `rebind=false` to leave the current dashboard binding in place. |
+| `PATCH` | `/agents/{id}/threads/{thread_id}` | owner | Updates title, pin or composer settings. |
+| `DELETE` | `/agents/{id}/threads/{thread_id}` | owner | Removes the conversation and its checkpoint data. |
+| `GET` | `/agents/{id}/threads/{thread_id}/history` | thread access | Reads a chronological page of projected messages, starting with the newest page. |
+
+Retain the server's `thread_id` across clients and send it on each WebSocket
+`user_turn`. Advance directory offsets by the number of raw rows received.
+Refresh the newest directory page on return, since activity can reorder rows.
+To read earlier history, pass the previous page's `next_cursor` as `cursor`.
+Stop when `has_more` is false. The cursor advances across filtered rows and
+remains valid when another client appends a turn. Older clients can use
+`offset`. If `history_loading` is true, retry the same page after
+`history_retry_after_ms`.
+
+On opening or reconnecting to a conversation, subscribe to that ID over
+`/agents/{id}/chat/ws`. The `turn_status` frame contains `thread_id` and
+`active`. For an active ordinary conversation, its optional `turn_id` matches
+`turn.started`. A replacement turn has a different ID. A new subscriber
+receives subsequent turn frames. Read persisted
+history on reconnect and completion to reconcile the transient stream. Each
+projected message includes `history_seq`, stable within its thread, including
+legacy messages without a model-supplied `id`.
 
 **Tool result blocks.** `tool_result` blocks in history (and `tool_result`
 frames on the chat WebSocket) carry the tool's return value in `output`. When a
