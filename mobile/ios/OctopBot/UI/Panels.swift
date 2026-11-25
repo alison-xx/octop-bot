@@ -35,6 +35,12 @@ struct HistorySheet: View {
                     Section(bucket.title) {
                         ForEach(rows) { conversation in
                             row(conversation)
+                            if let failure = chat.deletionFailures[conversation.id] {
+                                VStack(alignment: .leading) {
+                                    Text(failure).font(.footnote).foregroundStyle(.secondary)
+                                    Button("chat.retryDelete") { Task { await chat.delete(conversation) } }
+                                }
+                            }
                         }
                     }
                 }

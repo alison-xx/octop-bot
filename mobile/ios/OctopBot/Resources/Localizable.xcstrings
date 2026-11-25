@@ -674,6 +674,12 @@
         }
       }
     },
+    "chat.retryDelete": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Retry deletion" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "重新删除" } }
+      }
+    },
     "chat.retrySave": {
       "localizations": {
         "en": {

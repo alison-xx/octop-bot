@@ -1645,3 +1645,50 @@ extension StreamTests {
         } catch is CancellationError {}
     }
 }
+
+private final class DeletionResponseProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        guard let url = request.url else { return }
+        if request.httpMethod == "DELETE", url.lastPathComponent.hasSuffix("-queued") {
+            client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+            return
+        }
+        let rejected = request.httpMethod == "DELETE"
+        let data = rejected ? #"{"message":"Deletion refused for this conversation"}"#
+            : #"{"code":0,"data":{"items":[{"id":"octop-bot-v1-denied"},{"id":"octop-bot-v1-queued"}]}}"#
+        let response = HTTPURLResponse(url: url, statusCode: rejected ? 403 : 200, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(data.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+extension StreamTests {
+    func testQueuedDeleteAndRefusedRecoveryKeepTheirOwnStates() async throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [DeletionResponseProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let backend = LynxceBackend(grant: .init(accountId: "fixture", accessToken: "fixture", refreshToken: "fixture"),
+                                    historyRoot: root, session: session)
+        let bot = BotProfile(id: LocalBots.chiefId, name: "qa", look: .fallback, isChief: true)
+        let store = PendingHistoryStore(origin: LynxceBackend.origin, account: "fixture", root: root)
+        let queued = "octop-bot-v1-queued"
+        let denied = "octop-bot-v1-denied"
+        for id in [queued, denied] {
+            do { try await store.delete(bot: bot.id, session: id) { throw APIError.network }; XCTFail("Expected offline") }
+            catch { XCTAssertEqual(error as? APIError, .network) }
+        }
+        let rows = try await backend.conversations(for: bot)
+        XCTAssertEqual(rows.map(\.id), [denied])
+        XCTAssertTrue(backend.deletionQueued(queued, bot: bot))
+        XCTAssertFalse(backend.deletionQueued(denied, bot: bot))
+        XCTAssertEqual(Set(backend.deletionFailures(for: bot).keys), [denied])
+        XCTAssertNotNil(backend.deletionNotice(for: bot))
+    }
+}

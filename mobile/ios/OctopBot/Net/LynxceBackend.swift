@@ -23,6 +23,7 @@ final class LynxceBackend: ChatBackend {
     private let pending: PendingHistoryStore
     private let session: URLSession
     private var signedOut = false
+    private var deletionErrors: [String: (bot: String, message: String)] = [:]
     private let bots: LocalBots
     private var refreshing: Task<Grant, Error>?
 
@@ -231,6 +232,14 @@ final class LynxceBackend: ChatBackend {
         set { UserDefaults.standard.set(newValue, forKey: "lynxce.sessionBots") }
     }
 
+    func deletionFailures(for bot: BotProfile) -> [String: String] {
+        deletionErrors.filter { $0.value.bot == bot.id }.mapValues { $0.message }
+    }
+
+    func deletionQueued(_ session: String, bot: BotProfile) -> Bool {
+        pending.interruptedDeletions(bot: bot.id).contains(session)
+    }
+
     func deletionNotice(for bot: BotProfile) -> String? {
         pending.interruptedDeletions(bot: bot.id).isEmpty ? nil : L("chat.deletionQueued")
     }
@@ -313,12 +322,20 @@ final class LynxceBackend: ChatBackend {
         guard !signedOut else { throw CancellationError() }
         let id = session.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session
         chat.stop(session)
-        try await pending.delete(bot: bot, session: session) {
-            guard !signedOut else { throw CancellationError() }
-            do { _ = try await call(.delete, "/api/user/web-chat-sessions/\(id)") }
-            catch let error as APIError where error.status == 404 {
-                // The append never reached Lynxce. Only the device copy needs removal.
+        do {
+            try await pending.delete(bot: bot, session: session) {
+                guard !signedOut else { throw CancellationError() }
+                do { _ = try await call(.delete, "/api/user/web-chat-sessions/\(id)") }
+                catch let error as APIError where error.status == 404 {
+                    // Lynxce already has no copy.
+                }
             }
+            deletionErrors[session] = nil
+        } catch {
+            if !(error is CancellationError), !pending.interruptedDeletions(bot: bot).contains(session) {
+                deletionErrors[session] = (bot, error.localizedDescription)
+            }
+            throw error
         }
         sessionBots[session] = nil
     }
