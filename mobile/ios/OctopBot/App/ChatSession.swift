@@ -36,6 +36,8 @@ final class ChatSession {
         var anchor: ChatMessage?
         var rows: [ChatMessage] = []
         var ended = false
+        var resumed = false
+        var lastHistoryRetry = false
 
         func committedTail(_ history: [ChatMessage]) -> ArraySlice<ChatMessage> {
             guard let anchor else { return history[...] }
@@ -47,6 +49,15 @@ final class ChatSession {
 
         func hasCommittedReply(_ history: [ChatMessage]) -> Bool {
             let tail = committedTail(history)
+            if lastHistoryRetry && !rows.contains(where: { $0.role == .assistant &&
+                (!$0.text.isEmpty || !$0.thinking.isEmpty || !$0.tools.isEmpty || !$0.attachments.isEmpty) }) { return true }
+            if resumed {
+                // Resuming can extend the same durable assistant row across the tool result.
+                if let anchor, anchor.role == .assistant, let updated = history.last(where: { $0.id == anchor.id }),
+                   updated.text != anchor.text || updated.thinking != anchor.thinking ||
+                   updated.tools != anchor.tools || updated.attachments != anchor.attachments || updated.status != anchor.status { return true }
+                return tail.contains { $0.role == .assistant }
+            }
             if let user = rows.first(where: { $0.role == .user }) {
                 guard let at = tail.lastIndex(where: { $0.id == user.id || ($0.role == .user && $0.text == user.text) })
                 else { return anchor?.id == user.id && tail.contains { $0.role == .assistant } }
@@ -231,11 +242,13 @@ final class ChatSession {
             if observedTurn == nil { observedTurn = ObservedTurn(id: id, anchor: durableAnchor) }
             if let id { observedTurn?.id = id }
             observedTurn?.ended = false
+            observedTurn?.lastHistoryRetry = false
         }
         func finish() async {
             observedTurn?.ended = true
             for attempt in 0..<4 {
                 guard !Task.isCancelled, !isStreaming, conversationId == thread else { return }
+                observedTurn?.lastHistoryRetry = attempt == 3
                 await open(row)
                 guard observedTurn?.ended == true, attempt < 3 else { return }
                 try? await Task.sleep(for: .milliseconds(300))
@@ -392,11 +405,11 @@ final class ChatSession {
         self.pause = nil
         if let note { messages.append(ChatMessage(role: .system, text: note)) }
         if let echo { messages.append(ChatMessage(role: .user, text: echo)) }
-        run(backend.resume(pause, decisions: decisions, conversation: conversationId, bot: bot))
+        run(backend.resume(pause, decisions: decisions, conversation: conversationId, bot: bot), resumed: true)
     }
 
     /// Stream one reply into a new assistant message.
-    private func run(_ stream: AsyncThrowingStream<StreamEvent, Error>) {
+    private func run(_ stream: AsyncThrowingStream<StreamEvent, Error>, resumed: Bool = false) {
         let bot = bot
         var reply = ChatMessage(role: .assistant, text: "", status: .streaming)
         reply.authorId = bot.id
@@ -404,7 +417,7 @@ final class ChatSession {
         error = nil
         isStreaming = true
         let replyId = reply.id
-        let request = messages.dropLast().last.flatMap { $0.role == .user ? $0 : nil }
+        let request = resumed ? nil : messages.dropLast().last.flatMap { $0.role == .user ? $0 : nil }
         let anchor = durableAnchor
         let backend = app?.backend
         let background = UIApplication.shared.beginBackgroundTask(withName: "reply")
@@ -460,8 +473,8 @@ final class ChatSession {
                 let message = error.localizedDescription
                 if currentRun == run, (error as? APIError)?.kind == .network,
                    backend is ServerBackend, let partial = messages.last(where: { $0.id == replyId }),
-                   turnId != nil || !partial.text.isEmpty || !partial.thinking.isEmpty {
-                    observedTurn = ObservedTurn(id: turnId, anchor: anchor, rows: [request, partial].compactMap { $0 })
+                   turnId != nil || !partial.text.isEmpty || !partial.thinking.isEmpty || !partial.tools.isEmpty || !partial.attachments.isEmpty {
+                    observedTurn = ObservedTurn(id: turnId, anchor: anchor, rows: [request, partial].compactMap { $0 }, resumed: resumed)
                 }
                 update(replyId) { $0.status = .failed(message) }
                 if case .unauthorized = (error as? APIError)?.kind { Task { await self.app?.signOut() } }

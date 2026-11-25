@@ -553,6 +553,28 @@ final class QueueTests: XCTestCase {
         XCTAssertTrue(turn.hasCommittedReply([prior, savedUser, savedReply]))
     }
 
+    func testInterruptedDecisionCompletesWithoutAPersistedAnswerBubble() {
+        let baseline = ChatMessage(id: "saved", role: .assistant, text: "Question")
+        let partial = ChatMessage(id: "live", role: .assistant, text: "The ans", status: .streaming)
+        let turn = ChatSession.ObservedTurn(id: "run", anchor: baseline, rows: [partial], ended: true, resumed: true)
+        XCTAssertFalse(turn.hasCommittedReply([baseline]))
+        var extended = baseline
+        extended.text += "\n\nThe answer"
+        XCTAssertTrue(turn.hasCommittedReply([extended]))
+        XCTAssertTrue(turn.hasCommittedReply([baseline, ChatMessage(id: "new", role: .assistant, text: "The answer")]))
+    }
+
+    func testIdleBeforeFirstTokenSettlesEmptyPlaceholderOnlyAfterHistoryRetries() {
+        let user = ChatMessage(id: "q", role: .user, text: "question")
+        let empty = ChatMessage(id: "reply", role: .assistant, text: "", status: .streaming)
+        var turn = ChatSession.ObservedTurn(id: "run", anchor: nil, rows: [user, empty], ended: true)
+        XCTAssertFalse(turn.hasCommittedReply([user]))
+        turn.lastHistoryRetry = true
+        XCTAssertTrue(turn.hasCommittedReply([user]))
+        turn.rows[1].thinking = "already received"
+        XCTAssertFalse(turn.hasCommittedReply([user]))
+    }
+
     func testHistoryPageOverlapPreservesOrderAndReplacesTheCurrentVersion() {
         let old: [[String: Any]] = [["id": "a"], ["history_seq": 2, "content": "partial"]]
         let new: [[String: Any]] = [["history_seq": 2, "content": "finished"], ["id": "b"]]

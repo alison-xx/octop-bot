@@ -604,6 +604,7 @@ class ServerBackend(
             withContext(Dispatchers.IO) {
                 call.await().use { response ->
                     if (!response.isSuccessful) throw ApiException.fromBody(response.code, response.body.string())
+                    var complete = false
                     response.body.source().forEachSseEvent { event ->
                         val frame = Http.parse(event.data).asObject() ?: return@forEachSseEvent true
                         when (val outcome = mapper.map(frame, conversation)) {
@@ -611,9 +612,13 @@ class ServerBackend(
                                 outcome.events.forEach { send(it) }
                                 true
                             }
-                            ServerProtocol.FrameMapper.Outcome.Finished -> false
+                            ServerProtocol.FrameMapper.Outcome.Finished -> {
+                                complete = true
+                                false
+                            }
                         }
                     }
+                    if (!complete) throw ApiException.network()
                     // `done` ends the reply; whatever follows is dropped, not drained.
                     call.cancel()
                 }
