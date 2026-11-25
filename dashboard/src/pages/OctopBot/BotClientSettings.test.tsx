@@ -167,6 +167,46 @@ beforeEach(() => {
   });
 });
 
+describe("settings navigation", () => {
+  it("groups navigation and shows only the selected section", () => {
+    openSettings();
+    const nav = screen.getByRole("navigation", {
+      name: "botClient.menu.settings",
+    });
+    expect(
+      within(nav).getByText("botClient.settingsGroups.account"),
+    ).toBeInTheDocument();
+    expect(
+      within(nav).getByText("botClient.settingsGroups.ai"),
+    ).toBeInTheDocument();
+    expect(
+      within(nav).getByText("botClient.settingsGroups.other"),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(nav).getByRole("button", { name: "botNotify.settingsTitle" }),
+    );
+    expect(screen.getByText("botNotify.systemLabel")).toBeVisible();
+    expect(screen.queryByText("octopBot.retainedFolders")).toBeNull();
+  });
+  it.each([
+    ["general", "botClient.nav.lookAndLanguage"],
+    ["account", "botClient.nav.account"],
+    ["models", "botClient.nav.models"],
+    ["about", "botAbout.title"],
+  ])("supports the legacy %s tab", (tab, label) => {
+    render(
+      <MemoryRouter
+        initialEntries={[{ pathname: "/octop-bot/settings", state: { tab } }]}
+      >
+        <BotClientSettings />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("button", { name: label, current: "page" }),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("standalone chat model settings", () => {
   it("opens the capabilities area and remembers which chat to return to", async () => {
     function Probe() {
@@ -205,7 +245,7 @@ describe("standalone chat model settings", () => {
     ]);
     openSettings();
     fireEvent.click(
-      screen.getByRole("button", { name: "botClient.nav.general" }),
+      screen.getByRole("button", { name: "botClient.nav.desktopAndPrivacy" }),
     );
     fireEvent.click(
       screen.getByRole("button", { name: "botClient.nav.manage" }),
@@ -223,7 +263,7 @@ describe("standalone chat model settings", () => {
         await screen.findByRole("heading", { name: "Catalog" }),
       ).toBeVisible();
       fireEvent.click(
-        screen.getByRole("button", { name: "botClient.nav.general" }),
+        screen.getByRole("button", { name: "botClient.nav.desktopAndPrivacy" }),
       );
       expect(screen.getByText("octopBot.retainedFolders")).toBeVisible();
       expect(lynxceBotApi.status).not.toHaveBeenCalled();
@@ -319,7 +359,7 @@ describe("standalone chat model settings", () => {
       await screen.findByText("botClient.connectHint"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "botModels.setupTitle" }),
+      screen.getByRole("heading", { name: "botClient.nav.models" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /botModels.local.ollama/ }),

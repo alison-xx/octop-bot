@@ -1,4 +1,3 @@
-import SafariServices
 import StoreKit
 import SwiftUI
 
@@ -329,7 +328,7 @@ struct HomeAccountRow: View {
     }
 }
 
-/// Top of chat when the balance is under 100: "积分快用完了，余额 N 积分" + 充值, dismissible.
+/// Top of chat when the balance is under 1,000: "积分快用完了，余额 N 积分" + 充值, dismissible.
 struct LowBalanceBanner: View {
     @Environment(AppModel.self) private var model
     @State private var showCredits = false
@@ -372,14 +371,18 @@ struct OutOfCreditsCard: View {
 
     @Environment(AppModel.self) private var model
     var reason: Reason = .outOfCredits
+    var scenario: CreditScenario? = nil
     /// Only the latest reply can be continued.
     var canContinue: Bool
     var onContinue: () -> Void
     @State private var showCredits = false
 
-    static let accountCentre = URL(string: "https://admin.lynxce.cn")!
-
     private var outOfCredits: Bool { reason == .outOfCredits }
+    private var cardBody: String {
+        guard outOfCredits else { return L("credits.limit.body") }
+        guard let scenario else { return L(CreditPurchases.inApp ? "credits.out.body" : "credits.out.bodyNoPurchase") }
+        return scenario.message
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -388,25 +391,12 @@ struct OutOfCreditsCard: View {
             } icon: {
                 Image(systemName: outOfCredits ? "bolt.circle.fill" : "clock.badge.exclamationmark").foregroundStyle(.orange)
             }
-            Text(outOfCredits ? (CreditPurchases.inApp ? "credits.out.body" : "credits.out.bodyNoPurchase") : "credits.limit.body").font(.subheadline).foregroundStyle(Palette.secondary)
-            // Daily cap: the account centre, where the cap is raised (not a purchase). Out of credits:
-            // only the App Store packs behind 充值 — App Store builds never link to a web checkout (3.1.1).
-            if !outOfCredits {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("credits.limit.raise").foregroundStyle(Palette.secondary)
-                    Button { FileOpener.present(SFSafariViewController(url: Self.accountCentre)) } label: {
-                        Text(verbatim: "admin.lynxce.cn").underline()
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.tint)
-                    .accessibilityIdentifier("creditCardAccountLink")
-                }
-                .font(.footnote)
-            }
+            Text(cardBody).font(.subheadline).foregroundStyle(Palette.secondary)
             if outOfCredits && model.balance != nil {
                 BalanceLabel().font(.footnote)
             }
             HStack(spacing: 8) {
+                // Only the App Store packs; App Store builds never link to a web checkout (3.1.1).
                 if outOfCredits && model.creditAccount != nil && CreditPurchases.inApp {
                     Button("credits.recharge") { showCredits = true }
                         .buttonStyle(PillButtonStyle(filled: true))

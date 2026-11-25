@@ -13,7 +13,7 @@
 1. **用户只管登录。** 打开 App，用手机号或邮箱收验证码登录（第一次即注册），不需要配模型、装服务或填 Key。登录后 Chief 和自己的 Bot 已在云端待命，桌面、iOS、Android、网页四端看到同一个团队。
 2. **云端分三层。** 控制面是灵策运营的多租户「云 Octop」，负责 Bot、群聊、记忆和定时任务。执行面让每个 Bot 拥有一台腾讯云「Agent 沙箱」（AGS）云电脑，有 Ubuntu 桌面、浏览器和终端，空闲时暂停，需要时毫秒级恢复，只按运行时长付费。文件面是腾讯云 COS，存放附件和产物，客户端用短时签名链接直接下载。
 3. **钱只走灵策积分。** 腾讯云账单由你承担。用户消耗的模型、云电脑时长和存储都折成积分，从灵策钱包扣除（1 元 = 100 积分）。单价在灵策后台按「腾讯云成本 × 加价系数」配置，对外只展示积分，不展示成本。
-4. **充值复用登录态。** App 向灵策申请 15 分钟一次性收银票据，打开 `https://admin.lynxce.cn/recharge?token=<票据>`，无需再次登录。这条链路桌面端已经实现，手机和网页端照搬即可。iOS 有 App Store 支付审核风险，见 §8.3。
+4. **充值复用登录态。** App 向灵策申请 15 分钟一次性收银票据，带票据打开灵策收银台，无需再次登录。这条链路桌面端已经实现，手机和网页端照搬即可。iOS 有 App Store 支付审核风险，见 §8.3。
 5. **自建是同一个 App 的另一种「服务器」。** 用户填写自己的公网 Octop 地址后，客户端协商能力并按服务器能力显示功能。腾讯云轻量服务器可以出一键镜像，让自建也只需几步。
 
 参照对象是 xAI 的 Grok Bot。我们照搬它的「每个 Bot 都有电脑、关机后继续干活、密码和验证码由人接管」，并补上它没有的三样：文件统一落 COS 可下载、积分透明扣费、可自建。
@@ -23,7 +23,7 @@
 | Grok Bot 的做法（2026-08 上线） | 本方案 |
 |---|---|
 | 每个用户一台持久云虚拟机，名下所有 Bot 共用，每个 Bot 占一块「屏幕」并行干活。官方文档明说 Bot 之间不是安全边界 | 每个 Bot 一台 AGS 沙箱（VM 级隔离），真正做到营销里说的「Bot 有自己的电脑」。暂停的实例不收计算费，所以 N 个 Bot 的成本取决于实际干活的时长，而不是 Bot 数量。团队共享文件通过挂载 COS 前缀实现，不靠共用一台机器 |
-| `/workspace` 持久，登录态和浏览器会话保留，装的软件视为可丢 | 同样处理。工作目录做快照，系统盘可随时重置 |
+| `/workspace` 持久，登录态和浏览器会话保留，装的软件视为可丢 | 同样处理。暂停保留磁盘，回收时磁盘文件删除 |
 | 合上电脑后 Bot 照常工作 | 控制面常驻。云电脑空闲后暂停，有任务时自动恢复 |
 | 遇到密码、2FA、验证码或支付时由人接管，完成后交还 | 同样提供，四端都能看实时画面并接管 |
 | 优先走连接器，最后才用浏览器操作电脑 | 沿用 Octop 现有连接器和 MCP，`browser_use` 兜底 |
@@ -47,7 +47,7 @@
 
 可以直接复用的底座：
 
-- 灵策：验证码登录即注册（`auth.controller.ts` `phone-login`，支持邀请码）、Apple 登录、`POST /api/billing/recharge/checkout-link` 票据、cloud-work 的「预扣再结算」积分账本（`cloud-work.billing.ts`）、S3 兼容存储加签名下载（`storage.service.ts`）、`appId` 产品命名空间。
+- 灵策：验证码登录即注册（支持邀请码）、Apple 登录、充值票据、cloud-work 的「预扣再结算」积分账本、S3 兼容存储加签名下载、`appId` 产品命名空间。具体接口见团队目录《交接-部署与发版》。
 - Octop：多用户、PostgreSQL、Agent 级 `backend` 配置；harness 自带 `opensandbox`、`docker`、`cos` 后端，均实现 `BaseSandbox` 的 `execute/upload/download` 三个原语；`octop-browser` 通过 CDP 控制 Chrome。
 
 ## 3. 总体架构
@@ -75,8 +75,8 @@
 
 ### 4.1 登录与注册（四端统一，原生界面）
 
-1. 输入手机号（海外区可用邮箱），点「获取验证码」，调用 `POST /api/auth/phone-code`（邮箱调用 `email-code`）。
-2. 输入验证码，调用 `POST /api/auth/phone-login`。新号码自动注册，可带 `inviteCode`。请求头带 `X-Lynxce-Client: mobile|desktop|web` 和 Octop Bot 专属 `appId`，灵策据此记录注册来源。
+1. 输入手机号（海外区可用邮箱），点「获取验证码」，调用灵策发验证码的接口（手机和邮箱各一个）。
+2. 输入验证码，调用灵策的验证码登录接口。新号码自动注册，可带邀请码。请求里带上客户端类型（手机、桌面、网页）和 Octop Bot 专属 `appId`，灵策据此记录注册来源。接口和请求头见团队目录《交接-部署与发版》。
 3. 还提供两种登录方式：**密码登录**；iOS 上的 **Sign in with Apple**（灵策已有 `apple-sign-in` 接口）。WorkBuddy 等第三方登录一旦上 iOS，Apple 审核规则 4.8 要求同时提供 Apple 登录。
 4. 首次登录后立即弹出协议同意（用户协议、隐私政策、云电脑使用规范），随后直接进入 Chief 对话。不再出现「选模型」步骤，默认模型由服务端套餐决定。
 5. 「设置 → 账号」提供改密码、退出登录和**注销账号**（App Store 规则 5.1.1(v)：支持应用内注册，就必须支持应用内注销）。注销调用灵策注销接口，并同时清理云 Octop 数据、云电脑和 COS 文件。
@@ -87,7 +87,7 @@
 
 在云 Octop 新增 `POST /api/auth/lynxce/session`：
 
-- 入参是灵策 `accessToken`。服务端调用灵策 `GET /api/user/profile` 校验，或使用新增的服务间内省接口，取得稳定的 `user.id`。
+- 入参是灵策 `accessToken`。服务端调用灵策的用户资料接口校验，或使用新增的服务间内省接口，取得稳定的 `user.id`。
 - 用 `lynxce:<user.id>` 查找 Octop 用户，不存在就自动创建：普通角色，个人工作区，种子 Chief。去掉现有 `lynxce_owner.py` 中「第一个账号认领实例」的限制，该限制只在 NAS/自建模式下保留。
 - 返回 Octop JWT 和刷新令牌。客户端沿用现有的 `X-Octop-Access-Token` 续期机制。
 - 云 Octop 自身**不保存**用户的灵策密码或刷新令牌。模型计费走服务间通道（§7.2）。
@@ -116,7 +116,7 @@
 | 层级 | 内容 |
 |---|---|
 | 机器 | 每个 Bot 一台 AGS 沙箱实例，首次用到工具时创建。规格随套餐：免费版只能对话，没有电脑；标准版和专业版分配不同规格。自定义镜像基于 Ubuntu 桌面，预装 Chrome、Python、Node、LibreOffice、中文字体和常用 CLI |
-| Bot 工作目录 | `/workspace`，保存在实例磁盘上，暂停和恢复时保留，并定期快照 |
+| Bot 工作目录 | `/workspace`，保存在实例磁盘上，暂停和恢复时保留；回收时删除，不创建快照 |
 | 共享目录 | `/mnt/team` 挂载 COS 前缀 `u/<userId>/team/`，`/mnt/groups/<groupId>` 挂载群文件前缀，与现有「团队笔记」「群文件」语义一致。Bot 只能看到自己所在群的目录 |
 | 登录态 | 每个 Bot 的浏览器登录态各自独立。如果需要几个 Bot 共用某个网站登录，由用户在「连接器」里授权一次，而不是共享浏览器会话。比 Grok 的共享模式更安全 |
 
@@ -146,12 +146,12 @@
 无 ──首次需要工具──► 创建中 ──► 运行中 ──空闲 10 分钟──► 暂停（Pause，不收计算费，磁盘保留）
                                 ▲   │                     │
                                 └───┴──有新回合/定时任务──────┘
-                         余额 ≤ 0：不再唤醒；欠费 30 天：快照工作目录后释放机器，再过 90 天删快照
+                         余额 ≤ 0：不再唤醒；磁盘欠费第 23 天提醒、第 30 天回收，不创建快照
 ```
 
 - 只有对话时不唤醒电脑，第一次调用 `execute`、文件、浏览器等工具时才唤醒。用户在界面上能看到「电脑启动中…」。
-- 每天对活跃实例做一次快照（`CreateSandboxSnapshot`），保证实例被回收后可以恢复。
-- Bot 资料页的「云电脑」面板提供：查看画面、开机/暂停、重置系统（保留 `/workspace`）、本月运行时长和积分、升级规格。删除 Bot 时释放实例和快照。
+- 不为回收创建快照；磁盘文件随实例删除，云存储中的交付物和上下文保留。
+- Bot 资料页的「云电脑」面板提供：查看画面、开机/暂停、重置系统（保留 `/workspace`）、本月运行时长和积分、升级规格。删除 Bot 时释放实例。
 
 ### 6.4 接入 Octop：放在哪个仓库
 
@@ -174,17 +174,14 @@
 
 | 计量项 | 计量方式 | 计费时点 | 说明 |
 |---|---|---|---|
-| 模型 token | 灵策网关按模型价目（已有） | 每次调用 | 云 Octop 用平台服务密钥调用灵策网关，带签名头 `X-Lynxce-Bill-To: <userId>`，扣该用户钱包。需要灵策新增「代扣」通道 |
+| 模型 token | 灵策网关按模型价目（已有） | 每次调用 | 云 Octop 用平台服务密钥调用灵策网关，带签名的代扣头指明扣哪位用户的钱包（见团队目录《交接-部署与发版》）。需要灵策新增「代扣」通道 |
 | 云电脑运行时长 | 按规格「积分/分钟」，以 AGS 实例「运行中」时长为准，暂停不收 | 每 5 分钟预扣一次，暂停时结算 | 恢复实例前预扣 5 分钟，余额不足就拒绝唤醒 |
-| 云电脑存储 | 「积分/GB·天」，含实例磁盘、暂停保留和快照 | 每日结算 | 套餐内含额度。按 AGS 实际收费项定价 |
+| 云电脑存储 | 「积分/GB·天」，含实例磁盘及暂停保留 | 每日结算 | 套餐内含额度。按 AGS 实际收费项定价 |
 | COS 文件存储 | 「积分/GB·月」 | 每日结算 | 套餐内含额度（灵策套餐已有 `storageQuotaBytes`、`storageRetentionDays` 字段，直接复用） |
 | 下载流量 | 「积分/GB」，走 CDN 计价 | 每日结算 | 套餐内含额度 |
 | 高配电脑 | 同运行时长，规格单独定价（含 Windows 桌面 `waa`） | 同上 | |
 
-灵策需新增两个内部接口，供云 Octop 使用服务密钥调用：
-
-- `POST /internal/octop/usage/reserve`：入参 `userId`、`kind`、`units`、`idempotencyKey`，返回 `reservationId`；余额不足返回 402。
-- `POST /internal/octop/usage/settle`：入参 `reservationId`、实际 `units`，多退少不补，差额由平台吸收并记为 `platformAbsorbed`。
+计费方式是「先预扣、再按实际用量结算，多退少不补」，余额不足时拒绝开始。云电脑的实现见 §12.5，灵策侧的接口见团队目录《交接-部署与发版》。
 
 ### 7.3 单价示例
 
@@ -204,18 +201,18 @@ OSWorld 桌面沙箱只有 4C8G 和 8C16G 两档固定规格（2026-11-24 在控
 
 1. 余额低于 100 积分：客户端顶部提示「余额不足」，并给出「充值」按钮。
 2. 余额为 0：正在执行的回合跑完当前步骤后停止，消息里显示「积分不足，充值后点继续」。云电脑不再唤醒，已运行的立即暂停。文件和对话可以照常查看和下载。
-3. 欠费 30 天：释放云电脑，保留快照；欠费 120 天：删除快照，COS 文件按套餐保留期清理。每个节点前 7 天发站内信和推送。
+3. 磁盘费从首次扣费失败当天起算，第 23 天提醒，第 30 天回收；支付成功或使用电脑可取消。连续 30 天未启动、未使用（含暂停天数）的电脑发送提醒，再过 7 天仍未使用则回收。提醒说明日期及保留范围。回收结算费用、终止实例并删除电脑记录，不创建快照；电脑磁盘文件删除，Bot、聊天和云存储中的 `generated/`、`outbound/` 及上下文保留，下次使用时创建新电脑。提醒和回收由 `OCTOP_COMPUTER_RECLAIM` 控制，默认关闭。
 
 ## 8. 充值
 
 ### 8.1 链路（复用登录态）
 
 ```
-App ──POST /api/billing/recharge/checkout-link（Bearer 灵策 accessToken）──► 灵策
-    ◄──────────────── { token: "x.…", 15 分钟有效 } ──────────────────────
-App 打开 https://admin.lynxce.cn/recharge?token=<token>&tab=boost&from=octop-bot
-    ──► 收银台用票据换收银会话（RechargeClient.initSession 已支持）──► 支付
-App 回到前台 → 刷新余额（灵策 GET /api/user/quota 读 creditsRemaining）
+App ──用灵策 accessToken 申请充值票据──► 灵策
+    ◄──────────────── 票据，15 分钟有效 ──────────────────────
+App 带票据打开灵策收银台
+    ──► 收银台用票据换收银会话 ──► 支付
+App 回到前台 → 向灵策刷新余额
 ```
 
 - 票据格式与有效期校验沿用 `lynxce_wallet.py` 中的规则：URL 必须精确匹配，有效期不超过 16 分钟。手机端在 Swift/Kotlin 中复刻同样的校验，防止被篡改为钓鱼地址。
@@ -263,7 +260,7 @@ App 内消耗的积分属于数字商品。App Store 规则 3.1.1 要求这类�
 
 - 服务端使用 `cos-python-sdk-v5`（harness 的 `cos_backend.py` 已依赖它）。注意：`cos_backend` 以 JSON 包装文件内容，适合 Agent 虚拟文件系统，不适合原样二进制附件；附件存储要另写一个直存原始字节的小模块，放在 `infra/cloud/files/`。
 - 客户端永远只拿签名 URL，不拿任何密钥。2024 年以后创建的桶，默认域名不能在浏览器预览，必须绑定自定义域名 `files.lynxce.cn`（需备案）。
-- 沙箱挂载团队目录时，控制面用 STS `GetFederationToken` 签发临时密钥，资源限定为 `qcs::cos:<region>:uid/<appid>:<bucket>/u/<userId>/team/*`，到期自动续签。长期密钥不进沙箱。
+- 沙箱挂载团队目录时，控制面用 STS `GetFederationToken` 签发临时密钥，资源只限定在该用户的团队目录前缀，到期自动续签（策略写法见团队目录《交接-部署与发版》）。长期密钥不进沙箱。
 - 灵策现有对象存储在阿里云 OSS（S3 兼容）。云 Octop 的文件建议直接放腾讯云 COS，与 AGS 同地域，免跨云流量费。
 
 资料来源：[COS 临时密钥](https://cloud.tencent.com/document/product/436/14048)、[预签名 URL](https://cloud.tencent.com/document/product/436/35217)、[生命周期](https://cloud.tencent.com/document/product/436/14605)、[COS 计费示例](https://cloud.tencent.com/document/product/436/6241)、[CDN 价格](https://cloud.tencent.com/document/product/228/2949)。
@@ -365,7 +362,7 @@ P1 的实际做法与上文设计有几处不同，以本节为准：
 
 - 配置了 AGS 后，云模式租户的每个 Bot 都用自己的 AGS 沙箱作为工作区：执行命令、读写文件都在这台电脑上，暂停后磁盘保留。没有配置 AGS 时，回退到 P1 的对象存储工作区（不能运行命令）。
 - 生命周期：第一次用到工具时开机（`StartSandboxInstance`）；已暂停的就恢复（`ResumeSandboxInstance`）；空闲 10 分钟暂停（`PauseSandboxInstance`）；暂停失败就停止。状态存在 settings 表 `octop_bot:computer:<agent_id>`。
-- 计费：开机或恢复前先向灵策预扣 5 分钟；运行中在当前时段用完前 1 分钟续购下一段；暂停时按实际秒数逐段结算，多退少不补。续购失败（余额不足或灵策不可用）就暂停；开机失败退回预扣。积分单价、预扣和结算接口在灵策后台（`/api/billing/octop-bot/compute/reserve|settle`），由云 Octop 用租户自己的灵策登录态调用。
+- 计费：开机或恢复前先向灵策预扣 5 分钟；运行中在当前时段用完前 1 分钟续购下一段；暂停时按实际秒数逐段结算，多退少不补。续购失败（余额不足或灵策不可用）就暂停；开机失败退回预扣。积分单价在灵策后台配置；预扣和结算由云 Octop 用租户自己的灵策登录态调用灵策的接口（接口路径见团队目录《交接-部署与发版》）。
 - 开机、暂停、恢复走腾讯云 AGS 云 API。命令和文件走沙箱桌面自带的 HTTP 服务：`https://5000-<实例>.<region>.tencentags.com` 的 `/execute`、`/setup/upload`、`/file`，请求头 `X-Access-Token` 用 `AcquireSandboxInstanceToken` 返回的 `Token`（`TrafficToken` 会被拒，返回 401）。OSWorld 类型的沙箱不提供 AGS 的 E2B 兼容数据面（报 310508），所以不用 `e2b` SDK。
 - 实测（2026-11-24，广州，OSWorld 4C8G）：沙箱里一律以 `user` 身份运行，没有免密 sudo，所以 Bot 的工作区放在 `/home/user/workspace`，Agent 看到的 `/` 就是这个目录，路径映射照搬 octop-harness 的 Docker 沙箱。`/execute` 单次请求 120 秒就会被杀掉，所以命令一律后台脱离运行（`setsid`），每次请求最多等 90 秒再取结果，长命令可以跑到 Agent 给的超时为止，超时就杀掉整个进程组。开机加第一条命令约 3 秒，暂停约 15 秒，恢复约 5 秒，暂停后文件都在。
 - 这一层先放在 Octop Bot（`infra/cloud/computers/`）。等 octop-harness 有了通用的远程沙箱后端再迁过去。
@@ -376,12 +373,12 @@ P1 的实际做法与上文设计有几处不同，以本节为准：
 
 | 变量 | 说明 |
 |---|---|
-| `OCTOP_AGS_SECRET_ID` / `OCTOP_AGS_SECRET_KEY` | 只授予 AGS 权限的 CAM 子账号密钥 |
+| `OCTOP_AGS_SECRET_ID` / `OCTOP_AGS_SECRET_KEY` | 云电脑（AGS）专用子账号的密钥，权限范围见团队目录《交接-部署与发版》 |
 | `OCTOP_AGS_REGION` | 默认 `ap-guangzhou` |
 | `OCTOP_AGS_DOMAIN` | 默认 `<region>.tencentags.com` |
 | `OCTOP_AGS_TOOL` / `OCTOP_AGS_TOOL_PRO` | 标准、专业规格对应的沙箱工具名，在 AGS 控制台用 `osworld` 类型创建，选常驻 |
 | `OCTOP_AGS_TIMEOUT` | 只用于限时工具：实例最长运行时长，例如 `6h`。常驻工具不填，由空闲回收负责暂停 |
-| `OCTOP_BOT_COMPUTE_SERVICE_KEY` | 和灵策共享的云电脑扣费服务密钥（至少 32 位），只放在云 Octop 服务端。预扣和结算都要带 `X-Octop-Service-Key`，防止租户拿自己的令牌把运行中的电脑自报 0 秒退款。灵策后台「系统配置 → 云端与 AI 引擎 → 云电脑单价（Octop Bot）→ 云 Octop 服务密钥」填同一个值；没配置时灵策返回 503 |
+| `OCTOP_BOT_COMPUTE_SERVICE_KEY` | 和灵策共享的云电脑扣费服务密钥（至少 32 位），只放在云 Octop 服务端。预扣和结算都要带上它，防止租户拿自己的令牌把运行中的电脑自报 0 秒退款。灵策后台要填同一个值，没配置时灵策返回 503。请求头名和后台填写位置见团队目录《交接-部署与发版》 |
 
 ## 12.3 P3 实现说明：实时画面和接管（2026-11-24）
 
@@ -681,11 +678,11 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 | 公网 | AGS 网关代理 | 每台一个公网 IP，按流量 0.8 元/GB，关机后释放、开机换新 IP |
 
 - **镜像**：`deploy/cvm/image/setup.sh` 在 Ubuntu 22.04 上装 XFCE、TigerVNC（Xvnc :0，VNC 只听 127.0.0.1:5900）、OSWorld 桌面服务（127.0.0.1:5000，与 AGS 的 OSWorld 沙箱同一套）、Chrome、中文字体和 LibreOffice，一律以 `user` 运行，工作区 `/home/user/workspace`（可 sudo，机器是 Bot 自己的）。`deploy/cvm/image/build_image.py` 开一台临时机器跑脚本、关机做镜像，结束一定销毁临时机器。
-- **进入方式**：每台机器只开 443，安全组只放行云 Octop 服务器（以及调试用的机器）。nginx 校验访问令牌（`X-Access-Token`），`/p/5000/` 转桌面服务，`/p/8080/` 转画面的 VNC WebSocket 桥。令牌是实例标签里随机引用的 HMAC，证书由一个从 CAM 密钥派生出来的私有 CA 为每台机器单独签发，都在首次开机的 user data 里写入。服务器只信任这个 CA，因此除了配置之外不需要保存任何状态。
-- **库存**：`OCTOP_CVM_SUBNETS` 按顺序列出可用区和子网，一个区没货就换下一个。
+- **进入方式**：每台机器只开 443，安全组只放行云 Octop 服务器（以及调试用的机器）。nginx 校验访问令牌，再按路径分别转给桌面服务和画面的 VNC WebSocket 桥（请求头和路径见团队目录《交接-部署与发版》）。令牌是实例标签里随机引用的 HMAC，证书由一个从 CAM 密钥派生出来的私有 CA 为每台机器单独签发，都在首次开机的 user data 里写入。服务器只信任这个 CA，因此除了配置之外不需要保存任何状态。
+- **库存**：`OCTOP_CVM_SUBNETS` 按顺序列出可用区和子网，一个区没货或者实例配额用完了，就换下一个。
 - **单价**（成本 × 2）：标准 1.70 积分/分钟，高配 3.40 积分/分钟，磁盘 4.80 积分/GB·天。公网流量暂未单独计费（看画面时每小时约几十到一两百 MB）。
 
-部署所需环境变量（`OCTOP_CVM_*`）：`SECRET_ID` / `SECRET_KEY`（CAM 子账号，CVM、VPC、TAT 全读写加 `finance:trade` 付款权限）、`REGION`、`IMAGE_ID`、`VPC_ID`、`SUBNETS`、`SECURITY_GROUP`、`TYPE` / `TYPE_PRO`、`DISK_GB`、`BANDWIDTH`。
+部署所需环境变量（`OCTOP_CVM_*`）：`SECRET_ID` / `SECRET_KEY`（云电脑专用子账号，权限范围见团队目录《交接-部署与发版》）、`REGION`、`IMAGE_ID`、`VPC_ID`、`SUBNETS`、`SECURITY_GROUP`、`TYPE` / `TYPE_PRO`、`DISK_GB`、`BANDWIDTH`。可选的 `INSTANCE_SECRET` 是电脑访问令牌和证书的派生种子，不设置时用 `SECRET_KEY`。换 CAM 密钥前，先把旧的 `SECRET_KEY` 填进 `INSTANCE_SECRET`，再换新密钥，已有的电脑就能照常连上。
 
 ## 12.11 多端互通：桌面登录灵策就用云端（2026-11-24 定）
 

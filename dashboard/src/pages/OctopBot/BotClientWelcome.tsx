@@ -14,6 +14,7 @@ import {
   formatServerYmd,
 } from "../../utils/formatMessageTime";
 import type { WelcomeQuickCard } from "../Chat/components/WelcomeScreen";
+import { useEmbeddedChat } from "../Chat/ChatRouteContext";
 import LynxceRegistration from "./LynxceRegistration";
 import styles from "./botConversation.module.less";
 
@@ -111,7 +112,11 @@ export default function BotClientWelcome({
       state: { from: location.pathname, prefillInput },
     });
   };
-  const choices = isChief
+  // During onboarding the guide above the composer offers its own examples.
+  const guided = Boolean(useEmbeddedChat()?.composerTop);
+  const choices = guided
+    ? []
+    : isChief
     ? [
         { title: t("botClient.teamLabel"), prompt: t("botClient.teamPrompt") },
         {

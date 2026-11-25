@@ -62,6 +62,10 @@ class Manager:
         self.takeover = active
         self.handed_back = not active
 
+    def release_takeover_if_held(self, agent_id: str, user_id: int) -> None:
+        if self.takeover:
+            self.set_takeover(agent_id, user_id, False)
+
     def viewing(self, agent_id: str, user_id: int) -> None:
         return None
 
@@ -156,3 +160,176 @@ def test_a_screen_opened_in_control_hands_back_when_it_closes(relay: Any) -> Non
         wait_for(lambda: upstream.sent == [HANDSHAKE])
         ws.close()
     wait_for(lambda: manager.handed_back)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("direct", [False, True])
+async def test_cancel_waits_for_handback_and_reaps_relay_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+    direct: bool,
+) -> None:
+    import threading
+
+    import anyio
+    import websockets
+
+    manager, upstream = Manager(), Upstream()
+    manager.takeover = True
+    entered, exited = asyncio.Event(), asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+    original = manager.set_takeover
+
+    def blocked_handback(agent_id: str, user_id: int, active: bool) -> None:
+        if not active:
+            loop.call_soon_threadsafe(entered.set)
+            assert release.wait(10)
+        original(agent_id, user_id, active)
+
+    monkeypatch.setattr(manager, "set_takeover", blocked_handback)
+    monkeypatch.setattr(bot_computers, "_tickets", {})
+    monkeypatch.setattr(bot_computers, "bot_cloud_enabled", lambda: True)
+    monkeypatch.setattr(bot_computers, "computer_manager", lambda services: manager)
+    monkeypatch.setattr(websockets, "connect", lambda *a, **k: upstream)
+
+    class Socket:
+        app = SimpleNamespace(state=SimpleNamespace(octop_server=SimpleNamespace(services=None)))
+
+        async def accept(self, **kwargs: Any) -> None:
+            pass
+
+        async def receive(self) -> dict[str, str]:
+            return {"type": "websocket.disconnect"}
+
+        async def close(self, **kwargs: Any) -> None:
+            pass
+
+    async def run_relay() -> None:
+        try:
+            with anyio.CancelScope() as scope:
+                scope_holder.append(scope)
+                await bot_computers.screen_ws(Socket(), "bot-a", ticket())  # type: ignore[arg-type]
+        finally:
+            exited.set()
+
+    scope_holder: list[anyio.CancelScope] = []
+    task = asyncio.create_task(run_relay())
+    try:
+        with anyio.fail_after(5):
+            await entered.wait()
+            if direct:
+                task.cancel()
+            else:
+                scope_holder[0].cancel()
+            await anyio.wait_all_tasks_blocked()
+            assert not exited.is_set(), "relay exited before handback completed"
+            if direct:
+                task.cancel()
+                await anyio.wait_all_tasks_blocked()
+                assert not exited.is_set()
+    finally:
+        release.set()
+        with anyio.fail_after(5):
+            if direct:
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+            else:
+                await task
+    assert manager.handed_back
+    assert not [
+        t
+        for t in asyncio.all_tasks()
+        if not t.done() and t.get_coro().__qualname__.startswith("screen_ws.<locals>.")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_initial_read_hands_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    import anyio
+
+    manager = Manager()
+    manager.takeover = True
+    entered = asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+
+    def blocked_read(agent_id: str, user_id: int) -> bool:
+        loop.call_soon_threadsafe(entered.set)
+        assert release.wait(10)
+        return manager.takeover
+
+    monkeypatch.setattr(manager, "taken_over", blocked_read)
+    monkeypatch.setattr(bot_computers, "_tickets", {})
+    monkeypatch.setattr(bot_computers, "bot_cloud_enabled", lambda: True)
+    monkeypatch.setattr(bot_computers, "computer_manager", lambda services: manager)
+
+    class Socket:
+        app = SimpleNamespace(state=SimpleNamespace(octop_server=SimpleNamespace(services=None)))
+
+        async def accept(self, **kwargs: Any) -> None:
+            pass
+
+        async def close(self, **kwargs: Any) -> None:
+            pass
+
+    task = asyncio.create_task(bot_computers.screen_ws(Socket(), "bot-a", ticket()))  # type: ignore[arg-type]
+    try:
+        with anyio.fail_after(5):
+            await entered.wait()
+            task.cancel()
+            await anyio.wait_all_tasks_blocked()
+            assert not task.done()
+    finally:
+        release.set()
+        with anyio.fail_after(5), pytest.raises(asyncio.CancelledError):
+            await task
+    assert manager.handed_back
+
+
+def test_release_takeover_if_held_checks_raw_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.cloud.computers.manager import ComputerManager, ComputerRecord
+
+    manager = ComputerManager(
+        SimpleNamespace(), SimpleNamespace(), billing=object(), clock=lambda: 1000
+    )  # type: ignore[arg-type]
+    record = ComputerRecord(agent_id="bot-a", user_id=7)
+    saved: list[ComputerRecord] = []
+    held: list[str] = []
+    real_lock = manager._lock
+
+    class Tracking:
+        """The agent's lock, noting while it is held (an RLock has no locked())."""
+
+        def __init__(self, agent_id: str) -> None:
+            self.agent_id, self.inner = agent_id, real_lock(agent_id)
+
+        def __enter__(self) -> None:
+            self.inner.acquire()
+            held.append(self.agent_id)
+
+        def __exit__(self, *exc: object) -> None:
+            held.remove(self.agent_id)
+            self.inner.release()
+
+    monkeypatch.setattr(manager, "_lock", Tracking)
+
+    def read(*args: Any) -> ComputerRecord:
+        assert "bot-a" in held
+        return record
+
+    def save(value: ComputerRecord) -> None:
+        assert "bot-a" in held
+        saved.append(value)
+
+    monkeypatch.setattr(manager, "record", read)
+    monkeypatch.setattr(manager, "_save", save)
+    manager.release_takeover_if_held("bot-a", 7)
+    assert saved == []
+    record.takeover = True
+    record.viewed_at = 0  # controlled() is already expired
+    assert not record.controlled(1000)
+    manager.release_takeover_if_held("bot-a", 7)
+    assert not record.takeover
+    assert saved == [record]

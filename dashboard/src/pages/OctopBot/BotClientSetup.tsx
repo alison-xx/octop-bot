@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Input, Spin } from "antd";
-import { ArrowRight, ChevronRight, SlidersHorizontal } from "lucide-react";
+import { ArrowRight, ChevronRight, LockKeyhole } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -29,6 +29,7 @@ import { BotCharacter, octopCharacter } from "./BotCharacter";
 import BotStartHero from "./BotStartHero";
 import lynxceLogo from "../../assets/providers/lynxce.png";
 import LynxceSignInForm from "./LynxceSignInForm";
+import ThirdPartySignIn from "./ThirdPartySignIn";
 import styles from "./index.module.less";
 import intro from "./BotClientSetup.module.less";
 
@@ -59,6 +60,23 @@ export default function BotClientSetup() {
   const [busy, setBusy] = useState<Busy | null>(null);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  const [wechatBind, setWechatBind] = useState<{
+    flowId: string;
+    nickname: string | null;
+    avatar: string | null;
+  } | null>(null);
+  const [wechatPhone, setWechatPhone] = useState("");
+  const [wechatCode, setWechatCode] = useState("");
+  const [wechatWait, setWechatWait] = useState(0);
+  useEffect(() => {
+    if (!wechatWait) return;
+    const timer = window.setTimeout(
+      () => setWechatWait((value) => value - 1),
+      1000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [wechatWait]);
+
   const locale = i18n.language.startsWith("zh") ? "zh" : "en";
   useEffect(() => {
     let mounted = true;
@@ -232,7 +250,7 @@ export default function BotClientSetup() {
     try {
       const fresh = firstRun;
       await enterLocal(status);
-      await attempt();
+      if ((await attempt()) === false) return;
       navigate(fresh ? BOT_SETTINGS : BOT_HOME, {
         replace: true,
         state: fresh ? { source: "lynxce", from: BOT_GUIDE } : undefined,
@@ -294,14 +312,43 @@ export default function BotClientSetup() {
     !wizardSession.loadSetupJwt();
 
   const workbuddyLogin = getDesktopBridge()?.workbuddyLogin;
+  const wechatLogin = getDesktopBridge()?.wechatLogin;
+  const startWechat = () => {
+    if (!wechatLogin) return;
+    void signInDesktopLynxce(async () => {
+      const flow = await botCloudApi.wechatStart();
+      const result = await wechatLogin(flow.qr_url, flow.redirect_uri);
+      if (!result.ok) {
+        if (result.reason === "cancelled") return false;
+        throw new Error(t("botCloud.wechatFailed"));
+      }
+      const outcome = await botCloudApi.wechatFinish(
+        flow.flow_id,
+        result.code,
+        result.state,
+      );
+      if ("need_bind_phone" in outcome) {
+        setWechatBind({
+          flowId: flow.flow_id,
+          nickname: outcome.nickname,
+          avatar: outcome.avatar_url,
+        });
+        return false;
+      }
+      return outcome;
+    });
+  };
+  const lynxceHead = (
+    <div className={intro.cardHead}>
+      <img src={lynxceLogo} alt="" />
+      <span id="bot-start-lynxce">{t("botStart.lynxceAccount")}</span>
+      <span className={intro.recommend}>{t("botStart.recommended")}</span>
+    </div>
+  );
   const desktopStart = (
     <div className={intro.webForms}>
       <section className={intro.lynxceCard} aria-labelledby="bot-start-lynxce">
-        <div className={intro.cardHead}>
-          <img src={lynxceLogo} alt="" />
-          <span id="bot-start-lynxce">{t("botStart.lynxceAccount")}</span>
-          <span className={intro.recommend}>{t("botStart.recommended")}</span>
-        </div>
+        {lynxceHead}
         <LynxceSignInForm
           idPrefix="bot-start"
           autoFocus
@@ -329,11 +376,16 @@ export default function BotClientSetup() {
           onError={(e) => setError(apiErrorMessage(e, t("octopBot.failed"), t))}
           onClearError={() => setError("")}
         />
-        {workbuddyLogin && (
-          <Button
-            size="large"
-            disabled={!!busy}
-            onClick={() =>
+        <ThirdPartySignIn
+          disabled={!!busy}
+          onWechat={
+            import.meta.env.VITE_OCTOP_BOT_WECHAT_LOGIN === "1" && wechatLogin
+              ? () => void startWechat()
+              : undefined
+          }
+          onWorkbuddy={
+            workbuddyLogin &&
+            (() =>
               void signInDesktopLynxce(async () => {
                 const result = await workbuddyLogin();
                 if (!result.ok) {
@@ -346,16 +398,10 @@ export default function BotClientSetup() {
                   );
                 }
                 return botCloudApi.loginWorkbuddy(result.code);
-              })
-            }
-          >
-            {t("botCloud.workbuddySignIn")}
-          </Button>
-        )}
+              }))
+          }
+        />
       </section>
-      <div className={intro.or} role="separator">
-        <span>{t("botOnboarding.or")}</span>
-      </div>
       <button
         type="button"
         className={intro.localOption}
@@ -366,11 +412,7 @@ export default function BotClientSetup() {
         onClick={() => void enterWithoutSignIn()}
       >
         <span className={intro.localIcon} aria-hidden="true">
-          {busy === "local" ? (
-            <Spin size="small" />
-          ) : (
-            <SlidersHorizontal size={20} />
-          )}
+          {busy === "local" ? <Spin size="small" /> : <LockKeyhole size={18} />}
         </span>
         <span>
           <strong id="bot-start-local">{t("botOnboarding.useLocal")}</strong>
@@ -385,6 +427,7 @@ export default function BotClientSetup() {
 
   const webForms = (
     <div className={`${intro.webForms} ${intro.lynxceCard}`}>
+      {lynxceHead}
       <LynxceSignInForm
         idPrefix="bot-lynxce"
         autoFocus
@@ -427,12 +470,27 @@ export default function BotClientSetup() {
       <div className={intro.welcome}>
         <BotStartHero />
         <section className={intro.copy} aria-live="polite">
+          {wechatBind && (
+            <button
+              type="button"
+              onClick={() => {
+                setWechatBind(null);
+                setError("");
+              }}
+            >
+              {t("botCloud.wechatBack")}
+            </button>
+          )}
           <h1 ref={headingRef} tabIndex={-1}>
-            {t(desktop ? "botOnboarding.startTitle" : "botClient.welcome")}
+            {wechatBind
+              ? t("botCloud.wechatBindTitle")
+              : t(desktop ? "botOnboarding.startTitle" : "botClient.welcome")}
           </h1>
           <p>
             {t(
-              desktop
+              wechatBind
+                ? "botCloud.wechatBindBody"
+                : desktop
                 ? "botOnboarding.startBody"
                 : status?.lynxce_login
                 ? "botOnboarding.webBody"
@@ -441,7 +499,83 @@ export default function BotClientSetup() {
           </p>
           {error && <Alert type="error" message={error} showIcon />}
           {status ? (
-            needsWizardPassword ? (
+            wechatBind ? (
+              <form
+                className={intro.wechatBind}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void signInDesktopLynxce(() =>
+                    botCloudApi.wechatBind(
+                      wechatBind.flowId,
+                      wechatPhone,
+                      wechatCode,
+                    ),
+                  );
+                }}
+              >
+                <div>
+                  {wechatBind.avatar && (
+                    <img
+                      src={wechatBind.avatar}
+                      alt=""
+                      width={32}
+                      height={32}
+                      style={{ borderRadius: "50%" }}
+                    />
+                  )}{" "}
+                  {wechatBind.nickname || t("botCloud.wechatUser")}
+                </div>
+                <Input
+                  aria-label={t("botCloud.wechatPhone")}
+                  size="large"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder={t("botCloud.wechatPhone")}
+                  value={wechatPhone}
+                  onChange={(e) => setWechatPhone(e.target.value)}
+                />
+                <Input
+                  aria-label={t("lynxceSignIn.code")}
+                  size="large"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  placeholder={t("lynxceSignIn.codePlaceholder")}
+                  value={wechatCode}
+                  onChange={(e) => setWechatCode(e.target.value)}
+                  suffix={
+                    <Button
+                      type="link"
+                      disabled={!!busy || wechatWait > 0 || !wechatPhone.trim()}
+                      onClick={() => {
+                        void botCloudApi
+                          .sendCode(wechatPhone, locale)
+                          .then(() => setWechatWait(60))
+                          .catch((e) =>
+                            setError(
+                              apiErrorMessage(e, t("octopBot.failed"), t),
+                            ),
+                          );
+                      }}
+                    >
+                      {wechatWait
+                        ? t("lynxceSignIn.resendIn", { seconds: wechatWait })
+                        : t("lynxceSignIn.send")}
+                    </Button>
+                  }
+                />
+                <small>{t("botCloud.wechatExpires")}</small>
+                <Button
+                  type="primary"
+                  size="large"
+                  htmlType="submit"
+                  loading={busy === "lynxce"}
+                  disabled={!wechatPhone.trim() || !wechatCode.trim()}
+                >
+                  {t("botCloud.wechatSubmit")}
+                </Button>
+              </form>
+            ) : needsWizardPassword ? (
               <PasswordStep
                 onVerified={() => {
                   setVerified(true);

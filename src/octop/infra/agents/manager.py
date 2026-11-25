@@ -924,6 +924,11 @@ class AgentManager:
 
                 if kind == "managed":
                     raise OctopError.localized(ErrorCode.FORBIDDEN)
+                if kind != "team" and spec.user_id is not None:
+                    # A cloud account owns at most MAX_BOTS Bots; Bots on this computer are unlimited.
+                    from octop.infra.agents.bot_limits import assert_bot_capacity  # noqa: PLC0415
+
+                    assert_bot_capacity(self._repos.user_repo, self._repos.agent_repo, spec.user_id)
                 # Only what a tenant may set; the server picks the folder, backend and layout.
                 config = strip_tenant_input(config)
                 # On a cloud server a tenant's agents stay its own.
@@ -2396,7 +2401,7 @@ class AgentManager:
             assert self._harness_manager is not None
             factory = self._harness_manager.shared_factory
             if account is not None:
-                config = account.harness_config(config, self._account_services())
+                config = account.harness_config(config, self._account_services(), agent_id)
                 request = account.request(request)
                 factory = None
             agent = await asyncio.to_thread(
@@ -4822,6 +4827,13 @@ class AgentManager:
                         f"{briefing}\n\nTeam notes (reference):\n{notes}".strip()
                     )
                     req["configurable"] = configurable
+                from octop.infra.agents.bot_onboarding import onboarding_briefing
+
+                guide = onboarding_briefing(self._account_services(), int(uid), agent_id)
+                if guide:
+                    briefing = configurable.get(CONFIG_KEY) or ""
+                    configurable[CONFIG_KEY] = f"{briefing}\n\n{guide}".strip()
+                    req["configurable"] = configurable
         agent_cfg = self.get_config(agent_id)
         plugins_cfg = agent_cfg.get("plugins")
         tool_configs = collect_plugin_tool_configs(
@@ -5284,7 +5296,9 @@ class AgentManager:
                 owner = row.user_id
                 agent_middleware.append(
                     LynxceMediaTools(
-                        lynxce_media_tools(ws, lambda: media_auth(account_services, owner))
+                        lynxce_media_tools(
+                            ws, lambda: media_auth(account_services, owner), bot_id=row.agent_id
+                        )
                     )
                 )
         # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.

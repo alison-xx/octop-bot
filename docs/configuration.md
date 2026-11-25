@@ -176,6 +176,7 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_BIND_HOST` | string | `127.0.0.1` | Listen address (use `0.0.0.0` for LAN access) |
 | `OCTOP_PORT` | int | `8088` | Listen port (`0`–`65535`; `0` asks the OS for a free port) |
 | `OCTOP_LOG_LEVEL` | string | `info` | One of `debug` `info` `warning` `error` |
+| `OCTOP_ACCESS_LOG` | bool | `on` | `0` / `off` turns off the per-request HTTP access log (request lines and query strings); other logs keep `OCTOP_LOG_LEVEL` |
 | `OCTOP_LOG_RETENTION_DAYS` | int | `14` | Keep rotated `octop.YYYY-MM-DD.log` files for this many days |
 | `OCTOP_LOG_MAX_BYTES` | int | `104857600` (100 MiB) | Roll the active log when it exceeds this size (in addition to daily rotation) |
 | `OCTOP_LOG_COMPRESS` | bool | `true` | logrotate-style `compress` + `delaycompress`: gzip prior rotated plains on the next cycle (`octop.YYYY-MM-DD.log.gz`); the newest rotated file stays uncompressed until then |
@@ -319,6 +320,16 @@ For unattended installs, use `octop init --yes` with
 `OCTOP_ADMIN_USERNAME` / `OCTOP_ADMIN_PASSWORD` (and
 `OCTOP_REQUIRE_SETUP_PASSWORD=false` if the env-var path is used). This
 runs the same migrations + admin creation without the HTTP wizard.
+
+## Cloud computer disk billing
+
+`OCTOP_DISK_BILLING` defaults to off. Set it to `on`, `true`, `yes`, or `1` to
+enable daily disk charges through Lynxce. With the switch off, the reaper sends
+no disk charge requests. Compute billing is controlled separately.
+
+`OCTOP_COMPUTER_RECLAIM` defaults to off. Set it to `on`, `true`, `yes`, or `1`
+to enable idle and unpaid computer reminders and reclamation. When off, eligibility
+is still shown, but no reminders are sent and no computers are reclaimed by this policy.
 
 ## Secrets
 

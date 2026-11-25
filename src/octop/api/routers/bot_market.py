@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
+from octop.i18n.domains.agents import agent_error_message
 from octop.infra.agents.bot_appearance import Character
 from octop.infra.agents.bot_market.catalog import (
     Catalog,
@@ -118,6 +119,9 @@ class ImportResult(BaseModel):
     name: str
     routines: list[str] = Field(description="Created cron job ids.")
     integrations: list[str] = Field(description="Suggested connector kinds to connect next.")
+    state: str = Field(description="Current agent lifecycle state.")
+    preparing: bool = Field(description="True while the agent is starting or preparing.")
+    last_error: str | None = Field(description="Localized user-visible error, or null.")
 
 
 class MyImports(BaseModel):
@@ -288,4 +292,12 @@ async def import_bot(body: ImportBody, request: Request, user: Owner, server: Se
         name=body.name,
         routine_ids=body.routines,
     )
-    return ImportResult(**result.__dict__)
+    row = await asyncio.to_thread(services.agent_repo.get, result.agent_id)
+    assert row is not None
+    state = row.last_state or "unknown"
+    return ImportResult(
+        **result.__dict__,
+        state=state,
+        preparing=state == "starting",
+        last_error=agent_error_message(row.last_error, _locale(request, None)) or None,
+    )

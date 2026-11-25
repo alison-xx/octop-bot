@@ -48,6 +48,10 @@ async def test_import_creates_a_ready_bot_with_chosen_routines(env_admin_alice):
     agent_id = result["agent_id"]
     assert result["name"] == "店铺经营日报"
     assert result["integrations"] == ["tencent-docs", "wecom-cli"]
+    # The Bot starts in the background; clients show "preparing" until it runs.
+    assert result["state"] in {"starting", "running"}
+    assert result["preparing"] is (result["state"] == "starting")
+    assert result["last_error"] is None
 
     registry = server.app_runtime.agent_registry
     row = registry.get_row(agent_id)
@@ -79,6 +83,9 @@ async def test_import_creates_a_ready_bot_with_chosen_routines(env_admin_alice):
         if b["agent_id"] == agent_id
     )
     assert card["avatar"] == {"shape": "orb", "color": "orange", "source": "photo"}
+    assert card["state"] in {"starting", "running"}
+    assert card["preparing"] is (card["state"] == "starting")
+    assert card["last_error"] is None
 
     again = await client.post(
         BASE + "/market-imports", json={"slug": SLUG, "routines": []}, headers=headers

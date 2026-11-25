@@ -53,6 +53,7 @@ async def test_cloud_checkout_only_mints_for_displayed_wallet(
     monkeypatch.setenv("OCTOP_DESKTOP_PRODUCT", "bot")
     client, _, admin, alice = env_admin_alice
     minted: list[str] = []
+    returns: list[str] = []
 
     def upstream(req: httpx.Request) -> httpx.Response:
         assert str(req.url).startswith("https://api.lynxce.cn/") and not req.url.query
@@ -70,7 +71,10 @@ async def test_cloud_checkout_only_mints_for_displayed_wallet(
             data = {"id": "key-" + account, "secret": "sk-" + account}
         else:
             assert req.url.path == "/api/billing/recharge/checkout-link" and req.method == "POST"
-            assert not req.content
+            # Octop Bot's brand and the official result page; the returned URL stays the same.
+            sent = json.loads(req.content)
+            assert sent["site"] == "octopbot"
+            returns.append(sent["returnUrl"])
             minted.append(account)
             data = {"url": PORTAL + token(account), "token": token(account), "expiresAt": expires()}
         return httpx.Response(200, json={"code": 0, "data": data})
@@ -99,6 +103,15 @@ async def test_cloud_checkout_only_mints_for_displayed_wallet(
     good = await client.post(API + "/recharge", headers=admin, json=body)
     assert "no-store" in good.headers["cache-control"]
     assert good.json()["url"] == PORTAL + token("first") and good.json()["expires_at"]
+    # The official result page learns which client to go back to; unknown clients get none.
+    for origin in ("desktop", "phone"):
+        resp = await client.post(API + "/recharge", headers=admin, json={**body, "from": origin})
+        assert resp.json()["url"] == PORTAL + token("first")
+    assert returns == [
+        "https://octop-bot.lynxce.cn/pay/result.html",
+        "https://octop-bot.lynxce.cn/pay/result.html?from=desktop",
+        "https://octop-bot.lynxce.cn/pay/result.html",
+    ]
     assert (await client.post(API + "/recharge", headers=alice, json=body)).status_code == 403
     (
         await client.post(
@@ -113,7 +126,7 @@ async def test_cloud_checkout_only_mints_for_displayed_wallet(
             json={"source": "model", "expected_connection_id": "first"},
         )
     ).status_code == 403
-    assert minted == ["first"]
+    assert minted == ["first"] * 3  # the plain request and the two with `from`
 
 
 async def test_model_wallet_checks_grant_scope_and_account_switches(

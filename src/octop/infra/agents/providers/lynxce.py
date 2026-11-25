@@ -13,7 +13,7 @@ from uuid import uuid4
 import httpx
 from octop_harness.config import HarnessAgentConfig, ModelConfig, ProviderConfig
 
-from octop.infra.agents.providers.lynxce_media import LYNXCE_HOSTS, LynxceMediaAuth
+from octop.infra.agents.providers.lynxce_media import BOT_ID_HEADER, LYNXCE_HOSTS, LynxceMediaAuth
 from octop.infra.agents.providers.presets import lynxce_model_input
 from octop.infra.auth.lynxce_cloud import LYNXCE_APP_HEADERS
 from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled, bot_web_enabled
@@ -44,6 +44,11 @@ def lynxce_chat_models(catalog: object) -> list[dict[str, str]]:
     return list(models.values())
 
 
+def lynxce_headers(bot_id: str | None = None) -> dict[str, str]:
+    """Headers on every Lynxce model or media request made for a Bot."""
+    return {**LYNXCE_APP_HEADERS, **({BOT_ID_HEADER: bot_id} if bot_id else {})}
+
+
 @dataclass(frozen=True)
 class AccountModel:
     user_id: int
@@ -54,7 +59,9 @@ class AccountModel:
     def ref(self) -> str:
         return f"lynxce/{self.model_id}"
 
-    def provider(self, services: SharedServices | None) -> ProviderConfig:
+    def provider(
+        self, services: SharedServices | None, bot_id: str | None = None
+    ) -> ProviderConfig:
         async def token_for_request() -> str:
             from octop.infra.auth.lynxce import get_access_token
 
@@ -75,18 +82,21 @@ class AccountModel:
             protocol="openai",
             base_url=BASE_URL,
             api_key=cast("str", token_for_request),
-            headers=dict(LYNXCE_APP_HEADERS),
+            headers=lynxce_headers(bot_id),
             models=[ModelConfig(id=self.model_id, name=self.model_id)],
         )
 
     def harness_config(
-        self, config: HarnessAgentConfig, services: SharedServices | None
+        self,
+        config: HarnessAgentConfig,
+        services: SharedServices | None,
+        bot_id: str | None = None,
     ) -> HarnessAgentConfig:
         from octop.infra.agents.middleware.model_failover import SafeModelFailoverMiddleware
 
         return replace(
             config,
-            providers=[self.provider(services)],
+            providers=[self.provider(services, bot_id)],
             default_model=self.ref,
             multimodal_model=None,
             model_selector=None,
@@ -121,7 +131,9 @@ _key_checked: dict[int, float] = {}
 class CloudAccountModel(AccountModel):
     """Cloud mode: the tenant's own Lynxce personal API key, read on every request."""
 
-    def provider(self, services: SharedServices | None) -> ProviderConfig:
+    def provider(
+        self, services: SharedServices | None, bot_id: str | None = None
+    ) -> ProviderConfig:
         async def key_for_request() -> str:
             if services is None:
                 raise _auth_required()
@@ -133,7 +145,7 @@ class CloudAccountModel(AccountModel):
             protocol="openai",
             base_url=GATEWAY_URL,
             api_key=cast("str", key_for_request),
-            headers=dict(LYNXCE_APP_HEADERS),
+            headers=lynxce_headers(bot_id),
             models=[
                 ModelConfig(
                     id=self.model_id,

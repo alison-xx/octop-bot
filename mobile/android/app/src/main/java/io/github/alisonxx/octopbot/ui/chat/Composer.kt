@@ -68,6 +68,7 @@ fun Composer(
     onDictate: () -> Unit,
     modifier: Modifier = Modifier,
     allowPhotos: Boolean = true,
+    enabled: Boolean = true,
 ) {
     val palette = LocalPalette.current
     var attachMenu by remember { mutableStateOf(false) }
@@ -153,6 +154,7 @@ fun Composer(
                 }
                 BasicTextField(
                     value = field,
+                    enabled = enabled,
                     onValueChange = {
                         field = it
                         if (it.text != text) onTextChange(it.text)
@@ -167,6 +169,7 @@ fun Composer(
             val hasContent = text.isNotBlank() || images.isNotEmpty()
             // Sending always works: while a reply streams, text is queued (send) and an empty field stops it.
             when {
+                !enabled -> RoundAction(Icons.Rounded.Mic, stringResource(R.string.chat_dictate), filled = false, enabled = false, onClick = {})
                 hasContent && !dictating -> RoundAction(Icons.Rounded.ArrowUpward, stringResource(R.string.chat_send), filled = true, onClick = onSend)
                 streaming -> RoundAction(Icons.Rounded.Stop, stringResource(R.string.chat_stop), filled = true, onClick = onStop)
                 else -> RoundAction(Icons.Rounded.Mic, stringResource(R.string.chat_dictate), filled = dictating, onClick = onDictate)
@@ -176,10 +179,11 @@ fun Composer(
 }
 
 @Composable
-private fun RoundAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, filled: Boolean, onClick: () -> Unit) {
+private fun RoundAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, filled: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     val palette = LocalPalette.current
     IconButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .padding(2.dp)
             .size(44.dp)

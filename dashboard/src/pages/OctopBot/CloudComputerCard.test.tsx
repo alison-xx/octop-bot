@@ -30,6 +30,27 @@ afterEach(() => {
 });
 
 describe("Octop Bot cloud computer card", () => {
+  it("shows the disk price and overdue days", async () => {
+    vi.spyOn(botCloudComputerApi, "status").mockResolvedValue({
+      state: "paused",
+      spec: "standard",
+      running_since: null,
+      paid_until: null,
+      takeover: false,
+      disk_gb: 40,
+      disk_daily_credits: 192,
+      disk_billing: true,
+      disk_overdue_days: 2,
+    });
+    render(<CloudComputerCard botId="bot-1" />);
+    expect(
+      await screen.findByText('cloudComputer.diskFee:{"gb":40,"credits":192}'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('cloudComputer.diskOverdue:{"days":2}'),
+    ).toBeInTheDocument();
+  });
+
   it("shows a running computer and pauses it", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(1_700_000_600_000);

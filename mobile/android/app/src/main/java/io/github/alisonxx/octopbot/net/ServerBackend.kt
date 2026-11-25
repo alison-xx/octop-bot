@@ -235,13 +235,10 @@ class ServerBackend(
         return wallet?.double("credits") ?: throw ApiException.badResponse()
     }
 
-    override suspend fun checkoutUrl(): String {
+    override suspend fun checkoutUrl(scenario: CreditScenario?): String {
         if (!isCloud) throw CheckoutRefused()
         val account = walletAccount ?: balance().let { walletAccount } ?: throw ApiException.badResponse()
-        val link = json("POST", "/api/octop-bot/wallet/recharge", body = Http.body(buildJsonObject {
-            put("source", "cloud")
-            put("expected_account_id", account)
-        }))
+        val link = json("POST", "/api/octop-bot/wallet/recharge", body = Http.body(ServerProtocol.rechargeBody(account, scenario?.need, scenario?.reason)))
         // Check it again here: only ever open Lynxce's own recharge page with a fresh ticket.
         return ServerProtocol.cloudCheckoutUrl(link) ?: throw CheckoutRefused()
     }
@@ -369,6 +366,8 @@ class ServerBackend(
         directory = bots
         return bots
     }
+
+    suspend fun startBot(bot: BotProfile) { raw("POST", agent(bot) + "/start") }
 
     override suspend fun setLook(bot: BotProfile, look: Look) {
         json("PUT", "/api/octop-bot/bots/${segment(bot.id)}/appearance", body = Http.body(buildJsonObject {

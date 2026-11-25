@@ -50,6 +50,9 @@ vi.mock("../../context/AgentContext", () => ({
 vi.mock("../../hooks/useCurrentUser", () => ({
   useCurrentUser: () => ({ role: "member", permissions: mock.permissions }),
 }));
+vi.mock("../../utils/desktopBridge", () => ({
+  isBotOnlyDesktop: () => true,
+}));
 vi.mock("../../hooks/useLynxceStatus", () => ({
   useLynxceStatus: () => ({ status: null }),
 }));
@@ -150,6 +153,45 @@ beforeEach(() => {
 });
 
 describe("activity from the standalone Bot profile", () => {
+  it("keeps history and local schedules without cloud workspace shortcuts", async () => {
+    vi.mocked(octopCronApi.list).mockResolvedValue([
+      { ...job, enabled: false },
+    ]);
+    openDetails();
+
+    expect(
+      screen.getByRole("button", { name: "octopBot.history" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "botCloud.workWithBot" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "botCloud.importChat" }),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "botClient.activity.schedules" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "botClient.activity.scheduleTitle Writer",
+    });
+    expect(await within(dialog).findByText("Morning plan")).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: "botCloud.schedules" }),
+    ).toBeNull();
+    expect(
+      within(dialog).queryByRole("button", { name: "botCloud.copyTimer" }),
+    ).toBeNull();
+    expect(
+      within(dialog).getByRole("button", { name: "cronJobs.createJob" }),
+    ).toBeEnabled();
+    expect(
+      within(dialog).getByRole("button", {
+        name: "botClient.activity.resume Morning plan",
+      }),
+    ).toBeEnabled();
+  });
+
   it("creates an actual agent schedule for this thread and persists pause/resume via the owner-scoped API", async () => {
     openDetails();
     fireEvent.click(

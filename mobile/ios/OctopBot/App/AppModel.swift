@@ -28,7 +28,11 @@ final class AppModel {
     /// The Lynxce wallet balance as shown: loading, failed (retry), or the number of credits.
     enum Balance: Equatable { case loading, failed, value(Double) }
     /// Below this the balance turns to a warning and chat offers a top-up.
-    static let lowBalance: Double = 100
+    static let lowBalance: Double = 1_000
+    static let lowBalanceDismissalDuration: TimeInterval = 24 * 60 * 60
+    static func lowBalanceIsDismissed(at: TimeInterval, now: TimeInterval) -> Bool {
+        at > 0 && now - at < lowBalanceDismissalDuration
+    }
     /// nil when this account has no Lynxce wallet here (a self-hosted server).
     private(set) var balance: Balance?
     /// The wallet the balance belongs to; low-balance dismissals are remembered per wallet.
@@ -124,6 +128,15 @@ final class AppModel {
         return isCloud ? "cloud.fill" : "server.rack"
     }
 
+    /// The account card in Settings. Tier, avatar and the expiring/permanent split come with Lynxce's
+    /// member profile; until then only the name and balance are known.
+    var accountSummary: AccountSummary {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "demoAccount") { return .demo }
+        #endif
+        return AccountSummary(name: accountName, credits: credits)
+    }
+
     var credits: Double? {
         if case .value(let credits) = balance { return credits }
         return nil
@@ -210,19 +223,34 @@ final class AppModel {
             balance = .value(wallet.credits)
             walletAccount = wallet.accountId
             let key = Self.lowDismissedKey(wallet.accountId)
-            // Back above the line: the next time it runs low, the banner shows again.
-            if wallet.credits >= Self.lowBalance { UserDefaults.standard.removeObject(forKey: key) }
-            lowBalanceDismissed = UserDefaults.standard.bool(forKey: key)
+            let dismissedAt = UserDefaults.standard.double(forKey: key)
+            lowBalanceDismissed = Self.lowBalanceIsDismissed(at: dismissedAt, now: Date().timeIntervalSince1970)
+            scheduleLowBalanceReset(dismissedAt: dismissedAt, wallet: wallet.accountId)
         } catch {
             guard creditAccount === account else { return }
             if credits == nil { balance = .failed }
         }
     }
 
-    /// Hide the low-balance banner for this wallet until the balance is back at 100 or more.
+    /// Hide the low-balance banner for this wallet for 24 hours.
     func dismissLowBalance() {
         lowBalanceDismissed = true
-        if let walletAccount { UserDefaults.standard.set(true, forKey: Self.lowDismissedKey(walletAccount)) }
+        if let walletAccount {
+            let now = Date().timeIntervalSince1970
+            UserDefaults.standard.set(now, forKey: Self.lowDismissedKey(walletAccount))
+            scheduleLowBalanceReset(dismissedAt: now, wallet: walletAccount)
+        }
+    }
+
+    private func scheduleLowBalanceReset(dismissedAt: TimeInterval, wallet: String) {
+        let remaining = dismissedAt + Self.lowBalanceDismissalDuration - Date().timeIntervalSince1970
+        guard remaining > 0, dismissedAt > 0 else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(remaining))
+            guard let self, self.walletAccount == wallet,
+                  UserDefaults.standard.double(forKey: Self.lowDismissedKey(wallet)) == dismissedAt else { return }
+            self.lowBalanceDismissed = false
+        }
     }
 
     private static func lowDismissedKey(_ account: String) -> String { "credits.lowDismissed.\(account)" }
@@ -251,6 +279,26 @@ final class AppModel {
         models = (try? await backend.models()) ?? []
         await refreshServerKeys()
         await refreshBalance()
+    }
+
+    func refreshPreparingBots() async {
+        guard let server else { return }
+        do {
+            let loaded = try await server.bots()
+            bots = loaded.filter(\.isChief) + loaded.filter { !$0.isChief }
+            for bot in bots { sessions[bot.id]?.bot = bot }
+            loadError = nil
+        } catch {
+            if !Task.isCancelled { loadError = error.localizedDescription }
+        }
+    }
+
+    func retryBot(_ bot: BotProfile) async {
+        guard let server else { return }
+        do {
+            try await server.startBot(bot)
+            await refreshPreparingBots()
+        } catch { loadError = error.localizedDescription }
     }
 
     /// One chat per Bot, so several Bots can reply at once.

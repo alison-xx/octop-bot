@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, SecretStr
 from octop.api.common.bot_desktop import Owner, Services
 from octop.api.deps import get_server
 from octop.infra.agents.providers import lynxce as account_models
+from octop.infra.auth import lynxce_wechat as wechat
 from octop.infra.auth.lynxce_cloud import (
     CloudAccountStatus,
     cloud_account,
@@ -22,7 +23,7 @@ from octop.infra.auth.lynxce_cloud import (
     logout_cloud,
     request_login_code,
 )
-from octop.infra.desktop import bot_desktop_enabled
+from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 
@@ -166,3 +167,61 @@ async def logout(
     if bot_desktop_enabled() and not status.connected:
         await asyncio.to_thread(account_models.release_cloud_account, services, user.id)
     return status
+
+
+def _wechat_desktop_only() -> None:
+    if bot_cloud_enabled():
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
+
+
+wechat_router = APIRouter(
+    prefix="/account/wechat",
+    route_class=_AccountRoute,
+    dependencies=[Depends(_wechat_desktop_only)],
+)
+
+
+class WechatFinish(BaseModel):
+    flow_id: str = Field(max_length=128)
+    code: SecretStr
+    state: SecretStr
+
+
+class WechatBind(BaseModel):
+    flow_id: str = Field(max_length=128)
+    phone: str = Field(max_length=64)
+    code: SecretStr
+    password: SecretStr | None = None
+
+
+@wechat_router.post("/start", summary="Start desktop WeChat sign-in")
+async def wechat_start(user: Owner, services: Services) -> wechat.StartResult:
+    del services
+    return await wechat.start(user.id)
+
+
+@wechat_router.post("/finish", summary="Finish desktop WeChat authorization")
+async def wechat_finish(
+    body: WechatFinish, user: Owner, services: Services, server: Server
+) -> CloudAccountStatus | wechat.BindRequired:
+    result = await wechat.finish(
+        services, user.id, body.flow_id, body.code.get_secret_value(), body.state.get_secret_value()
+    )
+    if isinstance(result, CloudAccountStatus):
+        return await _signed_in(server, services, user.id, result)
+    return result
+
+
+@wechat_router.post("/bind", summary="Bind a phone to a WeChat account")
+async def wechat_bind(
+    body: WechatBind, user: Owner, services: Services, server: Server
+) -> CloudAccountStatus:
+    result = await wechat.bind(
+        services,
+        user.id,
+        body.flow_id,
+        body.phone,
+        body.code.get_secret_value(),
+        body.password.get_secret_value() if body.password else None,
+    )
+    return await _signed_in(server, services, user.id, result)
