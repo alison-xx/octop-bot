@@ -167,6 +167,7 @@ class CronManager:
         while True:
             await asyncio.sleep(RECONCILE_SECONDS + random.uniform(0, 5))
             try:
+                await self._delivery_service.publish_expirations()
                 await self.reconcile_user_jobs()
             except asyncio.CancelledError:
                 raise

@@ -1,12 +1,15 @@
-"""In-memory registry of pending HITL approvals for IM channels."""
+"""Pending human decisions for interactive and background turns."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import secrets
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Literal
+
+from octop.infra.db.repos.handoffs import HandoffRepo, HandoffRow, Lookup
 
 HitlPendingStatus = Literal["pending", "approved", "rejected", "expired"]
 
@@ -70,10 +73,72 @@ class HitlPendingRecord:
 
 @dataclass
 class HitlPendingStore:
-    """Session-scoped pending HITL records (process-local, TTL-gc)."""
+    """Thread-scoped pending actions. The running gateway persists them in the control DB."""
 
     ttl_seconds: float = _DEFAULT_TTL_SECONDS
     _records: dict[str, HitlPendingRecord] = field(default_factory=dict)
+    repo: HandoffRepo | None = None
+    _last_prune: float = 0
+
+    def _find(self, field: Lookup, value: str | int) -> list[HitlPendingRecord]:
+        if self.repo is None:
+            return list(self._records.values())
+        return [HitlPendingRecord(**json.loads(raw)) for raw in self.repo.find(field, value)]
+
+    def _by_id(self, pending_id: str) -> HitlPendingRecord | None:
+        if self.repo is None:
+            return self._records.get(pending_id)
+        return next(iter(self._find("pending_id", pending_id)), None)
+
+    @staticmethod
+    def _slot(record: HitlPendingRecord) -> str:
+        values = [
+            record.user_id,
+            record.agent_id,
+            record.thread_id,
+            record.session_key,
+            record.resume_agent_id,
+        ]
+        return hashlib.sha256(json.dumps(values).encode()).hexdigest()
+
+    def _row(self, record: HitlPendingRecord, slot: str, now: float) -> HandoffRow:
+        ttl = self._ttl(record)
+        expires = record.created_at + ttl if ttl is not None else None
+        return HandoffRow(
+            slot,
+            record.pending_id,
+            record.user_id,
+            record.agent_id,
+            record.thread_id,
+            record.session_key,
+            record.resume_agent_id,
+            record.resume_thread_id,
+            record.origin,
+            expires if record.status == "pending" else now,
+            json.dumps(asdict(record)),
+        )
+
+    def _save(self, record: HitlPendingRecord, previous: HitlPendingRecord | None) -> bool:
+        if self.repo is None:
+            self._records[record.pending_id] = record
+            return True
+        now = time.time()
+        row = self._row(record, self._slot(record), now)
+        history = None
+        if previous and previous.pending_id != record.pending_id:
+            closed = (
+                replace(previous, status="expired") if previous.status == "pending" else previous
+            )
+            history = self._row(closed, f"closed:{closed.pending_id}", now)
+        return self.repo.save(
+            row,
+            json.dumps(asdict(previous)) if previous else None,
+            previous_id=previous.pending_id if previous else None,
+            history=history,
+            notify_on_expiry=record.status == "pending"
+            and (record.channel_type != "dashboard" or record.origin is not None),
+            now=now,
+        )
 
     def register(
         self,
@@ -86,6 +151,7 @@ class HitlPendingStore:
         action_requests: list[dict[str, Any]],
         review_configs: list[dict[str, Any]] | None,
         resume_agent_id: str | None = None,
+        resume_thread_id: str | None = None,
         origin: str | None = None,
         ttl_seconds: float | None = None,
     ) -> HitlPendingRecord:
@@ -128,15 +194,30 @@ class HitlPendingStore:
             review_configs=list(review_configs) if review_configs else None,
             created_at=time.time(),
             resume_agent_id=resume_agent_id,
+            resume_thread_id=resume_thread_id,
             origin=origin,
             ttl_seconds=ttl_seconds,
         )
+        if self.repo is not None:
+            slot = self._slot(record)
+            while True:
+                previous = next(iter(self._find("slot", slot)), None)
+                if (
+                    previous
+                    and previous.status == "pending"
+                    and not self._stale(previous, time.time())
+                    and _actions_equivalent(previous.action_requests, action_requests)
+                ):
+                    return previous
+                record.pending_id = secrets.token_hex(8)
+                if self._save(record, previous):
+                    return record
         self._records[pending_id] = record
         return record
 
     def get(self, pending_id: str) -> HitlPendingRecord | None:
         self._gc()
-        record = self._records.get(pending_id)
+        record = self._by_id(pending_id)
         if record is None:
             return None
         if record.status != "pending":
@@ -176,7 +257,7 @@ class HitlPendingStore:
                 return None
             return record if record.status == "pending" else None
         latest: HitlPendingRecord | None = None
-        for record in self._records.values():
+        for record in self._find("session_key", session_key):
             if record.session_key != session_key or record.status != "pending":
                 continue
             if agent_id is not None and record.agent_id != agent_id:
@@ -203,7 +284,7 @@ class HitlPendingStore:
         """
         self._gc()
         if pending_id:
-            record = self._records.get(pending_id)
+            record = self._by_id(pending_id)
             if record is None or record.status != "pending":
                 return None
             if not self._thread_pending_match(
@@ -215,7 +296,7 @@ class HitlPendingStore:
                 return None
             return record
         latest: HitlPendingRecord | None = None
-        for record in self._records.values():
+        for record in self._find("thread_id", thread_id):
             if record.status != "pending":
                 continue
             if not self._thread_pending_match(
@@ -263,9 +344,10 @@ class HitlPendingStore:
         self._gc()
         rows = [
             r
-            for r in self._records.values()
+            for r in self._find("session_key", session_key)
             if r.session_key == session_key
             and r.status == "pending"
+            and not self._stale(r, time.time())
             and (agent_id is None or r.agent_id == agent_id)
         ]
         rows.sort(key=lambda r: r.created_at, reverse=True)
@@ -286,7 +368,7 @@ class HitlPendingStore:
         self._gc()
         now = time.time()
         out: set[str] = set()
-        for record in self._records.values():
+        for record in self._find("agent_id", agent_id):
             if record.status != "pending":
                 continue
             if not any_user and record.user_id != user_id:
@@ -307,7 +389,7 @@ class HitlPendingStore:
         """Whether *agent_id* has any live pending HITL pause across all users."""
         self._gc()
         now = time.time()
-        for record in self._records.values():
+        for record in self._find("agent_id", agent_id):
             if record.status != "pending":
                 continue
             if self._stale(record, now):
@@ -325,36 +407,75 @@ class HitlPendingStore:
     ) -> None:
         """Drop leftover dashboard pauses so history reload cannot reinject them."""
         self._gc()
-        for record in self._records.values():
+        for record in self._find("thread_id", thread_id):
             if record.thread_id != thread_id or record.status != "pending":
                 continue
             if record.agent_id != agent_id:
                 continue
             if user_id is not None and record.user_id != user_id:
                 continue
-            record.status = "expired"
+            self.mark_resolved(record.pending_id, "expired")
 
     def mark_resolved(
         self,
         pending_id: str,
         status: Literal["approved", "rejected", "expired"],
-    ) -> None:
-        record = self._records.get(pending_id)
-        if record is not None:
+    ) -> bool:
+        record = self._by_id(pending_id)
+        if record is None or (
+            status != "expired" and (record.status != "pending" or self._stale(record, time.time()))
+        ):
+            return False
+        if self.repo is None:
             record.status = status
+            return True
+        return self._save(replace(record, status=status), record)
+
+    def restore_unstarted(self, pending_id: str, expected: HitlPendingStatus) -> None:
+        """Undo this claim when the resume call failed before producing any event."""
+        record = self._by_id(pending_id)
+        if record is None or record.status != expected or self._stale(record, time.time()):
+            return
+        if self.repo is None:
+            record.status = "pending"
+        else:
+            self._save(replace(record, status="pending"), record)
 
     def append_ask_answer(self, pending_id: str, answer: str) -> HitlPendingRecord | None:
         """Record one IM answer and advance to the next question."""
         record = self.get(pending_id)
         if record is None or record.status != "pending":
             return None
+        if self.repo is not None:
+            updated = replace(
+                record,
+                ask_answers=[*record.ask_answers, answer],
+                ask_question_index=record.ask_question_index + 1,
+            )
+            return updated if self._save(updated, record) else None
         record.ask_answers.append(answer)
         record.ask_question_index += 1
         return record
 
     def _stale(self, record: HitlPendingRecord, now: float) -> bool:
-        ttl = record.ttl_seconds if record.ttl_seconds is not None else self.ttl_seconds
-        return now - record.created_at > ttl
+        ttl = self._ttl(record)
+        return ttl is not None and now - record.created_at >= ttl
+
+    def _ttl(self, record: HitlPendingRecord) -> float | None:
+        if record.ttl_seconds is not None:
+            return record.ttl_seconds
+        if record.origin or record.channel_type != "dashboard":
+            return 24 * 3600 if self.repo is not None else self.ttl_seconds
+        if any(
+            isinstance(action.get("args"), dict)
+            and any(
+                action["args"].get(key)
+                for key in ("approval", "cloud_computer", "local_device_wait")
+            )
+            for action in record.action_requests
+        ):
+            return None
+        return self.ttl_seconds
 
     def pending_for_user(self, user_id: int) -> list[HitlPendingRecord]:
         """Every pause still waiting for this user, newest first (the Bot client's inbox)."""
@@ -362,7 +483,7 @@ class HitlPendingStore:
         now = time.time()
         rows = [
             r
-            for r in self._records.values()
+            for r in self._find("user_id", user_id)
             if r.user_id == user_id and r.status == "pending" and not self._stale(r, now)
         ]
         rows.sort(key=lambda r: r.created_at, reverse=True)
@@ -371,18 +492,27 @@ class HitlPendingStore:
     def pending_with_origin(self, origin: str) -> HitlPendingRecord | None:
         """The pause a background run (``cron:<id>``) left waiting for the user, if any."""
         self._gc()
-        for record in self._records.values():
-            if record.origin == origin and record.status == "pending":
+        for record in self._find("origin", origin):
+            if (
+                record.origin == origin
+                and record.status == "pending"
+                and not self._stale(record, time.time())
+            ):
                 return record
         return None
 
     def _gc(self) -> None:
         now = time.time()
+        if self.repo is not None:
+            if now - self._last_prune >= 3600:
+                self.repo.discard_older_than(now - 24 * 3600)
+                self._last_prune = now
+            return
         stale_ids: list[str] = []
         for pending_id, record in self._records.items():
             if record.status == "pending" and self._stale(record, now):
                 record.status = "expired"
-            if record.status != "pending" and self._stale(record, now):
+            if record.status != "pending" and now - record.created_at > self.ttl_seconds:
                 stale_ids.append(pending_id)
         for pending_id in stale_ids:
             del self._records[pending_id]

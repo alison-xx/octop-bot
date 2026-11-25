@@ -85,6 +85,7 @@
       "role": "What this job usually involves: {hint}"
     },
     "approval": {
+      "expired": "The waiting period ended. The Bot has stopped waiting for your reply.",
       "start_observing": "Always allow starts an observation period. You will confirm three more actions and review them before enabling the rule.",
       "observing": "Observation {count}/3. Allow once records this approval. Denying ends observation of this rule.",
       "review_records": "Review the three actions you approved before enabling this rule.",
@@ -981,6 +982,7 @@
       "custom": "Custom"
     },
     "waiting": {
+      "expired": "The scheduled task needed your input. The 24-hour wait expired and the requested action was not approved. The next scheduled run may proceed.",
       "needs_you": "The scheduled task “{name}” needs you. Open this Bot's chat to continue (within 24 hours).",
       "still": "The scheduled task “{name}” is still waiting for you from its last run, so this run was skipped."
     }
