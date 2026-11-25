@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import re
+import time
 from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
@@ -16,6 +17,7 @@ import httpx
 from filelock import AsyncFileLock
 from pydantic import BaseModel
 
+from octop.infra.auth import lynxce_compute
 from octop.infra.crypto.fernet import decrypt_json, encrypt_json
 from octop.infra.db.services import SharedServices
 from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
@@ -728,6 +730,89 @@ def _service_headers(path: str) -> dict[str, str]:
     return {"X-Octop-Service-Key": key}
 
 
+async def _server_exchange(path: str, body: dict[str, str]) -> Any:
+    key = (os.environ.get("OCTOP_BOT_COMPUTE_SERVICE_KEY") or "").strip()
+    if not key:
+        raise OctopError.localized(ErrorCode.NETWORK_ERROR)
+    try:
+        return await _send("POST", path, json=body, headers={"X-Octop-Service-Key": key})
+    except _UpstreamFailure as exc:
+        if exc.status in {400, 401, 403, 410}:
+            raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED) from None
+        raise _rejected(exc.status) from None
+
+
+async def redeem_compute_code(account_id: str, code: str) -> lynxce_compute.ComputeGrant:
+    data = await _server_exchange("/api/auth/login-codes/redeem", {"scope": "server", "code": code})
+    return lynxce_compute.from_response(data, account_id)
+
+
+async def keep_compute_grant(
+    services: SharedServices, user_id: int, grant: lynxce_compute.ComputeGrant
+) -> None:
+    async with _lock(services, user_id):
+        await _finish(asyncio.to_thread(lynxce_compute.save, services, user_id, grant))
+
+
+async def _refresh_compute(
+    services: SharedServices, user_id: int, grant: lynxce_compute.ComputeGrant
+) -> lynxce_compute.ComputeGrant:
+    if time.time() >= grant.authorized_until:
+        raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED)
+    data = await _server_exchange(
+        "/api/auth/login-codes/refresh", {"refreshToken": grant.refresh_token}
+    )
+    updated = lynxce_compute.from_response(data, grant.account_id, previous=grant)
+    await asyncio.to_thread(lynxce_compute.save, services, user_id, updated)
+    return updated
+
+
+async def computer_billing_connected(
+    services: SharedServices, user_id: int, account_id: str
+) -> bool:
+    async with _lock(services, user_id):
+        grant = await asyncio.to_thread(lynxce_compute.load, services, user_id)
+        if grant is None:
+            status = await asyncio.to_thread(cloud_status, services, user_id)
+            return status.connected and status.account_id == account_id
+        if grant.account_id != account_id or time.time() >= grant.authorized_until:
+            return False
+        if time.time() >= grant.expires_at:
+            await _finish(_refresh_compute(services, user_id, grant))
+        return True
+
+
+async def _compute_call(
+    services: SharedServices,
+    user_id: int,
+    grant: lynxce_compute.ComputeGrant,
+    method: str,
+    path: str,
+    body: dict[str, Any] | None,
+    headers: dict[str, str],
+) -> Any:
+    # Hold the tenant lock across rotation and persistence, even when a caller disconnects.
+    if time.time() >= grant.authorized_until:
+        raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED)
+    refreshed = time.time() >= grant.expires_at
+    if refreshed:
+        grant = await _finish(_refresh_compute(services, user_id, grant))
+    try:
+        return await _send(method, path, bearer=grant.access_token, json=body, headers=headers)
+    except _UpstreamFailure as exc:
+        if exc.status != 401:
+            raise _rejected(exc.status) from None
+    if refreshed:
+        raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED)
+    grant = await _finish(_refresh_compute(services, user_id, grant))
+    try:
+        return await _send(method, path, bearer=grant.access_token, json=body, headers=headers)
+    except _UpstreamFailure as exc:
+        if exc.status == 401:
+            raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED) from None
+        raise _rejected(exc.status) from None
+
+
 async def tenant_call(
     services: SharedServices,
     user_id: int,
@@ -743,6 +828,12 @@ async def tenant_call(
         raise OctopError.localized(ErrorCode.FORBIDDEN)
     extra = {**allowed, **_service_headers(path)}
     async with _lock(services, user_id):
+        if path in _SERVICE_KEY_PATHS:
+            compute_grant = await asyncio.to_thread(lynxce_compute.load, services, user_id)
+            if compute_grant is not None:
+                return await _compute_call(
+                    services, user_id, compute_grant, method, path, json, extra
+                )
         grant = await asyncio.to_thread(_load, services, user_id)
         if grant is None:
             raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)

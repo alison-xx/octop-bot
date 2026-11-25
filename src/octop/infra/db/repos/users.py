@@ -378,11 +378,14 @@ class UserRepo:
     def delete(self, user_id: int) -> None:
         with self._db.transaction() as conn:
             grant = f"lynxce.cloud.user.{user_id}"
+            compute = f"lynxce.compute.user.{user_id}"
             conn.execute(
-                "DELETE FROM secrets WHERE k IN (?,?,?,?)",
+                "DELETE FROM secrets WHERE k IN (?,?,?,?,?,?)",
                 (
                     grant,
                     grant + ".fernet",
+                    compute,
+                    compute + ".fernet",
                     f"lynxce.oauth.user.{user_id}",
                     f"lynxce.oauth.client.{user_id}",
                 ),
