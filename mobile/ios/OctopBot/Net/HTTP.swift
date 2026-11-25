@@ -195,7 +195,7 @@ enum HTTP {
     }
 
     /// Send a request and return the raw body, mapping transport and HTTP failures.
-    static func data(for request: URLRequest, delegate: URLSessionTaskDelegate? = nil) async throws -> (Data, HTTPURLResponse) {
+    static func data(for request: URLRequest, using session: URLSession = HTTP.session, delegate: URLSessionTaskDelegate? = nil) async throws -> (Data, HTTPURLResponse) {
         let data: Data
         let response: URLResponse
         do {

@@ -475,16 +475,26 @@ struct MessageRow: View {
                     OutOfCreditsCard(
                         reason: message.status == .dailyLimit ? .dailyLimit : .outOfCredits,
                         scenario: message.creditScenario,
-                        canContinue: isLast && !chat.isStreaming
+                        canContinue: isLast && !chat.isStreaming && chat.unsavedReplies[message.id] == nil
                     ) { chat.retry() }
                 } else if case .failed(let reason) = message.status {
                     HStack(spacing: 10) {
                         Label { LinkedText(text: reason) } icon: { Image(systemName: "exclamationmark.triangle") }
                             .font(.footnote).foregroundStyle(.red)
-                        if isLast { Button("chat.retry") { chat.retry() }.font(.footnote.weight(.semibold)) }
+                        if isLast && chat.unsavedReplies[message.id] == nil {
+                            Button("chat.retry") { chat.retry() }.font(.footnote.weight(.semibold))
+                        }
                     }
                 } else if message.status == .done && !message.text.isEmpty {
-                    ReplyActions(chat: chat, message: message, isLast: isLast)
+                    ReplyActions(chat: chat, message: message, isLast: isLast && chat.unsavedReplies[message.id] == nil)
+                }
+                if let receipt = chat.unsavedReplies[message.id] {
+                    HStack {
+                        Text(receipt.canRetry() ? LocalizedStringKey("chat.historySaveFailed") : LocalizedStringKey("chat.savingHistory")).font(.footnote).foregroundStyle(.secondary)
+                        Button("chat.retrySave") { Task { await chat.retrySaving(message.id) } }
+                            .font(.footnote.weight(.semibold))
+                            .disabled(!receipt.canRetry() || chat.savingReplies.contains(message.id))
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -495,7 +505,7 @@ struct MessageRow: View {
                 Speaker.shared.speak(message.text, backend: model.backend, id: message.id)
             }
             ShareLink(item: message.text) { Label("common.share", systemImage: "square.and.arrow.up") }
-            if isLast && message.status != .streaming && !message.status.isStoppedByLynxce {
+            if isLast && chat.unsavedReplies[message.id] == nil && message.status != .streaming && !message.status.isStoppedByLynxce {
                 Button("chat.retry", systemImage: "arrow.clockwise") { chat.retry() }
             }
         }
@@ -720,6 +730,7 @@ struct Composer: View {
     private var composerPrompt: String {
         if recorder.isRecording { return L("chat.listening") }
         if let pause = chat.pause { return L(pause.isQuestion ? "hitl.ask.composer" : "hitl.composer") }
+        if chat.isSavingHistory { return L("chat.savingHistory") }
         if chat.isStreaming { return L("chat.placeholder.queue") }
         return recorder.failure ?? L("chat.placeholder")
     }
@@ -727,7 +738,11 @@ struct Composer: View {
     @ViewBuilder
     private var trailingButton: some View {
         let empty = chat.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty
-        if chat.isStreaming && empty {
+        if chat.isSavingHistory && empty {
+            ProgressView().frame(width: 36, height: 36)
+                .accessibilityLabel(Text("chat.savingHistory"))
+                .padding(.bottom, 2)
+        } else if chat.isStreaming && empty {
             Button { chat.stop() } label: {
                 Image(systemName: "stop.fill").font(.callout).frame(width: 36, height: 36)
                     .background(Palette.text, in: Circle()).foregroundStyle(Palette.background)
