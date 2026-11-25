@@ -15,6 +15,9 @@ data class AccountPhoto(val name: String?, val url: String?) {
             return parse(profile.str("display_name"), profile.str("avatar_url"))
         }
 
+        fun owner(profile: JsonObject): AccountPhoto =
+            parse(ServerProtocol.personName(profile.str("display_name")), profile.str("avatar_url"))
+
         private fun parse(name: String?, url: String?): AccountPhoto {
             val image = url?.toHttpUrlOrNull()?.takeIf { it.isHttps && it.username.isEmpty() && it.password.isEmpty() }
             return AccountPhoto(name?.trim()?.takeIf { it.isNotEmpty() }, image?.toString())

@@ -21,6 +21,7 @@ class LynxceProtocolTest {
         val direct = Http.parse("""{"id":"a","displayName":"  林一 ","avatarUrl":"https://photos.example/a"}""").jsonObject
         assertEquals(AccountPhoto("林一", "https://photos.example/a"), AccountPhoto.direct(direct, "a"))
         assertNull(AccountPhoto.direct(direct, "b"))
+        assertEquals(AccountPhoto("NAS", null), AccountPhoto.owner(Http.parse("""{"display_name":"NAS","avatar_url":"/api/users/1/avatar"}""").jsonObject))
         fun cloud(json: String) = AccountPhoto.cloud(Http.parse(json).jsonObject)
         assertEquals(AccountPhoto("Zoe", null), cloud("""{"connected":true,"display_name":"Zoe","avatar_url":"file:///tmp/photo"}"""))
         assertNull(cloud("""{"connected":false,"avatar_url":"https://photos.example/b"}""").url)

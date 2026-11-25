@@ -165,21 +165,12 @@ final class ServerBackend: ChatBackend {
         ((user?["display_name"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Re-read the display name: it may change on the server, and older sign-ins saved the username.
-    /// Returns whether it changed.
-    @discardableResult
-    func refreshProfile() async -> Bool {
-        guard let me = try? await json(.get, "/api/auth/me") as? [String: Any] else { return false }
-        let name = Self.displayName(me)
-        guard name != session.displayName else { return false }
-        session.displayName = name
-        Keychain.setCodable(session, for: Self.sessionKey)
-        return true
-    }
-
     func accountPhoto() async -> AccountPhoto? {
-        guard isCloud, let profile = try? await json(.get, "/api/octop-bot/cloud/account") as? [String: Any] else { return nil }
-        return AccountPhoto.cloud(profile)
+        if isCloud, let profile = try? await json(.get, "/api/octop-bot/cloud/account") as? [String: Any] {
+            return AccountPhoto.cloud(profile)
+        }
+        guard let me = try? await json(.get, "/api/auth/me") as? [String: Any] else { return nil }
+        return AccountPhoto(name: Self.displayName(me), url: me["avatar_url"] as? String)
     }
 
     private static func anonymous(_ base: URL, _ method: HTTPMethod, _ path: String, json: Any? = nil) async throws -> [String: Any] {

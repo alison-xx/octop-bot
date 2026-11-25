@@ -282,11 +282,6 @@ final class AppModel {
         }
         if let server {
             groups = (try? await server.groups()) ?? groups
-            if !server.isCloud {
-                await server.refreshProfile()
-                guard self.backend === backend else { return }
-                accountName = server.accountName
-            }
         }
         let photo = await backend.accountPhoto()
         guard self.backend === backend else { return }

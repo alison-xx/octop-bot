@@ -495,6 +495,7 @@ final class QueueTests: XCTestCase {
         let first = FakeBackend()
         first.photo = AccountPhoto.direct(["id": "a", "displayName": "  林一 ", "avatarUrl": "https://photos.example/a"], accountId: "a")
         await app.use(first)
+        XCTAssertNil(AccountPhoto(name: "NAS", url: "/api/users/1/avatar").url)
         XCTAssertEqual(app.accountSummary.name, "林一")
         XCTAssertEqual(app.accountSummary.avatarURL?.host, "photos.example")
         XCTAssertNil(AccountPhoto.direct(["id": "a", "avatarUrl": "https://photos.example/a"], accountId: "b"))

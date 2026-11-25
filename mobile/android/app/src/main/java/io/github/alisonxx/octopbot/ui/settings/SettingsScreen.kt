@@ -130,6 +130,7 @@ data class SettingsState(
     val modelSummary: String? = null,
     /** The card-style Lynxce account (tier, balance split) when there is a Lynxce wallet. */
     val account: AccountSummary? = null,
+    val avatarUrl: String? = null,
     /** Used without signing in: no account to sign out of, a way to sign in instead. */
     val phoneOnly: Boolean = false,
 )
@@ -234,6 +235,7 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
     Settings(
         state = SettingsState(
             accountName = name,
+            avatarUrl = photo?.url,
             balance = balance,
             account = AccountSummary.demo(context) ?: if (model.creditAccount != null) {
                 AccountSummary(name, avatarUrl = photo?.url, credits = (balance as? BalanceState.Value)?.credits, signupExpiryDay = model.creditAccount?.signupExpiryDay)
@@ -375,6 +377,7 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
             state.account?.let { MemberCard(it, onCredits = actions.onCredits, onOpen = { url -> uri.openUri(url) }) }
                 ?: AccountCard(
                     state.accountName,
+                    state.avatarUrl,
                     connection,
                     state.balance.takeIf { state.wallet },
                     onBalance = actions.onCredits,
@@ -583,7 +586,7 @@ fun Settings(state: SettingsState, actions: SettingsActions) {
 
 /** The account card at the top: Chief, the account name, where it's connected, and the Lynxce balance. */
 @Composable
-private fun AccountCard(name: String, connection: String, balance: BalanceState?, onBalance: () -> Unit, onRetry: () -> Unit) {
+private fun AccountCard(name: String, avatarUrl: String?, connection: String, balance: BalanceState?, onBalance: () -> Unit, onRetry: () -> Unit) {
     val palette = LocalPalette.current
     Row(
         Modifier
@@ -594,7 +597,7 @@ private fun AccountCard(name: String, connection: String, balance: BalanceState?
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AccountAvatar(name, null, 56.dp)
+        AccountAvatar(name, avatarUrl, 56.dp)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
