@@ -1,4 +1,12 @@
 {
+  "botTaskArchive": {
+    "unavailable": "The step record is unavailable in this conversation.",
+    "criteria": "Acceptance criteria",
+    "steps": "Steps",
+    "assumptions": "Assumptions",
+    "files": "Deliverables",
+    "issues": "Open issues"
+  },
   "bot_rooms": {
     "attachments": "Read the requested attachments at their attachment_paths in this group's workspace.",
     "im_text_only": "Send text to this Bot group. Open Octop Bot to attach or view files.",

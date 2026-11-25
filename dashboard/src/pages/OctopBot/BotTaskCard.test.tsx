@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { QuoteMessageContext } from "../Chat/ChatRouteContext";
 import BotTaskCard, { BotTaskReport } from "./BotTaskCard";
 import type { BotTask, BotTaskEntry } from "./botTasks";
 
@@ -153,4 +154,24 @@ describe("BotTaskReport", () => {
       "botTask.fact.sheets",
     );
   });
+});
+
+it("starts a draft from the saved deep step", () => {
+  const draft = vi.fn();
+  const id = "01M88BATC17X5TD9ABQTK09G95";
+  const checkpoint = "01M88BATC17X5TD9ABQTK09G96";
+  render(
+    <QuoteMessageContext.Provider value={draft}>
+      <BotTaskCard
+        entry={entry({
+          id,
+          tier: "deep",
+          steps: [{ content: "收集价格", status: "completed", checkpoint }],
+        })}
+        live={false}
+      />
+    </QuoteMessageContext.Provider>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "botTask.redoStep" }));
+  expect(draft).toHaveBeenCalledWith(expect.stringContaining(checkpoint));
 });

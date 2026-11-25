@@ -9400,6 +9400,8 @@
     }
   },
   "botTask": {
+    "redoStep": "从这一步重做",
+    "redoDraft": "请从「{{step}}」这一步重做。用 task_read_step 读取步骤记录，编号是 {{checkpoint}}。核对目前的结果，再决定需要重做的部分。任何对外操作都请重新向我确认。",
     "label": "任务：{{goal}}",
     "deep": "深度",
     "steps": "{{done}}/{{total}} 步",

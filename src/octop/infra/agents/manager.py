@@ -5212,6 +5212,7 @@ class AgentManager:
             # Tasks (plan, evidence, finish gate) wherever the Bot works: every turn for a
             # cloud tenant, Octop Bot client turns otherwise.
             from octop.infra.bot_tasks.approvals import ApprovalRules, request_approval_tool
+            from octop.infra.bot_tasks.archives import TaskArchive
             from octop.infra.bot_tasks.store import TaskStore
             from octop.infra.bot_tasks.tools import task_tools
             from octop.infra.bot_tasks.watchdog import BotTaskMiddleware
@@ -5227,6 +5228,19 @@ class AgentManager:
                     row.user_id,
                 ),
             ]
+            archive = (
+                None
+                if row.is_shared
+                else TaskArchive(
+                    ws,
+                    self._repos,
+                    row.agent_id,
+                    row.user_id,
+                    resolve_user_locale(user_repo=self._repos.user_repo, user_id=row.user_id),
+                )
+            )
+            if archive:
+                task_kit.append(archive.read_tool(tasks))
             anywhere = [*computer_tools, *task_kit] if tenant else computer_tools
             if not tenant:
                 workspace_tools.extend(task_kit)
@@ -5241,7 +5255,7 @@ class AgentManager:
 
                 workspace_tools.extend(chief_tools(self, services, row.agent_id, row.user_id))
             agent_middleware.append(BotWorkspaceTools(workspace_tools, anywhere))
-            agent_middleware.append(BotTaskMiddleware(tasks, always=tenant))
+            agent_middleware.append(BotTaskMiddleware(tasks, always=tenant, archive=archive))
             if computer_tools:
                 from octop.infra.cloud.computers.computer_use import ComputerBriefing
 
