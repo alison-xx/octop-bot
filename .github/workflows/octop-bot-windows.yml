@@ -21,7 +21,7 @@ concurrency:
 jobs:
   windows-x64:
     name: win32-x64 installer and ZIP
-    if: github.repository == 'alison-xx/octop-bot'
+    if: github.repository == 'alison-xx/octop-bot' && github.ref == 'refs/heads/codex/verify-win107-frozen'
     runs-on: windows-2022
     timeout-minutes: 120
     defaults:
@@ -29,6 +29,9 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: e8336ca9b107879412a23400fb2567e8e8dd0ab5
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@v7
 
@@ -47,9 +50,68 @@ jobs:
           (cd dashboard && npm ci)
           (cd desktop/src && pnpm install --frozen-lockfile)
 
+      - name: Prepare the frozen runtime and check its pinned wheel
+        shell: python
+        run: |
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import tempfile
+          import zipfile
+          from pathlib import Path
+
+          COMMIT = 'e8336ca9b107879412a23400fb2567e8e8dd0ab5'
+          VERSION = '1.0.11+bounded.1'
+          DIGEST = '840786c69f9a5a0eb9e2a4399e889c6c6b404b37f68de20c9cdad49b850ecabe'
+          repo = Path.cwd()
+          subprocess.run(['uv','run','--no-project','--managed-python','--python','3.12.13','python','desktop/src/scripts/package-bot-windows.py','--prepare'],check=True)
+          ready = list((repo/'desktop/src/.dev-runtime/bot-windows').glob('*/dependencies.ready'))
+          assert len(ready) == 1, ready
+          portable = ready[0].parent/'portable'
+          head = subprocess.check_output(['git', '-C', repo, 'rev-parse', 'HEAD'], text=True).strip()
+          assert head == COMMIT and not subprocess.check_output(['git', '-C', repo, 'status', '--porcelain', '--untracked-files=no'])
+          platform = 'bot-windows' if os.name == 'nt' else 'bot-mac'
+          assert portable.parent.parent == repo / 'desktop/src/.dev-runtime' / platform
+          assert portable.name == 'portable' and (portable.parent/'dependencies.ready').is_file()
+          python = portable / 'runtime' / ('python.exe' if os.name == 'nt' else 'bin/python3')
+          packages = portable / 'packages'
+          wheel = repo / 'desktop/vendor' / f'octop_harness-{VERSION}-py3-none-any.whl'
+          assert hashlib.sha256(wheel.read_bytes()).hexdigest() == DIGEST
+          with tempfile.TemporaryDirectory() as temporary:
+              requirement = Path(temporary) / 'requirements.txt'
+              requirement.write_text(f'octop-harness=={VERSION} --hash=sha256:{DIGEST}\n',encoding='utf-8')
+              subprocess.run(['uv','pip','install','--offline','--no-index','--no-deps','--require-hashes','--link-mode','copy','--find-links',wheel.parent,'--reinstall-package','octop-harness','--python',python,'--target',packages,'-r',requirement],check=True)
+          with zipfile.ZipFile(wheel) as archive:
+              names = [entry.filename for entry in archive.infolist() if not entry.is_dir() and entry.filename.startswith('octop_harness/')]
+              assert names
+              for name in names:
+                  assert (packages/name).read_bytes() == archive.read(name), name
+          for file in packages.glob('*.dist-info/direct_url.json'):
+              record = json.loads(file.read_text(encoding='utf-8'))
+              assert not record.get('dir_info',{}).get('editable') and not record.get('url','').startswith('file:'),file
+          subprocess.run([python,'-I','-B',repo/'desktop/portable/prune_packages.py',packages],check=True)
+          print(json.dumps({'commit':head,'wheel_sha256':DIGEST,'files_compared':len(names),'local_file_provenance':0}))
+
       - name: Build the installer and portable ZIP
         working-directory: desktop/src
         run: pnpm run package:bot:win
+
+      - name: Record internal package signatures
+        shell: pwsh
+        run: |
+          $dist = 'desktop/src/release/octop-bot'
+          $exe = Join-Path $dist 'Octop-Bot-Setup-1.0.7-x64.exe'
+          $zip = Join-Path $dist 'Octop-Bot-1.0.7-x64.zip'
+          $extract = Join-Path $env:RUNNER_TEMP 'octop-frozen-107'
+          Expand-Archive -LiteralPath $zip -DestinationPath $extract
+          $main = Join-Path $extract 'Octop Bot/Octop Bot.exe'
+          $report = @($exe, $main) | ForEach-Object {
+            $signature = Get-AuthenticodeSignature -LiteralPath $_
+            [PSCustomObject]@{file=(Split-Path $_ -Leaf); status=[string]$signature.Status; sha256=(Get-FileHash -Algorithm SHA256 -LiteralPath $_).Hash.ToLower(); signer=$signature.SignerCertificate.Subject; timestamper=$signature.TimeStamperCertificate.Subject}
+          }
+          $report | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $dist 'internal-signature-check.json')
+          $report | Format-Table
 
       - name: Write SHA-256 files
         working-directory: desktop/src/release/octop-bot
@@ -65,11 +127,12 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: octop-bot-windows-x64
+          name: internal-octop-bot-1.0.7-frozen-windows-x64
           path: |
             desktop/src/release/octop-bot/Octop-Bot-Setup-*-x64.exe
             desktop/src/release/octop-bot/Octop-Bot-Setup-*-x64.exe.sha256
             desktop/src/release/octop-bot/Octop-Bot-*-x64.zip
             desktop/src/release/octop-bot/Octop-Bot-*-x64.zip.sha256
+            desktop/src/release/octop-bot/internal-signature-check.json
           if-no-files-found: error
           retention-days: 14
