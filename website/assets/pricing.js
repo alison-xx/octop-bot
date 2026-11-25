@@ -211,14 +211,18 @@
         if (plan.bonus) credits.append(node("div", "row gift", "🎁 " + pick(plan.bonus)));
         card.append(credits);
 
-        const button = node("a", "btn " + (plan.tag ? "btn-primary" : "btn-ghost"));
+        const button = node(plan.monthly === 0 ? "a" : "button", "btn " + (plan.tag ? "btn-primary" : "btn-ghost"));
         if (plan.monthly === 0) {
           button.textContent = t("免费开始", "Start free");
           button.href = "https://bot.lynxce.cn";
         } else {
-          button.textContent = t("即将开通", "Coming soon");
-          button.setAttribute("aria-disabled", "true");
-          button.classList.add("disabled");
+          button.type = "button";
+          button.disabled = !(pricing.membershipOpen && window.OctopAuth.config.checkoutEnabled);
+          button.dataset.checkout = "member";
+          if (button.disabled) button.classList.add("disabled");
+          button.textContent = button.disabled
+            ? t("即将开通", "Coming soon")
+            : t("去收银台选套餐", "Choose a plan at checkout");
         }
         card.append(button);
 
@@ -263,7 +267,8 @@
             `Monthly credits last one month; yearly plans are paid once and credits arrive monthly. Image and video counts use the current default models (${m.imageName}, ${m.videoName}) and are estimates.`,
           )
         : t("月度积分 1 个月有效，年付一次付清、积分按月到账。", "Monthly credits last one month; yearly plans are paid once and credits arrive monthly.");
-      note.textContent += " " + t("会员积分仅限 Octop 使用", "Membership credits are for Octop Bot only");
+      note.textContent += " " + t("会员积分仅限 Octop 使用。", "Membership credits are for Octop Bot only.");
+      if (cycle === "year") note.textContent += " " + t("年付升档请联系客服。", "Contact support to upgrade a yearly plan.");
     }
     document.querySelectorAll("#cycle button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.cycle === cycle)));
   }
@@ -481,15 +486,19 @@
       modelTab = m.dataset.tab;
       renderRates();
     }
-    if (e.target.closest("#pack-buy")) {
+    const checkout = e.target.closest('#pack-buy, [data-checkout="member"]');
+    if (checkout) {
       e.preventDefault();
-      if (!pricing?.packsOpen || !window.OctopAuth.config.checkoutEnabled || e.target.closest(".disabled")) return;
+      const membership = checkout.dataset.checkout === "member";
       const auth = window.OctopAuth;
-      if (!auth.requireLogin("/pricing.html#credits")) return;
-      checkoutBody(auth).then((body) => auth.api("/api/billing/recharge/checkout-link", { method: "POST", body })).then((data) => {
+      const open = membership ? pricing?.membershipOpen : pricing?.packsOpen;
+      if (!open || !auth.config.checkoutEnabled || checkout.disabled || checkout.classList.contains("disabled")) return;
+      if (!auth.requireLogin(membership ? "/pricing.html" : "/pricing.html#credits")) return;
+      checkoutBody(auth, membership).then((body) => auth.api("/api/billing/recharge/checkout-link", { method: "POST", body })).then((data) => {
         const url = new URL(data.url);
         if (url.origin !== "https://admin.lynxce.cn" || url.pathname !== "/recharge" || url.username || url.password) throw new Error("Invalid checkout URL");
-        url.searchParams.append("tab", "boost"); location.assign(url.href);
+        url.searchParams.set("tab", membership ? "member" : "boost");
+        location.assign(url.href);
       }).catch(() => { alert(t("无法打开收银台，请稍后重试。", "Unable to open checkout. Please try again.")); });
     }
     if (e.target.closest("a.disabled")) e.preventDefault();
@@ -497,8 +506,9 @@
   /* checkout-link takes site and returnUrl, plus either packageId (Lynxce's pack with the same
      price, from its octop_bot catalog) or amountYuan (custom amount, 10–5000), never both.
      Each is sent only once its switch is on; without them the cashier asks for the amount. */
-  async function checkoutBody(auth) {
+  async function checkoutBody(auth, membership) {
     const body = { site: "octopbot", returnUrl: "https://octop-bot.lynxce.cn/pay/result.html" };
+    if (membership) return body;
     const cfg = auth.config;
     const custom = Number(customAmount);
     if (customAmount) {
@@ -546,7 +556,7 @@
     if (view) showView(view);
   });
   showView(Object.keys(VIEW_HASH).find((name) => VIEW_HASH[name] === location.hash) || "plans", false);
-  window.OctopAuth.ready.then(async () => { await window.OctopAuth.redeemHash("recharge"); renderPacks(); });
+  window.OctopAuth.ready.then(async () => { await window.OctopAuth.redeemHash("recharge"); renderPlans(); renderPacks(); });
 
   const getJson = (url, timeoutMs = 8000) => {
     const ctrl = new AbortController();
