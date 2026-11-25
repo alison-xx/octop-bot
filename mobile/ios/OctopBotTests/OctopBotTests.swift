@@ -114,6 +114,34 @@ final class StreamTests: XCTestCase {
         XCTAssertEqual(completions, 1)
     }
 
+    func testStopDuringHistoryWritePreservesAcknowledgementOrFailure() async throws {
+        for shouldFail in [false, true] {
+            var releaseWrite: CheckedContinuation<Void, Never>?
+            let chat = CompletionChat(stream: { _, _, _, emit in emit(.text("answer")) },
+                                      finished: { _, _ in
+                await withCheckedContinuation { releaseWrite = $0 }
+                try Task.checkCancellation()
+                if shouldFail { throw APIError.network }
+            })
+            let turn = CompletionChat.Turn(body: [:], user: "question", startedAt: .now)
+            var events = chat.start(turn, sessionId: "legacy", announce: nil).makeAsyncIterator()
+            guard case .text? = try await events.next(), case .savingHistory? = try await events.next() else {
+                return XCTFail("Expected to enter the saving phase")
+            }
+            while releaseWrite == nil { await Task.yield() }
+            chat.stop("legacy")
+            releaseWrite?.resume()
+            if shouldFail {
+                do {
+                    _ = try await events.next()
+                    XCTFail("Expected the save failure")
+                } catch { XCTAssertEqual(error as? APIError, .network) }
+            } else {
+                guard case .done? = try await events.next() else { return XCTFail("Lost acknowledgement") }
+            }
+        }
+    }
+
     func testFailedHistoryWriteDoesNotReportTurnAsSaved() async {
         let chat = CompletionChat(stream: { _, _, _, emit in emit(.text("answer")) },
                                   finished: { _, _ in throw APIError.network })
@@ -506,6 +534,13 @@ final class TimeTests: XCTestCase {
 private final class FakeBackend: ChatBackend {
     var supportsGroups: Bool { false }
     var accountName: String { "tester" }
+    var photo: AccountPhoto?
+    var delayPhoto = false
+    var pendingPhoto: CheckedContinuation<Void, Never>?
+    func accountPhoto() async -> AccountPhoto? {
+        if delayPhoto { await withCheckedContinuation { pendingPhoto = $0 } }
+        return photo
+    }
     var sent: [String] = []
     var replies: [AsyncThrowingStream<StreamEvent, Error>.Continuation] = []
 
@@ -535,6 +570,11 @@ final class QueueTests: XCTestCase {
         chat.send("question")
         let reply = try XCTUnwrap(backend.replies.first)
         reply.yield(.text("answer"))
+        reply.yield(.savingHistory)
+        for _ in 0..<50 where !chat.isSavingHistory { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(chat.isSavingHistory)
+        chat.stop()
+        XCTAssertTrue(chat.isStreaming)
         var saves = 0
         reply.finish(throwing: LynxceBackend.HistorySaveError(retry: {
             saves += 1
@@ -551,6 +591,60 @@ final class QueueTests: XCTestCase {
         XCTAssertNil(chat.unsavedReplies[id])
         XCTAssertEqual(chat.messages.last?.text, "answer")
         XCTAssertEqual(chat.messages.last?.status, .done)
+    }
+
+    func testAccountPhotoBelongsToTheActiveSession() async {
+        let app = AppModel()
+        let first = FakeBackend()
+        first.photo = AccountPhoto.direct(["id": "a", "displayName": "  林一 ", "avatarUrl": "https://photos.example/a"], accountId: "a")
+        await app.use(first)
+        await app.photoRefresh?.value
+        let local = AccountPhoto.localAvatar(["id": 7, "avatar_url": "/api/users/7/avatar?v=123"])
+        XCTAssertEqual(local?.path, "/api/users/7/avatar")
+        XCTAssertEqual(local?.query, ["v": "123"])
+        for wrong in ["/api/users/8/avatar?v=123", "//elsewhere.example/api/users/7/avatar", "/api/users/7/avatar?v=1&u=2"] {
+            XCTAssertNil(AccountPhoto.localAvatar(["id": 7, "avatar_url": wrong]))
+        }
+        XCTAssertEqual(app.accountSummary.name, "林一")
+        XCTAssertEqual(app.accountSummary.avatarURL?.host, "photos.example")
+        XCTAssertNil(AccountPhoto.direct(["id": "a", "avatarUrl": "https://photos.example/a"], accountId: "b"))
+
+        let next = FakeBackend()
+        next.photo = AccountPhoto.cloud(["connected": true, "display_name": "Zoe", "avatar_url": "file:///private/a"])
+        await app.use(next)
+        await app.photoRefresh?.value
+        XCTAssertEqual(app.accountSummary.name, "Zoe")
+        XCTAssertNil(app.accountSummary.avatarURL)
+        next.photo = AccountPhoto.cloud(["connected": true, "display_name": "Zoe", "avatar_url": "https://photos.example/b"])
+        await app.refresh()
+        await app.photoRefresh?.value
+        XCTAssertEqual(app.accountSummary.avatarURL?.path, "/b")
+        next.photo = AccountPhoto.cloud(["connected": false, "avatar_url": "https://photos.example/b"])
+        await app.refresh()
+        await app.photoRefresh?.value
+        XCTAssertNil(app.accountSummary.avatarURL)
+        await app.signOut()
+        XCTAssertNil(app.accountPhotoURL)
+    }
+
+    func testSlowPhotoDoesNotBlockAccountStartupOrLeakIntoNextSession() async {
+        let app = AppModel()
+        let first = FakeBackend()
+        first.delayPhoto = true
+        first.photo = AccountPhoto(name: "first", url: "https://photos.example/first")
+        await app.use(first)
+        XCTAssertEqual(app.phase, .ready)
+        XCTAssertFalse(app.bots.isEmpty)
+        XCTAssertNil(app.accountPhotoURL)
+        let oldRequest = app.photoRefresh
+        let second = FakeBackend()
+        second.photo = AccountPhoto(name: "next", url: nil)
+        await app.use(second)
+        await app.photoRefresh?.value
+        first.pendingPhoto?.resume()
+        await oldRequest?.value
+        XCTAssertEqual(app.accountName, "next")
+        XCTAssertNil(app.accountPhotoURL)
     }
 
     func testPreparingAndFailedBotsDoNotSend() async {

@@ -726,6 +726,7 @@ struct Composer: View {
     private var composerPrompt: String {
         if recorder.isRecording { return L("chat.listening") }
         if let pause = chat.pause { return L(pause.isQuestion ? "hitl.ask.composer" : "hitl.composer") }
+        if chat.isSavingHistory { return L("chat.savingHistory") }
         if chat.isStreaming { return L("chat.placeholder.queue") }
         return recorder.failure ?? L("chat.placeholder")
     }
@@ -733,7 +734,11 @@ struct Composer: View {
     @ViewBuilder
     private var trailingButton: some View {
         let empty = chat.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty
-        if chat.isStreaming && empty {
+        if chat.isSavingHistory && empty {
+            ProgressView().frame(width: 36, height: 36)
+                .accessibilityLabel(Text("chat.savingHistory"))
+                .padding(.bottom, 2)
+        } else if chat.isStreaming && empty {
             Button { chat.stop() } label: {
                 Image(systemName: "stop.fill").font(.callout).frame(width: 36, height: 36)
                     .background(Palette.text, in: Circle()).foregroundStyle(Palette.background)

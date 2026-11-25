@@ -11,6 +11,7 @@ final class ChatSession {
     var messages: [ChatMessage] = []
     var conversations: [ConversationSummary] = []
     private(set) var isStreaming = false
+    private(set) var isSavingHistory = false
     private(set) var isLoading = false
     var error: String?
     /// The composer's unsent text; kept per Bot so leaving the chat doesn't lose it.
@@ -206,6 +207,7 @@ final class ChatSession {
         messages.append(reply)
         error = nil
         isStreaming = true
+        isSavingHistory = false
         let replyId = reply.id
         let backend = app?.backend
         let background = UIApplication.shared.beginBackgroundTask(withName: "reply")
@@ -214,7 +216,10 @@ final class ChatSession {
         currentRun = run
         task = Task {
             defer {
-                if currentRun == run { isStreaming = false }
+                if currentRun == run {
+                    isStreaming = false
+                    isSavingHistory = false
+                }
                 // Nothing keeps spinning once the reply is over.
                 update(replyId) { message in
                     for index in message.tools.indices { message.tools[index].done = true }
@@ -294,6 +299,8 @@ final class ChatSession {
             }
         case .pause(let pause):
             self.pause = pause
+        case .savingHistory:
+            isSavingHistory = true
         case .done:
             break
         }
@@ -323,8 +330,12 @@ final class ChatSession {
     }
 
     func stop() {
-        guard isStreaming, let backend = app?.backend else { return }
-        if let conversationId { Task { await backend.stop(conversation: conversationId, bot: bot) } }
+        guard isStreaming, !isSavingHistory, let backend = app?.backend else { return }
+        if let conversationId {
+            Task { await backend.stop(conversation: conversationId, bot: bot) }
+            // Local producers report the final persistence result even if stop races its first event.
+            if backend is LynxceBackend || backend is DeviceBackend { return }
+        }
         task?.cancel()
     }
 
@@ -334,6 +345,7 @@ final class ChatSession {
         currentRun = nil
         task?.cancel()
         task = nil
+        isSavingHistory = false
         isStreaming = false
     }
 

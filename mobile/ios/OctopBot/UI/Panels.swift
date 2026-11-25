@@ -565,7 +565,7 @@ struct SettingsView: View {
 
     private var accountCard: some View {
         HStack(spacing: 14) {
-            CharacterView(look: .chief, size: 56)
+            LynxceAvatar(name: model.accountName, url: model.accountPhotoURL, localImage: model.localAccountImage, size: 56, branded: false)
             VStack(alignment: .leading, spacing: 4) {
                 Text(model.accountName).font(.headline).lineLimit(1)
                 HStack(spacing: 5) {
@@ -710,6 +710,7 @@ final class GitHubStars {
 struct AccountSummary: Equatable {
     var name: String
     var avatarURL: URL?
+    var localImage: Data?
     var tier: String?
     /// Masked Lynxce id, e.g. "138****0000".
     var accountHint: String?
@@ -740,7 +741,7 @@ struct AccountCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                LynxceAvatar(name: summary.name, url: summary.avatarURL, size: 52)
+                LynxceAvatar(name: summary.name, url: summary.avatarURL, localImage: summary.localImage, size: 52)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
                         Text(verbatim: summary.name).font(.headline).lineLimit(1)
@@ -828,27 +829,36 @@ struct AccountCard: View {
 struct LynxceAvatar: View {
     let name: String
     let url: URL?
+    var localImage: Data? = nil
     var size: CGFloat = 52
+    var branded = true
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             Group {
-                if let url {
-                    AsyncImage(url: url) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        initial
+                if let localImage, let image = UIImage(data: localImage) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else if let url {
+                    AsyncImage(url: url) { phase in
+                        if case .success(let image) = phase {
+                            image.resizable().scaledToFill()
+                        } else {
+                            initial
+                        }
                     }
+                    .id(url)
                 } else {
                     initial
                 }
             }
             .frame(width: size, height: size)
             .clipShape(Circle())
-            VendorLogo(company: "lynxce", size: size * 0.36)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Palette.background, lineWidth: 2))
-                .offset(x: 3, y: 3)
+            if branded {
+                VendorLogo(company: "lynxce", size: size * 0.36)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Palette.background, lineWidth: 2))
+                    .offset(x: 3, y: 3)
+            }
         }
         .accessibilityHidden(true)
     }
@@ -856,7 +866,7 @@ struct LynxceAvatar: View {
     private var initial: some View {
         ZStack {
             LinearGradient(colors: [Palette.brandButtonTop, Palette.brandButtonBottom], startPoint: .top, endPoint: .bottom)
-            Text(verbatim: String(name.prefix(1)).uppercased())
+            Text(verbatim: String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)))
                 .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
         }

@@ -678,6 +678,22 @@
         }
       }
     },
+    "chat.savingHistory": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving conversation…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在保存会话…"
+          }
+        }
+      }
+    },
     "chat.failed": {
       "localizations": {
         "en": {

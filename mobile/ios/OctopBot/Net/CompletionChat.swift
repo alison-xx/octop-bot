@@ -109,13 +109,14 @@ final class CompletionChat {
                 } catch {
                     streamError = error
                 }
-                // The stream owns the UI's background task. Keep it open until the history write returns.
-                do {
-                    try await finished(turn, sessionId)
-                } catch {
-                    if streamError == nil { streamError = error }
-                }
+                // Stopping generation cannot undo the history write for the answer already delivered.
                 running[sessionId] = nil
+                continuation.yield(.savingHistory)
+                do {
+                    try await Task { try await finished(turn, sessionId) }.value
+                } catch {
+                    if streamError == nil || streamError is CancellationError { streamError = error }
+                }
                 if let streamError {
                     continuation.finish(throwing: streamError)
                 } else {

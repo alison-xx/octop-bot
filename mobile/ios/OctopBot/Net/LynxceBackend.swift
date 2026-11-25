@@ -206,6 +206,11 @@ final class LynxceBackend: ChatBackend {
         }
     }
 
+    func accountPhoto() async -> AccountPhoto? {
+        guard let profile = try? await call(.get, "/api/user/profile") as? [String: Any] else { return nil }
+        return AccountPhoto.direct(profile, accountId: grant.accountId)
+    }
+
     // MARK: Bots and conversations
 
     func bots() async throws -> [BotProfile] { bots.all }
