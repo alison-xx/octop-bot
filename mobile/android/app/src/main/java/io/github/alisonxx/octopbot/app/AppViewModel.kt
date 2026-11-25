@@ -573,57 +573,65 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         }
     }
 
-    val attachmentFiles = AttachmentFiles(application)
+    private val attachmentFiles = AttachmentFiles(application.cacheDir)
 
     private val fileServer: ServerBackend? get() = (session.value as? SessionState.Ready)?.backend as? ServerBackend
 
     /** A file's size for its card; null while unknown. */
-    suspend fun attachmentSize(file: FileAttachment): Long? =
-        fileServer?.let { server -> attachmentFiles.size(server, file) }
+    suspend fun attachmentSize(server: ServerBackend, file: FileAttachment): Long? {
+        if (server !== fileServer) return null
+        return attachmentFiles.size(server.attachmentScope, file, server::fileSize).takeIf { server === fileServer }
+    }
 
     /** The local copy of a file for a card's preview; null when it can't be fetched (the card stays plain). */
-    suspend fun attachmentPreviewFile(file: FileAttachment): File? =
-        fileServer?.let { server -> runCatching { attachmentFiles.local(server, file) }.getOrNull() }
+    suspend fun attachmentPreviewFile(server: ServerBackend, file: FileAttachment): File? {
+        if (server !== fileServer) return null
+        return runCatching { attachmentFiles.local(server.attachmentScope, file, server::downloadFile) }
+            .getOrNull()?.takeIf { server === fileServer }
+    }
 
     /** Fetches a file a Bot sent (once) and hands the local copy to [use]; failures show in the snackbar. */
-    fun withAttachment(file: FileAttachment, use: (File) -> Unit) {
-        val server = fileServer
+    fun withAttachment(server: ServerBackend?, file: FileAttachment, use: (File) -> Unit) {
+        if (server !== fileServer) return
         if (server == null) {
             notice(resources.getString(R.string.file_open_unsupported))
             return
         }
         viewModelScope.launch {
-            runCatching { attachmentFiles.local(server, file) }
-                .onSuccess(use)
-                .onFailure { notice(resources.describe(it)) }
+            val result = runCatching { attachmentFiles.local(server.attachmentScope, file, server::downloadFile) }
+            if (server === fileServer) result.onSuccess(use).onFailure { notice(resources.describe(it)) }
         }
     }
 
     /** Android 10+: a copy in Downloads. */
-    fun saveAttachment(file: FileAttachment) = withAttachment(file) { local ->
+    fun saveAttachment(server: ServerBackend, file: FileAttachment) = withAttachment(server, file) { local ->
         viewModelScope.launch {
-            runCatching {
+            if (server !== fileServer) return@launch
+            val result = runCatching {
                 withContext(Dispatchers.IO) { AttachmentFiles.saveToDownloads(app, local, local.name, AttachmentFiles.mimeOf(file)) }
             }
+            if (server === fileServer) result
                 .onSuccess { notice(resources.getString(R.string.file_saved)) }
                 .onFailure { notice(resources.getString(R.string.file_save_failed)) }
         }
     }
 
     /** Android 8–9: write a file into the document the user picked with "Save to…". */
-    fun copyAttachment(file: FileAttachment, target: android.net.Uri) = withAttachment(file) { local ->
+    fun copyAttachment(server: ServerBackend, file: FileAttachment, target: android.net.Uri) = withAttachment(server, file) { local ->
         viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) { AttachmentFiles.copyTo(app, local, target) } }
+            if (server !== fileServer) return@launch
+            val result = runCatching { withContext(Dispatchers.IO) { AttachmentFiles.copyTo(app, local, target) } }
+            if (server === fileServer) result
                 .onSuccess { notice(resources.getString(R.string.file_saved_to)) }
                 .onFailure { notice(resources.getString(R.string.file_save_failed)) }
         }
     }
 
     /** A file a Bot linked to in a reply: fetched with this account (via the object store on Octop Bot cloud). */
-    fun openWorkspaceFile(uri: String, open: (File, String) -> Unit) {
+    fun openWorkspaceFile(server: ServerBackend?, uri: String, open: (File, String) -> Unit) {
         val name = FileCards.queryValue(uri, "path")?.let(FileCards::baseName)?.takeIf { it.isNotEmpty() } ?: "file"
         val file = FileAttachment(uri, name)
-        withAttachment(file) { open(it, AttachmentFiles.mimeOf(file)) }
+        withAttachment(server, file) { open(it, AttachmentFiles.mimeOf(file)) }
     }
 
     /**

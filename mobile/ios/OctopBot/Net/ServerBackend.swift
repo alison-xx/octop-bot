@@ -2,7 +2,7 @@ import Foundation
 
 /// A self-hosted Octop Bot server (NAS / Docker web build): its Bots, tools, memory and groups.
 final class ServerBackend: ChatBackend {
-    struct Session: Codable {
+    struct Session: Codable, Equatable {
         var baseURL: URL
         var token: String
         var displayName: String
@@ -173,7 +173,7 @@ final class ServerBackend: ChatBackend {
         var photo = AccountPhoto(name: Self.displayName(me), url: me["avatar_url"] as? String)
         if let local = AccountPhoto.localAvatar(me),
            let request = try? HTTP.request(url(local.path, query: local.query), method: .get, headers: authHeaders),
-           let (bytes, response) = try? await HTTP.session.data(for: request, delegate: NoAvatarRedirect()),
+           let (bytes, response) = try? await HTTP.session.data(for: request, delegate: NoAPIRedirect()),
            (response as? HTTPURLResponse)?.statusCode == 200 {
             photo.localImage = bytes
         }
@@ -182,7 +182,7 @@ final class ServerBackend: ChatBackend {
 
     private static func anonymous(_ base: URL, _ method: HTTPMethod, _ path: String, json: Any? = nil) async throws -> [String: Any] {
         let request = try HTTP.request(base.appending(path: path), method: method, json: json)
-        let (data, response) = try await HTTP.data(for: request)
+        let (data, response) = try await HTTP.data(for: request, delegate: NoAPIRedirect())
         guard (200..<300).contains(response.statusCode) else {
             throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data), details: HTTP.errorDetails(data))
         }
@@ -203,16 +203,19 @@ final class ServerBackend: ChatBackend {
         _ method: HTTPMethod, _ path: String, query: [String: String] = [:], json: Any? = nil,
         form: [FormPart]? = nil, timeout: TimeInterval = 60
     ) async throws -> Data {
+        let issuedFor = session
         var request = try HTTP.request(url(path, query: query), method: method, headers: authHeaders, json: json, form: form)
         request.timeoutInterval = timeout
-        let (data, response) = try await HTTP.data(for: request)
-        // Sliding sessions: the server hands out a fresh token near expiry.
-        if let renewed = response.value(forHTTPHeaderField: "X-Octop-Access-Token"), !renewed.isEmpty, renewed != session.token {
-            session.token = renewed
-            Keychain.setCodable(session, for: Self.sessionKey)
-        }
+        let (data, response) = try await HTTP.data(for: request, delegate: NoAPIRedirect())
         guard (200..<300).contains(response.statusCode) else {
             throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data), details: HTTP.errorDetails(data))
+        }
+        // Sliding sessions: the server hands out a fresh token near expiry.
+        if session == issuedFor, let renewed = response.value(forHTTPHeaderField: "X-Octop-Access-Token"),
+           !renewed.isEmpty, renewed != issuedFor.token {
+            var next = issuedFor
+            next.token = renewed
+            if Keychain.replace(issuedFor, with: next, for: Self.sessionKey) { session = next }
         }
         return data
     }
@@ -546,7 +549,7 @@ final class ServerBackend: ChatBackend {
                     )
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     request.timeoutInterval = 600
-                    let (bytes, response) = try await HTTP.session.bytes(for: request)
+                    let (bytes, response) = try await HTTP.session.bytes(for: request, delegate: NoAPIRedirect())
                     guard let http = response as? HTTPURLResponse else { throw APIError.network }
                     guard (200..<300).contains(http.statusCode) else {
                         var data = Data()
@@ -860,8 +863,8 @@ final class ServerBackend: ChatBackend {
 
     func signOut() async {
         for socket in sockets.values { socket.cancel(with: .goingAway, reason: nil) }
+        Keychain.replace(session, with: nil, for: Self.sessionKey)
         _ = try? await raw(.post, "/api/auth/logout")
-        Keychain.set(nil, for: Self.sessionKey)
     }
 }
 
@@ -935,13 +938,5 @@ struct ServerFrameMapper {
             return APIError(kind: .server, status: 500, message: L("error.providerBalance"))
         }
         return APIError(kind: .server, status: 500, message: text)
-    }
-}
-
-
-private final class NoAvatarRedirect: NSObject, URLSessionTaskDelegate {
-    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                                newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
-        completionHandler(nil)
     }
 }

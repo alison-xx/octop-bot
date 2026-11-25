@@ -254,6 +254,7 @@ final class AppModel {
     }
 
     func use(_ backend: ChatBackend, rememberSelection: Bool = true) async {
+        CreditStore.shared.clearCatalog()
         if rememberSelection {
             if backend is ServerBackend { Keychain.setCodable(SavedBackend.server, for: Self.backendSelectionKey) }
             if backend is DeviceBackend { Keychain.setCodable(SavedBackend.device, for: Self.backendSelectionKey) }
@@ -269,6 +270,10 @@ final class AppModel {
             UserDefaults.standard.removeObject(forKey: "chat.unread")
         }
         self.backend = backend
+        CreditStore.shared.start(
+            account: { [weak self] in self?.creditAccount },
+            credited: { [weak self] in await self?.refreshBalance() }
+        )
         recoverLegacyHistory()
         sessions = [:]
         accountName = backend.accountName
@@ -288,6 +293,7 @@ final class AppModel {
                 group.cancelAll()
             }
         }
+        guard self.backend === backend else { return }
         signupNotice = creditAccount?.signupCredits.map { value in
             let amount = LynxceBackend.formatCredits(value)
             if let expiry = creditAccount?.signupExpiryDay { return L("credits.signup %@ %@", amount, expiry) }
@@ -296,23 +302,22 @@ final class AppModel {
         creditAccount?.signupCredits = nil
         phase = .ready
         await first.value
+        guard self.backend === backend else { return }
         if let pushToken { await backend.registerPush(token: pushToken) }
         if creditAccount != nil {
-            CreditStore.shared.start(
-                account: { [weak self] in self?.creditAccount },
-                credited: { [weak self] in await self?.refreshBalance() }
-            )
             await CreditStore.shared.flush()
         }
     }
 
     func refreshServerKeys() async {
-        guard server != nil, let store = modelKeys else {
+        guard let server, let store = modelKeys else {
             serverKeys = nil
             return
         }
         // An older server without own keys just keeps showing its own models.
-        serverKeys = try? await store.list()
+        let keys = try? await store.list()
+        guard self.server === server else { return }
+        serverKeys = keys
     }
 
     func refreshBalance() async {
@@ -370,23 +375,30 @@ final class AppModel {
             localAccountImage = photo.localImage
         }
         isLoading = true
-        defer { isLoading = false }
+        defer { if self.backend === backend { isLoading = false } }
         do {
             let loaded = try await backend.bots()
+            guard self.backend === backend else { return }
             // Chief first, then the directory's order.
             bots = loaded.filter(\.isChief) + loaded.filter { !$0.isChief }
             for bot in bots { sessions[bot.id]?.bot = bot }
             loadError = nil
         } catch let error as APIError where error.kind == .unauthorized {
+            guard self.backend === backend else { return }
             await signOut()
             return
         } catch {
+            guard self.backend === backend else { return }
             loadError = error.localizedDescription
         }
         if let server {
-            groups = (try? await server.groups()) ?? groups
+            let refreshedGroups = try? await server.groups()
+            guard self.backend === backend else { return }
+            groups = refreshedGroups ?? groups
         }
-        models = (try? await backend.models()) ?? []
+        let refreshedModels = try? await backend.models()
+        guard self.backend === backend else { return }
+        models = refreshedModels ?? []
         await refreshServerKeys()
         await refreshBalance()
     }
@@ -511,12 +523,14 @@ final class AppModel {
     func deleteAccount() async throws {
         guard let account = creditAccount else { return }
         let days = try await account.requestDeletion()
+        guard creditAccount === account else { return }
         LocalBots.shared.deleteAll()
         await signOut()
         signedOutNotice = days.map { L("account.deleted.days %lld", $0) } ?? L("account.deleted")
     }
 
     func signOut() async {
+        CreditStore.shared.clearCatalog()
         Keychain.setCodable(SavedBackend.signedOut, for: Self.backendSelectionKey)
         photoRefresh?.cancel()
         photoRefresh = nil
@@ -525,8 +539,9 @@ final class AppModel {
         stopHistoryRecovery()
         for session in sessions.values { session.cancel() }
         sessions = [:]
-        await backend?.signOut()
+        let leaving = backend
         backend = nil
+        isLoading = false
         bots = []
         groups = []
         serverKeys = nil
@@ -543,6 +558,7 @@ final class AppModel {
         UserDefaults.standard.removeObject(forKey: "chat.unread")
         lastBotId = nil
         phase = .signedOut
+        await leaving?.signOut()
     }
 }
 
