@@ -75,6 +75,7 @@ async def test_computer_authorization_handoff_and_window_lease(env_alice_bob_age
     with pytest.raises(OctopError):
         await run("set_value")
     await grant("background")
+    await run("read")
     with pytest.raises(OctopError):
         await run("click", foreground=True)
     with pytest.raises(OctopError):
@@ -100,6 +101,26 @@ async def test_computer_authorization_handoff_and_window_lease(env_alice_bob_age
     await grant("foreground")
     await run("read")
     assert (await run("click", foreground=True))["ok"]
+    # Returning control during a pending native read requires a fresh observation.
+    reading = asyncio.Event()
+    finished = asyncio.Event()
+
+    async def delayed_read(session, pid, window_id):
+        reading.set()
+        await asyncio.wait_for(finished.wait(), timeout=4)
+        return [{"token": "current", "value": "fictional document"}]
+
+    monkeypatch.setattr(computer.native, "read", delayed_read)
+    pending = asyncio.create_task(run("read"))
+    await asyncio.wait_for(reading.wait(), timeout=4)
+    for paused in (True, False):
+        response = await client.put(path + "/handoff", headers=alice, json={"paused": paused})
+        assert response.json()["paused"] is paused
+    finished.set()
+    with pytest.raises(OctopError):
+        await pending
+    assert (owner, bot) not in computer.observed
+    assert (await run("read"))[0]["value"] == "fictional document"
     await runtime.user_manager.set_permissions("alice", [])
     assert (await client.get(path, headers=alice)).status_code == 403
     with pytest.raises(OctopError):

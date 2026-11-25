@@ -233,6 +233,7 @@ class BotComputer:
         key = await asyncio.to_thread(self.key, repos, owner, bot)
         policy = ComputerPolicy(level=level, apps=[apps[i] for i in dict.fromkeys(app_ids)])
         await asyncio.to_thread(repos.settings_repo.set, key, policy.model_dump_json())
+        self.observed.pop((owner, bot), None)
         return await asyncio.to_thread(self.state, repos, owner, bot)
 
     def pause(self, repos: RepoBundle, owner: int, bot: str, paused: bool) -> ComputerState:
@@ -301,12 +302,13 @@ class BotComputer:
             self.foreground = True
         try:
             if not write:
+                tokens: set[str] = set()
+                pending = (pid, window_id, tokens)
+                self.observed[subject] = pending
                 elements = await self.native.read(session, pid, window_id)
-                self.observed[subject] = (
-                    pid,
-                    window_id,
-                    {e["token"] for e in elements if e["token"]},
-                )
+                if self.observed.get(subject) is not pending:
+                    raise OctopError.localized(ErrorCode.FORBIDDEN)
+                tokens.update(e["token"] for e in elements if e["token"])
                 return elements
             args = {
                 "session": session,
