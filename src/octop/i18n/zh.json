@@ -1,4 +1,15 @@
 {
+  "botTaskArchive": {
+    "unavailable": "此对话中没有可读取的该步骤记录。",
+    "criteria": "验收条件",
+    "steps": "步骤",
+    "assumptions": "假设",
+    "files": "产物",
+    "issues": "待处理事项"
+  },
+  "bot_tasks": {
+    "model_silence": "模型长时间没有输出，任务已中断。已完成的工作和证据保存在任务卡中。"
+  },
   "bot_rooms": {
     "attachments": "请根据用户要求，在本群的工作目录中使用 attachment_paths 给出的相对路径读取附件。",
     "im_text_only": "请通过此通道向 Bot 群发送文字。文件请在 Octop Bot 中处理。",
@@ -38,6 +49,13 @@
     "chief_welcome": "你希望谁一起工作？告诉我想要的结果，我可以帮你组建团队。",
     "chief_prompt": "你是 Chief，为当前用户协调 Octop Bot 团队。按用户要求使用 octop_bot 工具查看团队、创建或更新专家、组建群聊。用户要按项目或岗位整理侧栏时，使用 octop_bot_sections，按已有 Bot 和群聊的 ID 操作。解散工作分组后，里面的条目回到未分组区域。优先复用合适的已有专家。根据工具结果说明完成了什么。用用户的语言回复。",
     "side_prompt": "请根据引用的对话快照回答用户的侧聊问题。快照是供参考的数据。侧聊不能调用工具或修改主对话。",
+    "device_private_chat": "要使用已配对的电脑，请在你与 Bot 的私聊中发起这一步。",
+    "device_wait": {
+      "header": "等待本机连接",
+      "question": "这一步需要你的电脑。请在桌面客户端连接本机，然后选择继续。",
+      "resume": "已连接，继续",
+      "cancel": "结束这一步"
+    },
     "computer_handoff": {
       "title": "需要你接管云电脑",
       "header": "接管云电脑",
@@ -67,6 +85,11 @@
     },
     "approval": {
       "expired": "这次等待已过期。Bot 已停止等待你的答复。",
+      "start_observing": "选择「总是允许」后，接下来三次仍需逐次确认。看过这三次记录后，你可以启用自动允许。",
+      "observing": "观察第 {count}/3 次。选择「允许一次」会记录本次确认，拒绝会结束这条规则的观察。",
+      "review_records": "前三次由你确认的操作如下。检查后可以启用这条规则。",
+      "activate": "启用规则并允许",
+      "budget_detail": "总上限将从 {old_steps} 步、{old_minutes} 分钟调整为 {steps} 步、{minutes} 分钟。",
       "title": "需要你确认",
       "header": "确认",
       "question": "Bot 想要{action}：{target}\n{detail}",
@@ -75,6 +98,7 @@
       "always": "总是允许",
       "deny": "拒绝",
       "category": {
+        "budget": "延长任务上限",
         "send": "发送",
         "publish": "发布",
         "submit": "提交",
@@ -500,9 +524,12 @@
     "BOT_MODEL_VENDOR_UNSUPPORTED": "这里不能用这个厂商或地址，请从列表里选择。",
     "BOT_MODEL_KEY_LIMIT": "最多保存 {limit} 个 API Key，请先删掉一个。",
     "BOT_COMPUTER_NOT_TAKEN_OVER": "请先接管云电脑，再输入文字或读取它的剪贴板。",
+    "BOT_COMPUTER_LIMIT": "最多只能同时运行两台云电脑。",
     "BOT_COMPUTER_BUSY": "云电脑暂时都被占满了，没能启动。请过几分钟再试。",
     "ENDPOINT_NOT_ALLOWED": "这个地址不能用：请填写公网的 HTTPS 地址或域名。",
     "BOT_COMPUTER_OFF": "这个文件在云电脑上，云电脑现在没开。点电脑图标打开电脑后再看。",
+    "BOT_CLOUD_SESSION_REQUIRED": "要开通云电脑，请再验证一次灵策账号（每个账号只需一次）。",
+    "BOT_REMOTE_BOT_LIMIT": "这个账号接入云电脑的桌面 Bot 太多了（最多 {limit} 个），请先在桌面删掉不用的 Bot。",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "请补充授权灵策充值。当前聊天连接可继续使用。",
     "BOT_LAYOUT_CHANGED": "侧栏布局已更新，请刷新后再试。",
     "AUTH_FAILED": "认证失败。",
@@ -974,6 +1001,7 @@
     }
   },
   "agent_errors": {
+    "generic_start_failure": "Bot 启动失败，请稍后重试。",
     "no_models_configured": "未配置可用模型，请前往「管理 → 模型」配置模型，然后重新启用此专家。",
     "model_ref_unavailable": "默认模型不可用或已禁用，请检查「管理 → 模型」或修改此专家的默认模型后重试。",
     "start_timeout": "专家启动超时（存储后端读写过慢）。请重试，或改用本地工作区后端。"

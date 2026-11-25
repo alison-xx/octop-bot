@@ -186,7 +186,10 @@ def test_hitl_store_has_pending_for_agent() -> None:
         channel_type="dashboard",
         action_requests=[{"name": "shell", "args": {"cmd": "ls"}}],
         review_configs=None,
+        origin="cron:daily",
+        ttl_seconds=24 * 3600,
     )
+    rec.created_at -= 3600
     assert store.has_pending_for_agent("a1") is True
     assert store.has_pending_for_agent("a2") is False
 

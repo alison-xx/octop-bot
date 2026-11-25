@@ -21,6 +21,7 @@ class StreamSession:
     deadline: float
     agent_id: str | None = None
     auth_time: int = 0
+    purpose: str = "access"
 
     @classmethod
     def from_claims(cls, claims: dict[str, Any], *, agent_id: str | None = None) -> StreamSession:
@@ -33,6 +34,7 @@ class StreamSession:
             min(float(claims["exp"]), auth_time + 30 * 86400),
             agent_id,
             auth_time,
+            str(claims.get("purpose", "access")),
         )
 
     def renew(self, signed: StreamSession) -> bool:
@@ -136,25 +138,27 @@ def stream_user(
     raise OctopError(ErrorCode.AUTH_FAILED, "missing credentials")
 
 
-def issue_screen_ticket(tickets: dict[str, Ticket], agent_id: str, session: StreamSession) -> str:
+@dataclass(frozen=True)
+class ScreenTicketClaim(Ticket):
+    screen_key: str
+
+
+def issue_screen_ticket(
+    tickets: dict[str, ScreenTicketClaim], agent_id: str, session: StreamSession, screen_key: str
+) -> str:
     now = time.monotonic()
     for token, claim in list(tickets.items()):
         if claim.expires <= now:
             tickets.pop(token, None)
     ticket = secrets.token_urlsafe(32)
-    tickets[ticket] = Ticket(agent_id, session, now + 60)
+    tickets[ticket] = ScreenTicketClaim(agent_id, session, now + 60, screen_key)
     return ticket
 
 
 def consume_screen_ticket(
-    tickets: dict[str, Ticket], ticket: str, agent_id: str, server: Any
-) -> StreamSession | None:
+    tickets: dict[str, ScreenTicketClaim], ticket: str, agent_id: str
+) -> ScreenTicketClaim | None:
     claim = tickets.pop(ticket, None)
-    if (
-        claim is None
-        or claim.purpose != agent_id
-        or claim.expires <= time.monotonic()
-        or not claim.session.active(server)
-    ):
+    if claim is None or claim.purpose != agent_id or claim.expires <= time.monotonic():
         return None
-    return claim.session
+    return claim

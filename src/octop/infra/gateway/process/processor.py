@@ -1811,6 +1811,17 @@ class GlobalProcessor:
         )
 
         message_kwargs: dict[str, Any] = {}
+        if meta.get("octop_bot_browser") is True and self._settings_repo is not None:
+            from octop.infra.bot_tasks.placement import (
+                PLACEMENT_KEY,
+                bot_placement,
+                resolve_placement,
+            )
+
+            default = await asyncio.to_thread(bot_placement, self._settings_repo, agent_id)
+            message_kwargs[PLACEMENT_KEY] = resolve_placement(
+                default, meta.get("computer_placement")
+            )
         composer = meta.get(COMPOSER_CTX_KEY)
         if isinstance(composer, dict) and composer:
             message_kwargs[COMPOSER_CTX_KEY] = composer
