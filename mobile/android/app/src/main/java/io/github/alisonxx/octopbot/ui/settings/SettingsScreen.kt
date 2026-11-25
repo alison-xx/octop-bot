@@ -235,7 +235,7 @@ fun SettingsScreen(model: AppViewModel, onBack: () -> Unit, onModels: () -> Unit
             accountName = accountName(backend),
             balance = balance,
             account = AccountSummary.demo(context) ?: if (model.creditAccount != null) {
-                AccountSummary(accountName(backend), credits = (balance as? BalanceState.Value)?.credits)
+                AccountSummary(accountName(backend), credits = (balance as? BalanceState.Value)?.credits, signupExpiryDay = model.creditAccount?.signupExpiryDay)
             } else null,
             lynxce = backend.definesBotsLocally,
             wallet = model.creditAccount != null,

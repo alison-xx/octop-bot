@@ -717,6 +717,7 @@ struct AccountSummary: Equatable {
     var credits: Double?
     var expiring: Double?
     var expiringOn: Date?
+    var signupExpiryDay: String? = nil
     var permanent: Double?
 
     /// Sample data for design screenshots (`-demoAccount YES`, debug builds only).
@@ -772,6 +773,9 @@ struct AccountCard: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 }
+            }
+            if let expiry = summary.signupExpiryDay {
+                Text(verbatim: L("account.signupExpiry %@", expiry)).font(.caption).foregroundStyle(Palette.secondary)
             }
             if let openCredits {
                 Button(action: openCredits) {

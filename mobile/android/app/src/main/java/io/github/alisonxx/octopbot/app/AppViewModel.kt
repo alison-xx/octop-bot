@@ -295,6 +295,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         _groups.value = cached?.groups.orEmpty()
         _lastBotId.value = store.lastBot()
         _session.value = SessionState.Ready(backend)
+        (backend as? CreditAccount)?.let { account ->
+            account.signupCredits?.let {
+                val amount = LynxceProtocol.formatCredits(it)
+                val expiry = account.signupExpiryDay
+                notice(if (expiry == null) resources.getString(R.string.signup_credit_notice, amount)
+                    else resources.getString(R.string.signup_credit_notice_until, amount, expiry))
+            }
+            account.signupCredits = null
+        }
         refreshDirectory()
         _models.value = if (backend.definesBotsLocally) runCatching { backend.models() }.getOrDefault(emptyList()) else emptyList()
         _serverKeys.value = null

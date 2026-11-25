@@ -40,6 +40,7 @@ final class AppModel {
     private(set) var lowBalanceDismissed = false
     /// Shown once on the sign-in screen (e.g. after deleting the account).
     var signedOutNotice: String?
+    var signupNotice: String?
     var loadError: String?
     var isLoading = false
     private(set) var previews: [String: Preview]
@@ -134,7 +135,7 @@ final class AppModel {
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "demoAccount") { return .demo }
         #endif
-        return AccountSummary(name: accountName, credits: credits)
+        return AccountSummary(name: accountName, credits: credits, signupExpiryDay: creditAccount?.signupExpiryDay)
     }
 
     var credits: Double? {
@@ -189,6 +190,12 @@ final class AppModel {
                 group.cancelAll()
             }
         }
+        signupNotice = creditAccount?.signupCredits.map { value in
+            let amount = LynxceBackend.formatCredits(value)
+            if let expiry = creditAccount?.signupExpiryDay { return L("credits.signup %@ %@", amount, expiry) }
+            return L("credits.signup %@", amount)
+        }
+        creditAccount?.signupCredits = nil
         phase = .ready
         await first.value
         if let pushToken { await backend.registerPush(token: pushToken) }

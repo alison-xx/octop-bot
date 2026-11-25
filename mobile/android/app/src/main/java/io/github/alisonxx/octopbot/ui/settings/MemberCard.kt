@@ -62,6 +62,7 @@ data class AccountSummary(
     val credits: Double? = null,
     val expiring: Double? = null,
     val expiringOn: LocalDate? = null,
+    val signupExpiryDay: String? = null,
     val permanent: Double? = null,
 ) {
     val member get() = tier != null
@@ -140,6 +141,9 @@ fun MemberCard(summary: AccountSummary, onCredits: () -> Unit, onOpen: (String) 
                     ).joinToString(" · ")
                     if (line.isNotEmpty()) Text(line, style = MaterialTheme.typography.bodySmall, color = palette.secondary, maxLines = 1)
                 }
+            }
+            summary.signupExpiryDay?.let {
+                Text(stringResource(R.string.signup_credit_expiry, it), style = MaterialTheme.typography.bodySmall, color = palette.secondary)
             }
             summary.credits?.let { total ->
                 Column {

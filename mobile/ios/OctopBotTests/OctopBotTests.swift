@@ -609,6 +609,8 @@ final class AppUpdaterTests: XCTestCase {
 
 /// A Lynxce wallet that sells packs and has App Store purchases switched on, counting what is asked.
 private final class SellingAccount: CreditAccount {
+    var signupCredits: Double?
+    var signupExpiryDay: String?
     var packRequests = 0
     var intents = 0
 
@@ -1232,5 +1234,21 @@ final class LynxceSignupSourceTests: XCTestCase {
         XCTAssertEqual(signedIn["X-Lynxce-Signup-Site"], "octop-bot")
         XCTAssertEqual(signedIn["Authorization"], "Bearer t")
         XCTAssertEqual(signedIn["X-Lynxce-Iap-App"], "cn.lynxce.octopbot")
+    }
+}
+
+@MainActor
+final class SignupCreditNoticeTests: XCTestCase {
+    func testOnlyGrantedCreditsOnNewAccountsAreShown() {
+        let grant = ["credits": 125.5]
+        XCTAssertEqual(newSignupCredits(["isNewUser": true, "signupGrant": grant]), 125.5)
+        XCTAssertNil(newSignupCredits(["isNewUser": false, "signupGrant": grant]))
+        XCTAssertNil(newSignupCredits(["isNewUser": 1, "signupGrant": grant]))
+        XCTAssertNil(newSignupCredits(["isNewUser": true]))
+        XCTAssertEqual(signupExpiryDayUTC(["isNewUser": true, "signupGrant": ["credits": 100, "expiresAt": "2026-12-09T01:00:00+08:00"]]), "2026-12-08")
+        XCTAssertNil(signupExpiryDayUTC(["isNewUser": true, "signupGrant": grant]))
+        for invalid: Any in [true, "100", -1, 0, Double.infinity] as [Any] {
+            XCTAssertNil(newSignupCredits(["isNewUser": true, "signupGrant": ["credits": invalid]]))
+        }
     }
 }

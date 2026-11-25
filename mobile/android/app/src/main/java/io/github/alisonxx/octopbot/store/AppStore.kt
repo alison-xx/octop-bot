@@ -33,6 +33,7 @@ data class LynxceGrant(
     val displayName: String? = null,
     val accessToken: String,
     val refreshToken: String,
+    val signupExpiryDay: String? = null,
 )
 
 /** A signed-in self-hosted server. Stored only encrypted. */
@@ -43,6 +44,7 @@ data class ServerSession(
     val displayName: String,
     /** Octop Bot cloud (bot.lynxce.cn), which keeps the Lynxce wallet for this account. */
     val cloud: Boolean = false,
+    val signupExpiryDay: String? = null,
 )
 
 data class UserSettings(
