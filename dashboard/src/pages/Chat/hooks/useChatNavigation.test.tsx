@@ -165,6 +165,36 @@ describe("useChatNavigation stale thread", () => {
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
+  it("keeps an explicit older thread on entry, remount and return from a recent chat", async () => {
+    const recent = session("recent");
+    const ensureThreadInList = vi.fn().mockResolvedValue("found");
+    const options = {
+      routeAgentId: "agent-a",
+      resolvedAgentId: "agent-a",
+      sessions: [recent],
+      sessionsLoading: false,
+      prefillInputRef: { current: "" },
+      loadHistory: vi.fn().mockResolvedValue(undefined),
+      clearMessages: vi.fn(),
+      ensureThreadInList,
+      fetchSessions: vi.fn().mockResolvedValue([recent]),
+      refreshAgents: vi.fn().mockResolvedValue(undefined),
+    };
+    const render = (id: string) =>
+      useChatNavigation({ ...options, threadId: id, activeThreadId: id });
+    const open = () => renderHook(render, { initialProps: "older", wrapper });
+    const initial = open();
+    await waitFor(() => expect(ensureThreadInList).toHaveBeenCalledTimes(1));
+    initial.unmount();
+    const refreshed = open();
+    await waitFor(() => expect(ensureThreadInList).toHaveBeenCalledTimes(2));
+    refreshed.rerender("recent");
+    refreshed.rerender("older");
+    await waitFor(() => expect(ensureThreadInList).toHaveBeenCalledTimes(3));
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(rebindMock).not.toHaveBeenCalled();
+  });
+
   it("prefers an existing session when the URL thread is missing", async () => {
     const ensureThreadInList = vi.fn().mockResolvedValue("missing");
     const prefillInputRef = { current: "" };

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
+import { ApiResponseError } from "../../../api/responseError";
 import { deleteConversation } from "../utils/deleteConversation";
 import {
   normalizeThreadArtifacts,
@@ -515,27 +516,18 @@ export function useSessions(agentId: string | null) {
       if (!agentId || !threadId) return "missing";
       if (_sessions.some((s) => s.id === threadId)) return "found";
       try {
-        const limit = getLoadedLimit(agentId);
-        const probeLimit = Math.max(limit + 1, 50);
-        const { sessions: valid, hasMore: more } = await fetchSessionsPage(
-          agentId,
-          probeLimit,
-        );
-        // Agent switched while the probe was in flight — do not rewrite URL.
-        if (_storeAgentId !== agentId) return "unknown";
-        const found = valid.some((s) => s.id === threadId);
-        if (!found) return "missing";
-        applySessionPage(
-          valid,
-          more || valid.length > limit,
-          limit,
-          agentId,
-          threadId,
-        );
-        return "found";
-      } catch {
-        // Network/API failure — keep the URL until a later successful probe.
-        return "unknown";
+        const page = await octopThreadsApi.history(agentId, threadId, {
+          limit: 1,
+        });
+        return _storeAgentId === agentId && page.thread_id === threadId
+          ? "found"
+          : "unknown";
+      } catch (error) {
+        return _storeAgentId === agentId &&
+          error instanceof ApiResponseError &&
+          error.status === 404
+          ? "missing"
+          : "unknown";
       }
     },
     [agentId],

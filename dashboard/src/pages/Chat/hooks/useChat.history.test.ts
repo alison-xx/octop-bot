@@ -97,7 +97,7 @@ describe("history failures", () => {
     expect(chatStore.getSnapshot(thread).messages[0].content).toBe("task done");
   });
 
-  it("passes the pinned cursor when loading older messages", async () => {
+  it("retries a projecting older page at its pinned cursor", async () => {
     chatStore.setHistoryPage(
       thread,
       [{ id: "new", role: "user", content: "new", timestamp: 1 }],
@@ -105,11 +105,19 @@ describe("history failures", () => {
     );
     const history = vi
       .spyOn(octopThreadsApi, "history")
+      .mockResolvedValueOnce({
+        thread_id: thread,
+        messages: [],
+        history_loading: true,
+        history_retry_after_ms: 500,
+      })
       .mockResolvedValue({ thread_id: thread, messages: [], has_more: false });
     const { result } = renderHook(() => useChat(thread, "agent"));
     await act(async () => {
       await result.current.loadMoreHistory();
     });
+    expect(history).toHaveBeenCalledTimes(2);
+    expect(history.mock.calls[1]).toEqual(history.mock.calls[0]);
     expect(history).toHaveBeenCalledWith(
       "agent",
       thread,

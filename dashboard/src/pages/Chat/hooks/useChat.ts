@@ -1014,9 +1014,6 @@ export function useChat(
   const attachAfterHistory = useCallback(
     (key: string, targetThreadId: string) => {
       if (!agentId || !targetThreadId) return;
-      // No post-stream refreshHistory here: full replace can wipe prepended
-      // older pages and fight “load earlier / jump to bottom” UX. Seal via
-      // stream chunks / done; user overscroll refresh remains available.
       void chatStore.attachThread(key, agentId, targetThreadId);
     },
     [agentId],
@@ -1254,15 +1251,28 @@ export function useChat(
     loadMoreInFlightRef.current = gen;
 
     try {
-      const {
-        messages: older,
-        hasMore,
-        nextOffset,
-        nextCursor,
-      } = await loadThreadHistory(agentId, stableSessionId, {
-        offset,
-        cursor: snap.historyNextCursor,
-      });
+      const params = { offset, cursor: snap.historyNextCursor };
+      let page = await loadThreadHistory(agentId, key, params);
+      for (let attempt = 0; page.projectionLoading && attempt < 20; attempt++) {
+        await new Promise((resolve) =>
+          window.setTimeout(
+            resolve,
+            Math.max(500, Math.min(page.retryAfterMs, 5000)),
+          ),
+        );
+        if (
+          loadGenRef.current !== gen ||
+          !chatStore.isHistoryReadCurrent(key, epoch)
+        )
+          return false;
+        page = await loadThreadHistory(agentId, key, params);
+      }
+      if (page.projectionLoading) {
+        failedHistoryOperation.current = "older";
+        setHistoryError(true);
+        return false;
+      }
+      const { messages: older, hasMore, nextOffset, nextCursor } = page;
       if (
         loadGenRef.current !== gen ||
         !chatStore.isHistoryReadCurrent(key, epoch)
@@ -1331,11 +1341,13 @@ export function useChat(
       try {
         const {
           messages: latest,
+          projectionLoading,
           hasMore,
           nextOffset,
           nextCursor,
           turnActive,
         } = await loadThreadHistory(agentId, key, { offset: 0 });
+        if (projectionLoading) return;
         // Stale after a concurrent loadHistory / newer refresh — drop apply only.
         if (
           loadGenRef.current !== gen ||
@@ -1386,6 +1398,23 @@ export function useChat(
     },
     [agentId, stableSessionId, historyRefreshing, historyLoading],
   );
+
+  useEffect(() => {
+    const recover = () => {
+      if (document.visibilityState === "visible") void refreshHistory();
+    };
+    const unsubscribe = chatStore.onStreamEvent((event) => {
+      if (event.sessionId === stableSessionId && event.kind === "streamEnd")
+        void refreshHistory();
+    });
+    window.addEventListener("focus", recover);
+    document.addEventListener("visibilitychange", recover);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", recover);
+      document.removeEventListener("visibilitychange", recover);
+    };
+  }, [refreshHistory, stableSessionId]);
 
   const retryHistory = useCallback(async () => {
     if (failedHistoryOperation.current === "older") await loadMoreHistory();

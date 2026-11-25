@@ -83,6 +83,21 @@ describe("BotChat panels", () => {
     expect(screen.queryByText("offline")).toBeNull();
   });
 
+  it("discovers a thread created on another client when the window regains focus", async () => {
+    vi.mocked(octopThreadsApi.list)
+      .mockResolvedValueOnce([{ thread_id: "old", title: "Existing" } as never])
+      .mockResolvedValue([
+        { thread_id: "phone", title: "From mobile" } as never,
+        { thread_id: "old", title: "Existing" } as never,
+      ]);
+    chat();
+    fireEvent.click(screen.getByRole("button", { name: "octopBot.history" }));
+    await screen.findByText("Existing");
+    fireEvent.focus(window);
+    await screen.findByText("From mobile");
+    expect(screen.getAllByText("Existing")).toHaveLength(1);
+  });
+
   it("retries a failed side question in place and sends with Ctrl+Enter", async () => {
     vi.mocked(octopBotApi.side)
       .mockRejectedValueOnce(new Error("timeout"))

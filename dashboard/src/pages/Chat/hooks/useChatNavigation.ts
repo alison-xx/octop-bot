@@ -168,9 +168,11 @@ export function useChatNavigation({
   ]);
 
   const ensureThreadAttemptRef = useRef<string | null>(null);
-  useEffect(() => {
-    ensureThreadAttemptRef.current = null;
-  }, [resolvedAgentId]);
+  useLayoutEffect(() => {
+    return () => {
+      ensureThreadAttemptRef.current = null;
+    };
+  }, [resolvedAgentId, threadId]);
 
   useEffect(() => {
     if (!resolvedAgentId || !threadId || sessionsLoading) return;
