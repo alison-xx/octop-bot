@@ -465,17 +465,18 @@
   });
 
   /* ---------------- Downloads ---------------- */
+  const appleMobile = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   function detectOS() {
     const ua = navigator.userAgent;
     const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
-    if (/iPhone|iPad|iPod|Android/i.test(ua)) return "mobile";
+    if (appleMobile || /Android/i.test(ua)) return "mobile";
     if (/Win/i.test(platform) || /Windows/i.test(ua)) return "win";
     if (/Mac/i.test(platform) || /Mac OS X/i.test(ua)) return "mac";
     if (/Linux/i.test(platform)) return "linux";
     return "other";
   }
   const os = detectOS();
-  const phone = /Android/i.test(navigator.userAgent) ? "android" : /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "ios" : null;
+  const phone = /Android/i.test(navigator.userAgent) ? "android" : appleMobile ? "ios" : null;
   root.dataset.os = os;
 
   const esc = (s) =>
@@ -630,13 +631,14 @@
     }
     if (phone === "ios") {
       const a = pick(release, "ios");
-      return a && { href: a.url, external: true, label: t("下载 iPhone 版", "Get it for iPhone"), sub: storeName(a.url), icon: OS_ICON.phone, version: a.appVersion };
+      return a && { href: a.url, external: true, label: storeName(a.url) === "App Store" ? t("前往 App Store 下载", "Get on the App Store") : t("在 TestFlight 中打开", "Open in TestFlight"), sub: storeName(a.url), icon: OS_ICON.phone, version: a.appVersion };
     }
     return null;
   }
 
   function renderPrimary(release) {
     const choice = primaryChoice();
+    $$("[data-store-shortcut]").forEach((el) => (el.hidden = phone === "ios" && choice?.href === $("a", el).href));
     $$("[data-download-primary]").forEach((btn) => {
       btn.removeAttribute("target");
       btn.removeAttribute("rel");
@@ -740,7 +742,7 @@
           ${apk ? fileRow(androidRel, apk, "Android", `APK · ${esc(apk.appVersion || androidRel.version)}`, phone === "android") : ""}
           ${
             ios
-              ? `<div class="file"><div><b>iPhone / iPad</b><small>${storeName(ios.url)} · ${esc(ios.appVersion || iosRel.version)}</small></div><a class="btn ${phone === "ios" ? "btn-primary" : "btn-ghost"} btn-sm" href="${esc(ios.url)}" target="_blank" rel="noopener"><span>${t("前往获取", "Get it")}</span>${OUT}</a></div>`
+              ? `<div class="file"><div><b>iPhone / iPad</b><small>${storeName(ios.url)} · ${esc(ios.appVersion || iosRel.version)}</small></div><a class="btn ${phone === "ios" ? "btn-primary" : "btn-ghost"} btn-sm" href="${esc(ios.url)}" target="_blank" rel="noopener"><span>${storeName(ios.url)}</span>${OUT}</a></div>`
               : ""
           }
         </div><p class="muted" style="font-size:14px">${t("登录灵策账号继续云端对话，或连接自己的 Octop Bot 服务器。", "Sign in with Lynxce to continue your cloud chats, or connect to your own Octop Bot server.")}</p>`,
@@ -830,7 +832,7 @@
       .catch(() => ({}));
     return Promise.all([live, listed]).then(([manifestReleases, data]) => {
       /* releases.json "hidden" lists platforms not to offer yet, e.g. "ios" before the App Store listing is live. */
-      const hidden = new Set(data.hidden || (data.releases ? [] : ["ios"]));
+      const hidden = new Set(data.hidden || []);
       const fromManifest = manifestReleases.map((r) => ({ ...r, assets: r.assets.filter((a) => !hidden.has(a.platform)) }));
       const fromList = (data.releases || []).map((r) => {
         const assets = r.assets.filter((a) => !hidden.has(a.platform));
