@@ -183,6 +183,23 @@ extension ServerBackend {
             screenSession: body?["session"] as? String, control: control)
     }
 
+    func keepScreenBound(_ page: URL, agent: String) async {
+        guard let handle = URLComponents(url: page, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "session" })?.value else { return }
+        var boundToken: String? = nil
+        while !Task.isCancelled {
+            do { try await Task.sleep(for: .seconds(3)) } catch { return }
+            let current = session.token
+            guard current != boundToken else { continue }
+            do {
+                _ = try await raw(.post, computerPath(agent) + "/screen/renew", json: ["session": handle])
+                boundToken = current
+            } catch let error as APIError where [401, 403, 404].contains(error.status) {
+                return
+            } catch { continue }
+        }
+    }
+
     nonisolated static func screenPage(
         base: URL, agentId: String, ticket: String, screenSession: String?, control: Bool
     ) -> URL {

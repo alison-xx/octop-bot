@@ -405,6 +405,7 @@ struct CloudScreenCover: View {
                 Color.black
                 if let url {
                     ScreenWebView(url: url).id(url)
+                        .task(id: url) { await float.server.keepScreenBound(url, agent: float.botId) }
                 } else if let error {
                     VStack(spacing: 12) {
                         Text(error).multilineTextAlignment(.center).foregroundStyle(.white)
