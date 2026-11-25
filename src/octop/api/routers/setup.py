@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
-import secrets
 from pathlib import Path
+from secrets import token_urlsafe
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -136,7 +136,8 @@ def _resolve_admin_password(server: Any, provided: str | None) -> str:
         return provided
     if _setup_password_required(server) or bot_web_enabled():
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "password is required")
-    return secrets.token_urlsafe(32)
+    # The random token alone can lack a letter or digit required by the password policy.
+    return "a1" + token_urlsafe(32)
 
 
 def _client_host(request: Request) -> str:
