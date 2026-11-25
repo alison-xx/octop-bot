@@ -45,6 +45,8 @@ data class ServerSession(
     /** Octop Bot cloud (bot.lynxce.cn), which keeps the Lynxce wallet for this account. */
     val cloud: Boolean = false,
     val signupExpiryDay: String? = null,
+    /** Random local attachment namespace assigned after this server login succeeded. */
+    val attachmentCacheId: String? = null,
 )
 
 data class UserSettings(
