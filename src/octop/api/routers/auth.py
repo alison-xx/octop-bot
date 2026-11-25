@@ -228,11 +228,13 @@ async def login(
     }
 
 
+@router.post("/logout-all", status_code=204, summary="Sign out everywhere")
 @router.post("/logout", status_code=204, summary="Sign out")
 async def logout(
     request: Request, user: Any = Depends(current_user), server: Any = Depends(get_server)
 ) -> Response:
-    """Record an audit event for the current session. JWTs are stateless and not revoked server-side."""
+    """Invalidate all access sessions for the current user."""
+    server.user_manager.revoke_sessions(user.id)
     close_login_screens(request, user.id)
     server.services.audit_repo.write(actor=user.username, action="auth.logout")
     return Response(status_code=204)
@@ -328,3 +330,40 @@ async def delete_my_avatar(
 
     delete_profile_avatar(server.services.avatars("user"), str(user.id))
     return Response(status_code=204)
+
+
+class StreamTicketBody(BaseModel):
+    purpose: Literal[
+        "chat_ws",
+        "notify_ws",
+        "terminal",
+        "browser_stream",
+        "voice",
+        "bridge",
+        "sse",
+        "desktop",
+        "mobile",
+    ]
+
+
+class StreamTicketResponse(BaseModel):
+    ticket: str
+    expires_in: int
+
+
+@router.post("/ws-ticket", summary="Issue a streaming ticket", response_model=StreamTicketResponse)
+async def create_stream_ticket(
+    body: StreamTicketBody,
+    request: Request,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> StreamTicketResponse:
+    from octop.api.common.stream_auth import StreamSession, issue_ticket
+    from octop.api.deps import _decode, extract_raw_token
+
+    raw = extract_raw_token(authorization=request.headers.get("authorization"))
+    if not raw:
+        raise OctopError(ErrorCode.MISSING_CREDENTIALS, "missing credentials")
+    claims = _decode(server, raw)
+    session = StreamSession.from_claims(claims)
+    return StreamTicketResponse(ticket=issue_ticket(session, body.purpose), expires_in=60)

@@ -144,6 +144,7 @@ class RemoteCredentials:
 # Cloud boot/resume may wait for the desktop before the requested operation starts.
 STARTUP_TIMEOUT = 360
 
+_PROCESS_STARTED_AT = time.time()
 _AGENT = re.compile(r"[A-Za-z0-9_-]{1,64}")
 Target = Literal["local", "cloud"]
 
@@ -264,9 +265,10 @@ class RemoteComputerManager:
             cached = json.loads(raw) if raw else {}
             name = row.name[:64]
             if (
-                cached.get("account") == self.account
+                not selecting
+                and cached.get("account") == self.account
                 and cached.get("name") == name
-                and cached.get("updated", 0) > time.time() - 86400
+                and cached.get("updated", 0) >= max(_PROCESS_STARTED_AT, time.time() - 86400)
             ):
                 return str(cached["id"])
             install = await asyncio.to_thread(

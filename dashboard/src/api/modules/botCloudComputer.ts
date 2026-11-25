@@ -49,7 +49,7 @@ export interface CloudComputerGlance {
 
 export type ScreenSession =
   | string
-  | { header: string; expiresAt: number }
+  | { header: string; expiresAt: number; renewable: boolean }
   | { viewOnly: true };
 
 export function viewOnlyScreen(
@@ -65,6 +65,7 @@ export interface ScreenTicket {
   session: string;
   session_transport?: "header" | "path" | null;
   session_expires_in?: number | null;
+  session_renewable?: boolean;
 }
 
 const endpoint = (id: string) =>
@@ -140,6 +141,7 @@ export const botCloudComputerApi = {
       ticket.session_transport === "header"
         ? {
             header: ticket.session,
+            renewable: ticket.session_renewable !== false,
             expiresAt: Date.now() + 1000 * (ticket.session_expires_in ?? 0),
           }
         : ticket.session_transport === null
@@ -147,6 +149,16 @@ export const botCloudComputerApi = {
         : ticket.session;
     return { ...ticket, session };
   },
+  renewScreen: (
+    id: string,
+    session: Exclude<ScreenSession, { viewOnly: true }>,
+  ) =>
+    request<void>(endpoint(id) + "/screen/renew", {
+      method: "POST",
+      ...(typeof session === "string"
+        ? { body: JSON.stringify({ session }) }
+        : { headers: { "X-Octop-Screen-Session": session.header } }),
+    }),
   /** Types text (any language) at the taken-over desktop's cursor. */
   typeText: (session: ScreenSession, text: string) =>
     screenAction<void>(session, "type", {

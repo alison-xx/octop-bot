@@ -14,10 +14,15 @@ it("uses fixed paths and a header for the lifetime of a negotiated session", asy
     session_expires_in: 1800,
   });
   const { session } = await api.openScreen("writer");
+  if (typeof session !== "object" || !("header" in session))
+    throw new Error("Expected a header session");
+  expect(session.renewable).toBe(true);
+  await api.renewScreen("writer", session);
   await api.typeText(session, "中文");
   await api.readClipboard(session);
   expect(send.mock.calls.map(([path]) => path)).toEqual([
     "/octop-bot/computers/writer/screen",
+    "/octop-bot/computers/writer/screen/renew",
     "/octop-bot/screen-sessions/type",
     "/octop-bot/screen-sessions/clipboard",
   ]);
@@ -25,6 +30,10 @@ it("uses fixed paths and a header for the lifetime of a negotiated session", asy
     "X-Octop-Screen-Transport": "header",
   });
   expect(send.mock.calls[1][1]?.headers).toEqual({
+    "X-Octop-Screen-Session": "local-session",
+  });
+  expect(send.mock.calls[1][1]?.body).toBeUndefined();
+  expect(send.mock.calls[3][1]?.headers).toEqual({
     "X-Octop-Screen-Session": "local-session",
   });
   expect(send.mock.calls[2][1]?.headers).toEqual({

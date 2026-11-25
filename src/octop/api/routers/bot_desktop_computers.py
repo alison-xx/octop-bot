@@ -149,6 +149,9 @@ class DesktopScreenTicket(BaseModel):
     session: str = Field(description="Local header credential valid only for its open screen.")
     session_transport: Literal["header"] | None = None
     session_expires_in: int | None = None
+    session_renewable: Literal[False] = Field(
+        default=False, description="Desktop screens remain bound to the original local credential."
+    )
 
 
 @dataclass

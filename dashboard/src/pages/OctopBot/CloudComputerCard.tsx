@@ -171,6 +171,7 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
       >
         {screen && (
           <CloudComputerScreen
+            botId={botId}
             wsPath={screen}
             interactive={status?.takeover === true}
             session={session}

@@ -126,7 +126,10 @@ def desktop(tmp_path, monkeypatch):
     app.dependency_overrides[current_user] = lambda: SimpleNamespace(id=owner)
     app.dependency_overrides[get_server] = lambda: SimpleNamespace(
         services=services,
-        user_manager=SimpleNamespace(get_by_id=services.user_repo.get),
+        user_manager=SimpleNamespace(
+            get_by_id=services.user_repo.get,
+            revoke_sessions=services.user_repo.bump_session_version,
+        ),
         app_runtime=SimpleNamespace(agent_registry=SimpleNamespace(reload=AsyncMock())),
     )
 
@@ -176,6 +179,21 @@ async def test_switch_and_ownership(desktop):
         assert (await api.get(COMPUTER)).status_code == 404
         desktop.services.secret_repo.delete(lynxce_cloud._key(desktop.owner))
         assert (await api.put(TARGET, json={"target": "cloud"})).status_code == 409
+
+
+async def test_new_desktop_process_registers_before_using_a_cached_shadow(desktop):
+    async with client(desktop) as api:
+        assert (await api.put(TARGET, json={"target": "cloud"})).is_success
+        registry = desktop.services.settings_repo
+        key, raw = next(iter(registry.with_prefix(f"octop_bot:shadow:{desktop.owner}:").items()))
+        before_restart = json.loads(raw)
+        before_restart.update(id="old-cloud-id", updated=remote._PROCESS_STARTED_AT - 1)
+        registry.set(key, json.dumps(before_restart))
+        desktop.calls.clear()
+        assert (await api.get(COMPUTER)).is_success
+        assert (await api.get(COMPUTER)).is_success
+        assert sum("/remote-bots/" in call.url.path for call in desktop.calls) == 1
+        assert json.loads(registry.get(key))["id"] == "test-shadow"
 
 
 async def test_one_retry_busy_and_logout(desktop, monkeypatch):
@@ -296,6 +314,7 @@ async def test_screen_clipboard_is_bound_to_one_open_connection(desktop, monkeyp
             await api.post(COMPUTER + "/screen", headers={"X-Octop-Screen-Transport": "header"})
         ).json()
         assert body["session_transport"] == "header" and body["session_expires_in"] == 1800
+        assert body["session_renewable"] is False
         assert body["session"] not in body["ws_path"] and "test-cloud-session" not in str(body)
         headers = {"X-Octop-Screen-Session": body["session"]}
         assert (await api.get(base + "/clipboard", headers=headers)).status_code == 404

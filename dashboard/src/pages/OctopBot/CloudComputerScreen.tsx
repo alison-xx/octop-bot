@@ -5,6 +5,7 @@ import {
   viewOnlyScreen,
   type ScreenSession,
 } from "../../api/modules/botCloudComputer";
+import { ACCESS_TOKEN_RENEWED_EVENT, getAuthToken } from "../../api/request";
 import { apiErrorMessage } from "../../utils/apiError";
 import CloudComputerInputBar from "./CloudComputerInputBar";
 import styles from "./cloudComputerScreen.module.less";
@@ -38,11 +39,13 @@ const COPY_SETTLE_MS = 400;
 export default function CloudComputerScreen({
   wsPath,
   interactive,
+  botId,
   session = "",
 }: {
   wsPath: string;
   interactive: boolean;
   session?: ScreenSession;
+  botId?: string;
 }) {
   const { t } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
@@ -69,6 +72,35 @@ export default function CloudComputerScreen({
     return () => window.clearTimeout(timeout);
   }, [expiresAt]);
   const interactiveRef = useRef(canControl);
+
+  useEffect(() => {
+    // Negotiated desktop sessions expire with the original sign-in and ticket.
+    if (
+      !botId ||
+      !session ||
+      viewOnlyScreen(session) ||
+      (typeof session === "object" && !session.renewable)
+    )
+      return;
+    let lastToken = "";
+    // The viewer can stay open across sliding login renewals. Only a changed
+    // sign-in credential needs sending; this never starts or resumes a computer.
+    const renew = () => {
+      const token = getAuthToken();
+      if (!token || token === lastToken) return;
+      lastToken = token;
+      void botCloudComputerApi.renewScreen(botId, session).catch(() => {
+        if (lastToken === token) lastToken = "";
+      });
+    };
+    renew();
+    window.addEventListener(ACCESS_TOKEN_RENEWED_EVENT, renew);
+    window.addEventListener("storage", renew);
+    return () => {
+      window.removeEventListener(ACCESS_TOKEN_RENEWED_EVENT, renew);
+      window.removeEventListener("storage", renew);
+    };
+  }, [botId, session]);
 
   useEffect(() => {
     let cancelled = false;

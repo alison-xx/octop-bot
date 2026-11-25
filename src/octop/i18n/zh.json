@@ -523,6 +523,7 @@
     "NOT_FOUND": "未找到。",
     "USER_DISABLED": "账号已禁用。",
     "LOGIN_LOCKED": "登录失败次数过多，请 {minutes} 分钟后再试。",
+    "RATE_LIMITED": "请求过于频繁，请稍后再试。",
     "USERNAME_TAKEN": "用户名已被占用。",
     "EMAIL_TAKEN": "邮箱已被占用。",
     "BOT_PLAN_UNAVAILABLE": "暂不支持购买会员套餐。",

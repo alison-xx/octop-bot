@@ -70,6 +70,19 @@ class Manager:
         return None
 
 
+def _screen_server() -> SimpleNamespace:
+    return SimpleNamespace(
+        services=SimpleNamespace(
+            user_repo=SimpleNamespace(
+                get=lambda _: SimpleNamespace(
+                    disabled=False, session_version=0, password_version=0, mfa_version=0
+                )
+            ),
+            agent_repo=SimpleNamespace(get=lambda _: SimpleNamespace(user_id=7)),
+        )
+    )
+
+
 @pytest.fixture
 def relay(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, Manager, Upstream]:
     import websockets
@@ -82,13 +95,14 @@ def relay(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, Manager, Upstrea
     monkeypatch.setattr(websockets, "connect", lambda *a, **k: upstream)
     app = FastAPI()
     app.include_router(bot_computers.router, prefix="/api/octop-bot")
-    app.state.octop_server = SimpleNamespace(services=None)
+    app.state.octop_server = _screen_server()
     return TestClient(app), manager, upstream
 
 
 def ticket(agent_id: str = "bot-a", *, ttl: float = 60) -> str:
     value = f"t-{agent_id}-{ttl}"
-    bot_computers._tickets[value] = (agent_id, 7, time.time() + ttl)
+    binding = bot_computers.StreamSession(7, 0, 0, 0, time.time() + 3600, agent_id)
+    bot_computers._tickets[value] = bot_computers.Ticket(agent_id, binding, time.monotonic() + ttl)
     return value
 
 
@@ -193,7 +207,8 @@ async def test_cancel_waits_for_handback_and_reaps_relay_tasks(
     monkeypatch.setattr(websockets, "connect", lambda *a, **k: upstream)
 
     class Socket:
-        app = SimpleNamespace(state=SimpleNamespace(octop_server=SimpleNamespace(services=None)))
+        state = SimpleNamespace()
+        app = SimpleNamespace(state=SimpleNamespace(octop_server=_screen_server()))
 
         async def accept(self, **kwargs: Any) -> None:
             pass
@@ -266,7 +281,8 @@ async def test_cancel_during_initial_read_hands_back(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(bot_computers, "computer_manager", lambda services: manager)
 
     class Socket:
-        app = SimpleNamespace(state=SimpleNamespace(octop_server=SimpleNamespace(services=None)))
+        state = SimpleNamespace()
+        app = SimpleNamespace(state=SimpleNamespace(octop_server=_screen_server()))
 
         async def accept(self, **kwargs: Any) -> None:
             pass
