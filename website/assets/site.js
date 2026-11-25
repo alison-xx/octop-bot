@@ -421,17 +421,18 @@
   });
 
   /* ---------------- Downloads ---------------- */
+  const appleMobile = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   function detectOS() {
     const ua = navigator.userAgent;
     const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
-    if (/iPhone|iPad|iPod|Android/i.test(ua)) return "mobile";
+    if (appleMobile || /Android/i.test(ua)) return "mobile";
     if (/Win/i.test(platform) || /Windows/i.test(ua)) return "win";
     if (/Mac/i.test(platform) || /Mac OS X/i.test(ua)) return "mac";
     if (/Linux/i.test(platform)) return "linux";
     return "other";
   }
   const os = detectOS();
-  const phone = /Android/i.test(navigator.userAgent) ? "android" : /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "ios" : null;
+  const phone = /Android/i.test(navigator.userAgent) ? "android" : appleMobile ? "ios" : null;
   root.dataset.os = os;
 
   const esc = (s) =>
@@ -584,13 +585,14 @@
     }
     if (phone === "ios") {
       const a = pick(release, "ios");
-      return a && { href: a.url, external: true, label: t("下载 iPhone 版", "Get it for iPhone"), sub: storeName(a.url), icon: OS_ICON.phone, version: a.appVersion };
+      return a && { href: a.url, external: true, label: storeName(a.url) === "App Store" ? t("前往 App Store 下载", "Get on the App Store") : t("在 TestFlight 中打开", "Open in TestFlight"), sub: storeName(a.url), icon: OS_ICON.phone, version: a.appVersion };
     }
     return null;
   }
 
   function renderPrimary(release) {
     const choice = primaryChoice(release);
+    $$("[data-store-shortcut]").forEach((el) => (el.hidden = phone === "ios" && choice?.href === $("a", el).href));
     $$("[data-download-primary]").forEach((btn) => {
       btn.removeAttribute("target");
       btn.removeAttribute("rel");
@@ -680,18 +682,17 @@
       );
     }
     if (apk || ios) {
-      const version = (apk || ios).appVersion;
       cards.push(
         card(
           "phone",
           OS_ICON.phone,
           t("手机", "Phone"),
-          `${[apk && "Android", ios && "iPhone"].filter(Boolean).join(" · ")}${version ? ` · ${t("版本", "Version")} ${esc(version)}` : ""}`,
+          [apk && "Android", ios && "iPhone / iPad"].filter(Boolean).join(" · "),
           `<div class="files">
-          ${apk ? fileRow(phoneRel, apk, "Android", "APK", phone === "android") : ""}
+          ${apk ? fileRow(phoneRel, apk, "Android", apk.appVersion ? `APK · ${esc(apk.appVersion)}` : "APK", phone === "android") : ""}
           ${
             ios
-              ? `<div class="file"><div><b>iPhone / iPad</b><small>${storeName(ios.url)}</small></div><a class="btn ${phone === "ios" ? "btn-primary" : "btn-ghost"} btn-sm" href="${esc(ios.url)}" target="_blank" rel="noopener"><span>${t("前往获取", "Get it")}</span>${OUT}</a></div>`
+              ? `<div class="file"><div><b>iPhone / iPad</b><small>${storeName(ios.url)}${ios.appVersion ? ` · ${esc(ios.appVersion)}` : ""}</small></div><a class="btn ${phone === "ios" ? "btn-primary" : "btn-ghost"} btn-sm" href="${esc(ios.url)}" target="_blank" rel="noopener"><span>${storeName(ios.url)}</span>${OUT}</a></div>`
               : ""
           }
         </div><p class="muted" style="font-size:14px">${t("手机端连接你电脑或 NAS 上的 Octop Bot 使用。", "The phone app connects to Octop Bot on your computer or NAS.")}</p>`,

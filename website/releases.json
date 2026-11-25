@@ -1,9 +1,7 @@
 {
   "schemaVersion": 1,
   "product": "octop-bot",
-  "hidden": [
-    "ios"
-  ],
+  "hidden": [],
   "releases": [
     {
       "version": "1.0.4",
@@ -53,6 +51,12 @@
           "url": "https://dl.lynxce.cn/releases/octop-bot/mobile/1.0.3/octop-bot-1.0.3-6.apk",
           "size": 17984087,
           "sha256": "0470ab06e7f8fc033cfcd9def5f80c16f7d5f200f447e4c466d1656ff866daff"
+        },
+        {
+          "platform": "ios",
+          "kind": "store",
+          "appVersion": "1.0.0",
+          "url": "https://apps.apple.com/app/id6838257776"
         }
       ]
     },
