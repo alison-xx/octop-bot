@@ -1,4 +1,12 @@
 {
+  "botTaskArchive": {
+    "unavailable": "The step record is unavailable in this conversation.",
+    "criteria": "Acceptance criteria",
+    "steps": "Steps",
+    "assumptions": "Assumptions",
+    "files": "Deliverables",
+    "issues": "Open issues"
+  },
   "bot_tasks": {
     "model_silence": "The model stopped responding. The task has been interrupted. Your completed work and evidence are saved in the task card."
   },

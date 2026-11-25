@@ -9410,6 +9410,8 @@
     }
   },
   "botTask": {
+    "redoStep": "Redo from this step",
+    "redoDraft": "Resume from “{{step}}”. Use task_read_step with checkpoint {{checkpoint}} to read its saved record. Verify the current result and ask again before any external action.",
     "label": "Task: {{goal}}",
     "deep": "Deep",
     "steps": "{{done}}/{{total}} steps",

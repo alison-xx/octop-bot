@@ -1,4 +1,12 @@
 {
+  "botTaskArchive": {
+    "unavailable": "此对话中没有可读取的该步骤记录。",
+    "criteria": "验收条件",
+    "steps": "步骤",
+    "assumptions": "假设",
+    "files": "产物",
+    "issues": "待处理事项"
+  },
   "bot_tasks": {
     "model_silence": "模型长时间没有输出，任务已中断。已完成的工作和证据保存在任务卡中。"
   },

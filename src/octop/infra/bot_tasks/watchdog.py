@@ -31,6 +31,7 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
 from octop.i18n import tr
+from octop.infra.bot_tasks.archives import TaskArchive
 from octop.infra.bot_tasks.deliverables import inspect_file
 from octop.infra.bot_tasks.model import Deliverable, Task
 from octop.infra.bot_tasks.model_silence import ModelSilence, watch_model_output
@@ -151,9 +152,10 @@ def restored_task(task: Task) -> str:
         proof = f" - {item.evidence}" if item.evidence else ""
         lines.append(f"{number}. [{item.status}] {item.text}{proof}")
     assumptions = "\nAssumptions: " + "; ".join(task.assumptions) if task.assumptions else ""
+    progress = "\n".join(f"- [{step.status}] {step.content}" for step in task.steps)
     return RESTORED.format(
         goal=task.goal, tier=task.tier, criteria="\n".join(lines), assumptions=assumptions
-    )
+    ) + ("\n" + progress if progress else "")
 
 
 def _user_turn(messages: list[BaseMessage]) -> str:
@@ -263,11 +265,13 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         store: TaskStore,
         *,
         always: bool = False,
+        archive: TaskArchive | None = None,
         user_repo: object | None = None,
         owner: int = 0,
     ) -> None:
         self._users = user_repo
         self._owner = owner
+        self._archive = archive
         self._store = store
         self._always = always
         self._watch = TaskWatch()
@@ -493,6 +497,19 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
             )
         return result
 
+    def _after_delivery(
+        self, request: ToolCallRequest, result: ToolMessage | Command[Any]
+    ) -> ToolMessage | Command[Any]:
+        result = self._deliver(request, result)
+        if self._archive is not None and self._active():
+            self._archive.observe(
+                self._store,
+                str(_configurable().get("thread_id") or ""),
+                str(request.tool_call.get("name") or ""),
+                result,
+            )
+        return result
+
     def wrap_tool_call(
         self,
         request: ToolCallRequest,
@@ -501,7 +518,7 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         task, refused = self._before(request)
         if refused is not None:
             return refused
-        result = self._deliver(request, handler(request))
+        result = self._after_delivery(request, handler(request))
         return self._after(request, task, result) if task is not None else result
 
     async def awrap_tool_call(
@@ -514,7 +531,7 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
             return refused
         result = await handler(request)
         # Reading and checking the file is blocking work: off the event loop.
-        result = await asyncio.to_thread(self._deliver, request, result)
+        result = await asyncio.to_thread(self._after_delivery, request, result)
         return (
             await asyncio.to_thread(self._after, request, task, result)
             if task is not None

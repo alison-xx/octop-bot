@@ -60,6 +60,11 @@ export interface BotTask {
   status: TaskStatus;
   criteria: BotTaskCriterion[];
   assumptions: string[];
+  steps?: {
+    content: string;
+    status: TodoListItem["status"];
+    checkpoint?: string | null;
+  }[];
   budget: { steps: number; minutes: number };
   started_at: number;
   updated_at: number;
