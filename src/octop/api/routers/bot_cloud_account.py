@@ -2,15 +2,13 @@
 
 import asyncio
 import logging
-from collections.abc import Callable, Coroutine
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
-from fastapi.exceptions import RequestValidationError
-from fastapi.routing import APIRoute
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, SecretStr
 
 from octop.api.common.bot_desktop import Owner, Services
+from octop.api.common.sensitive_input import SensitiveInputRoute
 from octop.api.deps import get_server
 from octop.infra.agents.providers import lynxce as account_models
 from octop.infra.auth import lynxce_wechat as wechat
@@ -48,21 +46,7 @@ async def _signed_in(
     return status
 
 
-class _AccountRoute(APIRoute):
-    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
-        handle = super().get_route_handler()
-
-        async def sanitized(request: Request) -> Response:
-            try:
-                return await handle(request)
-            except RequestValidationError:
-                # Default validation errors echo the submitted input, including malformed passwords.
-                raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422) from None
-
-        return sanitized
-
-
-router = APIRouter(prefix="/cloud", route_class=_AccountRoute)
+router = APIRouter(prefix="/cloud", route_class=SensitiveInputRoute)
 
 
 class CloudLogin(BaseModel):
@@ -176,7 +160,7 @@ def _wechat_desktop_only() -> None:
 
 wechat_router = APIRouter(
     prefix="/account/wechat",
-    route_class=_AccountRoute,
+    route_class=SensitiveInputRoute,
     dependencies=[Depends(_wechat_desktop_only)],
 )
 
