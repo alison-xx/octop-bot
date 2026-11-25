@@ -2636,6 +2636,10 @@ dialog.modal.community .community-card img {
   }
   .file .btn {
     width: 100%;
+    min-height: var(--h);
+    height: auto;
+    white-space: normal;
+    text-align: center;
   }
   .cl-release {
     grid-template-columns: 1fr;
