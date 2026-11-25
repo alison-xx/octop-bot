@@ -11,8 +11,11 @@ final class ChatSession {
     var messages: [ChatMessage] = []
     var conversations: [ConversationSummary] = []
     private(set) var isStreaming = false
+    private(set) var isSavingHistory = false
     private(set) var isLoading = false
     var error: String?
+    private(set) var deletionNotice: String?
+    private(set) var deletionFailures: [String: String] = [:]
     /// The composer's unsent text; kept per Bot so leaving the chat doesn't lose it.
     var draft = ""
     /// Bumped to ask the composer to take focus (e.g. after "Edit").
@@ -75,6 +78,13 @@ final class ChatSession {
     }
 
     private var observedTurn: ObservedTurn?
+    private weak var historyBackend: ChatBackend?
+    private var saveReceipts: [String: LynxceBackend.HistorySaveError] = [:]
+    var unsavedReplies: [String: LynxceBackend.HistorySaveError] {
+        guard let historyBackend, historyBackend === app?.backend else { return [:] }
+        return saveReceipts.filter { $0.value.isPending() }
+    }
+    private(set) var savingReplies: Set<String> = []
     private var currentRun: UUID?
     /// Called with the finished reply text (voice mode reads it aloud).
     var onReply: ((String) -> Void)?
@@ -119,10 +129,15 @@ final class ChatSession {
 
     @discardableResult
     func reloadConversations() async -> Bool {
-        guard let backend = app?.backend, let rows = try? await backend.conversations(for: bot),
-              app?.backend === backend else { return false }
-        conversations = rows
-        return true
+        guard let backend = app?.backend else { return false }
+        let rows = try? await backend.conversations(for: bot)
+        guard app?.backend === backend else { return false }
+        if let rows { conversations = rows }
+        if let direct = backend as? LynxceBackend {
+            deletionNotice = direct.deletionNotice(for: bot)
+            deletionFailures = direct.deletionFailures(for: bot)
+        }
+        return rows != nil
     }
 
     /// Restore the latest server thread on the first visit; keep an explicitly empty new chat.
@@ -182,7 +197,11 @@ final class ChatSession {
                 pause = page.pause
             } else {
                 let loaded = try await backend.messages(in: conversation, bot: bot)
-                guard historyRevision == revision else { return }
+                guard historyRevision == revision, app?.backend === backend else { return }
+                if let direct = backend as? LynxceBackend {
+                    historyBackend = direct
+                    saveReceipts = direct.pendingSaves(bot: bot.id, session: conversation.id)
+                }
                 messages = loaded
                 pause = backend.openPause(in: conversation)
             }
@@ -296,9 +315,21 @@ final class ChatSession {
     }
 
     func delete(_ conversation: ConversationSummary) async {
+        guard let backend = app?.backend else { return }
         conversations.removeAll { $0.id == conversation.id }
         if conversationId == conversation.id { newChat() }
-        try? await app?.backend?.deleteConversation(conversation, bot: bot)
+        do {
+            try await backend.deleteConversation(conversation, bot: bot)
+            guard app?.backend === backend else { return }
+            deletionFailures[conversation.id] = nil
+        } catch {
+            guard app?.backend === backend else { return }
+            if (backend as? LynxceBackend)?.deletionQueued(conversation.id, bot: bot) != true {
+                if !conversations.contains(where: { $0.id == conversation.id }) { conversations.append(conversation) }
+                deletionFailures[conversation.id] = error.localizedDescription
+            }
+        }
+        deletionNotice = (backend as? LynxceBackend)?.deletionNotice(for: bot)
     }
 
     func send(_ text: String, images: [Data] = []) {
@@ -416,6 +447,7 @@ final class ChatSession {
         messages.append(reply)
         error = nil
         isStreaming = true
+        isSavingHistory = false
         let replyId = reply.id
         let request = resumed ? nil : messages.dropLast().last.flatMap { $0.role == .user ? $0 : nil }
         let anchor = durableAnchor
@@ -427,7 +459,10 @@ final class ChatSession {
         task = Task {
             var turnId: String?
             defer {
-                if currentRun == run { isStreaming = false }
+                if currentRun == run {
+                    isStreaming = false
+                    isSavingHistory = false
+                }
                 // Nothing keeps spinning once the reply is over.
                 update(replyId) { message in
                     for index in message.tools.indices { message.tools[index].done = true }
@@ -436,9 +471,10 @@ final class ChatSession {
             }
             do {
                 for try await event in stream {
-                    guard currentRun == run, !Task.isCancelled else { return }
+                    guard currentRun == run, !Task.isCancelled, app?.backend === backend else { return }
                     if case .turnStarted(let id) = event { turnId = id } else { apply(event, to: replyId) }
                 }
+                guard currentRun == run, !Task.isCancelled, app?.backend === backend else { return }
                 update(replyId) { $0.status = .done }
                 removeEmptyReply(replyId)
                 // Paused only for device reads: the phone answers by itself and the reply goes on.
@@ -459,6 +495,16 @@ final class ChatSession {
             } catch is CancellationError {
                 update(replyId) { $0.status = .done }
                 removeEmptyReply(replyId)
+            } catch let failure as LynxceBackend.HistorySaveError {
+                guard currentRun == run, app?.backend === backend else { return }
+                historyBackend = backend
+                let receiptID = failure.receiptID ?? replyId
+                saveReceipts[receiptID] = failure
+                update(replyId) {
+                    $0.id = receiptID
+                    $0.status = failure.generationStatus
+                    for index in $0.tools.indices { $0.tools[index].done = true }
+                }
             } catch let error as APIError where error.kind == .credits {
                 // Out of credits: the reply becomes a top-up card with "Continue" instead of an error.
                 update(replyId) {
@@ -470,6 +516,7 @@ final class ChatSession {
                 // Credits are left but today's cap is used up: a card that says when it resets.
                 update(replyId) { $0.status = .dailyLimit }
             } catch {
+                guard currentRun == run, app?.backend === backend else { return }
                 let message = error.localizedDescription
                 if currentRun == run, (error as? APIError)?.kind == .network,
                    backend is ServerBackend, let partial = messages.last(where: { $0.id == replyId }),
@@ -508,6 +555,8 @@ final class ChatSession {
             }
         case .pause(let pause):
             self.pause = pause
+        case .savingHistory:
+            isSavingHistory = true
         case .turnStarted, .done:
             break
         }
@@ -522,22 +571,42 @@ final class ChatSession {
         messages.removeAll { $0.id == id && $0.text.isEmpty && $0.tools.isEmpty && $0.thinking.isEmpty && $0.attachments.isEmpty }
     }
 
+    func retrySaving(_ id: String) async {
+        guard let historyBackend, historyBackend === app?.backend,
+              let failure = unsavedReplies[id], failure.canRetry(), savingReplies.insert(id).inserted else { return }
+        defer { savingReplies.remove(id) }
+        do {
+            try await failure.retry()
+            guard historyBackend === app?.backend, saveReceipts.removeValue(forKey: id) != nil else { return }
+            await reloadConversations()
+        } catch {
+            // Leave the reply and its original payload available for the next save attempt.
+        }
+    }
+
     func stop() {
-        guard isStreaming, let backend = app?.backend else { return }
-        if let conversationId { Task { await backend.stop(conversation: conversationId, bot: bot) } }
+        guard isStreaming, !isSavingHistory, let backend = app?.backend else { return }
+        if let conversationId {
+            Task { await backend.stop(conversation: conversationId, bot: bot) }
+            // Local producers report the final persistence result even if stop races its first event.
+            if backend is LynxceBackend || backend is DeviceBackend { return }
+        }
         task?.cancel()
     }
 
     func cancel() {
+        saveReceipts.removeAll()
         queued = []
         currentRun = nil
         task?.cancel()
         task = nil
+        isSavingHistory = false
         isStreaming = false
     }
 
     /// Re-ask the last question after a failed or unwanted reply.
     func retry() {
+        if let reply = messages.last, unsavedReplies[reply.id] != nil { return }
         guard !isStreaming, pause == nil, let lastUser = messages.lastIndex(where: { $0.role == .user }) else { return }
         let question = messages[lastUser]
         messages.removeSubrange(lastUser...)

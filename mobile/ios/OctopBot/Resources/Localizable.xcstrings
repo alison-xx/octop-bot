@@ -652,6 +652,72 @@
         }
       }
     },
+    "chat.deletionQueued": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This conversation is hidden on this device. Refresh the list when online to finish deleting it from Lynxce." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "会话已从本机列表隐藏。联网后刷新列表，将继续从灵策删除。" } }
+      }
+    },
+    "chat.deletionInProgress": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This conversation is being deleted. Refresh the list or start a new conversation." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "此会话正在删除。请刷新列表或新建会话。" } }
+      }
+    },
+    "chat.historySaveFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This reply is still on screen. Chat history could not be saved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回复仍在当前页面，但未能保存到历史会话。"
+          }
+        }
+      }
+    },
+    "chat.retryDelete": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Retry deletion" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "重新删除" } }
+      }
+    },
+    "chat.retrySave": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry saving"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新保存"
+          }
+        }
+      }
+    },
+    "chat.savingHistory": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving conversation…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在保存会话…"
+          }
+        }
+      }
+    },
     "chat.failed": {
       "localizations": {
         "en": {
