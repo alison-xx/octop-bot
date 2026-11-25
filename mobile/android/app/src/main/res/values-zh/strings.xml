@@ -529,4 +529,5 @@
     <string name="bot_preparing">准备中…</string>
     <string name="bot_preparing_chat">Bot 正在准备，稍等片刻</string>
     <string name="bot_start_failed">启动失败</string>
+    <string name="checkout_balance_increased">余额增加了 %1$s 积分，当前余额 %2$s。</string>
 </resources>

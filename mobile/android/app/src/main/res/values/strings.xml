@@ -548,4 +548,5 @@
     <string name="bot_preparing">Getting ready…</string>
     <string name="bot_preparing_chat">This Bot is getting ready…</string>
     <string name="bot_start_failed">Couldn\'t start</string>
+    <string name="checkout_balance_increased">Balance increased by %1$s credits. Current balance: %2$s.</string>
 </resources>

@@ -9166,6 +9166,7 @@
     "download": "下载 {{name}}"
   },
   "botCredits": {
+    "balanceIncreased": "余额增加了 {{added}} 积分，当前余额 {{value}}。",
     "title": "积分与充值",
     "menu": "积分与充值",
     "menuHint": "余额、充值和用量",
