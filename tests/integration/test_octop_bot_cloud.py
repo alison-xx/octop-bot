@@ -455,6 +455,14 @@ async def test_screen_tickets_are_owner_only_and_single_use(
         ).status_code == 404
         ticket = (await client.post(path + "/screen", headers=mine)).json()
         assert ticket["ws_path"].startswith(path + "/screen/ws?ticket=")
+        assert ticket["session_transport"] == "path"
+        desktop = (
+            await client.post(
+                path + "/screen", headers={**mine, "X-Octop-Screen-Transport": "header"}
+            )
+        ).json()
+        assert desktop["session_transport"] == "header"
+        assert desktop["session_expires_in"] == 1800
 
         # Typing and the clipboard go through the screen session, with no sign-in (the
         # phone apps' screen page has none), and only while the user has taken over.
@@ -483,9 +491,9 @@ async def test_screen_tickets_are_owner_only_and_single_use(
         from octop.api.routers import bot_computers
 
         one_time = ticket["ws_path"].split("ticket=", 1)[1]
-        assert one_time in bot_computers._tickets
-        bot_computers._tickets.pop(one_time)
-        assert one_time not in bot_computers._tickets
+        assert one_time in bot_computers._screen_sessions.tickets
+        bot_computers._screen_sessions.tickets.pop(one_time)
+        assert one_time not in bot_computers._screen_sessions.tickets
 
 
 async def test_a_revoked_model_key_is_replaced_at_the_next_sign_in(

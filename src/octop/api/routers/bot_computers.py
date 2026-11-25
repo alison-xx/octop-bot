@@ -5,12 +5,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import secrets
 import time
 from typing import Any, Literal
 
 import anyio
-from fastapi import APIRouter, Depends, Query, WebSocket
+from fastapi import APIRouter, Depends, Header, Query, Response, WebSocket
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
@@ -20,6 +19,12 @@ from octop.infra.cloud.computers.manager import (
     disk_billing_enabled,
 )
 from octop.infra.cloud.computers.rfb import RfbClientFilter
+from octop.infra.cloud.computers.screen_sessions import (
+    ABSOLUTE_SECONDS,
+    TICKET_SECONDS,
+    ScreenSessions,
+    Transport,
+)
 from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
@@ -30,19 +35,13 @@ router = APIRouter(prefix="/computers")
 # (the phone apps' screen page has no sign-in), so this prefix skips the JWT middleware.
 session_router = APIRouter(prefix="/screen-sessions")
 
-SCREEN_TICKET_SECONDS = 60
+_screen_sessions = ScreenSessions()
 # An open screen keeps its computer awake for this long after it opened or after the user's
 # last input, so a tab forgotten in the background cannot spend credits forever.
 SCREEN_KEEP_AWAKE_SECONDS = 30 * 60
 # How often the relay rechecks whether the user has taken over (and may send input).
 TAKEOVER_CHECK_SECONDS = 1.0
-# A screen session lives while its screen is open (the relay refreshes it) and a little after.
-SCREEN_SESSION_IDLE_SECONDS = 120
 MAX_PASTE_CHARS = 20_000
-# One-time tickets for the screen WebSocket: ticket -> (agent_id, user_id, expires_at).
-_tickets: dict[str, tuple[str, int, float]] = {}
-# Screen sessions: session -> (agent_id, user_id, expires_at).
-_sessions: dict[str, tuple[str, int, float]] = {}
 
 
 class ComputerStatus(BaseModel):
@@ -198,9 +197,12 @@ class ScreenTicket(BaseModel):
     ws_path: str = Field(description="WebSocket path (VNC over WebSocket), ticket included.")
     expires_in: int = Field(description="Seconds the one-time ticket stays valid.")
     session: str = Field(
-        description="Screen session for typing and the clipboard "
-        "(/api/octop-bot/screen-sessions/{session}/…); valid while the screen is open."
+        description="Capability for clipboard and paste. Use only the chosen transport."
     )
+    session_transport: Transport = Field(
+        description="Header sessions use X-Octop-Screen-Session on the fixed clipboard and type paths."
+    )
+    session_expires_in: int = Field(description="Absolute session lifetime in seconds from issue.")
 
 
 @router.post(
@@ -211,39 +213,34 @@ class ScreenTicket(BaseModel):
     response_model=ScreenTicket,
 )
 async def open_screen(
-    agent_id: str, user: User = Depends(current_user), server: Any = Depends(get_server)
+    agent_id: str,
+    response: Response,
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
+    session_transport: Transport = Header(
+        default="path",
+        alias="X-Octop-Screen-Transport",
+        description="Desktop clients request header. Existing phone clients use path.",
+    ),
 ) -> ScreenTicket:
     manager = _owned(server, user, agent_id)
     await asyncio.to_thread(manager.ensure_running, agent_id, user.id)
-    now = time.time()
-    for stale in [t for t, (_, _, until) in _tickets.items() if until < now]:
-        _tickets.pop(stale, None)
-    for stale in [s for s, (_, _, until) in _sessions.items() if until < now]:
-        _sessions.pop(stale, None)
-    ticket, session = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-    _tickets[ticket] = (agent_id, user.id, now + SCREEN_TICKET_SECONDS)
-    _sessions[session] = (agent_id, user.id, now + SCREEN_SESSION_IDLE_SECONDS)
+    response.headers["Cache-Control"] = "no-store"
+    ticket, session = _screen_sessions.issue(agent_id, user.id, session_transport)
     return ScreenTicket(
         ws_path=f"/api/octop-bot/computers/{agent_id}/screen/ws?ticket={ticket}",
-        expires_in=SCREEN_TICKET_SECONDS,
+        expires_in=TICKET_SECONDS,
+        session_transport=session_transport,
+        session_expires_in=ABSOLUTE_SECONDS,
         session=session,
     )
 
 
-def _refresh_sessions(agent_id: str, user_id: int) -> None:
-    until = time.time() + SCREEN_SESSION_IDLE_SECONDS
-    for key, (agent, user, _) in list(_sessions.items()):
-        if agent == agent_id and user == user_id:
-            _sessions[key] = (agent, user, until)
-
-
-def _session(session: str) -> tuple[str, int]:
-    claim = _sessions.get(session)
-    if claim is None or claim[2] < time.time():
-        _sessions.pop(session, None)
+def _session(session: str, transport: Transport = "path") -> tuple[str, int]:
+    claim = _screen_sessions.lookup(session, transport)
+    if claim is None:
         raise OctopError.localized(ErrorCode.NOT_FOUND)
-    _refresh_sessions(claim[0], claim[1])
-    return claim[0], claim[1]
+    return claim
 
 
 def _session_manager(server: Any) -> Any:
@@ -283,26 +280,65 @@ class Clipboard(BaseModel):
     description="Needs takeover. The screen session in the path is the credential.",
     response_model=Clipboard,
 )
-async def read_clipboard(session: str, server: Any = Depends(get_server)) -> Clipboard:
+async def read_clipboard(
+    session: str, response: Response, server: Any = Depends(get_server)
+) -> Clipboard:
     agent_id, user_id = _session(session)
     manager = _session_manager(server)
+    response.headers["Cache-Control"] = "no-store"
     return Clipboard(text=await asyncio.to_thread(manager.read_clipboard, agent_id, user_id))
+
+
+@session_router.post(
+    "/type", summary="Paste text using an open desktop screen session", status_code=204
+)
+async def header_type_text(
+    body: PasteRequest,
+    session: str = Header(alias="X-Octop-Screen-Session"),
+    server: Any = Depends(get_server),
+) -> None:
+    """Requires the associated screen to be open and the user to have taken over."""
+    agent_id, user_id = _session(session, "header")
+    await asyncio.to_thread(_session_manager(server).paste_text, agent_id, user_id, body.text)
+
+
+@session_router.get(
+    "/clipboard",
+    summary="Read the clipboard using an open desktop screen session",
+    response_model=Clipboard,
+)
+async def header_clipboard(
+    response: Response,
+    session: str = Header(alias="X-Octop-Screen-Session"),
+    server: Any = Depends(get_server),
+) -> Clipboard:
+    """Requires the associated screen to be open and the user to have taken over."""
+    agent_id, user_id = _session(session, "header")
+    response.headers["Cache-Control"] = "no-store"
+    return Clipboard(
+        text=await asyncio.to_thread(_session_manager(server).read_clipboard, agent_id, user_id)
+    )
 
 
 @router.websocket("/{agent_id}/screen/ws")
 async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(default="")) -> None:
     """Relay the browser's noVNC client to the desktop inside the sandbox."""
-    claim = _tickets.pop(ticket, None)
-    if claim is None or claim[0] != agent_id or claim[2] < time.time():
+    claim = _screen_sessions.connect(ticket, agent_id)
+    if claim is None:
         await websocket.close(code=4001, reason="invalid ticket")
         return
-    _, user_id, _ = claim
+    session, user_id, expires_at = claim
     server = websocket.app.state.octop_server
     manager = computer_manager(server.services) if bot_cloud_enabled() else None
     if manager is None:
+        _screen_sessions.close(session)
         await websocket.close(code=4004, reason="no cloud computers")
         return
-    await websocket.accept(subprotocol="binary")
+    try:
+        await websocket.accept(subprotocol="binary")
+    except BaseException:
+        _screen_sessions.close(session)
+        raise
     import websockets  # noqa: PLC0415
     from websockets.typing import Subprotocol  # noqa: PLC0415
 
@@ -352,6 +388,7 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
                 while True:
                     message = await websocket.receive()
                     if message["type"] == "websocket.disconnect":
+                        _screen_sessions.close(session)
                         return
                     data = message.get("bytes")
                     if data is None:
@@ -370,14 +407,18 @@ async def screen_ws(websocket: WebSocket, agent_id: str, ticket: str = Query(def
                     awake_since = max(opened, last_input)
                     if time.monotonic() - awake_since >= SCREEN_KEEP_AWAKE_SECONDS:
                         continue  # still shown, but no longer keeps the computer running
-                    _refresh_sessions(agent_id, user_id)
+                    _screen_sessions.refresh(session)
                     await asyncio.to_thread(manager.viewing, agent_id, user_id)
 
-            tasks = [asyncio.create_task(job()) for job in (down, up, keep_alive)]
-            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            remaining = expires_at - time.monotonic()
+            if remaining > 0:
+                tasks = [asyncio.create_task(job()) for job in (down, up, keep_alive)]
+                await asyncio.wait(tasks, timeout=remaining, return_when=asyncio.FIRST_COMPLETED)
+            _screen_sessions.close(session)
     except Exception:  # noqa: BLE001 - the viewer just closes
         logger.warning("screen relay for %s ended with an error", agent_id, exc_info=True)
     finally:
+        _screen_sessions.close(session)
 
         async def cleanup() -> None:
             for task in tasks:
