@@ -1085,3 +1085,34 @@ def test_tenant_results_deliver_by_tool_name_only() -> None:
     }
     assert _delivers_media(marked, chunk_name=None)
     assert not _delivers_media(marked, chunk_name=None, marker_ok=False)
+
+
+@pytest.mark.asyncio
+async def test_materialized_image_uses_workspace_key_live_and_in_history(tmp_path: Path) -> None:
+    from urllib.parse import parse_qs, urlsplit
+
+    key = "generated/首页 100%.png"
+    block = {
+        "type": "image",
+        "path": "/" + key,
+        "filename": "首页 100%.png",
+        "source": {
+            "type": "url",
+            "url": (tmp_path / ".harness-materialize" / key).as_uri(),
+            "media_type": "image/png",
+        },
+    }
+    chunk = {"messages": [{"name": "send_file_to_user", "content": [block]}]}
+    workspace = _workspace(str(tmp_path))
+    history = enrich_media_block_preview(block, agent_id="test")
+    live = await enrich_tool_result_with_backend(chunk, agent_id="test", workspace=workspace)
+    assert history == live["messages"][0]["content"][0]
+    assert history["path"] == key
+    frames = [
+        frame
+        async for frame in attachment_frames_from_tool_result(
+            chunk, agent_id="test", workspace=workspace
+        )
+    ]
+    assert [frame["url"] for frame in frames] == [history["preview_url"]]
+    assert parse_qs(urlsplit(history["preview_url"]).query)["source"] == [key]

@@ -461,6 +461,116 @@ async def test_avatar_lookup_failure_still_returns_the_account(
     assert cloud._load(services, aid) == cloud._Grant(**{**cloud.asdict(old), "avatar_url": None})
 
 
+@pytest.mark.parametrize(
+    "failure",
+    ["refresh", "profile", "disk-generic", "disk-unrelated", "disk-missing-code", "disk-confirmed"],
+)
+async def test_only_the_disk_debit_can_confirm_insufficient_balance(
+    env_admin_alice: Env, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    from octop.infra.cloud.computers import DiskBalanceInsufficient
+
+    client, server, _, alice = env_admin_alice
+    assert server.services is not None
+    uid = server.user_manager.get("alice").id
+    res = await client.post(
+        API, headers=alice, json={"account": "alice-cloud", "password": "test-password"}
+    )
+    assert res.status_code == 200
+    monkeypatch.setenv("OCTOP_BOT_CLOUD", "1")
+    monkeypatch.setenv("OCTOP_BOT_COMPUTE_SERVICE_KEY", "test-service")
+    disk = "/api/billing/octop-bot/compute/disk/charge"
+    balance = {"code": 40204, "error": {"code": "insufficient_balance"}}
+    calls = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        path = req.url.path
+        calls.append(path)
+        if path == disk:
+            if failure == "disk-missing-code":
+                return httpx.Response(402, json={"error": {"code": "insufficient_balance"}})
+            if failure in {"refresh", "profile"}:
+                return httpx.Response(401)
+            body = (
+                balance
+                if failure == "disk-confirmed"
+                else ({} if failure == "disk-generic" else {"error": {"code": "account_required"}})
+            )
+            return httpx.Response(402, json=body)
+        if path == "/api/auth/refresh" and failure == "refresh":
+            return httpx.Response(402, json=balance)
+        if path == "/api/user/profile" and failure == "profile":
+            return httpx.Response(402, json=balance)
+        return upstream(req)
+
+    monkeypatch.setattr(
+        cloud, "_client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+    with pytest.raises(OctopError) as error:
+        await cloud.tenant_call(
+            server.services,
+            uid,
+            "POST",
+            disk,
+            {"computerId": "bot", "day": "2026-11-25", "sizeGb": 3},
+        )
+    assert isinstance(error.value, DiskBalanceInsufficient) == (failure == "disk-confirmed")
+    assert (error.value.code == ErrorCode.BOT_CLOUD_CREDITS_REQUIRED) == (
+        failure == "disk-confirmed"
+    )
+    assert calls.count(disk) == 1
+    if failure in {"refresh", "profile"}:
+        assert "/api/auth/refresh" in calls
+    if failure == "profile":
+        assert "/api/user/profile" in calls
+
+    from types import SimpleNamespace
+
+    from octop.infra.cloud.computers.manager import (
+        Billing,
+        ComputerManager,
+        ComputerRecord,
+        beijing_day,
+    )
+
+    calls.clear()
+    clock = 1_795_558_400.0
+    driver = SimpleNamespace(disk_gb=lambda _instance: 3, state=lambda _instance: "paused")
+    manager = ComputerManager(
+        server.services, driver, billing=Billing(server.services), clock=lambda: clock
+    )
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "on")
+    monkeypatch.setenv("OCTOP_COMPUTER_RECLAIM", "on")
+    manager._save(
+        ComputerRecord(
+            agent_id="receipt-test",
+            user_id=uid,
+            instance_id="fixture",
+            active_at=clock,
+            reclaim_reason="unpaid",
+            reminded_at=clock - 86400,
+            reclaim_at=clock + 6 * 86400,
+            disk_failed_day=beijing_day(clock - 25 * 86400),
+            disk_insufficient_day=beijing_day(clock - 86400),
+        )
+    )
+    await asyncio.to_thread(manager._charge_disk, "receipt-test", uid, clock)
+    await asyncio.to_thread(manager._reclaim_tick, "receipt-test", uid, clock)
+    persisted = manager.record("receipt-test", uid)
+    assert persisted.instance_id == "fixture" and calls.count(disk) == 1
+    if failure == "disk-confirmed":
+        assert (
+            persisted.disk_insufficient_day == beijing_day(clock)
+            and persisted.reclaim_reason == "unpaid"
+        )
+    else:
+        assert (
+            not persisted.disk_failed_day
+            and not persisted.disk_insufficient_day
+            and persisted.reclaim_reason is None
+        )
+
+
 async def test_cloud_reads_only_its_bound_profile_and_repairs_cached_empty_avatar(
     env_admin_alice: Env, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
 ) -> None:

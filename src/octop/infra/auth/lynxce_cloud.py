@@ -18,6 +18,7 @@ import httpx
 from filelock import AsyncFileLock
 from pydantic import BaseModel
 
+from octop.infra.cloud.computers import DiskBalanceInsufficient
 from octop.infra.crypto.fernet import decrypt_json, encrypt_json
 from octop.infra.db.services import SharedServices
 from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
@@ -132,6 +133,16 @@ def _save(services: SharedServices, user_id: int, grant: _Grant) -> None:
         raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
 
 
+def cloud_accounts(services: SharedServices) -> dict[int, str]:
+    """Map existing local users to the identities in their encrypted grants."""
+    result: dict[int, str] = {}
+    for user in services.user_repo.list(include_disabled=True):
+        grant = _load(services, user.id)
+        if grant is not None:
+            result[user.id] = grant.account_id
+    return result
+
+
 def cloud_status(services: SharedServices, user_id: int) -> CloudAccountStatus:
     """Read the locally saved identity without contacting the cloud."""
     grant = _load(services, user_id) if _enabled() else None
@@ -196,29 +207,43 @@ async def _finish[T](operation: Coroutine[Any, Any, T]) -> T:
 
 
 class _UpstreamFailure(Exception):
-    def __init__(self, status: int, code: str | None = None):
+    def __init__(self, status: int, code: str | None = None, business_code: int | None = None):
         self.status = status
-        self.code = code  # Lynxce's ``error.code``, when it sent one
+        self.code = code
+        self.business_code = business_code
 
 
-def _error_code(response: httpx.Response) -> str | None:
+def _response_failure(response: httpx.Response) -> _UpstreamFailure:
     try:
         body = response.json()
     except ValueError:
-        return None
+        body = None
     error = body.get("error") if isinstance(body, dict) else None
     code = error.get("code") if isinstance(error, dict) else None
-    return code if isinstance(code, str) else None
+    number = body.get("code") if isinstance(body, dict) else None
+    return _UpstreamFailure(
+        response.status_code,
+        code if isinstance(code, str) else None,
+        number if type(number) is int else None,
+    )
 
 
 def _rejected(status: int) -> OctopError:
-    if status == 402:
-        return OctopError.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
     if status == 404:
         return OctopError.localized(ErrorCode.NOT_FOUND)
-    if status in {400, 403, 409, 422, 429}:
+    if status in {400, 402, 403, 409, 422, 429}:
         return OctopError.localized(ErrorCode.BOT_CLOUD_REQUEST_REJECTED, status=status)
     return OctopError.localized(ErrorCode.NETWORK_ERROR)
+
+
+def _operation_rejected(method: str, path: str, failure: _UpstreamFailure) -> OctopError:
+    if failure.status == 402 and failure.code == "insufficient_balance":
+        if method == "POST" and path == "/api/billing/octop-bot/compute/disk/charge":
+            if failure.business_code == 40204:
+                return DiskBalanceInsufficient.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
+            return _rejected(failure.status)
+        return OctopError.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
+    return _rejected(failure.status)
 
 
 async def _send(
@@ -249,7 +274,7 @@ async def _send(
     except httpx.HTTPError:
         raise _UpstreamFailure(502) from None
     if not response.is_success:
-        raise _UpstreamFailure(response.status_code, _error_code(response))
+        raise _response_failure(response)
     try:
         body = response.json()
     except ValueError:
@@ -802,14 +827,14 @@ async def tenant_call(
             return await _send(method, path, bearer=grant.access_token, json=json, headers=extra)
         except _UpstreamFailure as exc:
             if exc.status != 401:
-                raise _rejected(exc.status) from None
+                raise _operation_rejected(method, path, exc) from None
             grant = await _refresh(services, user_id, grant)
             try:
                 return await _send(
                     method, path, bearer=grant.access_token, json=json, headers=extra
                 )
             except _UpstreamFailure as again:
-                raise _rejected(again.status) from None
+                raise _operation_rejected(method, path, again) from None
 
 
 async def model_key_rejected(secret: str) -> bool:
