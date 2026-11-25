@@ -1169,9 +1169,40 @@
   const zh = () => document.documentElement.dataset.lang !== "en";
   let profile = null, quota = null, generation = 0;
   function label(cn, en) { return zh() ? cn : en; }
+  const accountIdentity = document.getElementById("account-identity");
+  function displayName(session) {
+    return [profile?.displayName, profile?.name, profile?.nickname, session.user?.displayName, session.user?.name, session.user?.nickname]
+      .find(value => typeof value === "string" && value.trim())?.trim() || label("账号", "Account");
+  }
+  function avatar(session, name) {
+    const node = document.createElement("span"); node.className = "auth-avatar"; node.setAttribute("aria-hidden", "true");
+    const initial = typeof Intl.Segmenter === "function"
+      ? new Intl.Segmenter().segment(name)[Symbol.iterator]().next().value.segment
+      : Array.from(name)[0];
+    node.textContent = initial;
+    const source = profile ? profile.avatarUrl : session.user?.avatarUrl;
+    if (!source) return node;
+    try {
+      const url = new URL(source);
+      if (url.protocol !== "https:" || url.username || url.password) return node;
+    } catch (_) { return node; }
+    const img = document.createElement("img");
+    img.alt = ""; img.referrerPolicy = "no-referrer";
+    img.addEventListener("error", () => { node.textContent = initial; }, { once: true });
+    img.src = source;
+    node.replaceChildren(img);
+    return node;
+  }
+  function identity(session, name) {
+    const row = document.createElement("div"); row.className = "auth-identity";
+    const text = document.createElement("strong"); text.textContent = name;
+    row.append(avatar(session, name), text); return row;
+  }
   function render() {
     document.querySelectorAll(".auth-nav").forEach((el) => el.remove());
     const session = auth.session();
+    const name = session ? displayName(session) : "";
+    if (accountIdentity) accountIdentity.replaceChildren(...(session ? [identity(session, name)] : []));
     if (!session && !auth.config.loginEnabled) return;
     for (const parent of [tools, mobile]) {
       if (!parent) continue;
@@ -1180,23 +1211,23 @@
         const login = document.createElement("a"); login.href = "/login.html?next=" + encodeURIComponent(auth.safePath(location.pathname + location.search + location.hash)); login.textContent = label("登录", "Sign in"); box.append(login);
       } else {
         const details = document.createElement("details"), summary = document.createElement("summary");
-        const avatar = document.createElement("span"); avatar.className = "auth-avatar";
-        const name = profile?.displayName || profile?.name || profile?.nickname || session.user?.displayName || session.user?.name || session.user?.nickname || "U";
-        if (profile?.avatarUrl && /^https:\/\//i.test(profile.avatarUrl)) { const img = document.createElement("img"); img.src = profile.avatarUrl; img.alt = ""; avatar.append(img); } else avatar.textContent = String(name).slice(0, 1);
         const balance = document.createElement("span"); const left = quota?.availableCredits ?? quota?.creditsRemaining; balance.textContent = `✦ ${Number.isFinite(left) ? left.toLocaleString("en-US") : "—"}`;
-        summary.append(avatar, balance); details.append(summary);
+        summary.setAttribute("aria-label", label("账号菜单", "Account menu") + " · " + name);
+        summary.append(avatar(session, name), balance); details.append(summary);
         const menu = document.createElement("div"); menu.className = "auth-menu";
         const account = document.createElement("a"); account.href = "/account.html"; account.textContent = label("个人中心", "Account");
         const logout = document.createElement("button"); logout.type = "button"; logout.textContent = label("退出登录", "Sign out"); logout.addEventListener("click", () => { profile = null; quota = null; auth.logout(); });
-        menu.append(account, logout); details.append(menu); box.append(details);
+        menu.append(identity(session, name), account, logout); details.append(menu); box.append(details);
       }
       if (parent === tools) parent.insertBefore(box, parent.querySelector(".btn-primary")); else parent.prepend(box);
     }
   }
-  async function update() {
-    const id = ++generation; profile = null; quota = null; render();
+  async function update(changed = false) {
+    const id = ++generation;
+    if (changed) { profile = null; quota = null; }
+    render();
     if (!auth.session()) return;
-    const results = await Promise.allSettled([auth.api("/api/user/profile"), auth.api("/api/user/quota")]);
+    const results = await Promise.allSettled([auth.api("/api/user/profile", { cache: "no-store" }), auth.api("/api/user/quota")]);
     if (id !== generation || !auth.session()) return;
     if (results[0].status === "fulfilled") profile = results[0].value;
     if (results[1].status === "fulfilled") quota = results[1].value;
@@ -1204,5 +1235,5 @@
   }
   document.addEventListener("visibilitychange", () => { if (!document.hidden && auth.session()) update(); });
   window.addEventListener("pageshow", event => { if (event.persisted && auth.session()) update(); });
-  auth.onChange(update); document.addEventListener("langchange", render); auth.ready.then(update);
+  auth.onChange((_session, changed) => update(changed)); document.addEventListener("langchange", render); auth.ready.then(() => update(true));
 })();
