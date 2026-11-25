@@ -107,6 +107,7 @@ enum StreamEvent {
     case attachment(FileAttachment)
     /// The turn paused for a question or an approval (server mode).
     case pause(HitlPause)
+    case savingHistory
     case done
 }
 

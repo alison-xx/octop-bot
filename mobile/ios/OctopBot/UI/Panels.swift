@@ -18,6 +18,9 @@ struct HistorySheet: View {
     var body: some View {
         NavigationStack {
             List {
+                if let notice = chat.deletionNotice {
+                    Text(notice).font(.footnote).foregroundStyle(.secondary)
+                }
                 if query.isEmpty {
                     Section {
                         Button {
@@ -32,6 +35,12 @@ struct HistorySheet: View {
                     Section(bucket.title) {
                         ForEach(rows) { conversation in
                             row(conversation)
+                            if let failure = chat.deletionFailures[conversation.id] {
+                                VStack(alignment: .leading) {
+                                    Text(failure).font(.footnote).foregroundStyle(.secondary)
+                                    Button("chat.retryDelete") { Task { await chat.delete(conversation) } }
+                                }
+                            }
                         }
                     }
                 }
