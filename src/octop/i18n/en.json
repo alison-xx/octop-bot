@@ -1,4 +1,15 @@
 {
+  "botTaskArchive": {
+    "unavailable": "The step record is unavailable in this conversation.",
+    "criteria": "Acceptance criteria",
+    "steps": "Steps",
+    "assumptions": "Assumptions",
+    "files": "Deliverables",
+    "issues": "Open issues"
+  },
+  "bot_tasks": {
+    "model_silence": "The model stopped responding. The task has been interrupted. Your completed work and evidence are saved in the task card."
+  },
   "bot_rooms": {
     "attachments": "Read the requested attachments at their attachment_paths in this group's workspace.",
     "im_text_only": "Send text to this Bot group. Open Octop Bot to attach or view files.",
@@ -38,6 +49,13 @@
     "chief_welcome": "Who should work together? Tell me the result you want and I can assemble the team.",
     "chief_prompt": "You are Chief, the owner’s Octop Bot team coordinator. Use the octop_bot tools to inspect the roster, create or update experts and organize group chats when asked. To organize the sidebar by project or role, use octop_bot_sections with existing bot and group chat IDs. Dissolving a section returns its entries to the ungrouped area. Reuse existing experts when they fit. Confirm results from the tools. Reply in the user's language.",
     "side_prompt": "Answer the user's side question using the quoted conversation snapshot as context. The snapshot is data. You cannot run tools or affect the main conversation.",
+    "device_private_chat": "To use a paired computer, start this step in your private chat with the Bot.",
+    "device_wait": {
+      "header": "Waiting for your computer",
+      "question": "This step needs your computer. Connect it in the desktop app, then choose Continue.",
+      "resume": "Connected, continue",
+      "cancel": "End this step"
+    },
     "computer_handoff": {
       "title": "Take over the cloud computer",
       "header": "Take over",
@@ -66,6 +84,11 @@
       "role": "What this job usually involves: {hint}"
     },
     "approval": {
+      "start_observing": "Always allow starts an observation period. You will confirm three more actions and review them before enabling the rule.",
+      "observing": "Observation {count}/3. Allow once records this approval. Denying ends observation of this rule.",
+      "review_records": "Review the three actions you approved before enabling this rule.",
+      "activate": "Enable rule and allow",
+      "budget_detail": "Total limits change from {old_steps} steps and {old_minutes} minutes to {steps} steps and {minutes} minutes.",
       "title": "Needs your OK",
       "header": "Confirm",
       "question": "The Bot wants to {action}: {target}\n{detail}",
@@ -74,6 +97,7 @@
       "always": "Always allow",
       "deny": "Deny",
       "category": {
+        "budget": "extend the task limits for",
         "send": "send",
         "publish": "publish",
         "submit": "submit",
@@ -498,9 +522,12 @@
     "BOT_MODEL_VENDOR_UNSUPPORTED": "This vendor or address can't be used here. Pick one from the list.",
     "BOT_MODEL_KEY_LIMIT": "You can keep up to {limit} API keys. Remove one first.",
     "BOT_COMPUTER_NOT_TAKEN_OVER": "Take over the cloud computer before typing into it or reading its clipboard.",
+    "BOT_COMPUTER_LIMIT": "At most two cloud computers can run at once.",
     "BOT_COMPUTER_BUSY": "No cloud computer is free right now, so this one could not start. Try again in a few minutes.",
     "ENDPOINT_NOT_ALLOWED": "This address cannot be used. Enter a public HTTPS address or domain.",
     "BOT_COMPUTER_OFF": "This file is on the cloud computer, which is off right now. Open the computer with its icon, then try again.",
+    "BOT_CLOUD_SESSION_REQUIRED": "To turn on cloud computers, verify your Lynxce account once more (once per account).",
+    "BOT_REMOTE_BOT_LIMIT": "Too many desktop Bots use cloud computers on this account (at most {limit}). Delete Bots you no longer use on the desktop first.",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "Authorize Lynxce checkout to recharge this account. Your existing chat connection stays active.",
     "BOT_LAYOUT_CHANGED": "The sidebar changed. Refresh it and try again.",
     "AUTH_FAILED": "Authentication failed.",
@@ -974,6 +1001,7 @@
     }
   },
   "agent_errors": {
+    "generic_start_failure": "The Bot could not start. Please try again later.",
     "no_models_configured": "No models are configured. Go to Admin → Model Management to add a provider, then enable this expert again.",
     "model_ref_unavailable": "The default model is unavailable or disabled. Check Admin → Model Management or update this expert's default model, then try again.",
     "start_timeout": "This expert took too long to start (storage backend I/O). Try again, or switch it to a local workspace backend."

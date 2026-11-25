@@ -11,6 +11,7 @@ from fastapi import Depends, Header, Query, Request
 
 from octop.infra.auth.tokens import (
     PURPOSE_ACCESS,
+    PURPOSE_DESKTOP_REMOTE,
     token_mfa_version,
     token_password_version,
     token_purpose,
@@ -40,6 +41,7 @@ _SLIDING_RENEW_REMAINING_FRACTION = 2 / 3
 
 # Paths that bypass JWT middleware (setup wizard, health, login).
 _JWT_EXEMPT_PREFIXES = (
+    "/api/ops/",  # Dedicated operations key and IP checks apply to the entire router.
     "/api/setup/",
     "/api/health/",
     "/api/i18n/",
@@ -62,6 +64,7 @@ _JWT_EXEMPT_EXACT = (
     "/api/auth/lynxce/code",
     "/api/auth/lynxce/code-login",
     "/api/auth/lynxce/session-login",
+    "/api/auth/lynxce/token-login",
     "/api/auth/lynxce/status",
     # Octop Bot clients check an address before showing a sign-in form.
     "/api/octop-bot/server-info",
@@ -146,7 +149,9 @@ def _decode(server: OctopServer, token: str) -> dict[str, Any]:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid token") from exc
 
 
-def resolve_user_from_token(server: OctopServer, token: str) -> User:
+def resolve_user_from_token(
+    server: OctopServer, token: str, *, desktop_remote: bool = False
+) -> User:
     payload = _decode(server, token)
     try:
         purpose = token_purpose(payload)
@@ -164,7 +169,7 @@ def resolve_user_from_token(server: OctopServer, token: str) -> User:
     if purpose is None:
         if current_version != 0:
             raise OctopError(ErrorCode.AUTH_FAILED, "invalid token")
-    elif purpose != PURPOSE_ACCESS:
+    elif purpose != PURPOSE_ACCESS and not (desktop_remote and purpose == PURPOSE_DESKTOP_REMOTE):
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid token")
     try:
         claim_version = token_mfa_version(payload)
@@ -269,6 +274,13 @@ async def current_user(
     if cached is not None:
         return cast("User", cached)
     return authenticate_request(request, server)
+
+
+async def desktop_remote_user(request: Request, server: OctopServer = Depends(get_server)) -> User:
+    raw = extract_raw_token(authorization=request.headers.get("authorization"))
+    if not raw:
+        raise OctopError(ErrorCode.MISSING_CREDENTIALS, "missing credentials")
+    return resolve_user_from_token(server, raw, desktop_remote=True)
 
 
 def require_permission(key: str) -> Callable[..., Awaitable[User]]:

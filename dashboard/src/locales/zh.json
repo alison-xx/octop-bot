@@ -554,6 +554,14 @@
       "languageHint": "选择界面使用的语言。"
     }
   },
+  "computerPlacement": {
+    "default": "默认执行位置",
+    "turn": "这条消息在哪做",
+    "auto": "自动",
+    "cloud": "云电脑",
+    "local": "这台电脑",
+    "failed": "设置保存失败。"
+  },
   "octopBot": {
     "ask": {
       "somethingElse": "其他想法",
@@ -918,9 +926,12 @@
     "BOT_MODEL_VENDOR_UNSUPPORTED": "这里不能用这个厂商或地址，请从列表里选择。",
     "BOT_MODEL_KEY_LIMIT": "最多保存 {{limit}} 个 API Key，请先删掉一个。",
     "BOT_COMPUTER_NOT_TAKEN_OVER": "请先接管云电脑，再输入文字或读取它的剪贴板。",
+    "BOT_COMPUTER_LIMIT": "最多只能同时运行两台云电脑。",
     "BOT_COMPUTER_BUSY": "云电脑暂时都被占满了，没能启动。请过几分钟再试。",
     "ENDPOINT_NOT_ALLOWED": "这个地址不能用：请填写公网的 HTTPS 地址或域名。",
     "BOT_COMPUTER_OFF": "这个文件在云电脑上，云电脑现在没开。点电脑图标打开电脑后再看。",
+    "BOT_CLOUD_SESSION_REQUIRED": "要开通云电脑，请再验证一次灵策账号（每个账号只需一次）。",
+    "BOT_REMOTE_BOT_LIMIT": "这个账号接入云电脑的桌面 Bot 太多了（最多 {{limit}} 个），请先在桌面删掉不用的 Bot。",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "请补充授权灵策充值。当前聊天连接可继续使用。",
     "BOT_LAYOUT_CHANGED": "侧栏布局已更新，请刷新后再试。",
     "AUTH_FAILED": "认证失败。",
@@ -9405,6 +9416,8 @@
     }
   },
   "botTask": {
+    "redoStep": "从这一步重做",
+    "redoDraft": "请从「{{step}}」这一步重做。用 task_read_step 读取步骤记录，编号是 {{checkpoint}}。核对目前的结果，再决定需要重做的部分。任何对外操作都请重新向我确认。",
     "label": "任务：{{goal}}",
     "deep": "深度",
     "steps": "{{done}}/{{total}} 步",
@@ -9436,8 +9449,14 @@
     "hideReview": "收起",
     "deliverables": "产物",
     "checked": "已检查：{{facts}}",
-    "opens": "能打开",
+    "noCheckRecord": "暂无检查记录",
+    "openFailed": "无法打开 {{name}}，本次未交付。",
+    "checkFailed": "{{name}} 未通过检查，本次未交付。",
     "fact": {
+      "filenameOnly": "仅文件名",
+      "nonempty": "文件非空",
+      "validJson": "JSON 格式有效",
+      "opened": "LibreOffice 已打开",
       "pages": "{{count}} 页",
       "rows": "{{count}} 行数据",
       "sheets": "{{count}} 个工作表",

@@ -19,6 +19,7 @@ from octop.api.routers.bot_cloud_work import router as cloud_work_router
 from octop.api.routers.bot_computer import router as computer_router
 from octop.api.routers.bot_computers import router as computers_router
 from octop.api.routers.bot_computers import session_router as screen_session_router
+from octop.api.routers.bot_devices import router as devices_router
 from octop.api.routers.bot_inbox import router as inbox_router
 from octop.api.routers.bot_lynxce import router as lynxce_router
 from octop.api.routers.bot_market import router as market_router
@@ -27,6 +28,7 @@ from octop.api.routers.bot_octop_import import router as octop_import_router
 from octop.api.routers.bot_onboarding import router as onboarding_router
 from octop.api.routers.bot_own_keys import router as own_keys_router
 from octop.api.routers.bot_profile import router as profile_router
+from octop.api.routers.bot_remote_bots import router as remote_bots_router
 from octop.api.routers.bot_server import router as server_router
 from octop.api.routers.bot_wallet import router as wallet_router
 from octop.infra.agents.bot_appearance import Appearance, Character, set_character
@@ -62,6 +64,7 @@ router.include_router(cloud_import_router)
 router.include_router(cloud_move_router)
 router.include_router(cloud_work_router)
 router.include_router(computer_router)
+router.include_router(devices_router)
 router.include_router(inbox_router)
 router.include_router(lynxce_router)
 router.include_router(market_router)
@@ -69,6 +72,7 @@ router.include_router(onboarding_router)
 router.include_router(move_in_router)
 router.include_router(octop_import_router)
 router.include_router(profile_router)
+router.include_router(remote_bots_router)
 router.include_router(own_keys_router)
 router.include_router(wallet_router)
 
@@ -169,6 +173,7 @@ async def bot_privacy(
             row,
             server.services.settings_repo.get(chief_key(user.id)) or "",
             server.services.settings_repo,
+            is_admin=user.is_admin,
         )
     )
 

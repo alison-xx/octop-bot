@@ -310,7 +310,7 @@ class HitlPendingStore:
         for record in self._records.values():
             if record.status != "pending":
                 continue
-            if now - record.created_at > self.ttl_seconds:
+            if self._stale(record, now):
                 continue
             if record.agent_id == agent_id or record.resume_agent_id == agent_id:
                 return True

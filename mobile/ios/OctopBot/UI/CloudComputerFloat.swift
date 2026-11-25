@@ -405,6 +405,7 @@ struct CloudScreenCover: View {
                 Color.black
                 if let url {
                     ScreenWebView(url: url).id(url)
+                        .task(id: url) { await float.server.keepScreenBound(url, agent: float.botId) }
                 } else if let error {
                     VStack(spacing: 12) {
                         Text(error).multilineTextAlignment(.center).foregroundStyle(.white)
@@ -460,7 +461,7 @@ struct CloudScreenCover: View {
 }
 
 /// The screen page in a web view (noVNC needs a real browser engine).
-private struct ScreenWebView: UIViewRepresentable {
+struct ScreenWebView: UIViewRepresentable {
     let url: URL
 
     func makeUIView(context: Context) -> WKWebView {

@@ -213,4 +213,4 @@ async def create_managed_agent(
             group_ids=body.group_ids,
             shared=body.visibility != "owner",
         )
-    return _row_dict(row, viewer_user_id=user.id, server=server)
+    return _row_dict(row, viewer_user_id=user.id, viewer=user, server=server)

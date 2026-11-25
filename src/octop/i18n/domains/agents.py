@@ -91,3 +91,10 @@ def agent_error_message(error: str | None, locale: str | Locale = "en") -> str:
     if classified is not None:
         return tr(classified.removeprefix("octop:"), locale)
     return error
+
+
+def is_classified_agent_error(error: str, locale: str | Locale = "en") -> bool:
+    """Whether the error maps to a known localized message."""
+    if error.startswith("octop:") and lookup(error.removeprefix("octop:"), locale) is not None:
+        return True
+    return classify_agent_start_error_message(error) is not None
