@@ -42,6 +42,7 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.net.URLEncoder
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /** A self-hosted Octop Bot server (NAS / Docker web build): its Bots, tools, memory and groups. */
@@ -64,6 +65,8 @@ class ServerBackend(
     override val accountName: String? get() = ServerProtocol.personName(session.displayName)
     /** The full server address, e.g. `http://10.0.2.2:18790`. */
     val baseUrl: String get() = session.baseUrl
+    // Older encrypted sessions have no cache owner. Give the restored session a fresh namespace.
+    val attachmentScope = session.baseUrl + "\u0000" + requireNotNull(session.attachmentCacheId)
     /** Octop Bot cloud: Lynxce sign-in, and the server keeps the Lynxce wallet. */
     val isCloud: Boolean get() = session.cloud
     /** host, plus the port when it isn't the scheme's default (e.g. `10.0.2.2:18790`). */
@@ -185,7 +188,7 @@ class ServerBackend(
             val name = user?.str("display_name")?.trim().orEmpty()
             // Octop Bot cloud says so in its sign-in response.
             val cloud = body.bool("cloud") == true
-            val session = ServerSession(base, token, name, cloud, if (cloud) signupExpiryDayUTC(body) else null)
+            val session = ServerSession(base, token, name, cloud, if (cloud) signupExpiryDayUTC(body) else null, attachmentCacheId = UUID.randomUUID().toString())
             store.setServerSession(session)
             return ServerBackend(session, store).also { it.signupCredits = if (session.cloud) newSignupCredits(body) else null }
         }
