@@ -554,6 +554,14 @@
       "languageHint": "Choose the interface language."
     }
   },
+  "computerPlacement": {
+    "default": "Default computer",
+    "turn": "Use for this message",
+    "auto": "Automatic",
+    "cloud": "Cloud computer",
+    "local": "My computer",
+    "failed": "Could not save this setting."
+  },
   "octopBot": {
     "ask": {
       "somethingElse": "Something else",
@@ -918,9 +926,12 @@
     "BOT_MODEL_VENDOR_UNSUPPORTED": "This vendor or address can't be used here. Pick one from the list.",
     "BOT_MODEL_KEY_LIMIT": "You can keep up to {{limit}} API keys. Remove one first.",
     "BOT_COMPUTER_NOT_TAKEN_OVER": "Take over the cloud computer before typing into it or reading its clipboard.",
+    "BOT_COMPUTER_LIMIT": "At most two cloud computers can run at once.",
     "BOT_COMPUTER_BUSY": "No cloud computer is free right now, so this one could not start. Try again in a few minutes.",
     "ENDPOINT_NOT_ALLOWED": "This address cannot be used. Enter a public HTTPS address or domain.",
     "BOT_COMPUTER_OFF": "This file is on the cloud computer, which is off right now. Open the computer with its icon, then try again.",
+    "BOT_CLOUD_SESSION_REQUIRED": "To turn on cloud computers, verify your Lynxce account once more (once per account).",
+    "BOT_REMOTE_BOT_LIMIT": "Too many desktop Bots use cloud computers on this account (at most {{limit}}). Delete Bots you no longer use on the desktop first.",
     "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED": "Authorize Lynxce checkout to recharge this account. Your existing chat connection stays active.",
     "BOT_LAYOUT_CHANGED": "The sidebar changed. Refresh it and try again.",
     "AUTH_FAILED": "Authentication failed.",
@@ -9402,6 +9413,8 @@
     }
   },
   "botTask": {
+    "redoStep": "Redo from this step",
+    "redoDraft": "Resume from “{{step}}”. Use task_read_step with checkpoint {{checkpoint}} to read its saved record. Verify the current result and ask again before any external action.",
     "label": "Task: {{goal}}",
     "deep": "Deep",
     "steps": "{{done}}/{{total}} steps",
@@ -9433,8 +9446,14 @@
     "hideReview": "Hide",
     "deliverables": "Deliverables",
     "checked": "Checked: {{facts}}",
-    "opens": "opens",
+    "noCheckRecord": "No check recorded",
+    "openFailed": "Could not open {{name}}. This version was not delivered.",
+    "checkFailed": "{{name}} failed its delivery check. This version was not delivered.",
     "fact": {
+      "filenameOnly": "filename only",
+      "nonempty": "file is nonempty",
+      "validJson": "valid JSON",
+      "opened": "opened in LibreOffice",
       "pages": "{{count}} pages",
       "rows": "{{count}} data rows",
       "sheets": "{{count}} sheets",
