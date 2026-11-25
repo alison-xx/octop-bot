@@ -15,7 +15,7 @@ from tests.integration.test_octop_bot_cloud import (
     _sign_in,
     upstream,  # noqa: F401
 )
-from tests.support.app import octop_client
+from tests.support.app import octop_client, write_octop_config
 
 KEY = "test-secret"
 HEADERS = {"X-Octop-Ops-Key": KEY}
@@ -159,18 +159,19 @@ async def test_every_ops_route_requires_the_ops_key(
     """/api/ops/ skips user sessions, so every route there must refuse callers without the key."""
     monkeypatch.setenv("OCTOP_OPS_KEY_SHA256", hashlib.sha256(KEY.encode()).hexdigest())
     monkeypatch.delenv("OCTOP_OPS_ALLOWED_IPS", raising=False)
+    write_octop_config(tmp_octop_home, enable_api_docs=True)
     async with octop_client(tmp_octop_home) as (client, _):
-        from fastapi.routing import APIRoute
-
-        from octop.api.routers import ops as ops_router
-
+        spec = await client.get("/api/openapi.json")
+        spec.raise_for_status()
         routes = [
-            (method, ("/api/ops" + route.path).replace("{", "").replace("}", ""))
-            for route in ops_router.router.routes
-            if isinstance(route, APIRoute)
-            for method in route.methods
+            (method, path.replace("{", "").replace("}", ""))
+            for path, item in spec.json()["paths"].items()
+            if path.startswith(BASE + "/")
+            for method in item
+            if method in {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
         ]
         assert len(routes) >= 6
         for method, path in routes:
             response = await client.request(method, path, json={})
             assert response.status_code == 401, (method, path, response.status_code)
+            assert response.json()["error"]["code"] == "ops_key_invalid", (method, path)
