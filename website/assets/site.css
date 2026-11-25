@@ -2691,3 +2691,10 @@ body {
 @media (max-width: 760px) { .login-layout { grid-template-columns: 1fr; gap: 8px; min-height: 0; padding-block: 0 40px; } .login-stage { padding: 22px; flex-direction: row; align-items: center; justify-content: flex-start; gap: 14px; border-radius: 20px; } .login-stage .login-chief { width: 76px; flex: none; } .login-stage h2 { margin: 0; font-size: 22px; } .login-stage p, .login-chips, .login-team { display: none; } }
 
 .auth-nav{position:relative}.auth-nav summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}.auth-avatar{width:30px;height:30px;border-radius:50%;background:#7463dc;color:#fff;display:grid;place-items:center;overflow:hidden}.auth-avatar img{width:100%;height:100%;object-fit:cover}.auth-menu{position:absolute;z-index:20;right:0;min-width:130px;padding:10px;background:var(--surface,#fff);box-shadow:0 8px 24px #0002;border-radius:10px}.auth-menu a,.auth-menu button{display:block;padding:8px;border:0;background:none;color:inherit;white-space:nowrap}.mobile-nav .auth-menu{position:static;box-shadow:none}
+
+.auth-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.auth-identity .auth-avatar { flex: none; }
+.auth-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auth-menu .auth-identity { padding: 6px 8px 10px; max-width: 260px; border-bottom: 1px solid var(--line); }
+#account-identity .auth-identity { margin-bottom: 14px; }
+#account-identity .auth-avatar { width: 42px; height: 42px; font-size: 18px; }
