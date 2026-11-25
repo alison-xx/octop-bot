@@ -90,6 +90,9 @@ class MfaService:
         if secret is None:
             raise OctopError(ErrorCode.INTERNAL_ERROR, "jwt secret missing")
         ttl = int(self._s.config.access_token_ttl_seconds)
+        row = self._s.user_repo.get(user.id)
+        if row is None:
+            raise OctopError(ErrorCode.USER_DISABLED, "user not active")
         token = sign_token(
             secret,
             sub=user.id,
@@ -99,6 +102,7 @@ class MfaService:
             ttl_seconds=ttl,
             mfa_version=self._mfa_version(user.id),
             password_version=self._password_version(user.id),
+            session_version=row.session_version,
         )
         return token, ttl
 

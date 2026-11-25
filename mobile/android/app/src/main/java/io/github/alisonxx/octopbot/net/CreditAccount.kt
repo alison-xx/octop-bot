@@ -1,12 +1,29 @@
 package io.github.alisonxx.octopbot.net
 
+import kotlinx.serialization.json.JsonObject
 import java.io.IOException
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+
+internal fun newSignupCredits(body: JsonObject?): Double? {
+    if (body?.bool("isNewUser") != true) return null
+    return body.obj("signupGrant")?.double("credits")?.takeIf { it.isFinite() && it > 0 }
+}
+
+internal fun signupExpiryDayUTC(body: JsonObject?): String? {
+    if (newSignupCredits(body) == null) return null
+    val expiry = body?.obj("signupGrant")?.str("expiresAt") ?: return null
+    return runCatching { OffsetDateTime.parse(expiry).withOffsetSameInstant(ZoneOffset.UTC).toLocalDate().toString() }.getOrNull()
+}
 
 /**
  * The Lynxce wallet of whoever is signed in: straight with Lynxce ([LynxceBackend]), or through
  * Octop Bot cloud, which keeps the Lynxce session on the user's behalf ([ServerBackend.isCloud]).
  */
 interface CreditAccount {
+    var signupCredits: Double?
+    val signupExpiryDay: String?
+
     /** Credits left; throws when the wallet can't be read. */
     suspend fun balance(): Double
 

@@ -29,6 +29,20 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "091F5D2FE3E45102DF3C1823"
+               BuildableName = "OctopBotStoreKitSetupTests.xctest"
+               BlueprintName = "OctopBotStoreKitSetupTests"
+               ReferencedContainer = "container:OctopBot.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "5A2C288FC6F01256E5AD548C"
                BuildableName = "OctopBotTests.xctest"
                BlueprintName = "OctopBotTests"
@@ -53,6 +67,17 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "091F5D2FE3E45102DF3C1823"
+               BuildableName = "OctopBotStoreKitSetupTests.xctest"
+               BlueprintName = "OctopBotStoreKitSetupTests"
+               ReferencedContainer = "container:OctopBot.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
          <TestableReference
             skipped = "NO"
             parallelizable = "NO">
@@ -88,6 +113,11 @@
             ReferencedContainer = "container:OctopBot.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <CommandLineArguments>
+      </CommandLineArguments>
+      <StoreKitConfigurationFileReference
+         identifier = "../../OctopBotTests/CreditPacks.storekit">
+      </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

@@ -135,6 +135,9 @@ website/film-src/renders/
 website/film-src/assets/audio/
 website/film-src/node_modules/
 
+# Video tool caches (hold local paths)
+.hyperframes/
+
 # Signing keys and keystores never belong in the repository (handbook rule 18)
 *.pem
 *.key
