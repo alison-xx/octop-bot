@@ -561,6 +561,9 @@ class AgentManager:
         expert_catalog: ExpertCatalog | None = None,
         plugin_manager: PluginManager | None = None,
     ) -> None:
+        from octop.infra.cloud.devices.hub import DeviceHub
+
+        self.local_devices = DeviceHub()
         self._repos = repos
         self._paths = paths
         from octop.infra.control.desktop.bot_apps import BotComputer
@@ -5218,6 +5221,22 @@ class AgentManager:
             from octop.infra.bot_tasks.watchdog import BotTaskMiddleware
 
             tenant = self._cloud_tenant(row.user_id)
+            if tenant and not row.is_shared:
+                from octop.infra.agents.bot_workspace import is_private_bot
+                from octop.infra.cloud.devices.tools import LocalDesktopTools
+
+                if not is_private_bot(row):
+                    agent_middleware.append(
+                        LocalDesktopTools(
+                            self.local_devices,
+                            row.user_id,
+                            row.name,
+                            row.agent_id,
+                            self._repos.thread_repo,
+                            lambda: self.get_agent(row.agent_id).workspace,
+                            self._repos.user_repo,
+                        )
+                    )
             tasks = TaskStore(self._repos.settings_repo)
             rules = ApprovalRules(self._repos.settings_repo, timezone=self._config.default_timezone)
             task_kit = [

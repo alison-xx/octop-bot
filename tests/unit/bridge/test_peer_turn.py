@@ -65,6 +65,24 @@ def test_user_turn_ws_keys_match_dashboard_frame() -> None:
 
 
 @pytest.mark.asyncio
+async def test_peer_local_step_requires_private_chat() -> None:
+    from types import SimpleNamespace
+
+    with pytest.raises(PeerTurnRejected, match="private chat"):
+        await prepare_peer_dashboard_turn(
+            server=object(),
+            user=SimpleNamespace(locale="en"),
+            agent_id="a1",
+            payload={
+                "text": "check my document",
+                "bot_browser": True,
+                "computer_placement": "local",
+            },
+            ws_connection_id="ws",
+        )
+
+
+@pytest.mark.asyncio
 async def test_empty_peer_turn_is_rejected() -> None:
     with pytest.raises(PeerTurnRejected, match="empty message"):
         await prepare_peer_dashboard_turn(
@@ -186,10 +204,8 @@ async def test_prepare_peer_turn_enqueues_when_hub_turn_is_idle(
 
     monkeypatch.setattr("octop.api.bridge_peer.prepare_dashboard_turn", _fake_prepare)
     inbound = object()
-    monkeypatch.setattr(
-        "octop.api.bridge_peer.build_dashboard_inbound",
-        MagicMock(return_value=inbound),
-    )
+    build = MagicMock(return_value=inbound)
+    monkeypatch.setattr("octop.api.bridge_peer.build_dashboard_inbound", build)
 
     class _User:
         id = 1
@@ -203,6 +219,7 @@ async def test_prepare_peer_turn_enqueues_when_hub_turn_is_idle(
         ws_connection_id="ws",
     )
     assert result.inbound is inbound
+    assert build.call_args.kwargs["turn"].computer_placement == "cloud"
 
 
 @pytest.mark.asyncio
