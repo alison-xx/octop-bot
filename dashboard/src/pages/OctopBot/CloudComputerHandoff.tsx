@@ -2,7 +2,11 @@ import { useState } from "react";
 import { Button, Modal } from "antd";
 import { Monitor } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { botCloudComputerApi } from "../../api/modules/botCloudComputer";
+import {
+  botCloudComputerApi,
+  viewOnlyScreen,
+  type ScreenSession,
+} from "../../api/modules/botCloudComputer";
 import { apiErrorMessage } from "../../utils/apiError";
 import { expandForHandoff } from "./CloudComputerFloat";
 import CloudComputerScreen from "./CloudComputerScreen";
@@ -13,9 +17,10 @@ import CloudComputerScreen from "./CloudComputerScreen";
  */
 export default function CloudComputerHandoff({ botId }: { botId: string }) {
   const { t } = useTranslation();
-  const [screen, setScreen] = useState<{ ws: string; session: string } | null>(
-    null,
-  );
+  const [screen, setScreen] = useState<{
+    ws: string;
+    session: ScreenSession;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -23,9 +28,11 @@ export default function CloudComputerHandoff({ botId }: { botId: string }) {
     setBusy(true);
     setError("");
     try {
-      const status = await botCloudComputerApi.takeover(botId, true);
-      if (expandForHandoff(botId, status)) return;
       const ticket = await botCloudComputerApi.openScreen(botId);
+      const status = viewOnlyScreen(ticket.session)
+        ? null
+        : await botCloudComputerApi.takeover(botId, true);
+      if (expandForHandoff(botId, status, ticket)) return;
       setScreen({ ws: ticket.ws_path, session: ticket.session });
     } catch (e) {
       setError(apiErrorMessage(e, t("cloudComputer.unavailable"), t));
@@ -49,14 +56,22 @@ export default function CloudComputerHandoff({ botId }: { botId: string }) {
         open={screen !== null}
         title={t("cloudComputer.section")}
         width={960}
-        footer={<span>{t("cloudComputer.handoffHint")}</span>}
+        footer={
+          <span>
+            {t(
+              viewOnlyScreen(screen?.session)
+                ? "cloudComputer.legacyViewOnly"
+                : "cloudComputer.handoffHint",
+            )}
+          </span>
+        }
         onCancel={() => setScreen(null)}
         destroyOnClose
       >
         {screen && (
           <CloudComputerScreen
             wsPath={screen.ws}
-            interactive
+            interactive={!viewOnlyScreen(screen.session)}
             session={screen.session}
           />
         )}

@@ -68,7 +68,10 @@ class TOSBackend(CloudStorageBackend):
             message = getattr(exc, "message", None) or str(exc)
             raise RuntimeError(f"TOS: {message}") from exc
 
-    def _get_file_data(self, path: str) -> FileData | None:
+    def _get_file_data(self, path: str, *, max_bytes: int | None = None) -> FileData | None:
+        if max_bytes is not None:
+            # This adapter currently consumes the complete SDK response to verify its CRC.
+            raise NotImplementedError("Bounded TOS reads are unavailable")
         if path.endswith("/"):
             return None
         try:

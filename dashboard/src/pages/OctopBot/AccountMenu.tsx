@@ -227,6 +227,7 @@ export default function AccountMenu({
               if (desktop && lynxceAccount) {
                 try {
                   await botCloudApi.logout(lynxceAccount);
+                  window.dispatchEvent(new Event("octop-bot-account-changed"));
                 } catch {
                   message.error(t("octopBot.failed"));
                   return;

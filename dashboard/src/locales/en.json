@@ -831,6 +831,10 @@
   },
   "apiErrors": {
     "BOT_CLOUD_ACCOUNT_REQUIRED": "Sign in to Lynxce Cloud. If you switched accounts, reopen this action.",
+    "BOT_COMPUTER_OPERATION_TIMEOUT": "The cloud computer did not respond in time. The action may still be running. Check the computer before trying again.",
+    "BOT_CLOUD_REVERIFY_REQUIRED": "Verify your Lynxce account again to enable the cloud computer.",
+    "BOT_COMPUTER_TRANSFERS_BUSY": "Two file transfers are already in progress. Try again when one finishes.",
+    "BOT_WORKSPACE_BOUNDED_READ_REQUIRED": "This workspace cannot read files within the upload limit. Use a backend that supports bounded reads or update the workspace component.",
     "LYNXCE_OWNER_MISMATCH": "This Octop Bot is bound to a different Lynxce account. Sign in with the account used the first time.",
     "LYNXCE_LEGACY_PASSWORD_REQUIRED": "This Octop Bot was set up with a local sign-in password. Enter it once with your first Lynxce sign-in; after that you only need your Lynxce account.",
     "LYNXCE_CODE_INVALID": "The code is wrong or has expired. Request a new one.",
@@ -9088,6 +9092,11 @@
     "soundHint": "Play a short chime when a new message arrives"
   },
   "cloudComputer": {
+    "targetLocal": "This computer",
+    "targetCloud": "Cloud computer",
+    "targetConsent": "The screen and anything the Bot types on the cloud computer pass through Lynxce Cloud. Files on this computer only reach the cloud computer when the Bot uploads them.",
+    "targetVerify": "Verify your Lynxce account to enable the cloud computer",
+    "verifyContinue": "Verify and continue",
     "diskFee": "Disk {{gb}} GB · {{credits}} credits per day",
     "diskBillingOff": "Billing currently off",
     "reclaimWarning": "This computer and its disk files are scheduled for removal. Your Bot, chats, and cloud storage files stay.",
@@ -9121,6 +9130,7 @@
     "copyBlocked": "Copied on the cloud computer; this browser would not let the page write your clipboard. Use \"Get the cloud computer's clipboard\".",
     "macShortcuts": "On a Mac, ⌘C / ⌘V copy and paste between this Mac and the cloud computer; other ⌘ shortcuts work like Ctrl.",
     "handoffOpen": "Take over the cloud computer",
+    "legacyViewOnly": "This cloud service supports viewing only. Update the cloud service to take control or use the clipboard.",
     "handoffHint": "When you're done, close the screen and choose Done in the chat; the Bot carries on.",
     "float": {
       "open": "Open the cloud computer screen",

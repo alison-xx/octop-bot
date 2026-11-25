@@ -23,6 +23,8 @@ import tempfile
 import tomllib
 from pathlib import Path
 
+from bot_harness_wheel import SHA256, append_requirement
+
 SHELL = Path(__file__).resolve().parents[1]
 REPO = SHELL.parent.parent
 PORTABLE = REPO / "desktop" / "portable"
@@ -78,9 +80,11 @@ def prepare_dependencies(stage: Path, uv: str) -> None:
     )
     reqs = stage / "requirements.txt"
     args = [uv, "export", "--project", REPO, "--frozen", "--no-dev", "--no-emit-project"]
+    args.extend(["--no-emit-package", "octop-harness"])
     for extra in EXTRAS:
         args.extend(["--extra", extra])
     run([*args, "-o", reqs], stdout=subprocess.DEVNULL)
+    append_requirement(reqs)
     packages = portable / "packages"
     install = [
         uv,
@@ -195,6 +199,10 @@ runpy.run_path(str(root/'launch.py'))['_bootstrap']()
 for name in ('octop','octop_harness','octop_memory','octop_gateway','octop_browser','cua_driver','PIL','cryptography.hazmat.bindings._rust'):
     origin = pathlib.Path(importlib.import_module(name).__file__).resolve()
     if not origin.is_relative_to(root): raise RuntimeError(f'{name} comes from outside the bundle: {origin}')
+from importlib.metadata import version
+from octop_harness.backends.workspace import BackendWorkspace
+assert version('octop-harness') == '1.0.11+bounded.1'
+assert callable(BackendWorkspace.adownload_bytes_capped)
 assert (root/'packages/octop/dashboard/index.html').is_file()
 assert pathlib.Path(sys.base_prefix).resolve() == (root/'runtime').resolve()
 """
@@ -311,7 +319,7 @@ def main() -> None:
         version,
     )
     cache_key = hashlib.sha256(
-        (REPO / "uv.lock").read_bytes() + (PYTHON_VERSION + str(EXTRAS)).encode()
+        (REPO / "uv.lock").read_bytes() + (PYTHON_VERSION + str(EXTRAS) + SHA256).encode()
     ).hexdigest()[:12]
     stage = SHELL / ".dev-runtime" / "bot-mac" / cache_key
     prepare_dependencies(stage, uv)

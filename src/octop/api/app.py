@@ -181,6 +181,8 @@ def build_app(server: OctopServer) -> FastAPI:
         auth_oauth,
         auth_oidc,
         backup,
+        bot_computers,
+        bot_desktop_computers,
         bot_groups,
         bot_workspace,
         bridge,
@@ -241,7 +243,9 @@ def build_app(server: OctopServer) -> FastAPI:
     from octop.api.routers.storage_backends import user_router as storage_backends_user_router
     from octop.api.routers.tls import router as tls_router
     from octop.api.routers.voice import admin_router as admin_voice_router
+    from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
 
+    desktop_computers = bot_desktop_enabled() and not bot_cloud_enabled()
     _mount_routers(
         app,
         [
@@ -301,6 +305,16 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(mbti.router, "/api", ["mbti"]),
             _RouterMount(experts.router, "/api", ["experts"]),
             _RouterMount(teams.router, "/api", ["teams"]),
+            _RouterMount(
+                bot_desktop_computers.router if desktop_computers else bot_computers.router,
+                "/api/octop-bot",
+                ["teams"],
+            ),
+            *(
+                []
+                if desktop_computers
+                else [_RouterMount(bot_computers.session_router, "/api/octop-bot", ["teams"])]
+            ),
             _RouterMount(bot_workspace.router, "/api", ["teams"]),
             _RouterMount(bot_groups.router, "/api", ["teams"]),
             _RouterMount(managed.router, "/api", ["agents"]),

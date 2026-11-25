@@ -238,6 +238,18 @@ class AgentRepo:
                 (bool_int(shared), now_ts(), agent_id),
             )
 
+    def replace_owned_bot_config(
+        self, user_id: int, agent_id: str, expected: str | None, config: str
+    ) -> bool:
+        with self._db.transaction() as conn:
+            result = conn.execute(
+                "UPDATE agents SET config_json=?, updated_at=? WHERE user_id=? AND agent_id=? "
+                "AND is_shared=0 AND kind IN ('expert','managed') "
+                "AND COALESCE(config_json,'')=COALESCE(?,'')",
+                (config, now_ts(), user_id, agent_id, expected),
+            )
+            return int(result.rowcount) == 1
+
     def set_bot_privacy(
         self,
         agent_id: str,

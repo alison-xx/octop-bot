@@ -37,6 +37,11 @@ async def _signed_in(
     """Desktop: one Lynxce sign-in also brings the account's chat models (no browser grant)."""
     if not bot_desktop_enabled() or not status.connected or not status.account_id:
         return status
+    from octop.infra.cloud.computers.remote import clean_deleted_shadows
+
+    await clean_deleted_shadows(services, user_id)
+    if server.app_runtime is not None:
+        server.app_runtime.agent_registry.refresh_desktop_computer_tools(user_id)
     try:
         changed = await account_models.adopt_cloud_account(services, user_id, status.account_id)
     except OctopError:
@@ -159,13 +164,15 @@ async def login_workbuddy(
 
 @router.delete("/account", summary="Sign out of Lynxce Cloud on this device")
 async def logout(
-    user: Owner, services: Services, expected_account_id: str | None = None
+    user: Owner, services: Services, server: Server, expected_account_id: str | None = None
 ) -> CloudAccountStatus:
     if bot_desktop_enabled():
         await account_models.revoke_cloud_key(services, user.id, expected_account_id)
     status = await logout_cloud(services, user.id, expected_account_id=expected_account_id)
     if bot_desktop_enabled() and not status.connected:
         await asyncio.to_thread(account_models.release_cloud_account, services, user.id)
+        if server.app_runtime is not None:
+            server.app_runtime.agent_registry.refresh_desktop_computer_tools(user.id)
     return status
 
 

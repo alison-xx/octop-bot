@@ -714,8 +714,14 @@ class ComputerBriefing(AgentMiddleware[Any, Any]):
     The text is fixed per agent, so it never breaks the prompt cache between turns.
     """
 
-    def __init__(self, *, room: bool = False) -> None:
-        self._text = BRIEFING.format(files=_ROOM_FILES if room else _PRIVATE_FILES)
+    def __init__(self, *, room: bool = False, desktop: bool = False) -> None:
+        files = _ROOM_FILES if room else _PRIVATE_FILES
+        if desktop:
+            files = (
+                "Your normal execute and file tools work in the local Bot workspace. "
+                "Use cloud_computer_workspace for cloud commands and explicit file transfers."
+            )
+        self._text = BRIEFING.format(files=files)
 
     def _brief(self, request: ModelRequest[Any]) -> ModelRequest[Any]:
         blocks: list[Any] = (

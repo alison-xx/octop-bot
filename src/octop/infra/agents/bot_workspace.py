@@ -68,10 +68,16 @@ def bot_card(
     cached: dict[str, str] | None = None,
     *,
     locale: str = "en",
+    desktop_connected: bool = False,
 ) -> dict[str, Any]:
+    from octop.infra.cloud.computers.remote import configured_target
+    from octop.infra.desktop import bot_cloud_enabled
+
+    computer = configured_target(row) if desktop_connected and not row.is_shared else "local"
     avatar = bot_appearance(settings, row, chief_id, cached)
     return {
         "agent_id": row.agent_id,
+        "computer": "cloud" if bot_cloud_enabled() else computer,
         "name": row.name,
         "description": row.description,
         "avatar": avatar.model_dump(),
@@ -97,10 +103,21 @@ def bot_card(
 def list_bot_cards(
     services: SharedServices, owner: int, chief_id: str, *, include_private: bool = True
 ) -> list[dict[str, Any]]:
+    from octop.infra.auth.lynxce_cloud import has_session
+    from octop.infra.desktop import bot_desktop_enabled
+
+    connected = bot_desktop_enabled() and has_session(services, owner)
     cached = services.settings_repo.with_prefix(appearance_prefix(owner))
     locale = resolve_user_locale(user_repo=services.user_repo, user_id=owner)
     return [
-        bot_card(row, chief_id, services.settings_repo, cached, locale=locale)
+        bot_card(
+            row,
+            chief_id,
+            services.settings_repo,
+            cached,
+            locale=locale,
+            desktop_connected=connected,
+        )
         for row in services.agent_repo.list_by_user(owner)
         if row.kind != "team" and (include_private or not is_private_bot(row))
     ]

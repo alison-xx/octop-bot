@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
+  viewOnlyScreen,
+  type ScreenSession,
   botCloudComputerApi,
   type CloudComputerGlance,
   type CloudComputerStatus,
@@ -53,10 +55,23 @@ interface FloatState {
 export function toggleCloudFloat(botId: string) {
   bus.dispatchEvent(new CustomEvent("toggle", { detail: botId }));
 }
+type HandoffTicket = Awaited<ReturnType<typeof botCloudComputerApi.openScreen>>;
+interface Handoff {
+  botId: string;
+  status: CloudComputerStatus | null;
+  ticket: HandoffTicket;
+}
 /** A handoff card can also be shown outside the conversation that owns this float. */
-export function expandForHandoff(botId: string, status: CloudComputerStatus) {
+export function expandForHandoff(
+  botId: string,
+  status: CloudComputerStatus | null,
+  ticket: HandoffTicket,
+) {
   return !bus.dispatchEvent(
-    new CustomEvent("handoff", { detail: { botId, status }, cancelable: true }),
+    new CustomEvent("handoff", {
+      detail: { botId, status, ticket },
+      cancelable: true,
+    }),
   );
 }
 function announce(state: FloatState) {
@@ -155,7 +170,11 @@ export default function CloudComputerFloat({
   const [status, setStatus] = useState<CloudComputerStatus | null>(null);
   const [glance, setGlance] = useState<CloudComputerGlance | null>(null);
   const [mode, setMode] = useState<FloatMode>("hidden");
-  const [screen, setScreen] = useState<{ ws: string; session: string } | null>(
+  const [screen, setScreen] = useState<{
+    ws: string;
+    session: ScreenSession;
+  } | null>(null);
+  const [handoffTicket, setHandoffTicket] = useState<HandoffTicket | null>(
     null,
   );
   const [corner, setCorner] = useState<Corner>(() =>
@@ -229,20 +248,19 @@ export default function CloudComputerFloat({
 
   useEffect(() => {
     const handoff = (event: Event) => {
-      const next = (
-        event as CustomEvent<{ botId: string; status: CloudComputerStatus }>
-      ).detail;
+      const next = (event as CustomEvent<Handoff>).detail;
       if (next.botId !== botId) return;
       event.preventDefault();
-      setStatus(next.status);
+      if (next.status) setStatus(next.status);
+      if (mode !== "expanded" || !screen) setHandoffTicket(next.ticket);
       setClosed(false);
       setStartError(null);
-      setStarting(next.status.state !== "running");
+      setStarting(next.status ? next.status.state !== "running" : !screen);
       setMode("expanded");
     };
     bus.addEventListener("handoff", handoff);
     return () => bus.removeEventListener("handoff", handoff);
-  }, [botId]);
+  }, [botId, mode, screen]);
 
   // The header button: show the float (as the live window) or close it.
   useEffect(() => {
@@ -295,11 +313,16 @@ export default function CloudComputerFloat({
   // The live screen is connected only while it is visible (window or expanded). Tickets are
   // single-use, so moving between the window and the big view takes a fresh one.
   const live = mode === "window" || mode === "expanded" ? mode : null;
+  const suppliedTicket = live === "expanded" ? handoffTicket : null;
   useEffect(() => {
     setScreen(null);
+    if (live !== "expanded") setHandoffTicket(null);
     if (!live) return;
     let current = true;
-    botCloudComputerApi.openScreen(botId).then(
+    const opening = suppliedTicket
+      ? Promise.resolve(suppliedTicket)
+      : botCloudComputerApi.openScreen(botId);
+    opening.then(
       (ticket) => {
         if (!current) return;
         setScreen({ ws: ticket.ws_path, session: ticket.session });
@@ -328,7 +351,7 @@ export default function CloudComputerFloat({
     return () => {
       current = false;
     };
-  }, [botId, live]);
+  }, [botId, live, suppliedTicket]);
 
   const collapse = () => {
     setPillOnly(true);
@@ -342,7 +365,9 @@ export default function CloudComputerFloat({
     setStarting(status?.state !== "running");
     setMode("window");
   };
+  const viewOnly = viewOnlyScreen(screen?.session);
   const takeover = async (active: boolean) => {
+    if (viewOnly || !screen) return;
     setBusy(true);
     try {
       setStatus(await botCloudComputerApi.takeover(botId, active));
@@ -532,6 +557,8 @@ export default function CloudComputerFloat({
               <button
                 type="button"
                 className={styles.takeHint}
+                disabled={!screen || viewOnly}
+                title={viewOnly ? t("cloudComputer.legacyViewOnly") : undefined}
                 onClick={() => void takeover(true)}
               >
                 <Hand size={14} aria-hidden="true" />
@@ -580,7 +607,9 @@ export default function CloudComputerFloat({
           <Space>
             <span>
               {t(
-                status?.takeover
+                viewOnly
+                  ? "cloudComputer.legacyViewOnly"
+                  : status?.takeover
                   ? "cloudComputer.controlHint"
                   : "cloudComputer.viewHint",
               )}
@@ -588,6 +617,7 @@ export default function CloudComputerFloat({
             <Button
               type={status?.takeover ? "default" : "primary"}
               loading={busy}
+              disabled={viewOnly || !screen}
               onClick={() => void takeover(!status?.takeover)}
             >
               {t(
@@ -599,7 +629,7 @@ export default function CloudComputerFloat({
           </Space>
         }
         onCancel={() => {
-          if (status?.takeover) void takeover(false);
+          if (status?.takeover && !viewOnly && screen) void takeover(false);
           else setMode("window");
         }}
         destroyOnClose

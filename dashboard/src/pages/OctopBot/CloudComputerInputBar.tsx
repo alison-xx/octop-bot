@@ -2,7 +2,10 @@ import { useRef, useState, type KeyboardEvent } from "react";
 import { Button, Input } from "antd";
 import type { TextAreaRef } from "antd/es/input/TextArea";
 import { useTranslation } from "react-i18next";
-import { botCloudComputerApi } from "../../api/modules/botCloudComputer";
+import {
+  botCloudComputerApi,
+  type ScreenSession,
+} from "../../api/modules/botCloudComputer";
 import { apiErrorMessage } from "../../utils/apiError";
 import styles from "./cloudComputerScreen.module.less";
 import { copyToThisDevice, isMacDesktop } from "./macShortcuts";
@@ -17,7 +20,7 @@ export default function CloudComputerInputBar({
   note,
   onNote: setNote,
 }: {
-  session: string;
+  session: ScreenSession;
   /** Last result to show, shared with the screen's ⌘ shortcuts. */
   note: string;
   onNote: (note: string) => void;

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Button, Modal, Space } from "antd";
 import { useTranslation } from "react-i18next";
 import {
+  viewOnlyScreen,
+  type ScreenSession,
   botCloudComputerApi,
   type CloudComputerStatus,
 } from "../../api/modules/botCloudComputer";
@@ -18,7 +20,7 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
   // One-time WebSocket path for the open screen; null while the screen is closed.
   const [screen, setScreen] = useState<string | null>(null);
   // Screen session for typing and the clipboard while it is open.
-  const [session, setSession] = useState("");
+  const [session, setSession] = useState<ScreenSession>("");
 
   useEffect(() => {
     let mounted = true;
@@ -66,7 +68,9 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
     }
   };
 
+  const viewOnly = viewOnlyScreen(session);
   const takeover = async (active: boolean) => {
+    if (viewOnly) return;
     setBusy(true);
     try {
       setStatus(await botCloudComputerApi.takeover(botId, active));
@@ -137,7 +141,9 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
           <Space>
             <span>
               {t(
-                status?.takeover
+                viewOnly
+                  ? "cloudComputer.legacyViewOnly"
+                  : status?.takeover
                   ? "cloudComputer.controlHint"
                   : "cloudComputer.viewHint",
               )}
@@ -145,6 +151,7 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
             <Button
               type={status?.takeover ? "default" : "primary"}
               loading={busy}
+              disabled={viewOnly || !screen}
               onClick={() => void takeover(!status?.takeover)}
             >
               {t(

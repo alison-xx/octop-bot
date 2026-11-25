@@ -14,6 +14,9 @@ module lives in ``octop.infra`` and is only imported by ``infra`` / ``cli`` /
 from __future__ import annotations
 
 import os
+import re
+
+from octop.infra.errors import ErrorCode, OctopError
 
 _DESKTOP_SHELL_ENV = "OCTOP_DESKTOP_SHELL"
 
@@ -23,6 +26,8 @@ SHELL_OWNED_ENV_KEYS = frozenset(
     {
         "OCTOP_DESKTOP_SHELL",
         "OCTOP_DESKTOP_PRODUCT",
+        "OCTOP_BOT_CLOUD_ORIGIN",
+        "OCTOP_DASHBOARD_DEV",
         "OCTOP_DESKTOP",
         "OCTOP_GREEN_PACKAGES",
         "OCTOP_BIND_HOST",
@@ -97,7 +102,19 @@ def bot_cloud_move_in_enabled() -> bool:
 def bot_cloud_origin() -> str:
     """Where the desktop app's Lynxce mode keeps its data (``OCTOP_BOT_CLOUD_ORIGIN`` for tests)."""
     raw = (os.environ.get("OCTOP_BOT_CLOUD_ORIGIN") or "").strip().rstrip("/")
-    return raw or "https://bot.lynxce.cn"
+    official = "https://bot.lynxce.cn"
+    if not raw or raw == official:
+        return official
+    # Development Electron owns both settings. Never send credentials to a
+    # custom server selected for an ordinary self-hosted workspace.
+    loopback = re.fullmatch(r"https?://(?:localhost|127\.0\.0\.1|\[::1\])(?::([0-9]{1,5}))?", raw)
+    if (
+        os.environ.get("OCTOP_DASHBOARD_DEV") == "1"
+        and loopback
+        and (loopback[1] is None or 0 < int(loopback[1]) <= 65535)
+    ):
+        return raw
+    raise OctopError.localized(ErrorCode.FORBIDDEN)
 
 
 def shell_owned_env_key(key: str) -> bool:

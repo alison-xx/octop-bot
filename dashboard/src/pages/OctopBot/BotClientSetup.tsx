@@ -251,6 +251,7 @@ export default function BotClientSetup() {
       const fresh = firstRun;
       await enterLocal(status);
       if ((await attempt()) === false) return;
+      window.dispatchEvent(new Event("octop-bot-account-changed"));
       navigate(fresh ? BOT_SETTINGS : BOT_HOME, {
         replace: true,
         state: fresh ? { source: "lynxce", from: BOT_GUIDE } : undefined,

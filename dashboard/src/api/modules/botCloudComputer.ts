@@ -1,4 +1,5 @@
 import { request } from "../request";
+import { parseApiError } from "../../utils/apiError";
 
 /** What `/api/octop-bot/server-info` says about this server. */
 export interface BotServerInfo {
@@ -46,41 +47,141 @@ export interface CloudComputerGlance {
   thumbnail: string | null;
 }
 
+export type ScreenSession =
+  | string
+  | { header: string; expiresAt: number }
+  | { viewOnly: true };
+
+export function viewOnlyScreen(
+  session?: ScreenSession,
+): session is { viewOnly: true } {
+  return typeof session === "object" && "viewOnly" in session;
+}
+
 export interface ScreenTicket {
   ws_path: string;
   expires_in: number;
   /** Screen session for typing and the clipboard while the screen is open. */
   session: string;
+  session_transport?: "header" | "path" | null;
+  session_expires_in?: number | null;
 }
 
 const endpoint = (id: string) =>
   `/octop-bot/computers/${encodeURIComponent(id)}`;
 
-// The screen session is the credential: the phone apps' screen page has no sign-in.
-const sessionEndpoint = (session: string) =>
-  `/octop-bot/screen-sessions/${encodeURIComponent(session)}`;
+function screenAction<T>(
+  session: ScreenSession,
+  action: "clipboard" | "type",
+  options?: RequestInit,
+): Promise<T> {
+  const base = "/octop-bot/screen-sessions";
+  if (viewOnlyScreen(session)) throw new Error("Screen is view-only");
+  if (typeof session === "object")
+    return request<T>(base + "/" + action, {
+      ...options,
+      headers: { "X-Octop-Screen-Session": session.header },
+    });
+  // Mobile screen links issued by the original cloud service use the path protocol.
+  return request<T>(
+    base + "/" + encodeURIComponent(session) + "/" + action,
+    options,
+  );
+}
+
+export const reverifyComputerEvent = "octop-bot-reverify-computer";
+
+async function computerRequest<T>(
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
+  try {
+    return await request<T>(path, options);
+  } catch (error) {
+    if (parseApiError(error)?.code !== "BOT_CLOUD_REVERIFY_REQUIRED")
+      throw error;
+    const verified = await new Promise<boolean>((resolve) => {
+      const event = new CustomEvent(reverifyComputerEvent, {
+        detail: resolve,
+        cancelable: true,
+      });
+      // An open Bot view owns the dialog. Without one, return the original error.
+      if (window.dispatchEvent(event)) resolve(false);
+    });
+    if (!verified) throw error;
+    return request<T>(path, options);
+  }
+}
 
 export const botCloudComputerApi = {
   serverInfo: () => request<BotServerInfo>("/octop-bot/server-info"),
-  status: (id: string) => request<CloudComputerStatus>(endpoint(id)),
+  status: (id: string) => computerRequest<CloudComputerStatus>(endpoint(id)),
   pause: (id: string) =>
-    request<CloudComputerStatus>(endpoint(id) + "/pause", { method: "POST" }),
+    computerRequest<CloudComputerStatus>(endpoint(id) + "/pause", {
+      method: "POST",
+    }),
   takeover: (id: string, active: boolean) =>
-    request<CloudComputerStatus>(endpoint(id) + "/takeover", {
+    computerRequest<CloudComputerStatus>(endpoint(id) + "/takeover", {
       method: "POST",
       body: JSON.stringify({ active }),
     }),
   /** Never starts the computer; 404 while it is off. */
   glance: (id: string) =>
-    request<CloudComputerGlance>(endpoint(id) + "/glance"),
-  openScreen: (id: string) =>
-    request<ScreenTicket>(endpoint(id) + "/screen", { method: "POST" }),
+    computerRequest<CloudComputerGlance>(endpoint(id) + "/glance"),
+  openScreen: async (id: string) => {
+    const ticket = await computerRequest<ScreenTicket>(
+      endpoint(id) + "/screen",
+      {
+        method: "POST",
+        headers: { "X-Octop-Screen-Transport": "header" },
+      },
+    );
+    const session: ScreenSession =
+      ticket.session_transport === "header"
+        ? {
+            header: ticket.session,
+            expiresAt: Date.now() + 1000 * (ticket.session_expires_in ?? 0),
+          }
+        : ticket.session_transport === null
+        ? { viewOnly: true }
+        : ticket.session;
+    return { ...ticket, session };
+  },
   /** Types text (any language) at the taken-over desktop's cursor. */
-  typeText: (session: string, text: string) =>
-    request<void>(sessionEndpoint(session) + "/type", {
+  typeText: (session: ScreenSession, text: string) =>
+    screenAction<void>(session, "type", {
       method: "POST",
       body: JSON.stringify({ text }),
     }),
-  readClipboard: (session: string) =>
-    request<{ text: string }>(sessionEndpoint(session) + "/clipboard"),
+  readClipboard: (session: ScreenSession) =>
+    screenAction<{ text: string }>(session, "clipboard"),
+};
+
+const computerAccount = "/octop-bot/computer-account";
+const jsonBody = (method: string, value: unknown) => ({
+  method,
+  body: JSON.stringify(value),
+});
+export type ComputerTarget = "local" | "cloud";
+export const desktopComputerApi = {
+  set: (id: string, target: ComputerTarget) =>
+    request<{ target: ComputerTarget }>(
+      "/octop-bot/bots/" + encodeURIComponent(id) + "/computer-target",
+      jsonBody("PUT", { target }),
+    ),
+  sendCode: (target: string, locale: string) =>
+    request<{ channel: "phone" | "email" }>(
+      computerAccount + "/code",
+      jsonBody("POST", { target, locale }),
+    ),
+  codeLogin: (target: string, code: string, password?: string) =>
+    request<void>(
+      computerAccount + "/code-login",
+      jsonBody("POST", { target, code, password }),
+    ),
+  login: (account: string, password: string) =>
+    request<void>(
+      computerAccount + "/login",
+      jsonBody("POST", { account, password }),
+    ),
 };
