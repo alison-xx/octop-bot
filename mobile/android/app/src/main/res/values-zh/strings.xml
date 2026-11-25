@@ -530,4 +530,7 @@
     <string name="bot_preparing_chat">Bot 正在准备，稍等片刻</string>
     <string name="bot_start_failed">启动失败</string>
     <string name="checkout_balance_increased">余额增加了 %1$s 积分，当前余额 %2$s。</string>
+    <string name="signup_credit_notice">已到账 %1$s 体验积分，仅限 Octop 使用。</string>
+    <string name="signup_credit_expiry">体验积分到期日：%1$s（UTC）</string>
+    <string name="signup_credit_notice_until">已到账 %1$s 体验积分，仅限 Octop 使用。到期日：%2$s（UTC）。</string>
 </resources>

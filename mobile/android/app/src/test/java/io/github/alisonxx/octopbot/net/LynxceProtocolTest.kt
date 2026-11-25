@@ -17,6 +17,18 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class LynxceProtocolTest {
+    @Test fun signupNoticeUsesOnlyPositiveCreditsIssuedToANewAccount() {
+        fun credits(json: String) = newSignupCredits(Http.parse(json).jsonObject)
+        assertEquals(125.5, credits("""{"isNewUser":true,"signupGrant":{"credits":125.5}}""")!!, 0.0)
+        assertNull(credits("""{"isNewUser":false,"signupGrant":{"credits":100}}"""))
+        assertNull(credits("""{"isNewUser":true}"""))
+        assertEquals("2026-12-08", signupExpiryDayUTC(Http.parse("""{"isNewUser":true,"signupGrant":{"credits":100,"expiresAt":"2026-12-09T01:00:00+08:00"}}""").jsonObject))
+        assertNull(signupExpiryDayUTC(Http.parse("""{"isNewUser":true,"signupGrant":{"credits":100}}""").jsonObject))
+        for (invalid in listOf("true", "\"100\"", "-1", "0", "1e999")) {
+            assertNull(credits("""{"isNewUser":true,"signupGrant":{"credits":$invalid}}"""))
+        }
+    }
+
     @Test
     fun parsesContentAndReasoningDeltas() {
         assertEquals(

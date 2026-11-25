@@ -37,6 +37,8 @@ class LynxceBackend(
     override val connectionLabel = "api.lynxce.cn"
 
     private val refreshLock = Mutex()
+    override var signupCredits: Double? = null
+    override val signupExpiryDay get() = grant.signupExpiryDay
 
     companion object {
         private fun headers(bearer: String?) = LynxceProtocol.headers(bearer)
@@ -73,7 +75,7 @@ class LynxceBackend(
         private suspend fun enter(data: JsonElement, store: AppStore, localBots: LocalBots, phoneModels: PhoneModels): LynxceBackend {
             val grant = LynxceProtocol.grant(data)
             store.setLynxceGrant(grant)
-            return LynxceBackend(grant, store, localBots, phoneModels)
+            return LynxceBackend(grant, store, localBots, phoneModels).also { it.signupCredits = newSignupCredits(data as? JsonObject) }
         }
     }
 

@@ -1,14 +1,33 @@
+import CoreFoundation
 import Foundation
 
 /// Lynxce credits for whoever is signed in: straight with Lynxce (`LynxceBackend`), or through
 /// Octop Bot cloud, which holds the Lynxce session on the user's behalf (`ServerBackend.isCloud`).
 protocol CreditAccount: AnyObject {
+    var signupCredits: Double? { get set }
+    var signupExpiryDay: String? { get }
     func wallet() async throws -> Wallet
     func creditPacks() async throws -> (packs: [LynxceBackend.CreditPack], enabled: Bool)
     func purchaseIntent(packId: String) async throws -> (productId: String, accountToken: UUID)
     func submitTransaction(_ signedTransaction: String) async throws
     /// Delete the Lynxce account; returns the cooling-off days when the server says.
     func requestDeletion() async throws -> Int?
+}
+
+/// Only a new-account login can issue a signup grant. Restored sessions never replay it.
+func newSignupCredits(_ body: [String: Any]) -> Double? {
+    guard let fresh = body["isNewUser"] as? NSNumber, CFGetTypeID(fresh) == CFBooleanGetTypeID(), fresh.boolValue,
+          let grant = body["signupGrant"] as? [String: Any],
+          let credits = grant["credits"] as? NSNumber, CFGetTypeID(credits) != CFBooleanGetTypeID(),
+          credits.doubleValue.isFinite, credits.doubleValue > 0
+    else { return nil }
+    return credits.doubleValue
+}
+
+func signupExpiryDayUTC(_ body: [String: Any]) -> String? {
+    guard newSignupCredits(body) != nil, let grant = body["signupGrant"] as? [String: Any],
+          let expiry = ISO8601.parse(grant["expiresAt"] as? String) else { return nil }
+    return String(expiry.ISO8601Format().prefix(10))
 }
 
 /// One read of the Lynxce wallet: the balance and whose it is.

@@ -48,6 +48,8 @@ class ServerBackend(
     private val store: AppStore,
 ) : ChatBackend, CreditAccount {
     @Volatile private var session = session
+    override var signupCredits: Double? = null
+    override val signupExpiryDay get() = session.signupExpiryDay
     private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sockets = ConcurrentHashMap<String, WebSocket>()
     private var voice: VoiceSupport? = null
@@ -180,9 +182,10 @@ class ServerBackend(
             // Only a display name is ever shown; without one the UI says "Lynxce user".
             val name = user?.str("display_name")?.trim().orEmpty()
             // Octop Bot cloud says so in its sign-in response.
-            val session = ServerSession(base, token, name, cloud = body.bool("cloud") == true)
+            val cloud = body.bool("cloud") == true
+            val session = ServerSession(base, token, name, cloud, if (cloud) signupExpiryDayUTC(body) else null)
             store.setServerSession(session)
-            return ServerBackend(session, store)
+            return ServerBackend(session, store).also { it.signupCredits = if (session.cloud) newSignupCredits(body) else null }
         }
     }
 
