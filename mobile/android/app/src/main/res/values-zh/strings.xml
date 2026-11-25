@@ -124,6 +124,7 @@
 
     <string name="bot_new">新建 Bot</string>
     <string name="bot_edit">修改形象</string>
+    <string name="home_no_match">没有匹配的 Bot 或群聊</string>
     <string name="home_search">搜索</string>
     <string name="bot_edit_title">编辑 Bot</string>
     <string name="bot_name">名字</string>

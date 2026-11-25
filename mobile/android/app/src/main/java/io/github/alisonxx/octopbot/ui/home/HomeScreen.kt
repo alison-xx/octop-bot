@@ -243,6 +243,12 @@ fun Directory(
             state.error?.let { ErrorBanner(it, onRetry = onRefresh) }
             PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 112.dp)) {
+                    if (query.isNotBlank() && bots.isEmpty() && (!state.showGroups || groups.isEmpty())) {
+                        item {
+                            Text(stringResource(R.string.home_no_match), color = palette.secondary,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+                        }
+                    }
                     items(bots, key = { it.id }) { bot ->
                         BotRow(
                             bot = bot,

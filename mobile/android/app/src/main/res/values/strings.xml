@@ -138,6 +138,7 @@
     <!-- Bot picker and editor -->
     <string name="bot_new">New Bot</string>
     <string name="bot_edit">Edit look</string>
+    <string name="home_no_match">No matching bots or groups</string>
     <string name="home_search">Search</string>
     <string name="bot_edit_title">Edit Bot</string>
     <string name="bot_name">Name</string>

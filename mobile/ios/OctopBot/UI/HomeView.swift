@@ -4,6 +4,7 @@ import SwiftUI
 struct HomeView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var path = NavigationPath()
     @State private var selection: Route?
@@ -123,7 +124,7 @@ struct HomeView: View {
                         }
                         .accessibilityIdentifier("bot-\(bot.name)")
                 }
-                if shownBots.isEmpty && !query.isEmpty {
+                if shownBots.isEmpty && shownGroups.isEmpty && !query.isEmpty {
                     Text("home.noMatch").font(.subheadline).foregroundStyle(Palette.secondary)
                         .listRowBackground(Palette.background)
                 }
@@ -144,7 +145,7 @@ struct HomeView: View {
                 }
             }
         }
-        .animation(.snappy, value: shownBots.map(\.id))
+        .animation(reduceMotion ? nil : .snappy, value: shownBots.map(\.id))
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Palette.background.ignoresSafeArea())
