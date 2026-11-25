@@ -161,7 +161,7 @@ class Billing:
 
     def charge_disk(self, record: Any, day: str, size_gb: int) -> None:
         if self.disk_down:
-            raise OctopError.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
+            raise computers.DiskBalanceInsufficient.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
         self.disks.append((record.agent_id, day, size_gb))
 
     def reserve(self, record: Any, minutes: int) -> computers.Reservation:
@@ -1245,3 +1245,91 @@ def test_unpaid_use_cancels_and_starts_a_new_warning_cycle(
     clock.now += 15 * 86400
     manager.tick()
     assert sent == ["bot", "bot"]
+
+
+@pytest.mark.parametrize("confirmed_today", [False, True])
+def test_stale_unpaid_notice_gives_idle_its_own_delivered_grace(
+    setup: Any, monkeypatch: pytest.MonkeyPatch, confirmed_today: bool
+) -> None:
+    manager, driver, _, clock = setup
+    monkeypatch.setenv("OCTOP_COMPUTER_RECLAIM", "on")
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "off")
+    day = 86400
+    active = clock.now
+    clock.now += 41 * day
+    # A previously delivered insufficient-balance warning reached its own deadline yesterday.
+    # A disabled billing switch must invalidate even a same-day balance result.
+    confirmed = computers.beijing_day(clock.now if confirmed_today else clock.now - day)
+    record = computers.ComputerRecord(
+        agent_id="bot",
+        user_id=1,
+        instance_id="synthetic",
+        active_at=active,
+        reminded_at=clock.now - 8 * day,
+        reclaim_at=clock.now - day,
+        reclaim_reason="unpaid",
+        disk_insufficient_day=confirmed,
+        disk_failed_day=computers.beijing_day(active),
+    )
+    driver.states["synthetic"] = "paused"
+    manager._save(record)
+    assert manager.reclaim_status(record) == (41, "reminded", clock.now + 7 * day)
+    sent = []
+
+    def notify(record: Any, deadline: float) -> bool:
+        sent.append((record.reclaim_reason, deadline))
+        return len(sent) > 1
+
+    manager.remind = notify
+    manager._reclaim_tick("bot", 1, clock.now)
+    assert manager.record("bot", 1).reminded_at is None
+    clock.now += day
+    manager._reclaim_tick("bot", 1, clock.now)
+    fresh = manager.record("bot", 1)
+    assert fresh.reclaim_reason == "idle" and fresh.reminded_at == clock.now
+    assert sent == [("idle", clock.now + 6 * day), ("idle", clock.now + 7 * day)]
+    assert fresh.reclaim_at == clock.now + 7 * day
+    clock.now = fresh.reclaim_at - 1
+    manager._reclaim_tick("bot", 1, clock.now)
+    assert driver.state("synthetic") == "paused"
+    clock.now += 1
+    manager._reclaim_tick("bot", 1, clock.now)
+    assert driver.state("synthetic") == "gone" and len(sent) == 2
+
+
+def test_waiting_for_first_balance_result_after_midnight_preserves_prior_notice(
+    setup: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import UTC, datetime
+
+    manager, driver, billing, clock = setup
+    monkeypatch.setenv("OCTOP_COMPUTER_RECLAIM", "on")
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "on")
+    last = datetime(2026, 11, 20, 15, 59, tzinfo=UTC).timestamp()
+    end = last + 2 * 60
+    billing.disk_down = True
+    driver.disk_size = 40
+    driver.states["disk"] = "paused"
+    record = computers.ComputerRecord(
+        agent_id="bot",
+        user_id=1,
+        instance_id="disk",
+        active_at=last - 45 * 86400,
+        disk_failed_day=computers.beijing_day(last - 30 * 86400),
+        disk_insufficient_day=computers.beijing_day(last),
+        disk_retry_at=last + computers.DISK_RETRY_SECONDS,
+        reclaim_reason="unpaid",
+        reminded_at=end - 7 * 86400,
+        reclaim_at=end,
+    )
+    manager._save(record)
+    calls = []
+    manager.remind = lambda *_: calls.append("duplicate") or True
+    clock.now = end
+    manager.tick()
+    transient = manager.record("bot", 1)
+    assert transient.reclaim_at == end and transient.reminded_at == record.reminded_at
+    assert driver.state("disk") == "paused" and not calls
+    clock.now = last + computers.DISK_RETRY_SECONDS
+    manager.tick()
+    assert driver.state("disk") == "gone" and not calls

@@ -23,6 +23,7 @@ from datetime import date, datetime, timedelta, timezone
 from datetime import time as daytime
 from typing import TYPE_CHECKING, Any, Literal
 
+from octop.infra.cloud.computers import DiskBalanceInsufficient
 from octop.infra.cloud.computers.driver import AgsConfig, AgsDriver, ComputerDriver, Spec
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -449,10 +450,13 @@ class ComputerManager:
         idle_days = max(0, int((now - last) // 86400)) if last else 0
         if not record.instance_id:
             return idle_days, None, None
-        confirmed_today = record.disk_insufficient_day == beijing_day(now)
-        if record.reclaim_reason == "unpaid" and not confirmed_today:
+        confirmed_today = self._unpaid_confirmed(record, now)
+        if record.reclaim_reason == "unpaid" and disk_billing_enabled() and not confirmed_today:
+            # A day rollover can precede the next scheduled debit. Preserve the actual notice
+            # and require a fresh balance decision before the reaper can act on its deadline.
             return idle_days, None, None
-        if record.reminded_at is not None and record.reclaim_at is not None:
+        valid_notice = record.reclaim_reason != "unpaid" or confirmed_today
+        if valid_notice and record.reminded_at is not None and record.reclaim_at is not None:
             state = "pending_reclaim" if now >= record.reclaim_at else "reminded"
             return idle_days, state, record.reclaim_at
         failed_day = record.reclaim_unpaid_since or record.disk_failed_day
@@ -466,8 +470,14 @@ class ComputerManager:
                 return idle_days, "pending_reclaim" if now >= deadline else "reminded", deadline
         if not record.running and last and idle_days >= 30:
             deadline = last + 37 * 86400
+            if not valid_notice:
+                deadline = max(deadline, now + 7 * 86400)
             return idle_days, "pending_reclaim" if now >= deadline else "reminded", deadline
         return idle_days, None, None
+
+    @staticmethod
+    def _unpaid_confirmed(record: ComputerRecord, now: float) -> bool:
+        return disk_billing_enabled() and record.disk_insufficient_day == beijing_day(now)
 
     def _reclaim_tick(self, agent_id: str, user_id: int, now: float) -> None:
         with self._lock(agent_id):
@@ -476,6 +486,10 @@ class ComputerManager:
                 return
             if not record.active_at and not record.started_at and record.reclaim_seen_at is None:
                 record.reclaim_seen_at = now
+                self._save(record)
+            if record.reclaim_reason == "unpaid" and not disk_billing_enabled():
+                # An idle reclaim needs its own delivered warning and full grace period.
+                self._cancel_reclaim(record)
                 self._save(record)
             _, state, deadline = self.reclaim_status(record)
             if not reclaim_enabled() or state is None:
@@ -496,9 +510,7 @@ class ComputerManager:
                 else 0
             )
             record.reclaim_reason = (
-                "unpaid"
-                if record.disk_insufficient_day == beijing_day(now) and overdue >= 23
-                else "idle"
+                "unpaid" if self._unpaid_confirmed(record, now) and overdue >= 23 else "idle"
             )
             # A delayed reaper or unavailable notification must still allow seven days.
             deadline = max(deadline or now, now + 7 * 86400)
@@ -846,7 +858,7 @@ class ComputerManager:
                 self._billing.charge_disk(record, day, size)
             except Exception as exc:  # noqa: BLE001 - retry transient billing failures as well
                 logger.info("disk of computer %s not paid for %s; retrying later", agent_id, day)
-                if isinstance(exc, OctopError) and exc.code == ErrorCode.BOT_CLOUD_CREDITS_REQUIRED:
+                if isinstance(exc, DiskBalanceInsufficient):
                     record.disk_failed_day = record.disk_failed_day or day
                     record.disk_insufficient_day = day
                 else:
