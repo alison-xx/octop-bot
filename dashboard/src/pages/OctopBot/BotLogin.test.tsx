@@ -164,7 +164,12 @@ describe("Bot web sign-in", () => {
       );
       sessionStorage.setItem(
         "octop.cloud.web.login.v1",
-        JSON.stringify({ provider, state: "tab-state", time: Date.now() }),
+        JSON.stringify({
+          provider,
+          callbackState: "tab-state",
+          state: provider === "wechat" ? "local-proof" : "tab-state",
+          time: Date.now(),
+        }),
       );
       const exchange = vi
         .spyOn(botWebLogin, "exchange")
@@ -182,7 +187,7 @@ describe("Bot web sign-in", () => {
       expect(exchange).toHaveBeenCalledWith(
         provider,
         "sample",
-        "tab-state",
+        provider === "wechat" ? "local-proof" : "tab-state",
         "en",
       );
       expect(window.location.hash).toBe("");

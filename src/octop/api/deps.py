@@ -66,6 +66,9 @@ _JWT_EXEMPT_EXACT = (
     "/api/auth/lynxce/session-login",
     "/api/auth/lynxce/token-login",
     "/api/auth/lynxce/status",
+    "/api/auth/lynxce/web-login/config",
+    "/api/auth/lynxce/web-login/exchange",
+    "/api/auth/lynxce/web-login/bind",
     # Octop Bot clients check an address before showing a sign-in form.
     "/api/octop-bot/server-info",
     "/api/octop-bot/market",

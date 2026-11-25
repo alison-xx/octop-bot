@@ -13,12 +13,13 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, Request, Response
+from pydantic import BaseModel, Field, SecretStr
 
+from octop.api.common.sensitive_input import SensitiveInputRoute
 from octop.api.deps import get_server, require_database
 from octop.api.routers.setup import LOCAL_DESKTOP_USERNAME as LEGACY_OWNER_USERNAME
-from octop.infra.auth import lynxce_cloud
+from octop.infra.auth import lynxce_cloud, lynxce_web_login
 from octop.infra.auth.lynxce_owner import OWNER_USERNAME, bind_owner, owner_binding
 from octop.infra.auth.mfa.service import MfaService
 from octop.infra.auth.tokens import PURPOSE_DESKTOP_REMOTE, sign_token
@@ -478,6 +479,89 @@ async def lynxce_token_login(
     }
 
 
+web_router = APIRouter(prefix="/lynxce/web-login", route_class=SensitiveInputRoute)
+
+
+class WebExchangeBody(BaseModel):
+    provider: lynxce_web_login.Provider
+    code: SecretStr = Field(min_length=1, max_length=32768)
+    state: SecretStr = Field(min_length=1, max_length=2048)
+    locale: str | None = Field(default=None, max_length=16)
+
+
+class WebBindBody(BaseModel):
+    bind_token: SecretStr = Field(min_length=1, max_length=32768)
+    phone: str = Field(min_length=1, max_length=24)
+    code: SecretStr = Field(min_length=1, max_length=16)
+    locale: str | None = Field(default=None, max_length=16)
+
+
+class WebSession(BaseModel):
+    access_token: str
+
+
+def _require_web_cloud(server: Any) -> None:
+    if not bot_cloud_enabled():
+        raise OctopError.localized(ErrorCode.FORBIDDEN)
+    require_database(server)
+
+
+@web_router.get(
+    "/config",
+    summary="Get the cloud workspace authorization URL",
+    description="Returns an enabled provider only when Lynxce confirms the cloud site's registered callback.",
+)
+async def web_login_config(
+    provider: lynxce_web_login.Provider, response: Response, server: Any = Depends(get_server)
+) -> lynxce_web_login.WebLoginConfig:
+    _require_web_cloud(server)
+    response.headers["Cache-Control"] = "no-store"
+    return await lynxce_web_login.config(provider)
+
+
+@web_router.post(
+    "/exchange",
+    summary="Complete a cloud workspace authorization",
+    description="Exchanges the provider code for an Octop session. First-time WeChat users may need to verify a phone number.",
+)
+async def web_login_exchange(
+    body: WebExchangeBody, request: Request, response: Response, server: Any = Depends(get_server)
+) -> WebSession | lynxce_web_login.PhoneBinding:
+    _require_web_cloud(server)
+    response.headers["Cache-Control"] = "no-store"
+    outcome = await _opened(
+        request,
+        lambda: lynxce_web_login.exchange(
+            body.provider, body.code.get_secret_value(), body.state.get_secret_value()
+        ),
+    )
+    if isinstance(outcome, lynxce_web_login.PhoneBinding):
+        return outcome
+    result = await _complete_cloud_sign_in(server, request, body.locale, outcome)
+    return WebSession(access_token=result["access_token"])
+
+
+@web_router.post("/bind", summary="Verify a phone number after a cloud WeChat sign-in")
+async def web_login_bind(
+    body: WebBindBody, request: Request, response: Response, server: Any = Depends(get_server)
+) -> WebSession:
+    _require_web_cloud(server)
+    response.headers["Cache-Control"] = "no-store"
+    result = await _cloud_sign_in(
+        server,
+        request,
+        body.locale,
+        lambda: lynxce_web_login.bind(
+            body.bind_token.get_secret_value(), body.phone, body.code.get_secret_value()
+        ),
+        account=body.phone,
+    )
+    return WebSession(access_token=result["access_token"])
+
+
+router.include_router(web_router)
+
+
 async def _opened[T](
     request: Request, opener: Callable[[], Awaitable[T]], account: str | None = None
 ) -> T:
@@ -508,6 +592,12 @@ async def _cloud_sign_in(
     """Cloud mode: any Lynxce account signs in to (and on first use, gets) its own account."""
     require_database(server)
     session = await _opened(request, opener, account)
+    return await _complete_cloud_sign_in(server, request, requested_locale, session)
+
+
+async def _complete_cloud_sign_in(
+    server: Any, request: Request, requested_locale: str | None, session: lynxce_cloud.CloudSession
+) -> dict[str, Any]:
     locale = normalize_locale(requested_locale or resolve_request_locale(request))
     user = await cloud_accounts.provision(server.services, server.user_manager, session, locale)
     # Tells clients this server also keeps the Lynxce wallet for the account.

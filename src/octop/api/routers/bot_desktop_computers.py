@@ -19,13 +19,13 @@ from pydantic import BaseModel, Field
 from websockets.typing import Subprotocol
 
 from octop.api.common.bot_desktop import Owner, Services, screen_login
+from octop.api.common.sensitive_input import SensitiveInputRoute
 from octop.api.deps import extract_raw_token, get_server, resolve_user_from_token
 from octop.api.routers.bot_cloud_account import (
     CloudLogin,
     CodeLogin,
     CodeRequest,
     CodeSent,
-    _AccountRoute,
 )
 from octop.api.routers.bot_computers import (
     Clipboard,
@@ -48,7 +48,7 @@ from octop.infra.desktop import bot_cloud_origin
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 
-router = APIRouter(route_class=_AccountRoute)
+router = APIRouter(route_class=SensitiveInputRoute)
 
 
 class ComputerTarget(BaseModel):

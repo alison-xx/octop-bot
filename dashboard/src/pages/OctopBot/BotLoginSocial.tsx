@@ -36,7 +36,8 @@ function takeCallback(): Callback | "cancelled" | "expired" | null {
       !Number.isFinite(age) ||
       age < 0 ||
       age > 600000 ||
-      (provider === "wechat" && params.get("state") !== attempt.state)
+      (provider === "wechat" &&
+        params.get("state") !== (attempt.callbackState ?? attempt.state))
     )
       return "expired";
     if (params.has("error"))
@@ -148,7 +149,17 @@ export function useBotLoginSocial(
       if (!enabled || !state || !url) throw new Error("Provider unavailable");
       sessionStorage.setItem(
         KEY,
-        JSON.stringify({ provider, state, time: Date.now() }),
+        JSON.stringify({
+          provider,
+          state,
+          time: Date.now(),
+          // WeChat echoes its QR state. Its one-time exchange requires a separate
+          // proof that only this originating tab received in the config response.
+          callbackState:
+            provider === "wechat"
+              ? new URL(url).searchParams.get("state")
+              : undefined,
+        }),
       );
       window.location.assign(url);
     } catch {
