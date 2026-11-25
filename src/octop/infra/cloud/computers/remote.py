@@ -7,6 +7,7 @@ new account cannot reuse a previous account's computer token.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import re
@@ -20,6 +21,7 @@ from typing import Any, Literal
 import httpx
 from filelock import AsyncFileLock
 
+from octop.i18n import tr
 from octop.infra.agents.bot_workspace import require_own_bot
 from octop.infra.agents.settings.profile import parse_config_json
 from octop.infra.auth import lynxce_cloud
@@ -28,6 +30,7 @@ from octop.infra.db.repos.agents import AgentRow
 from octop.infra.db.services import SharedServices
 from octop.infra.desktop import bot_cloud_origin, bot_desktop_enabled
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.locale import resolve_user_locale
 from octop.infra.utils.ulid import new_ulid
 
 
@@ -312,7 +315,15 @@ class RemoteComputerManager:
                 if now < _next_command.get(key, 0):
                     raise OctopError.localized(ErrorCode.BOT_COMPUTER_BUSY, status=429)
                 _next_command[key] = now + 1
-        if action in ("/screenshot", "/accessibility", "/files", "/run", "/python", "/takeover"):
+        if action in (
+            "/screenshot",
+            "/accessibility",
+            "/files",
+            "/run",
+            "/python",
+            "/takeover",
+            "/model-screen",
+        ):
             execution_time = kwargs.pop("timeout", 60)
             kwargs["timeout"] = httpx.Timeout(STARTUP_TIMEOUT + execution_time, connect=10)
         return await self._request(method, f"/api/octop-bot/computers/{shadow}{action}", **kwargs)
@@ -321,9 +332,54 @@ class RemoteComputerManager:
         if (self.agent_id, self.user_id) != (agent_id, user_id):
             raise OctopError.localized(ErrorCode.NOT_FOUND)
 
-    def use[T](self, agent_id: str, user_id: int, work: Callable[[RemoteDriver, str], T]) -> T:
-        self._check(agent_id, user_id)
-        return work(RemoteDriver(self), agent_id)
+    def model_action(self, thread: str, params: dict[str, Any]) -> tuple[str, str, bytes | None]:
+        locale = resolve_user_locale(user_repo=self.services.user_repo, user_id=self.user_id)
+        upgrade = tr("octop_bot.computer_handoff.upgrade", locale)
+
+        async def perform() -> tuple[str, str, bytes | None]:
+            state = (await self.computer("GET")).json()
+            version = state.get("model_screen_version")
+            if type(version) is not int or version != 1:
+                return "unavailable", upgrade, None
+            try:
+                response = await self.computer(
+                    "POST", "/model-screen", json={**params, "thread_id": thread}
+                )
+            except OctopError as exc:
+                if exc.status in {404, 405, 501}:
+                    return "unavailable", upgrade, None
+                raise
+            result = response.json()
+            status, note = result["status"], result["text"]
+            if status not in {
+                "ok",
+                "handback",
+                "busy",
+                "taken_over",
+                "withheld",
+                "needs_human",
+            } or not isinstance(note, str):
+                raise ValueError
+            if status not in {"ok", "handback"}:
+                return status, note, None
+            encoded = result.get("image_base64")
+            image = base64.b64decode(encoded, validate=True) if encoded is not None else None
+            if image is not None and not image.startswith(b"\xff\xd8\xff"):
+                raise ValueError
+            if status == "ok":
+                self.note(self.agent_id, params["action"])
+            return status, note, image
+
+        try:
+            return asyncio.run(perform())
+        except OctopError as exc:
+            return "unavailable", exc.localized_message(locale), None
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return (
+                "unavailable",
+                OctopError.localized(ErrorCode.NETWORK_ERROR, locale).message,
+                None,
+            )
 
     def taken_over(self, agent_id: str, user_id: int) -> bool:
         self._check(agent_id, user_id)
@@ -381,7 +437,7 @@ def transfer_path(path: str) -> str:
 
 
 class RemoteDriver:
-    """Synchronous adapter for the existing computer-use tool's worker thread."""
+    """Synchronous shell and workspace file operations for the desktop transfer tool."""
 
     def __init__(self, manager: RemoteComputerManager):
         self.manager = manager
@@ -390,20 +446,6 @@ class RemoteDriver:
         if instance != self.manager.agent_id:
             raise OctopError.localized(ErrorCode.NOT_FOUND)
         return asyncio.run(self.manager.computer(method, action, **kwargs))
-
-    def screenshot(self, instance: str) -> bytes:
-        return self.request(instance, "GET", "/screenshot").content
-
-    def accessibility(self, instance: str) -> str:
-        return str(self.request(instance, "GET", "/accessibility").json()["xml"])
-
-    def run_python(self, instance: str, code: str) -> str:
-        from octop.infra.cloud.computers.backend import TAKEN_OVER
-
-        result = self.request(instance, "POST", "/python", json={"code": code}, timeout=310).json()
-        if result["taken_over"]:
-            raise RuntimeError(TAKEN_OVER)
-        return str(result["output"])
 
     def run(self, instance: str, command: str, timeout: int) -> tuple[int, str]:
         result = self.request(

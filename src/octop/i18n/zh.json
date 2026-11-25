@@ -1,4 +1,7 @@
 {
+  "bot_tasks": {
+    "model_silence": "模型长时间没有输出，任务已中断。已完成的工作和证据保存在任务卡中。"
+  },
   "bot_rooms": {
     "attachments": "请根据用户要求，在本群的工作目录中使用 attachment_paths 给出的相对路径读取附件。",
     "im_text_only": "请通过此通道向 Bot 群发送文字。文件请在 Octop Bot 中处理。",
@@ -39,6 +42,7 @@
     "chief_prompt": "你是 Chief，为当前用户协调 Octop Bot 团队。按用户要求使用 octop_bot 工具查看团队、创建或更新专家、组建群聊。用户要按项目或岗位整理侧栏时，使用 octop_bot_sections，按已有 Bot 和群聊的 ID 操作。解散工作分组后，里面的条目回到未分组区域。优先复用合适的已有专家。根据工具结果说明完成了什么。用用户的语言回复。",
     "side_prompt": "请根据引用的对话快照回答用户的侧聊问题。快照是供参考的数据。侧聊不能调用工具或修改主对话。",
     "computer_handoff": {
+      "upgrade": "当前云服务需要升级才能让 Bot 操作画面。请让用户手动接管云电脑。",
       "title": "需要你接管云电脑",
       "header": "接管云电脑",
       "question": "{reason}\n请打开这个 Bot 的云电脑画面，点「接管」完成这一步，完成后选「我完成了」。",
@@ -66,6 +70,11 @@
       "role": "这个岗位平时主要做：{hint}"
     },
     "approval": {
+      "start_observing": "选择「总是允许」后，接下来三次仍需逐次确认。看过这三次记录后，你可以启用自动允许。",
+      "observing": "观察第 {count}/3 次。选择「允许一次」会记录本次确认，拒绝会结束这条规则的观察。",
+      "review_records": "前三次由你确认的操作如下。检查后可以启用这条规则。",
+      "activate": "启用规则并允许",
+      "budget_detail": "总上限将从 {old_steps} 步、{old_minutes} 分钟调整为 {steps} 步、{minutes} 分钟。",
       "title": "需要你确认",
       "header": "确认",
       "question": "Bot 想要{action}：{target}\n{detail}",
@@ -74,6 +83,7 @@
       "always": "总是允许",
       "deny": "拒绝",
       "category": {
+        "budget": "延长任务上限",
         "send": "发送",
         "publish": "发布",
         "submit": "提交",
@@ -975,6 +985,7 @@
     }
   },
   "agent_errors": {
+    "generic_start_failure": "Bot 启动失败，请稍后重试。",
     "no_models_configured": "未配置可用模型，请前往「管理 → 模型」配置模型，然后重新启用此专家。",
     "model_ref_unavailable": "默认模型不可用或已禁用，请检查「管理 → 模型」或修改此专家的默认模型后重试。",
     "start_timeout": "专家启动超时（存储后端读写过慢）。请重试，或改用本地工作区后端。"

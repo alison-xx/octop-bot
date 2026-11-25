@@ -1,3 +1,4 @@
+import { LynxceAccountAvatar } from "../../components/LynxceAccountAvatar";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Input, Spin } from "antd";
 import { ArrowRight, ChevronRight, LockKeyhole } from "lucide-react";
@@ -515,15 +516,10 @@ export default function BotClientSetup() {
                 }}
               >
                 <div>
-                  {wechatBind.avatar && (
-                    <img
-                      src={wechatBind.avatar}
-                      alt=""
-                      width={32}
-                      height={32}
-                      style={{ borderRadius: "50%" }}
-                    />
-                  )}{" "}
+                  <LynxceAccountAvatar
+                    name={wechatBind.nickname || t("botCloud.wechatUser")}
+                    url={wechatBind.avatar}
+                  />{" "}
                   {wechatBind.nickname || t("botCloud.wechatUser")}
                 </div>
                 <Input

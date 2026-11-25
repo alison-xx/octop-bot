@@ -1,5 +1,6 @@
 """Exercise the desktop sidecar's app, registry, mounted tools and real harness workspace."""
 
+import json
 from unittest.mock import AsyncMock
 
 import httpx
@@ -27,13 +28,33 @@ async def test_desktop_switch_and_workspace_upload(tmp_octop_home, monkeypatch):
                 200, json={"agent_id": "test-shadow", "origin": path.split("/")[-1]}
             )
         assert path.startswith("/api/octop-bot/computers/test-shadow")
+        if path.endswith("/model-screen"):
+            payload = json.loads(request.content)
+            assert payload == {
+                "action": "elements",
+                "thread_id": "desktop-chat",
+                "amount": 5,
+                "seconds": 1,
+                "button": "left",
+            }
+            return httpx.Response(
+                200, json={"status": "ok", "text": "Preview", "image_base64": None}
+            )
         if path.endswith("/files"):
             key = request.url.params["path"]
             if request.method == "PUT":
                 stored[key] = request.content
                 return httpx.Response(200, json={"path": key, "size": len(request.content)})
             return httpx.Response(200, content=stored[key])
-        return httpx.Response(200, json={"state": "none", "spec": "standard", "takeover": False})
+        return httpx.Response(
+            200,
+            json={
+                "state": "none",
+                "spec": "standard",
+                "takeover": False,
+                "model_screen_version": 1,
+            },
+        )
 
     monkeypatch.setattr(
         remote,
@@ -72,6 +93,16 @@ async def test_desktop_switch_and_workspace_upload(tmp_octop_home, monkeypatch):
         tools = {tool.name: tool for tool in kit.tools}
         assert {"cloud_computer", "request_takeover", "cloud_computer_workspace"} <= tools.keys()
         assert "octop_computer" not in tools
+        screen = await tools["cloud_computer"].ainvoke(
+            {
+                "type": "tool_call",
+                "id": "screen",
+                "name": "cloud_computer",
+                "args": {"action": "elements"},
+            },
+            config={"configurable": {"thread_id": "desktop-chat"}},
+        )
+        assert screen.content == "Preview"
         tool = tools["cloud_computer_workspace"]
         workspace = agent.workspace
         await workspace.aupload_bytes("sample.txt", b"desktop sample")

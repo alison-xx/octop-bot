@@ -3729,6 +3729,7 @@ class AgentManager:
             self._desktop_computer_bindings.pop(row.agent_id, None)
         extra: list[Any] = []
         computers: Any
+        remote_action = None
         if self._cloud_tenant(row.user_id):
             computers = current_manager()
         elif bot_desktop_enabled() and not row.is_shared and configured_target(row) == "cloud":
@@ -3744,7 +3745,9 @@ class AgentManager:
                 )
             if grant is None:
                 return []
-            computers = RemoteComputerManager.owned(services, row.user_id, row.agent_id)
+            remote = RemoteComputerManager.owned(services, row.user_id, row.agent_id)
+            computers = remote
+            remote_action = remote.model_action
             if not room:
                 extra.append(
                     workspace_tool(computers, lambda: self.get_agent(row.agent_id).workspace)
@@ -3766,6 +3769,7 @@ class AgentManager:
                 row.user_id,
                 approvals=ApprovalRules(self._repos.settings_repo),
                 user_repo=self._repos.user_repo,
+                remote_action=remote_action,
             ),
             request_takeover_tool(computers, self._repos.user_repo, row.agent_id, row.user_id),
             *extra,
@@ -5262,16 +5266,19 @@ class AgentManager:
             # Tasks (plan, evidence, finish gate) wherever the Bot works: every turn for a
             # cloud tenant, Octop Bot client turns otherwise.
             from octop.infra.bot_tasks.approvals import ApprovalRules, request_approval_tool
+            from octop.infra.bot_tasks.budget import task_budget_tool
             from octop.infra.bot_tasks.store import TaskStore
             from octop.infra.bot_tasks.tools import task_tools
             from octop.infra.bot_tasks.watchdog import BotTaskMiddleware
 
             tenant = self._cloud_tenant(row.user_id)
             tasks = TaskStore(self._repos.settings_repo)
+            rules = ApprovalRules(self._repos.settings_repo, timezone=self._config.default_timezone)
             task_kit = [
                 *task_tools(tasks),
+                task_budget_tool(tasks, rules, self._repos.user_repo, row.agent_id, row.user_id),
                 request_approval_tool(
-                    ApprovalRules(self._repos.settings_repo),
+                    rules,
                     self._repos.user_repo,
                     row.agent_id,
                     row.user_id,
@@ -5291,7 +5298,11 @@ class AgentManager:
 
                 workspace_tools.extend(chief_tools(self, services, row.agent_id, row.user_id))
             agent_middleware.append(BotWorkspaceTools(workspace_tools, anywhere))
-            agent_middleware.append(BotTaskMiddleware(tasks, always=tenant))
+            agent_middleware.append(
+                BotTaskMiddleware(
+                    tasks, always=tenant, user_repo=self._repos.user_repo, owner=row.user_id
+                )
+            )
             if computer_tools:
                 from octop.infra.cloud.computers.computer_use import ComputerBriefing
 

@@ -17,6 +17,7 @@ import base64
 import io
 import json
 import logging
+import math
 import re
 import time
 import xml.etree.ElementTree as ET
@@ -32,6 +33,7 @@ from langchain_core.messages import (
 )
 from langchain_core.tools import InjectedToolCallId, StructuredTool
 from langgraph.config import get_config
+from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command, interrupt
 from octop_harness.builtin.tools.ask_user import ASK_USER_TOOL_NAME
 
@@ -385,7 +387,7 @@ def control_at(xml: str, x: float, y: float) -> str | None:
             continue
         role = node.tag.rsplit("}", 1)[-1]
         name = (node.get("name") or node.text or "").strip()
-        if role not in _INTERACTIVE or not name:
+        if role == "password-text" or role not in _INTERACTIVE or not name:
             continue
         origin = _pair(node.get(f"{{{_NS_COMPONENT}}}screencoord"))
         size = _pair(node.get(f"{{{_NS_COMPONENT}}}size"))
@@ -414,6 +416,102 @@ def _pair(value: str | None) -> tuple[float, float] | None:
         return None
 
 
+def _control_attr(node: ET.Element, key: str) -> str | None:
+    # AGS images use different namespace URIs for the same AT-SPI attributes.
+    return next((v for k, v in node.attrib.items() if k.rsplit("}", 1)[-1] == key), None)
+
+
+def _screen_bounds(node: ET.Element) -> tuple[float, float, float, float] | None:
+    origin = _pair(_control_attr(node, "screencoord"))
+    size = _pair(_control_attr(node, "size"))
+    if not origin or not size or min(size) <= 0 or not all(map(math.isfinite, (*origin, *size))):
+        return None
+    x, y = origin
+    right, bottom = x + size[0], y + size[1]
+    if not math.isfinite(right) or not math.isfinite(bottom):
+        return None
+    if right <= 0 or bottom <= 0 or x >= SCREEN[0] or y >= SCREEN[1]:
+        return None
+    return x, y, right, bottom
+
+
+def _password_boxes(xml: str) -> list[tuple[float, float, float, float]]:
+    root = ET.fromstring(xml)
+    containers = {
+        "alert",
+        "dialog",
+        "application",
+        "desktop",
+        "desktop-frame",
+        "frame",
+        "panel",
+        "root-pane",
+        "window",
+    }
+    windows = [
+        node
+        for node in root.iter()
+        if node.tag.rsplit("}", 1)[-1] in {"frame", "dialog", "window", "alert"}
+        and _control_attr(node, "showing") == "true"
+    ]
+    foreground_verified = False
+    for window in windows:
+        controls = [
+            node
+            for node in window.iter()
+            if node is not window
+            and not len(node)
+            and node.tag.rsplit("}", 1)[-1] not in containers
+            and _control_attr(node, "showing") == "true"
+            and _screen_bounds(node) is not None
+        ]
+        if not controls:
+            raise ValueError("A visible window has no verifiable controls.")
+        if _control_attr(window, "active") == "true" or any(
+            _control_attr(node, "focused") == "true" for node in controls
+        ):
+            foreground_verified = True
+    if not foreground_verified:
+        raise ValueError("The foreground window could not be verified.")
+    boxes = []
+    for node in root.iter():
+        if (
+            node.tag.rsplit("}", 1)[-1] != "password-text"
+            or _control_attr(node, "showing") == "false"
+        ):
+            continue
+        bounds = _screen_bounds(node)
+        if bounds is None:
+            raise ValueError("Password control has no usable bounds.")
+        boxes.append(bounds)
+    return boxes
+
+
+def handback_view(driver: ComputerDriver, instance: str) -> tuple[bytes, bool]:
+    """Withhold unstable frames; mask a verified, stable layout before resizing."""
+    from PIL import Image, ImageDraw
+
+    before = driver.accessibility(instance)
+    boxes = _password_boxes(before)
+    picture = driver.screenshot(instance)
+    if driver.accessibility(instance) != before:
+        raise ValueError("The desktop tree changed during capture.")
+
+    with Image.open(io.BytesIO(picture)) as source:
+        image = source.convert("RGB")
+    if image.size != SCREEN:
+        raise ValueError("Unknown handback screen geometry.")
+    draw = ImageDraw.Draw(image)
+    for x, y, right, bottom in boxes:
+        draw.rectangle(
+            (math.floor(x) - 2, math.floor(y) - 2, math.ceil(right) + 2, math.ceil(bottom) + 2),
+            fill="black",
+        )
+    out = io.BytesIO()
+    image.resize(VIEW, Image.Resampling.LANCZOS).save(out, "JPEG", quality=70)
+    return out.getvalue(), not boxes
+
+
 def summarize_elements(xml: str, limit: int = MAX_ELEMENTS) -> str:
     """The accessibility tree as one line per visible control, centres in model coordinates."""
     try:
@@ -422,12 +520,15 @@ def summarize_elements(xml: str, limit: int = MAX_ELEMENTS) -> str:
         return "The accessibility tree could not be read; take a screenshot instead."
     lines: list[str] = []
     seen: set[str] = set()
+    for field in root.iter():
+        if field.tag.rsplit("}", 1)[-1] == "password-text":
+            field[:] = []
     for node in root.iter():
         if node.get(f"{{{_NS_STATE}}}showing") != "true":
             continue
         role = node.tag.rsplit("}", 1)[-1]
         name = (node.get("name") or "").strip()
-        label = name or (node.text or "").strip()
+        label = "[redacted]" if role == "password-text" else name or (node.text or "").strip()
         if not label and role not in _INTERACTIVE:
             continue
         if not label and role in ("text", "panel"):
@@ -496,13 +597,14 @@ def computer_use_tool(
     *,
     approvals: ApprovalRules | None = None,
     user_repo: Any = None,
+    remote_action: Callable[[str, dict[str, Any]], tuple[str, str, bytes | None]] | None = None,
 ) -> StructuredTool:
     watches: dict[str, ScreenWatch] = {}
 
-    def guard_click(x: float, y: float) -> str | None:
+    def guard_click(driver: ComputerDriver, instance: str, x: float, y: float) -> str | None:
         """Refusal text when the click would pay, or the user said no to a consequential one."""
         try:
-            xml = manager.use(agent_id, user_id, lambda d, i: d.accessibility(i))
+            xml = driver.accessibility(instance)
         except Exception:  # noqa: BLE001 - no tree, no check: the click goes ahead as before
             logger.debug("accessibility read before click failed for %s", agent_id, exc_info=True)
             return None
@@ -539,17 +641,13 @@ def computer_use_tool(
         button: Literal["left", "middle", "right"] = "left",
         seconds: float = 1.0,
     ) -> Command[Any] | str:
-        if manager.taken_over(agent_id, user_id):
+        if remote_action is None and manager.taken_over(agent_id, user_id):
             return TAKEN_OVER
         # One conversation at a time drives the screen (a private chat and a group can both
         # reach this Bot's computer).
         thread = _thread_id()
         if not manager.claim_screen(agent_id, thread):
             return BUSY_ELSEWHERE
-        if action in ("click", "double_click") and x is not None and y is not None:
-            refused = guard_click(float(x), float(y))
-            if refused:
-                return refused
         if thread not in watches and len(watches) >= 64:
             watches.clear()
         watch = watches.setdefault(thread, ScreenWatch())
@@ -562,7 +660,50 @@ def computer_use_tool(
         if refused:
             return refused
 
+        if remote_action is not None:
+            # A desktop Bot sends one structured action. Only the cloud can inspect the
+            # handback frame and execute the action under the same device lock.
+            params = {
+                "action": action,
+                "x": x,
+                "y": y,
+                "x2": x2,
+                "y2": y2,
+                "text": text,
+                "keys": keys,
+                "direction": direction,
+                "amount": amount,
+                "button": button,
+                "seconds": seconds,
+            }
+            status, note, image = remote_action(
+                thread, {k: v for k, v in params.items() if v is not None}
+            )
+            if status == "handback":
+                note = f"Requested action was not performed. {note}"
+                if image is None:
+                    return note
+                return _with_image(
+                    tool_call_id,
+                    note,
+                    image,
+                    "Screen after handback",
+                )
+            if image is None:
+                return note
+            stuck = watch.after(action, image)
+            return _with_image(
+                tool_call_id,
+                f"{note} {stuck}" if stuck else note,
+                image,
+                f"Cloud computer screen after {action}",
+            )
+
         def work(driver: ComputerDriver, instance: str) -> Command[Any] | str:
+            if action in ("click", "double_click") and x is not None and y is not None:
+                refused = guard_click(driver, instance, float(x), float(y))
+                if refused:
+                    return refused
             manager.note(agent_id, action)
             if action == "elements":
                 return summarize_elements(driver.accessibility(instance))
@@ -608,8 +749,23 @@ def computer_use_tool(
                 f"Cloud computer screen after {action}",
             )
 
+        def review(driver: ComputerDriver, instance: str) -> tuple[Command[Any] | str, bool]:
+            try:
+                image, clear = handback_view(driver, instance)
+            except Exception:  # the driver may include sensitive text in errors
+                return (
+                    "The handback screen could not be checked privately. Ask the user to verify the desktop before continuing.",
+                    False,
+                )
+            note = "Handback screenshot checked. Inspect the attached screen before continuing."
+            if not clear:
+                note = "Password fields are covered. Ask the user to finish or dismiss the form."
+            return _with_image(tool_call_id, note, image, "Screen after handback"), clear
+
         try:
-            return manager.use(agent_id, user_id, work)
+            return manager.model_screen(agent_id, user_id, TAKEN_OVER, work, review)
+        except GraphBubbleUp:
+            raise
         except ValueError as exc:
             return f"Invalid cloud_computer call: {exc}"
         except Exception as exc:  # noqa: BLE001 - the model reads the failure and adapts

@@ -26,7 +26,7 @@ from octop.infra.bot_tasks.model import (
 )
 from octop.infra.bot_tasks.store import TaskStore
 
-TASK_TOOL_NAMES = frozenset({"task_plan", "task_check", "task_finish"})
+TASK_TOOL_NAMES = frozenset({"task_plan", "task_check", "task_finish", "task_extend_budget"})
 
 PLAN_DESCRIPTION = """Start (or revise) the task for this conversation before doing real work: \
 several steps, the computer, or files to deliver. Not for questions or one-step requests.
@@ -65,7 +65,7 @@ def _thread_id() -> str:
 
 def snapshot(task: Task, note: str = "") -> str:
     """The task as the tool result: JSON the client parses and the model reads."""
-    payload: dict[str, Any] = {"task": task.model_dump(mode="json")}
+    payload: dict[str, Any] = {"task": task.model_dump(mode="json", exclude={"failed_calls"})}
     if note:
         payload["note"] = note
     return json.dumps(payload, ensure_ascii=False)
@@ -94,6 +94,8 @@ def task_tools(store: TaskStore) -> list[StructuredTool]:
             store.save(thread, current)
             current = None
         steps, minutes = DEFAULT_BUDGET[tier]
+        if current and current.tier != tier and current.budget_exhausted(now):
+            return "The current budget is exhausted. Request a budget extension or finish the task."
         try:
             if current is None:
                 task = Task(
@@ -159,9 +161,9 @@ def task_tools(store: TaskStore) -> list[StructuredTool]:
         if task.needs_review():
             return REVIEW_FIRST
         now = time.time()
-        task.status = task.verdict()
         task.summary = summary.strip()[:2000]
         task.open_issues = _clean(open_issues or [], 10)
+        task.status = task.verdict()
         task.finished_at = task.updated_at = now
         note = (
             "Done. Reply in a sentence or two; do not repeat the checklist."

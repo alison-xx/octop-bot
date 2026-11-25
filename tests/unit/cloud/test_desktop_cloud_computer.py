@@ -1,6 +1,8 @@
 """Desktop contract tests. All cloud and Lynxce traffic uses in-process fakes."""
 
 import asyncio
+import base64
+import io
 import json
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -231,18 +233,21 @@ async def test_driver_and_transfers(desktop, monkeypatch):
         await api.put(TARGET, json={"target": "cloud"})
         manager = RemoteComputerManager.owned(desktop.services, desktop.owner, "writer")
         driver = RemoteDriver(manager)
-        assert await asyncio.to_thread(driver.screenshot, "writer") == b"test-png"
-        assert await asyncio.to_thread(driver.accessibility, "writer") == "<desktop/>"
+        assert (await api.get(COMPUTER + "/screenshot")).content == b"test-png"
+        assert (await api.get(COMPUTER + "/accessibility")).json()["xml"] == "<desktop/>"
         assert await asyncio.to_thread(driver.run, "writer", "echo ready", 3) == (0, "ready")
         assert (
             await api.post(COMPUTER + "/python", json={"code": "print('ready')"})
         ).status_code == 429
         remote._next_command.clear()
-        assert await asyncio.to_thread(driver.run_python, "writer", "print('ready')") == "ready"
+        assert (await api.post(COMPUTER + "/python", json={"code": "print('ready')"})).json()[
+            "output"
+        ] == "ready"
         remote._next_command.clear()
         desktop.failures.append(httpx.Response(200, json={"taken_over": True, "output": "waiting"}))
-        with pytest.raises(RuntimeError):
-            await asyncio.to_thread(driver.run_python, "writer", "print('ready')")
+        assert (await api.post(COMPUTER + "/python", json={"code": "print('ready')"})).json()[
+            "taken_over"
+        ]
         assert await asyncio.to_thread(driver.read, "writer", "notes.txt") == b"abc"
         await asyncio.to_thread(driver.write, "writer", "notes.txt", b"draft")
         assert (await api.get(COMPUTER + "/files", params={"path": "notes.txt"})).content == b"abc"
@@ -254,6 +259,69 @@ async def test_driver_and_transfers(desktop, monkeypatch):
             await api.put(COMPUTER + "/files", params={"path": "notes.txt"}, content=b"abc")
         ).status_code == 413
         assert (await api.get(COMPUTER + "/files", params={"path": "notes.txt"})).status_code == 413
+
+
+async def test_model_screen_results_and_legacy_service(desktop):
+    from PIL import Image
+
+    from octop.infra.cloud.computers.computer_use import computer_use_tool
+
+    async with client(desktop) as api:
+        await api.put(TARGET, json={"target": "cloud"})
+    manager = RemoteComputerManager.owned(desktop.services, desktop.owner, "writer")
+    tool = computer_use_tool(manager, "writer", desktop.owner, remote_action=manager.model_action)
+    buffer = io.BytesIO()
+    Image.new("RGB", (8, 8), "white").save(buffer, "JPEG")
+    picture = base64.b64encode(buffer.getvalue()).decode()
+    capable = httpx.Response(200, json={"model_screen_version": 1})
+    config = {"configurable": {"thread_id": "chat-one"}}
+
+    async def act(action, **params):
+        return await tool.ainvoke(
+            {
+                "type": "tool_call",
+                "id": "call",
+                "name": "cloud_computer",
+                "args": {"action": action, **params},
+            },
+            config=config,
+        )
+
+    for status, action in [("handback", "move"), ("ok", "screenshot")]:
+        desktop.failures.extend(
+            [
+                capable,
+                httpx.Response(
+                    200, json={"status": status, "text": status, "image_base64": picture}
+                ),
+            ]
+        )
+        result = await act(action, x=10, y=10)
+        note, observation = result.update["messages"]
+        assert status in note.content
+        assert ("not performed" in note.content) == (status == "handback")
+        assert observation.content_blocks[-1]["base64"] == picture
+        assert ("handback" in observation.content_blocks[0]["text"].lower()) == (
+            status == "handback"
+        )
+    for status in ("taken_over", "busy", "withheld", "needs_human"):
+        desktop.failures.extend(
+            [
+                capable,
+                httpx.Response(200, json={"status": status, "text": status, "image_base64": None}),
+            ]
+        )
+        assert (await act("move", x=len(status), y=10)).content == status
+    desktop.calls.clear()
+    for state in ({}, {"model_screen_version": True}):
+        desktop.failures.append(httpx.Response(200, json=state))
+        note = (await act("elements")).content
+        assert "upgrade" in note.lower() or "升级" in note
+    assert [r.method for r in desktop.calls] == ["GET", "GET"]
+    desktop.failures.extend([capable, httpx.Response(404)])
+    note = (await act("screenshot")).content
+    assert "upgrade" in note.lower() or "升级" in note
+    assert desktop.calls[-1].url.path.endswith("/model-screen")
 
 
 @pytest.mark.parametrize(

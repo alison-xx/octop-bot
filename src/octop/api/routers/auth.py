@@ -61,6 +61,13 @@ def me_payload(user: Any, server: Any) -> dict[str, Any]:
         str(user.id),
         f"/api/users/{user.id}/avatar",
     )
+    from octop.infra.auth.lynxce_owner import owner_binding
+    from octop.infra.desktop import bot_cloud_enabled, bot_web_enabled
+
+    if bot_web_enabled() and not bot_cloud_enabled():
+        owner = owner_binding(server.services.settings_repo)
+        if owner and owner.user_id == user.id:
+            payload["avatar_url"] = owner.avatar_url or payload["avatar_url"]
     from octop.infra.users.resource_policy import (  # noqa: PLC0415
         POLICY_ALLOWED_BACKEND_TYPES,
         POLICY_DEFAULT_BACKEND_TYPE,

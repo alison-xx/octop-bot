@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, SecretStr
 
-from octop.api.common.bot_desktop import Owner, Services
+from octop.api.common.bot_desktop import AccountServices, Owner, Services
 from octop.api.deps import get_server
 from octop.infra.agents.providers import lynxce as account_models
 from octop.infra.auth import lynxce_wechat as wechat
@@ -76,8 +76,8 @@ class CloudLogin(BaseModel):
 
 
 @router.get("/account", summary="Read my saved Lynxce Cloud identity")
-async def status(user: Owner, services: Services) -> CloudAccountStatus:
-    """Name and avatar of the signed-in Lynxce account (avatar read from Lynxce once if missing)."""
+async def status(user: Owner, services: AccountServices) -> CloudAccountStatus:
+    """Returns the current user’s bound Lynxce name and portrait on the desktop or cloud."""
     return await cloud_account(services, user.id)
 
 
