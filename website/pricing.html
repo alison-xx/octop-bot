@@ -17,10 +17,11 @@
   <link rel="canonical" href="https://octop-bot.lynxce.cn/pricing.html">
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="stylesheet" href="assets/site.css?v=19">
-  <script src="assets/auth.js?v=2" defer></script>
-  <script src="assets/site.js?v=17" defer></script>
-  <script src="assets/pricing.js?v=7" defer></script>
+  <link rel="preload" href="data/pricing.json?v=2" as="fetch" crossorigin>
+  <link rel="stylesheet" href="assets/site.css?v=21">
+  <script src="assets/auth.js?v=3" defer></script>
+  <script src="assets/site.js?v=account-public-1" defer></script>
+  <script src="assets/pricing.js?v=10" defer></script>
 </head>
 <body>
   <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
@@ -74,6 +75,7 @@
         <button type="button" id="tab-plans" role="tab" aria-controls="v-plans" data-view="plans" aria-selected="true" data-en="Membership">会员套餐</button>
         <button type="button" id="tab-packs" role="tab" aria-controls="v-packs" data-view="packs" aria-selected="false" tabindex="-1" data-en="Credit packs">加油包</button>
         <button type="button" id="tab-enterprise" role="tab" aria-controls="v-enterprise" data-view="enterprise" aria-selected="false" tabindex="-1" data-en="Enterprise">企业定制</button>
+          <span class="segment-indicator" aria-hidden="true"></span>
       </div>
     </section>
 
@@ -82,6 +84,7 @@
         <div class="cycle" id="cycle" role="group" aria-label="付款周期" data-en-aria-label="Billing period">
           <button type="button" data-cycle="month" aria-pressed="true" data-en="Monthly">月付</button>
           <button type="button" data-cycle="year" aria-pressed="false" data-en="Yearly &lt;em&gt;10% off for now&lt;/em&gt;">年付<em>限时 9 折</em></button>
+          <span class="segment-indicator" aria-hidden="true"></span>
         </div>
       </div>
       <div class="plans" id="plans"></div>
@@ -148,7 +151,7 @@
     <section class="wrap price-section" style="padding-bottom:96px">
       <h2 class="h3" data-en="Questions">常见问题</h2>
       <div class="faq">
-        <details><summary data-en="Do Bots on my computer cost anything?">本机 Bot 收费吗？</summary><div class="answer"><p data-en="No. Bots that stay on your computer use your own model keys or local models and your own machine, and never use credits.">不收。留在你电脑上的 Bot 用你自己的模型 Key 或本地模型和你的电脑，不扣积分。</p></div></details>
+        <details><summary data-en="Do Bots on my computer cost anything?">本机 Bot 收费吗？</summary><div class="answer"><p data-en="Running a Bot on your own computer costs no Octop credits. If you use a model provider’s API key, that provider bills you under your own plan.">在自己的电脑上运行 Bot，Octop 不扣积分。接入第三方模型 Key 时，模型费用按你与服务商的套餐结算。</p></div></details>
         <details><summary data-en="Which credits are used first?">积分先扣哪部分？</summary><div class="answer"><p data-en="Of the credits you can use in Octop Bot, the ones that expire first are used first.">在 Octop Bot 里能用的积分中，先到期的先用。</p></div></details>
         <details><summary data-en="Where can credits be used?">积分在哪里能用？</summary><div class="answer"><p data-en="Membership credits (monthly credits, first-month bonuses and credits delivered monthly on yearly plans) are for Octop Bot only and expire monthly. Sign-up trial credits are also for Octop Bot only. Credits bought as packs, top-ups or in the iOS app are shared and work in both Octop Bot and Lynxce. Credits already in your account before memberships launch count as shared and never expire.">会员积分（每月积分、首月加赠、年付按月到账的积分）只能在 Octop Bot 用，按月过期；注册体验积分也只能在 Octop Bot 用。加油包、充值和 iOS 内购买的积分是通用积分，Octop Bot 和灵策都能用。会员上线前账户里已有的积分，全部算通用积分，永久有效。</p></div></details>
         <details><summary data-en="Do credits expire?">积分会过期吗？</summary><div class="answer"><p data-en="Monthly membership credits last one month and the 100 trial credits last 14 days; packs are ready right away and stack with a membership.">会员每月积分 1 个月有效，体验的 100 积分 14 天有效；加油包到账即用，可与会员叠加。</p></div></details>
