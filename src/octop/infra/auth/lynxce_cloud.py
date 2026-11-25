@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import re
+import time
 from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
@@ -17,6 +18,7 @@ import httpx
 from filelock import AsyncFileLock
 from pydantic import BaseModel
 
+from octop.infra.cloud.computers import DiskBalanceInsufficient
 from octop.infra.crypto.fernet import decrypt_json, encrypt_json
 from octop.infra.db.services import SharedServices
 from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
@@ -87,6 +89,11 @@ class _Grant:
     avatar_url: str | None = None
     login_fields: dict[str, Any] = field(default_factory=dict, repr=False)
 
+    profile_checked_at: float = 0
+
+    def has_recent_profile(self) -> bool:
+        return self.avatar_url is not None and 0 <= time.time() - self.profile_checked_at < 60
+
     def status(self) -> CloudAccountStatus:
         return CloudAccountStatus(
             connected=True,
@@ -126,6 +133,16 @@ def _save(services: SharedServices, user_id: int, grant: _Grant) -> None:
         raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
 
 
+def cloud_accounts(services: SharedServices) -> dict[int, str]:
+    """Map existing local users to the identities in their encrypted grants."""
+    result: dict[int, str] = {}
+    for user in services.user_repo.list(include_disabled=True):
+        grant = _load(services, user.id)
+        if grant is not None:
+            result[user.id] = grant.account_id
+    return result
+
+
 def cloud_status(services: SharedServices, user_id: int) -> CloudAccountStatus:
     """Read the locally saved identity without contacting the cloud."""
     grant = _load(services, user_id) if _enabled() else None
@@ -140,22 +157,31 @@ def _avatar(profile: dict[str, Any]) -> str:
 
 
 async def cloud_account(services: SharedServices, user_id: int) -> CloudAccountStatus:
-    """The saved identity; a login saved before avatars were kept reads its avatar once."""
+    """Refresh the bound account from the canonical profile, including legacy empty portraits."""
     grant = await asyncio.to_thread(_load, services, user_id) if _enabled() else None
-    if grant is None or grant.avatar_url is not None:
+    if grant is None or grant.has_recent_profile():
         return grant.status() if grant else CloudAccountStatus()
     async with _lock(services, user_id):
         current = await asyncio.to_thread(_load, services, user_id)
-        if current is None or current.binding != grant.binding or current.avatar_url is not None:
+        if current is None or current.binding != grant.binding or current.has_recent_profile():
             return current.status() if current else CloudAccountStatus()
         try:
             profile = await _send("GET", "/api/user/profile", bearer=current.access_token)
-        except _UpstreamFailure:
-            # An expired token is renewed by the next cloud request; show initials until then.
+        except _UpstreamFailure as error:
+            if error.status == 401:
+                try:
+                    return (await _finish(_refresh(services, user_id, current))).status()
+                except OctopError:
+                    return await asyncio.to_thread(cloud_status, services, user_id)
             return current.status()
         if not isinstance(profile, dict) or profile.get("id") != current.account_id:
             return current.status()
-        updated = replace(current, avatar_url=_avatar(profile))
+        updated = replace(
+            current,
+            avatar_url=_avatar(profile),
+            display_name=display_name(profile) or current.display_name,
+            profile_checked_at=time.time(),
+        )
         await _finish(asyncio.to_thread(_save, services, user_id, updated))
         return updated.status()
 
@@ -181,29 +207,43 @@ async def _finish[T](operation: Coroutine[Any, Any, T]) -> T:
 
 
 class _UpstreamFailure(Exception):
-    def __init__(self, status: int, code: str | None = None):
+    def __init__(self, status: int, code: str | None = None, business_code: int | None = None):
         self.status = status
-        self.code = code  # Lynxce's ``error.code``, when it sent one
+        self.code = code
+        self.business_code = business_code
 
 
-def _error_code(response: httpx.Response) -> str | None:
+def _response_failure(response: httpx.Response) -> _UpstreamFailure:
     try:
         body = response.json()
     except ValueError:
-        return None
+        body = None
     error = body.get("error") if isinstance(body, dict) else None
     code = error.get("code") if isinstance(error, dict) else None
-    return code if isinstance(code, str) else None
+    number = body.get("code") if isinstance(body, dict) else None
+    return _UpstreamFailure(
+        response.status_code,
+        code if isinstance(code, str) else None,
+        number if type(number) is int else None,
+    )
 
 
 def _rejected(status: int) -> OctopError:
-    if status == 402:
-        return OctopError.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
     if status == 404:
         return OctopError.localized(ErrorCode.NOT_FOUND)
-    if status in {400, 403, 409, 422, 429}:
+    if status in {400, 402, 403, 409, 422, 429}:
         return OctopError.localized(ErrorCode.BOT_CLOUD_REQUEST_REJECTED, status=status)
     return OctopError.localized(ErrorCode.NETWORK_ERROR)
+
+
+def _operation_rejected(method: str, path: str, failure: _UpstreamFailure) -> OctopError:
+    if failure.status == 402 and failure.code == "insufficient_balance":
+        if method == "POST" and path == "/api/billing/octop-bot/compute/disk/charge":
+            if failure.business_code == 40204:
+                return DiskBalanceInsufficient.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
+            return _rejected(failure.status)
+        return OctopError.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
+    return _rejected(failure.status)
 
 
 async def _send(
@@ -234,7 +274,7 @@ async def _send(
     except httpx.HTTPError:
         raise _UpstreamFailure(502) from None
     if not response.is_success:
-        raise _UpstreamFailure(response.status_code, _error_code(response))
+        raise _response_failure(response)
     try:
         body = response.json()
     except ValueError:
@@ -336,14 +376,16 @@ def _grant_from_session(data: Any) -> _Grant:
         or not profile["id"].strip()
     ):
         raise OctopError.localized(ErrorCode.NETWORK_ERROR)
+    avatar = _avatar(profile)
     return _Grant(
         profile["id"],
         display_name(profile),
         uuid4().hex,
         _token(data, "accessToken"),
         _token(data, "refreshToken"),
-        _avatar(profile),
+        avatar,
         _login_fields(data),
+        profile_checked_at=time.time() if avatar else 0,
     )
 
 
@@ -442,9 +484,17 @@ async def verify_account_code(
 
 
 async def _verified(grant: _Grant) -> CloudAccountStatus:
+    avatar = grant.avatar_url or None
+    if not avatar:
+        with suppress(_UpstreamFailure, TimeoutError):
+            async with asyncio.timeout(2):
+                profile = await _send("GET", "/api/user/profile", bearer=grant.access_token)
+            if isinstance(profile, dict) and profile.get("id") == grant.account_id:
+                avatar = _avatar(profile)
     with suppress(_UpstreamFailure):
         await _send("POST", "/api/auth/logout", bearer=grant.access_token, json={})
-    return grant.status()
+    # Empty means the verified profile has no portrait. None means it was unavailable.
+    return grant.status().model_copy(update={"avatar_url": avatar})
 
 
 async def login_cloud(
@@ -530,7 +580,11 @@ async def _refresh(services: SharedServices, user_id: int, grant: _Grant) -> _Gr
         raise _rejected(exc.status) from None
     refresh = _token(data, "refreshToken") if "refreshToken" in data else grant.refresh_token
     updated = replace(
-        grant, access_token=access, refresh_token=refresh, avatar_url=_avatar(profile)
+        grant,
+        access_token=access,
+        refresh_token=refresh,
+        avatar_url=_avatar(profile),
+        profile_checked_at=time.time(),
     )
     await asyncio.to_thread(_save, services, user_id, updated)
     return updated
@@ -658,6 +712,25 @@ async def open_refresh_session(refresh_token: str) -> CloudSession:
     )
 
 
+async def account_of_access_token(access_token: str) -> str:
+    """The Lynxce account id an access token belongs to (the desktop's ``token-login``).
+
+    Only reads the profile: the caller keeps its own session; nothing is renewed or stored.
+    """
+    if not (1 <= len(access_token) <= 32768) or not access_token.isascii():
+        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
+    try:
+        profile = await _send("GET", "/api/user/profile", bearer=access_token)
+    except _UpstreamFailure as exc:
+        if exc.status in {400, 401, 403}:
+            raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403) from None
+        raise _rejected(exc.status) from None
+    account = profile.get("id") if isinstance(profile, dict) else None
+    if not isinstance(account, str) or not account.strip():
+        raise OctopError.localized(ErrorCode.NETWORK_ERROR)
+    return account
+
+
 async def hand_over_session[T](
     services: SharedServices, user_id: int, accept: Callable[[str], Awaitable[T]]
 ) -> T:
@@ -773,14 +846,14 @@ async def tenant_call(
             return await _send(method, path, bearer=grant.access_token, json=json, headers=extra)
         except _UpstreamFailure as exc:
             if exc.status != 401:
-                raise _rejected(exc.status) from None
+                raise _operation_rejected(method, path, exc) from None
             grant = await _refresh(services, user_id, grant)
             try:
                 return await _send(
                     method, path, bearer=grant.access_token, json=json, headers=extra
                 )
             except _UpstreamFailure as again:
-                raise _rejected(again.status) from None
+                raise _operation_rejected(method, path, again) from None
 
 
 async def model_key_rejected(secret: str) -> bool:

@@ -97,6 +97,7 @@ abstract class PhoneChat(
 
     override fun send(
         text: String,
+        messageId: String,
         images: List<ImageAttachment>,
         bot: BotProfile,
         conversation: String?,

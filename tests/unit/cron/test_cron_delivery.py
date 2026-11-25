@@ -1050,9 +1050,13 @@ async def test_an_im_scheduled_run_that_needs_the_user_says_so_in_the_chat() -> 
 
 
 @pytest.mark.asyncio
-async def test_only_consecutive_actual_takeovers_suggest_pausing(tmp_path: Path) -> None:
+@pytest.mark.parametrize("channel_type", ["dashboard", "feishu"])
+async def test_only_consecutive_actual_takeovers_suggest_pausing(
+    tmp_path: Path, channel_type: str
+) -> None:
     from copy import deepcopy
 
+    from octop.i18n import tr
     from octop.infra.db.repos.cron import CronJobRepo
 
     db, session = _seed_dashboard_thread(tmp_path, thread_id="thr1")
@@ -1072,7 +1076,9 @@ async def test_only_consecutive_actual_takeovers_suggest_pausing(tmp_path: Path)
     async def stream(_agent: str, _request: dict):
         yield {"type": "hitl_required", "request": next(cards)}
 
-    service, gateway, store = _waiting_service(stream)
+    service, gateway, store = _waiting_service(stream, channel_type=channel_type)
+    if channel_type == "feishu":
+        gateway.require_session.return_value.chat_type = "group"
     service._repos.cron_repo = cron
     command = _command(cron_id=job, task_type="agent")
     try:
@@ -1080,6 +1086,10 @@ async def test_only_consecutive_actual_takeovers_suggest_pausing(tmp_path: Path)
             with pytest.raises(CronWaitingForUser) as waiting:
                 await service.deliver(command)
             assert ("连续两次" in str(waiting.value)) == (index == 1)
+            if channel_type == "feishu":
+                assert gateway.push_session_text.await_args.args[1] == tr(
+                    "slash.hitl.owner_inbox", "zh"
+                )
             record = store.resolve_pending_for_thread("thr1", agent_id="a1", user_id=1)
             assert record is not None
             if index == 0:

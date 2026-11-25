@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
@@ -97,7 +97,10 @@ describe("useChatNavigation stale thread", () => {
     );
 
     await waitFor(() => {
-      expect(ensureThreadInList).toHaveBeenCalledWith("thr_foreign");
+      expect(ensureThreadInList).toHaveBeenCalledWith(
+        "thr_foreign",
+        expect.any(Function),
+      );
       expect(navigateMock).toHaveBeenCalledWith("/chat/agent-new", {
         replace: true,
       });
@@ -128,13 +131,55 @@ describe("useChatNavigation stale thread", () => {
     );
 
     await waitFor(() => {
-      expect(ensureThreadInList).toHaveBeenCalledWith("thr_maybe");
+      expect(ensureThreadInList).toHaveBeenCalledWith(
+        "thr_maybe",
+        expect.any(Function),
+      );
     });
     expect(navigateMock).not.toHaveBeenCalledWith(
       "/chat/agent-new",
       expect.anything(),
     );
   });
+
+  it.each(["manual", "online"])(
+    "recovers a failed metadata lookup via %s retry",
+    async (action) => {
+      const probe = vi
+        .fn()
+        .mockResolvedValueOnce("unknown")
+        .mockResolvedValue("found");
+      const { result } = renderHook(
+        () =>
+          useChatNavigation({
+            routeAgentId: "agent",
+            threadId: "old",
+            resolvedAgentId: "agent",
+            activeThreadId: "old",
+            sessions: [],
+            sessionsLoading: false,
+            prefillInputRef: { current: "" },
+            loadHistory: vi.fn(),
+            clearMessages: vi.fn(),
+            ensureThreadInList: probe,
+            fetchSessions: vi.fn(),
+            refreshAgents: vi.fn(),
+          }),
+        { wrapper },
+      );
+      await waitFor(() =>
+        expect(result.current.threadMetadataFailed).toBe(true),
+      );
+      expect(probe).toHaveBeenCalledTimes(1);
+      act(() => {
+        if (action === "manual") result.current.retryThreadMetadata();
+        else window.dispatchEvent(new Event("online"));
+      });
+      await waitFor(() => expect(probe).toHaveBeenCalledTimes(2));
+      expect(result.current.threadMetadataFailed).toBe(false);
+      expect(navigateMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not rewrite URL when probe finds the thread", async () => {
     const ensureThreadInList = vi.fn().mockResolvedValue("found");
@@ -160,9 +205,42 @@ describe("useChatNavigation stale thread", () => {
     );
 
     await waitFor(() => {
-      expect(ensureThreadInList).toHaveBeenCalledWith("thr_ok");
+      expect(ensureThreadInList).toHaveBeenCalledWith(
+        "thr_ok",
+        expect.any(Function),
+      );
     });
     expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps an explicit older thread on entry, remount and return from a recent chat", async () => {
+    const recent = session("recent");
+    const ensureThreadInList = vi.fn().mockResolvedValue("found");
+    const options = {
+      routeAgentId: "agent-a",
+      resolvedAgentId: "agent-a",
+      sessions: [recent],
+      sessionsLoading: false,
+      prefillInputRef: { current: "" },
+      loadHistory: vi.fn().mockResolvedValue(undefined),
+      clearMessages: vi.fn(),
+      ensureThreadInList,
+      fetchSessions: vi.fn().mockResolvedValue([recent]),
+      refreshAgents: vi.fn().mockResolvedValue(undefined),
+    };
+    const render = (id: string) =>
+      useChatNavigation({ ...options, threadId: id, activeThreadId: id });
+    const open = () => renderHook(render, { initialProps: "older", wrapper });
+    const initial = open();
+    await waitFor(() => expect(ensureThreadInList).toHaveBeenCalledTimes(1));
+    initial.unmount();
+    const refreshed = open();
+    await waitFor(() => expect(ensureThreadInList).toHaveBeenCalledTimes(2));
+    refreshed.rerender("recent");
+    refreshed.rerender("older");
+    await waitFor(() => expect(ensureThreadInList).toHaveBeenCalledTimes(3));
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(rebindMock).not.toHaveBeenCalled();
   });
 
   it("prefers an existing session when the URL thread is missing", async () => {

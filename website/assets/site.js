@@ -671,7 +671,8 @@
   }
 
   function fileRow(release, asset, title, meta, recommended) {
-    return `<div class="file">
+    const key = [asset.platform, asset.kind, asset.arch].filter(Boolean).join("-");
+    return `<div class="file" data-package="${esc(key)}">
       <div><b>${title}${recommended ? ` <span class="badge" style="margin-left:6px">${t("推荐", "Recommended")}</span>` : ""}</b><small>${meta} · ${formatSize(asset.size)}</small></div>
       <a class="btn ${recommended ? "btn-primary" : "btn-ghost"} btn-sm" href="${esc(assetUrl(release, asset))}" download>${ARROW}<span>${t("下载", "Download")}</span></a>
       <div class="sha"><span>SHA-256</span><code title="${esc(asset.sha256)}">${esc(asset.sha256)}</code><button class="copy" type="button" data-copy="${esc(asset.sha256)}">${t("复制", "Copy")}</button></div>
@@ -682,9 +683,16 @@
         <div class="platform-head">${icon}<div><h3 class="h3">${title}</h3><small class="muted">${sub}</small></div>${detected ? `<span class="badge">${t("你的系统", "Your system")}</span>` : ""}</div>
         ${body}</article>`;
 
+  let platformRefreshPending = false;
   function renderPlatforms(latest, beta) {
     const box = $("#platforms");
     if (!box) return;
+    // Keep the pressed link or button in the DOM through its activation.
+    if ($("a:active, button:active", box)) {
+      platformRefreshPending = true;
+      return;
+    }
+    platformRefreshPending = false;
     const winRel = releaseWith(isWin);
     const macRel = releaseWith(isMac);
     const androidRel = releaseWith(isAndroid);
@@ -797,7 +805,17 @@
         );
       }
     }
+    const focused = $(":focus", box);
+    const packageKey = focused?.closest("[data-package]")?.dataset.package;
     box.innerHTML = cards.join("");
+    if (focused) {
+      const replacement = $$("a, button", box).find((control) => {
+        if (control.tagName !== focused.tagName) return false;
+        if (packageKey) return control.closest("[data-package]")?.dataset.package === packageKey;
+        return focused.href ? control.href === focused.href : control.dataset.copy === focused.dataset.copy;
+      });
+      replacement?.focus({ preventScroll: true });
+    }
     $$("[data-intel-note]").forEach((el) => (el.hidden = Boolean(intel)));
   }
 
@@ -825,33 +843,54 @@
 
   /* The manifest decides the current version; releases.json keeps older releases for the changelog
      and stands in while no manifest is published. The static HTML is the last fallback. */
-  function loadReleases() {
-    const live = loadManifest()
-      .then((list) => list.map((r) => ({ ...r, live: true })))
-      .catch(() => []);
-    const listed = fetch("releases.json", { cache: "no-cache" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .catch(() => ({}));
-    return Promise.all([live, listed]).then(([manifestReleases, data]) => {
-      /* releases.json "hidden" lists platforms not to offer yet, e.g. "ios" before the App Store listing is live. */
-      const hidden = new Set(data.hidden || []);
-      const fromManifest = manifestReleases.map((r) => ({ ...r, assets: r.assets.filter((a) => !hidden.has(a.platform)) }));
-      const fromList = (data.releases || []).map((r) => {
-        const assets = r.assets.filter((a) => !hidden.has(a.platform));
-        const live = fromManifest.find((entry) => entry.version === r.version);
-        return live ? { ...r, channel: live.channel, assets: [...live.assets, ...assets] } : { ...r, assets };
-      });
-      const stable = fromManifest.find((r) => r.channel === "stable");
-      const beta = fromManifest.find((r) => r.channel === "beta");
-      const latest = stable || fromList.find((r) => r.channel === "stable") || beta || fromList[0];
-      if (!latest) return null;
-      const seen = new Set();
-      /* For a version in both, keep the hand-written bilingual notes from releases.json. */
-      const history = [...fromList, ...fromManifest]
-        .filter((r) => !seen.has(r.version) && seen.add(r.version))
-        .sort((a, b) => compareVersions(b.version, a.version));
-      return { latest, beta: beta && (!stable || compareVersions(beta.version, stable.version) > 0) ? beta : null, history, hidden };
+  function mergeReleases(manifestReleases, data) {
+    /* The site archive controls which package platforms are visible, including signed assets. */
+    const hidden = new Set(data.hidden || []);
+    const fromManifest = manifestReleases.map((r) => ({ ...r, assets: r.assets.filter((a) => !hidden.has(a.platform)) }));
+    const fromList = (data.releases || []).map((r) => {
+      const assets = r.assets.filter((a) => !hidden.has(a.platform));
+      const live = fromManifest.find((entry) => entry.version === r.version);
+      return live ? { ...r, channel: live.channel, assets: [...live.assets, ...assets] } : { ...r, assets };
     });
+    const stable = fromManifest.find((r) => r.channel === "stable");
+    const beta = fromManifest.find((r) => r.channel === "beta");
+    const latest = stable || fromList.find((r) => r.channel === "stable") || beta || fromList[0];
+    if (!latest) return null;
+    const seen = new Set();
+    /* For a version in both, keep the hand-written bilingual notes from releases.json. */
+    const history = [...fromList, ...fromManifest]
+      .filter((r) => !seen.has(r.version) && seen.add(r.version))
+      .sort((a, b) => compareVersions(b.version, a.version));
+    return { latest, beta: beta && (!stable || compareVersions(beta.version, stable.version) > 0) ? beta : null, history, hidden };
+  }
+
+  async function loadReleases(onAvailable) {
+    let manifestReleases = [];
+    let archive = null;
+    let loaded = null;
+    function update() {
+      // The site archive can hide even a signed package. Wait for its policy or a failed lookup.
+      if (!archive) return;
+      loaded = mergeReleases(manifestReleases, archive);
+      if (loaded) onAvailable?.(loaded);
+    }
+    const live = loadManifest().catch(() => null).then((list) => {
+      if (!list?.length) return;
+      manifestReleases = list.map((r) => ({ ...r, live: true }));
+      update();
+    });
+    const listed = fetch("releases.json", { cache: "no-cache" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((data) => {
+        archive = {
+          releases: Array.isArray(data?.releases) ? data.releases : [],
+          hidden: Array.isArray(data?.hidden) ? data.hidden : [],
+        };
+        update();
+      });
+    await Promise.all([live, listed]);
+    return loaded;
   }
 
   let site = null;
@@ -864,10 +903,17 @@
     renderPlatforms(site.latest, site.beta);
     renderHistory(site.history);
   }
+  if ($("#platforms")) {
+    const finishPress = () => {
+      if (!platformRefreshPending) return;
+      platformRefreshPending = false;
+      requestAnimationFrame(() => renderPlatforms(site.latest, site.beta));
+    };
+    for (const event of ["pointerup", "pointercancel", "keyup", "blur"]) window.addEventListener(event, finishPress);
+  }
   if ($("[data-download-primary], #platforms, #history")) {
     renderReleases();
-    loadReleases().then((loaded) => {
-      if (!loaded) return;
+    loadReleases((loaded) => {
       site = loaded;
       renderReleases();
     });

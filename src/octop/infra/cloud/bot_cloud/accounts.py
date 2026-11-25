@@ -286,6 +286,14 @@ async def ensure_media_scopes(services: SharedServices, user_id: int) -> None:
         )
 
 
+def tenant_for_account(services: SharedServices, account_id: str) -> Any | None:
+    """The tenant of a Lynxce account that has signed in here before, if any."""
+    provider = services.sso_repo.get_by_kind(SSO_KIND)
+    if provider is None:
+        return None
+    return services.user_repo.get_by_sso(int(provider.id), account_id)
+
+
 async def provision(
     services: SharedServices,
     users: UserManager,

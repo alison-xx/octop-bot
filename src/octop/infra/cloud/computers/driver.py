@@ -90,7 +90,9 @@ class ComputerDriver(Protocol):
     def instances(self) -> list[Instance]: ...
     def run(self, instance_id: str, command: str, timeout: int) -> tuple[int, str]: ...
     def write(self, instance_id: str, path: str, data: bytes) -> None: ...
-    def read(self, instance_id: str, path: str) -> bytes | None: ...
+    def read(
+        self, instance_id: str, path: str, *, max_bytes: int | None = None
+    ) -> bytes | None: ...
     def screen(self, instance_id: str) -> tuple[str, dict[str, str]]: ...
     def screenshot(self, instance_id: str) -> bytes: ...
     def accessibility(self, instance_id: str) -> str: ...
@@ -288,16 +290,20 @@ class AgsDriver:
 
         if self._http is None:
             self._http = httpx.Client()
+        stream = kwargs.pop("stream", False)
         for attempt in range(2):
-            response = self._http.request(
+            request = self._http.build_request(
                 method,
                 self.url(instance_id, 5000, path),
                 headers={"X-Access-Token": self.token(instance_id, fresh=attempt > 0)},
                 timeout=timeout,
                 **kwargs,
             )
+            response = self._http.send(request, stream=stream)
             if response.status_code not in (401, 403):
                 return response
+            if attempt == 0:
+                response.close()
         return response
 
     def _execute(self, instance_id: str, script: str) -> str:
@@ -366,13 +372,25 @@ class AgsDriver:
         if response.status_code != 200:
             raise OSError(f"upload of {path} failed ({response.status_code}): {response.text}")
 
-    def read(self, instance_id: str, path: str) -> bytes | None:
-        response = self._request(instance_id, "/file", data={"file_path": path}, timeout=120)
-        if response.status_code == 404:
-            return None
-        if response.status_code != 200:
-            raise OSError(f"download of {path} failed ({response.status_code}): {response.text}")
-        return bytes(response.content)
+    def read(self, instance_id: str, path: str, *, max_bytes: int | None = None) -> bytes | None:
+        response = self._request(
+            instance_id, "/file", data={"file_path": path}, timeout=120, stream=True
+        )
+        try:
+            if response.status_code == 404:
+                return None
+            if response.status_code != 200:
+                raise OSError(f"download of {path} failed ({response.status_code})")
+            if max_bytes is None:
+                return bytes(response.read())
+            data = bytearray()
+            for chunk in response.iter_bytes():
+                data.extend(chunk[: max_bytes - len(data)])
+                if len(data) >= max_bytes:
+                    break
+            return bytes(data)
+        finally:
+            response.close()
 
     def screen(self, instance_id: str) -> tuple[str, dict[str, str]]:
         """The desktop's VNC over WebSocket, and the header that opens it.

@@ -184,3 +184,56 @@ def test_checks_sent_together_keep_every_verdict(kit: Any) -> None:
     for worker in workers:
         worker.join()
     assert [c.status for c in store.running("thr1").criteria] == ["passed"] * 3
+
+
+def test_finish_preserves_an_unverified_delivery_as_partial(kit: Any) -> None:
+    tools, _store = kit
+    tools["task_plan"].invoke({"goal": "Send a report", "criteria": ["PDF opens"]})
+    tools["task_check"].invoke({"criterion": 1, "status": "passed", "evidence": "Two pages"})
+    task = _task(
+        tools["task_finish"].invoke(
+            {"summary": "Draft ready", "open_issues": ["Recipient confirmation pending"]}
+        )
+    )
+    assert task["status"] == "partial"
+
+
+def test_budget_change_needs_a_decision_and_uses_absolute_totals(
+    kit: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.bot_tasks import approvals, budget
+
+    tools, store = kit
+    initial = _task(tools["task_plan"].invoke({"goal": "Chart", "criteria": ["Title present"]}))
+    cfg = {"thread_id": "thr1"}
+    monkeypatch.setattr(budget, "get_config", lambda: {"configurable": cfg})
+    settings = _Settings()
+    from unittest.mock import Mock
+
+    users = Mock()
+    users.get.return_value.locale = "en"
+    tool = budget.task_budget_tool(store, approvals.ApprovalRules(settings), users, "bot1", 7)
+    request = {"task_id": initial["id"], "steps": 70, "minutes": 30}
+    task = store.running("thr1")
+    task.steps_used = task.budget.steps
+    store.save("thr1", task)
+    choices = iter(["Deny", "Allow once"])
+    cards = []
+
+    def respond(payload: dict) -> dict:
+        cards.append(payload)
+        return {"decisions": [{"type": "respond", "message": next(choices)}]}
+
+    monkeypatch.setattr(approvals, "interrupt", respond)
+    cfg["octop_scheduled_turn"] = True
+    assert "scheduled" in tool.invoke(request)
+    assert not cards
+    del cfg["octop_scheduled_turn"]
+    assert "said no" in tool.invoke(request)
+    assert store.running("thr1").budget.steps == 60
+    assert _task(tool.invoke(request))["budget"] == {"steps": 70, "minutes": 30}
+    assert _task(tool.invoke(request))["budget"]["steps"] == 70
+    assert len(cards) == 2
+    question = cards[-1]["action_requests"][0]["args"]["questions"][0]
+    assert "60" in question["question"] and "70" in question["question"]
+    assert [option["label"] for option in question["options"]] == ["Allow once", "Deny"]

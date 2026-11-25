@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiResponseError } from "../../../api/responseError";
 import { emitSessionEvent } from "./chatStore";
 import {
   pickPreferredSession,
@@ -12,11 +13,13 @@ import {
 
 const listMock = vi.fn();
 const createMock = vi.fn();
+const historyMock = vi.fn();
 
 vi.mock("../../../api/modules/octopThreads", () => ({
   octopThreadsApi: {
     list: (...args: unknown[]) => listMock(...args),
     create: (...args: unknown[]) => createMock(...args),
+    history: (...args: unknown[]) => historyMock(...args),
     delete: vi.fn(),
     patch: vi.fn(),
     rename: vi.fn(),
@@ -114,6 +117,7 @@ describe("useSessions agent switch", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
     listMock.mockReset();
+    historyMock.mockReset();
     createMock.mockReset();
   });
 
@@ -151,9 +155,8 @@ describe("useSessions agent switch", () => {
   });
 
   it("ensureThreadInList returns unknown on probe network errors", async () => {
-    listMock
-      .mockResolvedValueOnce([]) // initial fetch for agent
-      .mockRejectedValueOnce(new Error("network down")); // probe
+    listMock.mockResolvedValue([]);
+    historyMock.mockRejectedValueOnce(new Error("network down"));
 
     const { result } = renderHook(() => useSessions("agent-new"));
 
@@ -168,7 +171,48 @@ describe("useSessions agent switch", () => {
     expect(probe).toBe("unknown");
   });
 
+  it.each(["ask", "plan"])(
+    "retains a shared deep thread's %s mode across a sidebar refresh",
+    async (mode) => {
+      const rows = [
+        ...Array.from({ length: 61 }, (_, i) => threadRow("recent-" + i)),
+        {
+          ...threadRow("older"),
+          owned: false,
+          conversation_mode: mode,
+          model_ref: "model/saved",
+        },
+      ];
+      listMock.mockImplementation(async (_agent, limit) =>
+        rows.slice(0, limit),
+      );
+      historyMock.mockResolvedValue({ thread_id: "older", messages: [] });
+      const { result } = renderHook(() => useSessions("agent-new"));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await act(async () => {
+        expect(await result.current.ensureThreadInList("older")).toBe("found");
+      });
+      const saved = {
+        id: "older",
+        owned: false,
+        conversationMode: mode,
+        modelRef: "model/saved",
+      };
+      expect(result.current.sessions).toContainEqual(
+        expect.objectContaining(saved),
+      );
+      await act(async () => {
+        await result.current.fetchSessions("older");
+      });
+      expect(result.current.sessions).toHaveLength(10);
+      expect(result.current.sessions).toContainEqual(
+        expect.objectContaining(saved),
+      );
+    },
+  );
+
   it("ensureThreadInList returns missing when probe confirms absence", async () => {
+    historyMock.mockRejectedValueOnce(new ApiResponseError(404, null, null));
     listMock.mockResolvedValue([]);
 
     const { result } = renderHook(() => useSessions("agent-new"));

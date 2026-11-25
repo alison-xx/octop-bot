@@ -17,13 +17,20 @@ import os
 import threading
 import time
 import uuid
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from datetime import time as daytime
 from typing import TYPE_CHECKING, Any, Literal
 
+from octop.infra.cloud.computers import DiskBalanceInsufficient
 from octop.infra.cloud.computers.driver import AgsConfig, AgsDriver, ComputerDriver, Spec
+from octop.infra.cloud.computers.handoff import (
+    BackgroundComputerTurn,
+    SingleComputerController,
+    current_background_turn,
+)
 from octop.infra.errors import ErrorCode, OctopError
 
 if TYPE_CHECKING:
@@ -64,6 +71,9 @@ REAP_INTERVAL_SECONDS = 30
 # record was saved) are stopped once they are this old; younger ones may still be starting.
 ORPHAN_AGE_SECONDS = 15 * 60
 ORPHAN_SCAN_SECONDS = 10 * 60
+# How often shadow Bots (desktop Bots' stand-ins, see bot_cloud/shadows.py) are checked for
+# having gone unused long enough to be deleted.
+SHADOW_SCAN_SECONDS = 60 * 60
 SERVER_ID_KEY = "octop_bot:computers:server_id"
 # When AGS is out of capacity, a running computer whose Bot has not acted for this long is
 # paused to make room (it would pause at IDLE_PAUSE_SECONDS anyway; resuming takes seconds).
@@ -154,6 +164,8 @@ class ComputerRecord:
     spec: Spec = "standard"
     instance_id: str | None = None
     running: bool = False
+    starting: bool = False
+    starting_at: float | None = None
     # Billing cursor: the start of the oldest reservation still open.
     running_since: float | None = None
     # When the computer last started or resumed, for "running for N minutes".
@@ -164,6 +176,8 @@ class ComputerRecord:
     # The user has the mouse and keyboard; the Bot waits until it is handed back. It only
     # holds while the screen is watched (see ``controlled``).
     takeover: bool = False
+    # The next model-visible frame after human input must be checked for password controls.
+    check_handoff_frame: bool = False
     # Last time someone was watching the screen; a watched computer is not idle.
     viewed_at: float = 0.0
     unsettled: list[Unsettled] = field(default_factory=list)
@@ -172,12 +186,22 @@ class ComputerRecord:
     # The Beijing day the disk is paid for, and when to retry a disk charge that failed.
     disk_paid_day: str = ""
     disk_failed_day: str = ""
+    disk_insufficient_day: str = ""  # Last day Lynxce confirmed insufficient credits.
     disk_retry_at: float = 0.0
     reminded_at: float | None = None
     reclaim_reason: Literal["idle", "unpaid"] | None = None
     reclaim_at: float | None = None
     reclaim_seen_at: float | None = None
     reclaim_unpaid_since: str = ""
+
+    def clear_disk_arrears(self) -> None:
+        self.disk_failed_day = ""
+        self.disk_insufficient_day = ""
+        self.reclaim_unpaid_since = ""
+        if self.reclaim_reason == "unpaid":
+            self.reminded_at = None
+            self.reclaim_reason = None
+            self.reclaim_at = None
 
     def controlled(self, now: float) -> bool:
         """Taken over and still watched: a closed tab or a phone that left hands it back."""
@@ -186,6 +210,7 @@ class ComputerRecord:
     @classmethod
     def load(cls, raw: str) -> ComputerRecord:
         data = json.loads(raw)
+        data.setdefault("check_handoff_frame", bool(data.get("takeover")))
         data["reservations"] = [Reservation(**r) for r in data.get("reservations", [])]
         data["unsettled"] = [
             Unsettled(
@@ -194,7 +219,11 @@ class ComputerRecord:
             for u in data.get("unsettled", [])
         ]
         known = set(cls.__dataclass_fields__)
-        return cls(**{k: v for k, v in data.items() if k in known})
+        record = cls(**{k: v for k, v in data.items() if k in known})
+        if "disk_insufficient_day" not in data:
+            # Older records counted upstream and authentication errors as unpaid days.
+            record.clear_disk_arrears()
+        return record
 
     def dump(self) -> str:
         return json.dumps(asdict(self))
@@ -352,6 +381,10 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return box["value"]  # type: ignore[no-any-return]
 
 
+MAX_RUNNING_COMPUTERS_PER_USER = 2
+STARTING_STALE_SECONDS = 10 * 60
+
+
 class ComputerManager:
     def __init__(
         self,
@@ -360,15 +393,19 @@ class ComputerManager:
         *,
         billing: Billing | FreeBilling | None = None,
         clock: Callable[[], float] = time.time,
+        controller: SingleComputerController | None = None,
     ) -> None:
         self._services = services
         self._driver = driver
         self._billing = billing or Billing(services)
         self._clock = clock
+        self._controller = controller
+        self._exclusive_wakes: dict[str, tuple[BackgroundComputerTurn, str]] = {}
         self._locks: dict[str, threading.RLock] = {}
         # Commands running right now, per agent: a computer mid-command is never idle.
         self._busy: dict[str, int] = {}
         self._guard = threading.Lock()
+        self._user_locks: dict[int, threading.Lock] = {}
         self._reaper: threading.Thread | None = None
         self._stopping = threading.Event()
         # What the Bot last did on each computer, for the chat's floating screen: (kind, time).
@@ -380,6 +417,7 @@ class ComputerManager:
         self._last_orphan_scan = 0.0
         # Per Bot: called whenever its computer starts or resumes (see ``on_wake``).
         self._wakers: dict[str, Waker] = {}
+        self._last_shadow_scan = 0.0
         self.remind: Callable[[ComputerRecord, float], bool] | None = None
 
     # Records
@@ -391,6 +429,10 @@ class ComputerManager:
     def _lock(self, agent_id: str) -> threading.RLock:
         with self._guard:
             return self._locks.setdefault(agent_id, threading.RLock())
+
+    def _user_lock(self, user_id: int) -> threading.Lock:
+        with self._guard:
+            return self._user_locks.setdefault(user_id, threading.Lock())
 
     def record(self, agent_id: str, user_id: int) -> ComputerRecord:
         raw = self._services.settings_repo.get(self._key(agent_id))
@@ -435,11 +477,17 @@ class ComputerManager:
         idle_days = max(0, int((now - last) // 86400)) if last else 0
         if not record.instance_id:
             return idle_days, None, None
-        if record.reminded_at is not None and record.reclaim_at is not None:
+        confirmed_today = self._unpaid_confirmed(record, now)
+        if record.reclaim_reason == "unpaid" and disk_billing_enabled() and not confirmed_today:
+            # A day rollover can precede the next scheduled debit. Preserve the actual notice
+            # and require a fresh balance decision before the reaper can act on its deadline.
+            return idle_days, None, None
+        valid_notice = record.reclaim_reason != "unpaid" or confirmed_today
+        if valid_notice and record.reminded_at is not None and record.reclaim_at is not None:
             state = "pending_reclaim" if now >= record.reclaim_at else "reminded"
             return idle_days, state, record.reclaim_at
         failed_day = record.reclaim_unpaid_since or record.disk_failed_day
-        if failed_day:
+        if confirmed_today and failed_day:
             first = date.fromisoformat(failed_day)
             overdue = (date.fromisoformat(beijing_day(now)) - first).days + 1
             if overdue >= 23:
@@ -449,8 +497,14 @@ class ComputerManager:
                 return idle_days, "pending_reclaim" if now >= deadline else "reminded", deadline
         if not record.running and last and idle_days >= 30:
             deadline = last + 37 * 86400
+            if not valid_notice:
+                deadline = max(deadline, now + 7 * 86400)
             return idle_days, "pending_reclaim" if now >= deadline else "reminded", deadline
         return idle_days, None, None
+
+    @staticmethod
+    def _unpaid_confirmed(record: ComputerRecord, now: float) -> bool:
+        return disk_billing_enabled() and record.disk_insufficient_day == beijing_day(now)
 
     def _reclaim_tick(self, agent_id: str, user_id: int, now: float) -> None:
         with self._lock(agent_id):
@@ -460,11 +514,20 @@ class ComputerManager:
             if not record.active_at and not record.started_at and record.reclaim_seen_at is None:
                 record.reclaim_seen_at = now
                 self._save(record)
+            if record.reclaim_reason == "unpaid" and not disk_billing_enabled():
+                # An idle reclaim needs its own delivered warning and full grace period.
+                self._cancel_reclaim(record)
+                self._save(record)
             _, state, deadline = self.reclaim_status(record)
             if not reclaim_enabled() or state is None:
                 return
             if record.reminded_at is not None:
                 if state == "pending_reclaim" and not self._busy.get(agent_id, 0):
+                    if record.reclaim_reason == "unpaid":
+                        # Wait for a balance decision at or after the reclaim deadline.
+                        last_check = record.disk_retry_at - DISK_RETRY_SECONDS
+                        if not disk_billing_enabled() or deadline is None or last_check < deadline:
+                            return
                     self._release(agent_id, user_id)
                 return
             failed_day = record.reclaim_unpaid_since or record.disk_failed_day
@@ -473,7 +536,9 @@ class ComputerManager:
                 if failed_day
                 else 0
             )
-            record.reclaim_reason = "unpaid" if overdue >= 23 else "idle"
+            record.reclaim_reason = (
+                "unpaid" if self._unpaid_confirmed(record, now) and overdue >= 23 else "idle"
+            )
             # A delayed reaper or unavailable notification must still allow seven days.
             deadline = max(deadline or now, now + 7 * 86400)
         # Delivery runs on the server event loop; never hold the computer lock while waiting.
@@ -515,23 +580,54 @@ class ComputerManager:
         with self._lock(agent_id):
             record = self.record(agent_id, user_id)
             now = self._clock()
+            turn = self._observe_use(agent_id, user_id)
             record.active_at = now
             self._cancel_reclaim(record, used=True)
             if record.running and record.instance_id:
                 self._save(record)
                 return record.instance_id
-            reservation = self._billing.reserve(record, CHUNK_MINUTES)
+            self._exclusive_wakes.pop(agent_id, None)
+            with self._user_lock(user_id):
+                records = self._services.settings_repo.with_prefix("octop_bot:computer:").values()
+                running = sum(
+                    1
+                    for raw in records
+                    if (other := ComputerRecord.load(raw)).user_id == user_id
+                    and other.agent_id != agent_id
+                    and (
+                        other.running
+                        or (
+                            other.starting
+                            and other.starting_at is not None
+                            and now - other.starting_at < STARTING_STALE_SECONDS
+                        )
+                    )
+                )
+                if running >= MAX_RUNNING_COMPUTERS_PER_USER:
+                    raise OctopError.localized(ErrorCode.BOT_COMPUTER_LIMIT)
+                record.starting = True
+                record.starting_at = now
+                self._save(record)
+            try:
+                reservation = self._billing.reserve(record, CHUNK_MINUTES)
+            except BaseException:
+                record.starting = False
+                record.starting_at = None
+                self._save(record)
+                raise
             try:
                 try:
-                    fresh = self._wake(record)
+                    wake = self._wake(record)
                 except Exception as exc:
-                    # Out of AGS capacity: pause someone's idle computer and try once more.
-                    if not (capacity_full(exc) and self._make_room(agent_id)):
+                    # Out of AGS capacity: pause this user's idle computer and retry.
+                    if not (capacity_full(exc) and self._make_room(agent_id, user_id)):
                         raise
-                    fresh = self._wake(record)
+                    wake = self._wake(record)
             except Exception as exc:
                 # Settle first: a settle that fails is kept in ``unsettled``, saved here.
                 self._settle_one(record, reservation, 0)
+                record.starting = False
+                record.starting_at = None
                 self._save(record)
                 if capacity_full(exc):
                     logger.warning(
@@ -548,13 +644,34 @@ class ComputerManager:
             except Exception:  # noqa: BLE001 - commands will report the failure themselves
                 logger.warning("computer %s is slow to come up", agent_id)
             record.running = True
+            record.starting = False
+            record.starting_at = None
             record.running_since = now
             record.started_at = now
             record.paid_until = now + CHUNK_MINUTES * 60
             record.reservations = [reservation]
             self._save(record)
             assert record.instance_id is not None
-            if fresh and seed is not None and not record.seeded:
+            viewer_present = bool(
+                record.viewed_at and now - record.viewed_at < VIEWER_GRACE_SECONDS
+            )
+            screen = self._screen_holders.get(agent_id)
+            if (
+                wake != "already_running"
+                and self._controller
+                and turn
+                and turn.manager is None
+                and not record.takeover
+                and not viewer_present
+                and not (
+                    screen and screen[0] != turn.thread_id and now - screen[1] < SCREEN_HOLD_SECONDS
+                )
+            ):
+                with self._controller.exclusive() as sole:
+                    if sole:
+                        turn.manager = self
+                        self._exclusive_wakes[agent_id] = (turn, record.instance_id)
+            if wake == "started" and seed is not None and not record.seeded:
                 instance = record.instance_id
                 try:
                     seed(lambda path, data: self._driver.write(instance, path, data))
@@ -584,14 +701,14 @@ class ComputerManager:
         command, ``cloud_computer``, the user opening its screen). The latest one wins."""
         self._wakers[agent_id] = waker
 
-    def _wake(self, record: ComputerRecord) -> bool:
-        """Resume the record's paused instance or start a new one; True when it is brand new."""
+    def _wake(self, record: ComputerRecord) -> Literal["started", "resumed", "already_running"]:
+        """Distinguish a physical wake from adoption of a computer already running."""
         state = self._driver.state(record.instance_id) if record.instance_id else "gone"
         if state == "paused":
             self._driver.resume(record.instance_id or "")
-            return False
+            return "resumed"
         if state != "gone":
-            return False
+            return "already_running"
         # A start that times out after AGS made the instance, or a crash right after, leaves an
         # instance no record knows: the orphan scan stops it by its octop-server label.
         record.instance_id = None
@@ -604,10 +721,10 @@ class ComputerManager:
                 "octop-server": self.server_id(),
             },
         )
-        return True
+        return "started"
 
-    def _make_room(self, agent_id: str) -> bool:
-        """Pause this server's longest-idle running computer to free AGS capacity.
+    def _make_room(self, agent_id: str, user_id: int) -> bool:
+        """Pause the user's longest-idle running computer to free AGS capacity.
 
         Never one in use: mid-command, acted on lately, or with its screen open.
         """
@@ -621,7 +738,8 @@ class ComputerManager:
             except Exception:  # noqa: BLE001 - a broken record is the reaper's to report
                 continue
             if (
-                other.agent_id == agent_id
+                other.user_id != user_id
+                or other.agent_id == agent_id
                 or not other.running
                 or self._busy.get(other.agent_id, 0) > 0
                 or now - other.viewed_at < VIEWER_GRACE_SECONDS
@@ -641,16 +759,63 @@ class ComputerManager:
 
     def touch(self, agent_id: str, user_id: int) -> None:
         with self._lock(agent_id):
+            self._observe_use(agent_id, user_id)
             record = self.record(agent_id, user_id)
             record.active_at = self._clock()
             self._cancel_reclaim(record, used=True)
             self._save(record)
+
+    def _observe_use(self, agent_id: str, user_id: int) -> BackgroundComputerTurn | None:
+        """Called with the Bot lock before an operation can touch its computer."""
+        turn = current_background_turn(user_id, agent_id)
+        claim = self._exclusive_wakes.get(agent_id)
+        if claim and claim[0] is not turn:
+            del self._exclusive_wakes[agent_id]
+        return turn
+
+    def forget_background_turn(self, turn: BackgroundComputerTurn) -> None:
+        with self._lock(turn.agent_id):
+            claim = self._exclusive_wakes.get(turn.agent_id)
+            if claim and claim[0] is turn:
+                del self._exclusive_wakes[turn.agent_id]
+
+    def pause_for_handoff(self, turn: BackgroundComputerTurn) -> bool:
+        with self._lock(turn.agent_id):
+            claim = self._exclusive_wakes.get(turn.agent_id)
+            if not turn.active or not claim or claim[0] is not turn or self._controller is None:
+                return False
+            del self._exclusive_wakes[turn.agent_id]
+            owner = self._services.agent_repo.get(turn.agent_id)
+            if owner is None or owner.user_id != turn.user_id:
+                return False
+            record = self.record(turn.agent_id, turn.user_id)
+            if (
+                not record.running
+                or record.instance_id != claim[1]
+                or self._busy.get(turn.agent_id, 0)
+                or record.takeover
+                or (record.viewed_at and self._clock() - record.viewed_at < VIEWER_GRACE_SECONDS)
+            ):
+                return False
+            with self._controller.exclusive() as sole:
+                if not sole:
+                    return False
+                try:
+                    if self._driver.state(claim[1]) != "running":
+                        return False
+                    self._driver.pause(claim[1])
+                except Exception:  # noqa: BLE001 - an optional handoff never substitutes a stop
+                    logger.warning("background pause unavailable for computer %s", turn.agent_id)
+                    return False
+                self._finish_pause(record)
+                return True
 
     def pause(self, agent_id: str, user_id: int) -> None:
         with self._lock(agent_id):
             record = self.record(agent_id, user_id)
             if not record.running:
                 return
+            self._exclusive_wakes.pop(agent_id, None)
             if record.instance_id:
                 try:
                     self._driver.pause(record.instance_id)
@@ -658,11 +823,14 @@ class ComputerManager:
                     logger.warning("computer %s did not pause; stopping it", agent_id)
                     self._driver.stop(record.instance_id)
                     record.instance_id = None
-            self._settle(record)
-            record.running = False
-            record.running_since = None
-            record.started_at = None
-            self._save(record)
+            self._finish_pause(record)
+
+    def _finish_pause(self, record: ComputerRecord) -> None:
+        self._settle(record)
+        record.running = False
+        record.running_since = None
+        record.started_at = None
+        self._save(record)
 
     def _settle_one(
         self, record: ComputerRecord, reservation: Reservation, used: int, attempts: int = 0
@@ -737,6 +905,33 @@ class ComputerManager:
                 self._stop_orphans(records, now)
             except Exception:  # noqa: BLE001 - retried on the next scan
                 logger.exception("cloud computer orphan scan failed")
+        if now - self._last_shadow_scan >= SHADOW_SCAN_SECONDS:
+            self._last_shadow_scan = now
+            try:
+                self._reap_shadows(now)
+            except Exception:  # noqa: BLE001 - retried on the next scan
+                logger.exception("shadow Bot scan failed")
+
+    def _reap_shadows(self, now: float) -> None:
+        """Delete shadow Bots unused for a long time (the desktop was uninstalled or stopped
+        using the cloud). Their computers are stopped and settled by the next pass, like any
+        deleted Bot's; a computer in use keeps its shadow."""
+        from octop.infra.cloud.bot_cloud.shadows import IDLE_DAYS, idle_shadows  # noqa: PLC0415
+
+        def last_use(row: Any) -> float:
+            if row.user_id is None:
+                return 0.0
+            record = self.record(row.agent_id, row.user_id)
+            return max(record.active_at, record.viewed_at)
+
+        for row in idle_shadows(self._services, last_use, now):
+            if row.user_id is None:
+                continue
+            if self.record(row.agent_id, row.user_id).running or self.busy(row.agent_id):
+                continue
+            logger.info("deleting shadow Bot %s, unused for %s days", row.agent_id, IDLE_DAYS)
+            self._services.agent_repo.delete(row.agent_id)
+            self._services.settings_repo.delete(f"octop_bot:shadow:{row.agent_id}")
 
     def _stop_orphans(self, records: list[ComputerRecord], now: float) -> None:
         """Stop this server's instances that no record knows (lost starts, crashes)."""
@@ -768,8 +963,8 @@ class ComputerManager:
         if record.instance_id and self._driver.state(record.instance_id) == "gone":
             self._lost(record.agent_id, record.user_id)
             return
-        if record.takeover and not record.controlled(now):
-            self.set_takeover(record.agent_id, record.user_id, False)  # no one is watching
+        if record.takeover:
+            record = self._viewer_record(record.agent_id, record.user_id)
         busy = self._busy.get(record.agent_id, 0) > 0
         watched = now - record.viewed_at < VIEWER_GRACE_SECONDS
         if not (busy or watched) and now - record.active_at >= IDLE_PAUSE_SECONDS:
@@ -818,17 +1013,18 @@ class ComputerManager:
                 return
             try:
                 self._billing.charge_disk(record, day, size)
-            except Exception:  # noqa: BLE001 - out of credits (402), unpriced (503) or Lynxce down
+            except Exception as exc:  # noqa: BLE001 - retry transient billing failures as well
                 logger.info("disk of computer %s not paid for %s; retrying later", agent_id, day)
-                record.disk_failed_day = record.disk_failed_day or day
+                if isinstance(exc, DiskBalanceInsufficient):
+                    record.disk_failed_day = record.disk_failed_day or day
+                    record.disk_insufficient_day = day
+                else:
+                    record.clear_disk_arrears()
                 record.disk_retry_at = now + DISK_RETRY_SECONDS
                 self._save(record)
                 return
-            if record.reclaim_reason == "unpaid":
-                self._cancel_reclaim(record)
-            record.reclaim_unpaid_since = ""
+            record.clear_disk_arrears()
             record.disk_paid_day = day
-            record.disk_failed_day = ""
             record.disk_retry_at = 0.0
             self._save(record)
 
@@ -927,16 +1123,31 @@ class ComputerManager:
         self.viewing(agent_id, user_id)
         return self._driver.screen(instance)
 
+    def _viewer_record(self, agent_id: str, user_id: int) -> ComputerRecord:
+        """Read the current lease and finalize an expired handback under the device lock."""
+        with self._lock(agent_id):
+            self._exclusive_wakes.pop(agent_id, None)
+            record = self.record(agent_id, user_id)
+            now = self._clock()
+            if record.takeover and not record.controlled(now):
+                record.takeover = False
+                record.check_handoff_frame = True
+                record.active_at = now
+                self._save(record)
+            return record
+
     def viewing(self, agent_id: str, user_id: int) -> None:
         with self._lock(agent_id):
-            record = self.record(agent_id, user_id)
+            record = self._viewer_record(agent_id, user_id)
             record.viewed_at = record.active_at = self._clock()
             self._cancel_reclaim(record, used=True)
             self._save(record)
 
     def set_takeover(self, agent_id: str, user_id: int, active: bool) -> ComputerRecord:
         with self._lock(agent_id):
+            self._exclusive_wakes.pop(agent_id, None)
             record = self.record(agent_id, user_id)
+            record.check_handoff_frame |= active or record.takeover
             record.takeover = active
             record.active_at = self._clock()
             self._cancel_reclaim(record, used=True)
@@ -951,36 +1162,84 @@ class ComputerManager:
             record = self.record(agent_id, user_id)
             if record.takeover:
                 record.takeover = False
+                record.check_handoff_frame = True
                 record.active_at = self._clock()
                 self._save(record)
 
+    def model_screen[T](
+        self,
+        agent_id: str,
+        user_id: int,
+        taken_over: str,
+        work: Callable[[ComputerDriver, str], T],
+        review: Callable[[ComputerDriver, str], tuple[T, bool]],
+    ) -> T | str:
+        """Serialize the model's observation with human takeover and handback."""
+
+        def observe(driver: ComputerDriver, instance: str) -> T | str:
+            with self._lock(agent_id):
+                record = self._viewer_record(agent_id, user_id)
+                if record.takeover:
+                    return taken_over
+                if record.check_handoff_frame:
+                    result, clear = review(driver, instance)
+                    if clear:
+                        record.check_handoff_frame = False
+                        self._save(record)
+                    return result
+                return work(driver, instance)
+
+        return self.use(agent_id, user_id, observe)
+
     def taken_over(self, agent_id: str, user_id: int) -> bool:
-        return self.record(agent_id, user_id).controlled(self._clock())
+        return self._viewer_record(agent_id, user_id).takeover
 
     def _controlled(self, agent_id: str, user_id: int) -> str:
         """The instance the user has taken over; typing and the clipboard need takeover."""
-        record = self.record(agent_id, user_id)
-        if not (record.controlled(self._clock()) and record.running and record.instance_id):
+        record = self._viewer_record(agent_id, user_id)
+        if not (record.takeover and record.running and record.instance_id):
             raise OctopError.localized(ErrorCode.BOT_COMPUTER_NOT_TAKEN_OVER)
         return record.instance_id
 
     def paste_text(self, agent_id: str, user_id: int, text: str) -> None:
-        self._driver.paste_text(self._controlled(agent_id, user_id), text)
-        self.viewing(agent_id, user_id)
+        with self._lock(agent_id):
+            self._driver.paste_text(self._controlled(agent_id, user_id), text)
+            self.viewing(agent_id, user_id)
 
     def read_clipboard(self, agent_id: str, user_id: int) -> str:
-        text = self._driver.read_clipboard(self._controlled(agent_id, user_id))
-        self.viewing(agent_id, user_id)
-        return text
+        with self._lock(agent_id):
+            text = self._driver.read_clipboard(self._controlled(agent_id, user_id))
+            self.viewing(agent_id, user_id)
+            return text
 
     def close(self) -> None:
         """Stop the reaper (server shutdown): it must not touch a closed database."""
         self._stopping.set()
+        if self._controller is not None:
+            self._controller.close()
         reaper = self._reaper
         if reaper is not None and reaper is not threading.current_thread():
             reaper.join(timeout=REAP_INTERVAL_SECONDS)
 
     # Work
+
+    @contextmanager
+    def _working(self, agent_id: str, user_id: int, seed: Seeder | None) -> Iterator[str]:
+        # Admission precedes ensure_running, so a handoff cannot cut between admission and I/O.
+        with self._lock(agent_id):
+            self._observe_use(agent_id, user_id)
+            with self._guard:
+                self._busy[agent_id] = self._busy.get(agent_id, 0) + 1
+        instance = None
+        try:
+            instance = self.ensure_running(agent_id, user_id, seed)
+            yield instance
+        finally:
+            with self._lock(agent_id):
+                with self._guard:
+                    self._busy[agent_id] -= 1
+                if instance is not None:
+                    self.touch(agent_id, user_id)
 
     def run(
         self,
@@ -991,21 +1250,14 @@ class ComputerManager:
         *,
         seed: Seeder | None = None,
     ) -> tuple[int, str]:
-        instance = self.ensure_running(agent_id, user_id, seed)
-        with self._guard:
-            self._busy[agent_id] = self._busy.get(agent_id, 0) + 1
-        self.note(agent_id, "command")
-        try:
-            return self._driver.run(instance, command, timeout)
-        except Exception:
-            # The instance may have gone away underneath (expired, stopped elsewhere).
-            if self._driver.state(instance) == "gone":
-                self._lost(agent_id, user_id)
-            raise
-        finally:
-            with self._guard:
-                self._busy[agent_id] -= 1
-            self.touch(agent_id, user_id)
+        with self._working(agent_id, user_id, seed) as instance:
+            self.note(agent_id, "command")
+            try:
+                return self._driver.run(instance, command, timeout)
+            except Exception:
+                if self._driver.state(instance) == "gone":
+                    self._lost(agent_id, user_id)
+                raise
 
     def note(self, agent_id: str, kind: str) -> None:
         """Remember the Bot's latest action on its computer (click, type, command, …)."""
@@ -1018,10 +1270,16 @@ class ComputerManager:
         until the holder has left the screen alone for SCREEN_HOLD_SECONDS.
         """
         now = self._clock()
-        with self._guard:
+        with self._lock(agent_id):
             current = self._screen_holders.get(agent_id)
             if current and current[0] != holder and now - current[1] < SCREEN_HOLD_SECONDS:
                 return False
+            claim = self._exclusive_wakes.get(agent_id)
+            if claim and (
+                claim[0].thread_id != holder
+                or current_background_turn(claim[0].user_id, agent_id) is not claim[0]
+            ):
+                self._exclusive_wakes.pop(agent_id, None)
             self._screen_holders[agent_id] = (holder, now)
             return True
 
@@ -1037,7 +1295,9 @@ class ComputerManager:
 
     def glance(self, agent_id: str, user_id: int) -> Glance | None:
         """Front window title and a small thumbnail of a running computer; never starts it."""
-        record = self.record(agent_id, user_id)
+        with self._lock(agent_id):
+            self._exclusive_wakes.pop(agent_id, None)
+            record = self.record(agent_id, user_id)
         if not (record.running and record.instance_id):
             return None
         now = self._clock()
@@ -1064,25 +1324,28 @@ class ComputerManager:
         seed: Seeder | None = None,
     ) -> T:
         """Do something on the running computer (computer use); it counts as busy meanwhile."""
-        instance = self.ensure_running(agent_id, user_id, seed)
-        with self._guard:
-            self._busy[agent_id] = self._busy.get(agent_id, 0) + 1
-        try:
+        with self._working(agent_id, user_id, seed) as instance:
             return work(self._driver, instance)
-        finally:
-            with self._guard:
-                self._busy[agent_id] -= 1
-            self.touch(agent_id, user_id)
 
     def write(
         self, agent_id: str, user_id: int, path: str, data: bytes, *, seed: Seeder | None = None
     ) -> None:
-        self._driver.write(self.ensure_running(agent_id, user_id, seed), path, data)
+        with self._working(agent_id, user_id, seed) as instance:
+            self._driver.write(instance, path, data)
 
     def read(
-        self, agent_id: str, user_id: int, path: str, *, seed: Seeder | None = None
+        self,
+        agent_id: str,
+        user_id: int,
+        path: str,
+        *,
+        seed: Seeder | None = None,
+        max_bytes: int | None = None,
     ) -> bytes | None:
-        return self._driver.read(self.ensure_running(agent_id, user_id, seed), path)
+        with self._working(agent_id, user_id, seed) as instance:
+            if max_bytes is None:
+                return self._driver.read(instance, path)
+            return self._driver.read(instance, path, max_bytes=max_bytes)
 
 
 _manager: ComputerManager | None = None
@@ -1131,7 +1394,15 @@ def computer_manager(services: SharedServices) -> ComputerManager | None:
             driver = computer_driver()
             if driver is None:
                 return None
-            _manager = ComputerManager(services, driver, billing=billing_for(services))
+            database = services.config.database
+            controller = None
+            if os.name == "posix" and database.is_sqlite:
+                controller = SingleComputerController(
+                    database.resolve_sqlite_path(services.paths.root)
+                )
+            _manager = ComputerManager(
+                services, driver, billing=billing_for(services), controller=controller
+            )
             # Computers left running by a previous process are billed and paused from now on,
             # not from their next tool call.
             _manager._start_reaper()

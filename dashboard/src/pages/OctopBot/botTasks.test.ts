@@ -98,3 +98,21 @@ describe("botTasks", () => {
     expect(taskSeconds(task({ finished_at: 130 }) as never, 999)).toBe(30);
   });
 });
+
+it("shows an interruption after the final tool output and keeps its evidence", () => {
+  const messages = [tool("m", "task_check", task())];
+  const stop = {
+    id: "T1",
+    status: "stopped" as const,
+    updated_at: 140,
+    finished_at: 140,
+    summary: "Model stopped responding",
+  };
+  const entry = indexBotTasks(messages, [stop]).byId.get("T1");
+  expect(entry?.task.status).toBe("stopped");
+  expect(entry?.task.criteria).toEqual(task().criteria);
+  expect(
+    indexBotTasks(messages, [{ ...stop, updated_at: 90 }]).byId.get("T1")?.task
+      .status,
+  ).toBe("running");
+});

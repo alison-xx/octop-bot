@@ -459,6 +459,8 @@ async def create_skill_package(
             shared = False
         elif body.visibility in {"all", "groups"}:
             shared = True
+        if shared:
+            store.assert_can_publish(user)
         row = store.create(
             name=name,
             description=body.description.strip(),
@@ -499,6 +501,8 @@ async def create_from_skillhub(
     user: User = Depends(require_permission("skill_packages")),
 ) -> dict[str, Any]:
     store = _store(server)
+    if body.shared:
+        store.assert_can_publish(user)
     try:
         result = await asyncio.to_thread(
             create_package_from_skillhub,
@@ -570,6 +574,8 @@ async def update_skill_package(
         shared_value = 0
     elif body.visibility in {"all", "groups"}:
         shared_value = 1
+    if shared_value:
+        store.assert_can_publish(user)
     try:
         store.repo.update(
             package_id,

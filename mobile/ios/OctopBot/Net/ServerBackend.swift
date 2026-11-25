@@ -2,13 +2,25 @@ import Foundation
 
 /// A self-hosted Octop Bot server (NAS / Docker web build): its Bots, tools, memory and groups.
 final class ServerBackend: ChatBackend {
-    struct Session: Codable {
+    struct AttachmentIdentity: Codable, Equatable {
+        let accountID: Int
+        let namespace: UUID
+
+        init?(accountID: Int?) {
+            guard let accountID, accountID > 0 else { return nil }
+            self.accountID = accountID
+            namespace = UUID()
+        }
+    }
+
+    struct Session: Codable, Equatable {
         var baseURL: URL
         var token: String
         var displayName: String
         /// Octop Bot cloud (bot.lynxce.cn): signed in with Lynxce, which it keeps for the wallet.
         var cloud: Bool?
         var signupExpiryDay: String? = nil
+        var attachmentIdentity: AttachmentIdentity? = nil
     }
 
     /// Octop Bot cloud, run by Lynxce.
@@ -16,6 +28,7 @@ final class ServerBackend: ChatBackend {
     var isCloud: Bool { session.cloud == true }
 
     private static let sessionKey = "server.session"
+    private(set) lazy var attachments = AttachmentStore(source: self)
     private(set) var session: Session
     var signupCredits: Double?
     var signupExpiryDay: String? { session.signupExpiryDay }
@@ -34,6 +47,37 @@ final class ServerBackend: ChatBackend {
 
     static func restore() -> ServerBackend? {
         Keychain.codable(Session.self, for: sessionKey).map { ServerBackend(session: $0) }
+    }
+
+    var attachmentLoginIsCurrent: Bool { Keychain.codable(Session.self, for: Self.sessionKey) == session }
+
+    func attachmentOwner() async throws -> String {
+        try await attachmentNamespace(storedAt: Self.sessionKey) {
+            // This identity-only probe must not rotate a credential while accounts are switching.
+            let request = try HTTP.request(self.url("/api/auth/me"), method: .get, headers: self.authHeaders)
+            let (bytes, response) = try await HTTP.data(for: request, delegate: NoAPIRedirect())
+            guard response.statusCode == 200,
+                  let me = try JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+                  let id = me["id"] as? Int else { throw APIError.network }
+            return id
+        }
+    }
+
+    /// A new sign-in receives a distinct namespace. Upgrade an old Keychain row only after
+    /// this session has authenticated its account; a later cold start can then work offline.
+    func attachmentNamespace(storedAt key: String, verify: () async throws -> Int) async throws -> String {
+        guard attachments.isActive, Keychain.codable(Session.self, for: key) == session else { throw CancellationError() }
+        if let known = session.attachmentIdentity { return known.namespace.uuidString }
+        let account = try await verify()
+        guard attachments.isActive, Keychain.codable(Session.self, for: key) == session else { throw CancellationError() }
+        if let known = session.attachmentIdentity { return known.namespace.uuidString }
+        guard let identity = AttachmentIdentity(accountID: account) else { throw APIError.network }
+        var next = session
+        next.attachmentIdentity = identity
+        guard Keychain.replace(session, with: next, for: key),
+              Keychain.codable(Session.self, for: key) == next else { throw APIError.network }
+        session = next
+        return identity.namespace.uuidString
     }
 
     // MARK: Sign-in
@@ -154,7 +198,8 @@ final class ServerBackend: ChatBackend {
         let name = displayName(user)
         // Octop Bot cloud says so in its sign-in response; it then also serves the Lynxce wallet.
         let session = Session(baseURL: base, token: token, displayName: name, cloud: body["cloud"] as? Bool == true ? true : nil,
-                              signupExpiryDay: body["cloud"] as? Bool == true ? signupExpiryDayUTC(body) : nil)
+                              signupExpiryDay: body["cloud"] as? Bool == true ? signupExpiryDayUTC(body) : nil,
+                              attachmentIdentity: AttachmentIdentity(accountID: user?["id"] as? Int))
         Keychain.setCodable(session, for: sessionKey)
         let backend = ServerBackend(session: session)
         backend.signupCredits = backend.isCloud ? newSignupCredits(body) : nil
@@ -173,7 +218,7 @@ final class ServerBackend: ChatBackend {
         var photo = AccountPhoto(name: Self.displayName(me), url: me["avatar_url"] as? String)
         if let local = AccountPhoto.localAvatar(me),
            let request = try? HTTP.request(url(local.path, query: local.query), method: .get, headers: authHeaders),
-           let (bytes, response) = try? await HTTP.session.data(for: request, delegate: NoAvatarRedirect()),
+           let (bytes, response) = try? await HTTP.session.data(for: request, delegate: NoAPIRedirect()),
            (response as? HTTPURLResponse)?.statusCode == 200 {
             photo.localImage = bytes
         }
@@ -182,7 +227,7 @@ final class ServerBackend: ChatBackend {
 
     private static func anonymous(_ base: URL, _ method: HTTPMethod, _ path: String, json: Any? = nil) async throws -> [String: Any] {
         let request = try HTTP.request(base.appending(path: path), method: method, json: json)
-        let (data, response) = try await HTTP.data(for: request)
+        let (data, response) = try await HTTP.data(for: request, delegate: NoAPIRedirect())
         guard (200..<300).contains(response.statusCode) else {
             throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data), details: HTTP.errorDetails(data))
         }
@@ -203,16 +248,19 @@ final class ServerBackend: ChatBackend {
         _ method: HTTPMethod, _ path: String, query: [String: String] = [:], json: Any? = nil,
         form: [FormPart]? = nil, timeout: TimeInterval = 60
     ) async throws -> Data {
+        let issuedFor = session
         var request = try HTTP.request(url(path, query: query), method: method, headers: authHeaders, json: json, form: form)
         request.timeoutInterval = timeout
-        let (data, response) = try await HTTP.data(for: request)
-        // Sliding sessions: the server hands out a fresh token near expiry.
-        if let renewed = response.value(forHTTPHeaderField: "X-Octop-Access-Token"), !renewed.isEmpty, renewed != session.token {
-            session.token = renewed
-            Keychain.setCodable(session, for: Self.sessionKey)
-        }
+        let (data, response) = try await HTTP.data(for: request, delegate: NoAPIRedirect())
         guard (200..<300).contains(response.statusCode) else {
             throw APIError.from(status: response.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data), details: HTTP.errorDetails(data))
+        }
+        // Sliding sessions: the server hands out a fresh token near expiry.
+        if session == issuedFor, let renewed = response.value(forHTTPHeaderField: "X-Octop-Access-Token"),
+           !renewed.isEmpty, renewed != issuedFor.token {
+            var next = issuedFor
+            next.token = renewed
+            if Keychain.replace(issuedFor, with: next, for: Self.sessionKey) { session = next }
         }
         return data
     }
@@ -223,6 +271,60 @@ final class ServerBackend: ChatBackend {
     ) async throws -> Any {
         let data = try await raw(method, path, query: query, json: body, form: form, timeout: timeout)
         return data.isEmpty ? NSNull() : ((try? JSONSerialization.jsonObject(with: data)) ?? NSNull())
+    }
+
+    var isOfficialCloud: Bool { isCloud && session.baseURL.standardized == Self.lynxceCloud.standardized }
+
+    private var verifiedHistoryOwner: String?
+
+    func rememberedThread(bot: String) async -> String? {
+        guard isOfficialCloud, let owner = try? await legacyHistoryOwner() else { return nil }
+        return UserDefaults.standard.string(forKey: "cloud.thread." + owner + "." + bot)
+    }
+
+    func rememberThread(_ thread: String?, bot: String) {
+        guard let owner = verifiedHistoryOwner else { return }
+        UserDefaults.standard.set(thread, forKey: "cloud.thread." + owner + "." + bot)
+    }
+
+    func legacyHistoryOwner(refresh: Bool = false) async throws -> String {
+        if !refresh, let verifiedHistoryOwner { return verifiedHistoryOwner }
+        guard isOfficialCloud, let profile = try await json(.get, "/api/octop-bot/cloud/account") as? [String: Any],
+              profile["connected"] as? Bool == true, let owner = profile["account_id"] as? String, !owner.isEmpty else {
+            throw APIError(kind: .server, status: 502, message: nil)
+        }
+        verifiedHistoryOwner = owner
+        return owner
+    }
+
+    func restoreLegacyHistory() async throws -> Bool {
+        try await Self.restoreLegacyPages { cursor in
+            let body = cursor.map { ["cursor": $0] } ?? [:]
+            guard let page = try await self.json(.post, "/api/octop-bot/cloud/legacy-conversations/restore", json: body) as? [String: Any] else {
+                throw APIError(kind: .server, status: 502, message: nil)
+            }
+            return page
+        }
+    }
+
+    static func restoreLegacyPages(_ fetch: (String?) async throws -> [String: Any]) async throws -> Bool {
+        var cursor: String?
+        var seen = Set<String>()
+        var complete = true
+        repeat {
+            try Task.checkCancellation()
+            let page = try await fetch(cursor)
+            guard let skipped = page["skipped"] as? Int, let next = page["next_cursor"] else {
+                throw APIError(kind: .server, status: 502, message: nil)
+            }
+            if skipped > 0 { complete = false }
+            if next is NSNull { break }
+            guard let value = next as? String, !value.isEmpty, seen.insert(value).inserted else {
+                throw APIError(kind: .server, status: 502, message: nil)
+            }
+            cursor = value
+        } while true
+        return complete
     }
 
     // MARK: Directory
@@ -304,31 +406,78 @@ final class ServerBackend: ChatBackend {
     // MARK: Threads
 
     func conversations(for bot: BotProfile) async throws -> [ConversationSummary] {
-        let rows = try await json(.get, "/api/agents/\(bot.id)/threads", query: ["limit": "50"]) as? [[String: Any]] ?? []
+        var rows: [[String: Any]] = []
+        var seen = Set<String>()
+        var offset = 0
+        let path = "/api/agents/\(bot.id)/threads"
+        var window: Int?
+        while true {
+            let limit = window ?? 50
+            let query = ["limit": String(limit), "offset": String(window == nil ? offset : 0)]
+            let page = try await json(.get, path, query: query) as? [[String: Any]] ?? []
+            let additions = page.filter { ($0["thread_id"] as? String).map { seen.insert($0).inserted } ?? false }
+            rows += additions
+            if page.count < limit { break }
+            if window != nil {
+                if additions.isEmpty { break }
+                window = limit * 2
+            } else if additions.isEmpty {
+                // Older servers ignore offset. Their limit can still reach earlier threads.
+                window = (offset + 50)
+            } else {
+                offset += page.count
+            }
+        }
         return rows.compactMap { row in
             guard let id = row["thread_id"] as? String, row["has_messages"] as? Bool ?? true else { return nil }
             let date = (row["last_active"] as? String).flatMap(ISO8601.parse)
                 ?? (row["last_active"] as? Double).map { Date(timeIntervalSince1970: $0 > 1e12 ? $0 / 1000 : $0) }
             let title = (row["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? L("chat.untitled")
-            return ConversationSummary(id: id, title: title, updatedAt: date, botId: bot.id)
+            return ConversationSummary(id: id, title: title, updatedAt: date, botId: bot.id, owned: row["owned"] as? Bool, active: row["is_active"] as? Bool == true)
         }
         .sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
     }
 
-    func messages(in conversation: ConversationSummary, bot: BotProfile) async throws -> [ChatMessage] {
+    struct HistoryPosition: Equatable {
+        var offset = 0
+        var cursor: String?
+    }
+
+    struct HistoryPage {
+        var rows: [[String: Any]]
+        var next: HistoryPosition?
+        var pause: HitlPause?
+    }
+
+    func historyPage(_ thread: String, bot: BotProfile, position: HistoryPosition = .init()) async throws -> HistoryPage {
+        let limit = 60
+        var query = ["limit": String(limit)]
+        if let cursor = position.cursor { query["cursor"] = cursor } else { query["offset"] = String(position.offset) }
         for _ in 0..<20 {
-            let body = try await json(
-                .get, "/api/agents/\(bot.id)/threads/\(conversation.id)/history", query: ["limit": "60"]
-            ) as? [String: Any] ?? [:]
+            try Task.checkCancellation()
+            let body = try await json(.get, "/api/agents/\(bot.id)/threads/\(thread)/history", query: query) as? [String: Any] ?? [:]
             if body["history_loading"] as? Bool == true {
                 let wait = (body["history_retry_after_ms"] as? Double ?? 800) / 1000
                 try await Task.sleep(for: .seconds(min(max(wait, 0.3), 3)))
                 continue
             }
-            pauses[conversation.id] = HitlPause.parse(body["hitl_pending"], labels: toolLabels)
-            return Self.history(body["messages"] as? [[String: Any]] ?? [], labels: toolLabels, agent: bot.id)
+            let next = body["has_more"] as? Bool == true
+                ? HistoryPosition(offset: position.offset + (body["limit"] as? Int ?? limit), cursor: body["next_cursor"] as? String)
+                : nil
+            return HistoryPage(rows: body["messages"] as? [[String: Any]] ?? [], next: next,
+                               pause: HitlPause.parse(body["hitl_pending"], labels: toolLabels))
         }
-        return []
+        throw APIError.network
+    }
+
+    func historyMessages(_ rows: [[String: Any]], bot: BotProfile) -> [ChatMessage] {
+        Self.history(rows, labels: toolLabels, agent: bot.id)
+    }
+
+    func messages(in conversation: ConversationSummary, bot: BotProfile) async throws -> [ChatMessage] {
+        let page = try await historyPage(conversation.id, bot: bot)
+        pauses[conversation.id] = page.pause
+        return historyMessages(page.rows, bot: bot)
     }
 
     /// Server history rows → chat messages; tool rows are folded into the assistant's tool steps,
@@ -392,6 +541,7 @@ final class ServerBackend: ChatBackend {
                 message.status = Self.stoppedStatus(row["error_code"] as? String) ?? .failed(L("chat.failed"))
             }
             if let id = row["id"] as? String { message.id = id }
+            else if let seq = row["history_seq"] as? Int { message.id = "history-\(seq)" }
             if role == .assistant {
                 message.attachments = pending
                 pending = []
@@ -444,7 +594,7 @@ final class ServerBackend: ChatBackend {
                     )
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     request.timeoutInterval = 600
-                    let (bytes, response) = try await HTTP.session.bytes(for: request)
+                    let (bytes, response) = try await HTTP.session.bytes(for: request, delegate: NoAPIRedirect())
                     guard let http = response as? HTTPURLResponse else { throw APIError.network }
                     guard (200..<300).contains(http.statusCode) else {
                         var data = Data()
@@ -452,13 +602,17 @@ final class ServerBackend: ChatBackend {
                         throw APIError.from(status: http.statusCode, message: HTTP.errorMessage(data), code: HTTP.errorCode(data), details: HTTP.errorDetails(data))
                     }
                     var mapper = ServerFrameMapper(labels: toolLabels, endsOnDone: true)
+                    var complete = false
                     loop: for try await event in SSE.events(bytes) {
                         guard let frame = try? JSONSerialization.jsonObject(with: Data(event.data.utf8)) as? [String: Any] else { continue }
                         switch try mapper.map(frame) {
                         case .events(let events): events.forEach { continuation.yield($0) }
-                        case .finished: break loop
+                        case .finished:
+                            complete = true
+                            break loop
                         }
                     }
+                    guard complete else { throw APIError.network }
                     continuation.yield(.done)
                     continuation.finish()
                 } catch {
@@ -471,8 +625,61 @@ final class ServerBackend: ChatBackend {
 
     // MARK: Chat over WebSocket
 
+    enum Observation {
+        case status(active: Bool, turn: String?)
+        case user(ChatMessage)
+        case delta(StreamEvent)
+        case finished
+    }
+
+    private func threadSocket(_ bot: BotProfile) -> URLSessionWebSocketTask {
+        var components = URLComponents(url: url("/api/agents/\(bot.id)/chat/ws"), resolvingAgainstBaseURL: false)!
+        components.scheme = components.scheme == "https" ? "wss" : "ws"
+        components.queryItems = [URLQueryItem(name: "token", value: session.token)]
+        return HTTP.session.webSocketTask(with: components.url!)
+    }
+
+    func observe(_ thread: String, bot: BotProfile) -> AsyncThrowingStream<Observation, Error> {
+        AsyncThrowingStream { output in
+            let socket = threadSocket(bot)
+            let task = Task {
+                defer { socket.cancel(with: .normalClosure, reason: nil) }
+                do {
+                    socket.resume()
+                    try await socket.send(.string(Self.encode(["type": "subscribe", "thread_id": thread])))
+                    var mapper = ServerFrameMapper(labels: toolLabels)
+                    while !Task.isCancelled {
+                        guard case .string(let raw) = try await socket.receive(),
+                              let frame = try JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any],
+                              frame["thread_id"] as? String == thread else { continue }
+                        switch frame["type"] as? String {
+                        case "turn_status":
+                            output.yield(.status(active: frame["active"] as? Bool == true, turn: frame["turn_id"] as? String))
+                        case "turn.started", "turn.resumed":
+                            output.yield(.status(active: true, turn: frame["turn_id"] as? String))
+                        case "user":
+                            let id = frame["message_id"] as? String ?? UUID().uuidString
+                            let row = ChatMessage(id: id, role: .user, text: frame["content"] as? String ?? "",
+                                                  authorName: (frame["author"] as? [String: Any])?["display_name"] as? String)
+                            output.yield(.user(row))
+                        case "turn.ended":
+                            output.yield(.finished)
+                            mapper = ServerFrameMapper(labels: toolLabels)
+                        default:
+                            if case .events(let events) = try mapper.map(frame) {
+                                for event in events { output.yield(.delta(event)) }
+                            }
+                        }
+                    }
+                    output.finish()
+                } catch { output.finish(throwing: error) }
+            }
+            output.onTermination = { _ in socket.cancel(with: .normalClosure, reason: nil); task.cancel() }
+        }
+    }
+
     func send(
-        _ text: String, images: [Data], to bot: BotProfile, conversation: String?,
+        _ text: String, messageId: String, images: [Data], to bot: BotProfile, conversation: String?,
         history: [ChatMessage], model: String?
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -497,16 +704,13 @@ final class ServerBackend: ChatBackend {
                     }
                     var turn: [String: Any] = [
                         "type": "user_turn", "thread_id": threadId, "text": text,
-                        "messages": [["role": "user", "content": content, "id": UUID().uuidString]],
+                        "messages": [["role": "user", "content": content, "id": messageId]],
                     ]
                     if let model { turn["model"] = model }
                     // Health, Calendar and Reminders run on this phone (PROTOCOL.md §C).
                     turn["device_tools"] = DeviceConnectors.shared.offeredTools
 
-                    var components = URLComponents(url: url("/api/agents/\(bot.id)/chat/ws"), resolvingAgainstBaseURL: false)!
-                    components.scheme = components.scheme == "https" ? "wss" : "ws"
-                    components.queryItems = [URLQueryItem(name: "token", value: session.token)]
-                    let ws = HTTP.session.webSocketTask(with: components.url!)
+                    let ws = threadSocket(bot)
                     socket = ws
                     sockets[threadId] = ws
                     ws.resume()
@@ -703,9 +907,10 @@ final class ServerBackend: ChatBackend {
     func registerPush(token: String) async {}
 
     func signOut() async {
+        attachments.invalidate()
         for socket in sockets.values { socket.cancel(with: .goingAway, reason: nil) }
+        Keychain.replace(session, with: nil, for: Self.sessionKey)
         _ = try? await raw(.post, "/api/auth/logout")
-        Keychain.set(nil, for: Self.sessionKey)
     }
 }
 
@@ -724,6 +929,8 @@ struct ServerFrameMapper {
 
     mutating func map(_ frame: [String: Any]) throws -> Outcome {
         switch frame["type"] as? String {
+        case "turn.started", "turn.resumed":
+            return .events((frame["turn_id"] as? String).map { [.turnStarted($0)] } ?? [])
         case "token":
             let text = frame["content"] as? String ?? ""
             return .events(text.isEmpty ? [] : [.text(text)])
@@ -777,13 +984,5 @@ struct ServerFrameMapper {
             return APIError(kind: .server, status: 500, message: L("error.providerBalance"))
         }
         return APIError(kind: .server, status: 500, message: text)
-    }
-}
-
-
-private final class NoAvatarRedirect: NSObject, URLSessionTaskDelegate {
-    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                                newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
-        completionHandler(nil)
     }
 }

@@ -64,6 +64,12 @@ describe("onceSchedule", () => {
     expect(oneShotPhase("date:2026-10-18T09:00:00", false, "waiting")).toBe(
       "waiting",
     );
+    expect(oneShotPhase("date:2026-10-18T09:00:00", false, "expired")).toBe(
+      "expired",
+    );
+    expect(lastRunStatusTag("expired")?.labelKey).toBe(
+      "cronJobs.lastStatusExpired",
+    );
     expect(oneShotPhase("date:2026-10-18T09:00:00", false, null)).toBe(
       "paused",
     );

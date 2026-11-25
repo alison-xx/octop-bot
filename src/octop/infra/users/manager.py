@@ -531,6 +531,10 @@ class UserManager:
         self._services.audit_repo.write(actor=row.username, action="auth.login")
         return user
 
+    def revoke_sessions(self, user_id: int) -> None:
+        """Invalidate the user's existing access sessions."""
+        self._services.user_repo.bump_session_version(user_id)
+
     async def change_password(self, username: str, old: str, new: str) -> None:
         row = self._services.user_repo.get_by_username(username)
         if row is None:
@@ -882,6 +886,11 @@ class UserManager:
         async with self._lock:
             self._users.pop(username, None)
         await asyncio.to_thread(self._remove_user_files, row.id, row.username)
+        # Octop Bot cloud: shadow Bots hold only a cloud computer, which the computer reaper
+        # stops and settles once its Bot is gone.
+        for shadow in self._services.agent_repo.list_shadows(row.id):
+            self._services.agent_repo.delete(shadow.agent_id)
+            self._services.settings_repo.delete(f"octop_bot:shadow:{shadow.agent_id}")
         self._services.user_repo.delete(row.id)
         self._services.audit_repo.write(actor=ACTOR_ADMIN, action="user.delete", target=username)
 

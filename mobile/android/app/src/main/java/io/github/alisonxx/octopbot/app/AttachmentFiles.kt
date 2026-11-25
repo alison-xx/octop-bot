@@ -11,7 +11,6 @@ import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import io.github.alisonxx.octopbot.model.FileAttachment
 import io.github.alisonxx.octopbot.model.FileCards
-import io.github.alisonxx.octopbot.net.ServerBackend
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -21,34 +20,36 @@ import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Files Bots sent, fetched once into `cache/attachments/` (served to other apps through the FileProvider),
+ * Files Bots sent, fetched once into `cache/attachment-sessions/` (served to other apps through the FileProvider),
  * plus their sizes from `HEAD`, remembered for this run of the app.
  */
-class AttachmentFiles(private val context: Context) {
+class AttachmentFiles(private val cacheDir: File) {
     private val sizes = ConcurrentHashMap<String, Long>()
     private val locks = ConcurrentHashMap<String, Mutex>()
 
-    suspend fun size(server: ServerBackend, file: FileAttachment): Long? {
+    suspend fun size(scope: String, file: FileAttachment, fetch: suspend (String) -> Long?): Long? {
         file.size?.let { return it }
-        sizes[file.url]?.let { return it }
-        return server.fileSize(file.url)?.also { sizes[file.url] = it }
+        val key = digest(scope, file.url)
+        sizes[key]?.let { return it }
+        return fetch(file.url)?.also { sizes[key] = it }
     }
 
     /** The local copy of [file], downloading it the first time. */
-    suspend fun local(server: ServerBackend, file: FileAttachment): File {
-        val folder = File(File(context.cacheDir, "attachments"), digest(server.baseUrl + file.url))
+    suspend fun local(scope: String, file: FileAttachment, fetch: suspend (String, File) -> Unit): File {
+        val key = digest(scope, file.url)
+        val folder = File(File(cacheDir, "attachment-sessions"), key)
         val target = File(folder, safeName(file.name))
         locks.getOrPut(target.path) { Mutex() }.withLock {
             if (target.isFile) return target
             withContext(Dispatchers.IO) { folder.mkdirs() }
-            server.downloadFile(file.url, target)
-            sizes.putIfAbsent(file.url, target.length())
+            fetch(file.url, target)
+            sizes.putIfAbsent(key, target.length())
         }
         return target
     }
 
-    private fun digest(text: String): String =
-        MessageDigest.getInstance("SHA-1").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }.take(16)
+    private fun digest(scope: String, url: String): String =
+        MessageDigest.getInstance("SHA-256").digest((scope + "\u0000" + url).toByteArray()).joinToString("") { "%02x".format(it) }
 
     private fun safeName(name: String): String =
         name.replace(Regex("""[\\/:*?"<>|\u0000-\u001f]"""), "_").trim().ifEmpty { "file" }.take(120)

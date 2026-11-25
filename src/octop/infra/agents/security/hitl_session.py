@@ -20,6 +20,9 @@ HitlSessionMode = Literal["ask", "allow_all", "allow_tools"]
 _ASK_USER_TOOL_NAME = "ask_user_question"
 _MAX_TOOLS = 64
 _MAX_TOOL_NAME = 128
+_REQUIRE_OWNER_DECISION: ContextVar[bool] = ContextVar(
+    "octop_require_owner_decision", default=False
+)
 _CURRENT_HITL_THREAD: ContextVar[str | None] = ContextVar(
     "octop_hitl_thread",
     default=None,
@@ -167,6 +170,16 @@ def thread_id_from_interrupt_request(req: Any) -> str | None:
 
 
 @contextmanager
+def im_approval_scope(*, owner_required: bool) -> Iterator[None]:
+    """An unverified platform contact cannot use a signed-in owner's sticky tool grants."""
+    token = _REQUIRE_OWNER_DECISION.set(owner_required or _REQUIRE_OWNER_DECISION.get())
+    try:
+        yield
+    finally:
+        _REQUIRE_OWNER_DECISION.reset(token)
+
+
+@contextmanager
 def hitl_thread_scope(thread_id: str | None) -> Iterator[None]:
     """Bind *thread_id* for interrupt ``when`` predicates."""
     incoming = (thread_id or "").strip() or None
@@ -273,7 +286,7 @@ class HitlSessionPolicyStore:
             self.set(key, {"mode": "ask"})
 
     def allows(self, thread_id: str, tool_name: str) -> bool:
-        return self.get(thread_id).allows(tool_name)
+        return not _REQUIRE_OWNER_DECISION.get() and self.get(thread_id).allows(tool_name)
 
     def allows_current(self, tool_name: str) -> bool:
         tid = current_hitl_thread_id()

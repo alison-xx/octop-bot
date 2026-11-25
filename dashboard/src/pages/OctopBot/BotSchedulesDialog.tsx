@@ -465,7 +465,8 @@ export default function BotSchedulesDialog({
                           </small>
                         )}
                         {(job.last_status === "error" ||
-                          job.last_status === "waiting") &&
+                          job.last_status === "waiting" ||
+                          job.last_status === "expired") &&
                           job.last_error && <small>{job.last_error}</small>}
                       </div>
                       {!pastOnce && job.task_type !== "script" && (

@@ -253,7 +253,7 @@ async def test_get_thread_history_returns_has_more(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(
         history_mod,
         "_load_projected_thread_messages",
-        MagicMock(return_value=([{"role": "user", "content": "hi"}], True)),
+        MagicMock(return_value=([{"role": "user", "content": "hi"}], True, "2")),
     )
     out = await history_mod.get_thread_history(
         "agt_1",
@@ -604,7 +604,7 @@ async def test_shared_thread_hitl_resume_skips_user_filter(
     from octop.api.routers.chat import routes as routes_mod
     from octop.api.routers.chat.models import HitlResumeBody
 
-    row = MagicMock(contributed=True, user_id=1)
+    row = MagicMock(contributed=True, user_id=1, channel_type="dashboard")
     monkeypatch.setattr(history_mod, "_require_thread", lambda *_a, **_k: row)
     server = MagicMock()
     store = server.app_runtime.gateway.processor.hitl_coordinator.store

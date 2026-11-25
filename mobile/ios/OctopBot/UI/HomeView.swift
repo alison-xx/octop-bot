@@ -4,6 +4,7 @@ import SwiftUI
 struct HomeView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var path = NavigationPath()
     @State private var selection: Route?
@@ -44,6 +45,21 @@ struct HomeView: View {
                         .navigationDestination(for: Route.self) { destination($0) }
                 }
             }
+        }
+        .task(id: model.notificationChat) {
+            guard let target = model.notificationChat, let server = model.server else { return }
+            // Check the current signed-in directory, including after a cold start or account switch.
+            if model.bots.isEmpty { await model.refresh() }
+            guard model.server === server, model.notificationChat == target else { return }
+            guard let bot = model.bots.first(where: { $0.id == target.botId }),
+                  let rows = try? await server.conversations(for: bot),
+                  let row = rows.first(where: { $0.id == target.threadId }),
+                  model.server === server, model.notificationChat == target else { return }
+            await model.session(for: bot).open(row)
+            guard !Task.isCancelled, model.server === server, model.notificationChat == target else { return }
+            if sizeClass == .regular { selection = .bot(bot.id) }
+            else { path = NavigationPath([Route.bot(bot.id)]) }
+            model.notificationChat = nil
         }
         .onChange(of: scenePhase) { _, phase in
             // Bots, looks and groups may have changed on the desktop while we were away.
@@ -123,7 +139,7 @@ struct HomeView: View {
                         }
                         .accessibilityIdentifier("bot-\(bot.name)")
                 }
-                if shownBots.isEmpty && !query.isEmpty {
+                if shownBots.isEmpty && shownGroups.isEmpty && !query.isEmpty {
                     Text("home.noMatch").font(.subheadline).foregroundStyle(Palette.secondary)
                         .listRowBackground(Palette.background)
                 }
@@ -144,7 +160,7 @@ struct HomeView: View {
                 }
             }
         }
-        .animation(.snappy, value: shownBots.map(\.id))
+        .animation(reduceMotion ? nil : .snappy, value: shownBots.map(\.id))
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Palette.background.ignoresSafeArea())

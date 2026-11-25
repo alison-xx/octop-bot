@@ -1178,7 +1178,7 @@ def test_restore_repairs_old_physical_schema_with_current_watermark(tmp_path: Pa
             "SELECT instance_id, shared FROM connectors WHERE instance_id = 'instance-1'"
         ).fetchone()
 
-    assert result["schema_version"] == 27
+    assert result["schema_version"] == 29
     assert "shared" in columns
     assert connector is not None
     assert connector["shared"] == 0
@@ -1207,6 +1207,7 @@ def test_refuse_newer_schema_backup_before_database_replace(
                 assert extracted is not None
                 members[member.name] = extracted.read()
     manifest = json.loads(members["manifest.json"])
+    runtime_version = manifest["schema_version"]
     manifest["schema_version"] = 999
     members["manifest.json"] = json.dumps(manifest).encode()
     with tarfile.open(archive, mode="w:gz") as tf:
@@ -1232,7 +1233,7 @@ def test_refuse_newer_schema_backup_before_database_replace(
     assert excinfo.value.code == ErrorCode.BACKUP_SCHEMA_INCOMPATIBLE
     assert excinfo.value.details == {
         "archive_schema_version": 999,
-        "runtime_schema_version": 27,
+        "runtime_schema_version": runtime_version,
     }
     with pool.connect() as conn:
         assert (

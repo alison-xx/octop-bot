@@ -24,6 +24,7 @@ from octop.infra.db.repos.channels import ChannelRepo
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.db.repos.control_files import ControlFileRepo
 from octop.infra.db.repos.cron import CronJobRepo
+from octop.infra.db.repos.handoffs import HandoffRepo
 from octop.infra.db.repos.invites import InviteRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfigRepo
@@ -71,6 +72,7 @@ class RepoBundle:
     secret_repo: SecretRepo
     audit_repo: AuditRepo
     usage_repo: UsageRepo
+    handoff_repo: HandoffRepo
     settings_repo: SettingsRepo
     storage_backend_repo: SealedBackendRepo
     bridge_connection_repo: BridgeConnectionRepo
@@ -114,6 +116,7 @@ class RepoBundle:
             secret_repo=secret_repo,
             audit_repo=AuditRepo(db),
             usage_repo=UsageRepo(db),
+            handoff_repo=HandoffRepo(db),
             settings_repo=SettingsRepo(db),
             storage_backend_repo=SealedBackendRepo(BackendRepo(db), secret_repo),
             bridge_connection_repo=BridgeConnectionRepo(db),

@@ -121,7 +121,7 @@ fun Composer(
         Row(verticalAlignment = Alignment.Bottom) {
             if (allowPhotos) {
                 Box {
-                    IconButton(onClick = { attachMenu = true }) {
+                    IconButton(onClick = { attachMenu = true }, enabled = enabled) {
                         Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.chat_attach))
                     }
                     DropdownMenu(expanded = attachMenu, onDismissRequest = { attachMenu = false }) {
@@ -167,7 +167,9 @@ fun Composer(
                 )
             }
             val hasContent = text.isNotBlank() || images.isNotEmpty()
-            // Sending always works: while a reply streams, text is queued (send) and an empty field stops it.
+            if (enabled && streaming && hasContent && !dictating) {
+                RoundAction(Icons.Rounded.Stop, stringResource(R.string.chat_stop), filled = false, onClick = onStop)
+            }
             when {
                 !enabled -> RoundAction(Icons.Rounded.Mic, stringResource(R.string.chat_dictate), filled = false, enabled = false, onClick = {})
                 hasContent && !dictating -> RoundAction(Icons.Rounded.ArrowUpward, stringResource(R.string.chat_send), filled = true, onClick = onSend)

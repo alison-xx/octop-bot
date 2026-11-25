@@ -4,6 +4,7 @@ import UserNotifications
 /// The current Bot's conversations: search, grouped by day, open one, start a new one, swipe to delete.
 struct HistorySheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppModel.self) private var model
     let chat: ChatSession
     @State private var query = ""
     @State private var loaded = false
@@ -18,6 +19,9 @@ struct HistorySheet: View {
     var body: some View {
         NavigationStack {
             List {
+                if let notice = chat.deletionNotice {
+                    Text(notice).font(.footnote).foregroundStyle(.secondary)
+                }
                 if query.isEmpty {
                     Section {
                         Button {
@@ -28,10 +32,24 @@ struct HistorySheet: View {
                         }
                     }
                 }
+                if model.server?.isOfficialCloud == true, query.isEmpty {
+                    Section {
+                        Button("history.restore") { model.recoverLegacyHistory(force: true) }
+                            .disabled(model.recoveringHistory)
+                        if model.recoveringHistory { ProgressView() }
+                        else if let message = model.historyRecoveryMessage { Text(message).font(.footnote) }
+                    }
+                }
                 ForEach(groups, id: \.0) { bucket, rows in
                     Section(bucket.title) {
                         ForEach(rows) { conversation in
                             row(conversation)
+                            if let failure = chat.deletionFailures[conversation.id] {
+                                VStack(alignment: .leading) {
+                                    Text(failure).font(.footnote).foregroundStyle(.secondary)
+                                    Button("chat.retryDelete") { Task { await chat.delete(conversation) } }
+                                }
+                            }
                         }
                     }
                 }

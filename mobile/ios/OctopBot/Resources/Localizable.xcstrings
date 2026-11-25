@@ -2,6 +2,86 @@
   "sourceLanguage": "en",
   "version": "1.0",
   "strings": {
+    "history.reauthenticate": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in to Octop Bot Cloud to recover conversations saved under your Lynxce account."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请登录 Octop Bot 云端，找回这个灵策账号已保存的历史会话。"
+          }
+        }
+      }
+    },
+    "history.restore": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recover earlier conversations"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找回旧版会话"
+          }
+        }
+      }
+    },
+    "history.restored": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Earlier conversations are now available."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已完成查找，已找回的会话可在历史中查看。"
+          }
+        }
+      }
+    },
+    "history.restoreIncomplete": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some earlier records could not be recovered. You can try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "部分旧记录暂时无法恢复，可以重试。"
+          }
+        }
+      }
+    },
+    "history.restoreRetry": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recovery could not finish. Try again in Conversations."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话恢复暂未完成，可在会话历史中重试。"
+          }
+        }
+      }
+    },
     "credits.scenario.text %@ %@": {
       "localizations": {
         "en": {
@@ -598,6 +678,12 @@
         }
       }
     },
+    "chat.older": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Load earlier messages" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "加载更早的消息" } }
+      }
+    },
     "chat.attach": {
       "localizations": {
         "en": {
@@ -642,6 +728,72 @@
           "stringUnit": {
             "state": "translated",
             "value": "编辑"
+          }
+        }
+      }
+    },
+    "chat.deletionQueued": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This conversation is hidden on this device. Refresh the list when online to finish deleting it from Lynxce." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "会话已从本机列表隐藏。联网后刷新列表，将继续从灵策删除。" } }
+      }
+    },
+    "chat.deletionInProgress": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This conversation is being deleted. Refresh the list or start a new conversation." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "此会话正在删除。请刷新列表或新建会话。" } }
+      }
+    },
+    "chat.historySaveFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This reply is still on screen. Chat history could not be saved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回复仍在当前页面，但未能保存到历史会话。"
+          }
+        }
+      }
+    },
+    "chat.retryDelete": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Retry deletion" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "重新删除" } }
+      }
+    },
+    "chat.retrySave": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry saving"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新保存"
+          }
+        }
+      }
+    },
+    "chat.savingHistory": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving conversation…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在保存会话…"
           }
         }
       }
@@ -882,6 +1034,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "重试"
+          }
+        }
+      }
+    },
+    "chat.send": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送"
           }
         }
       }
@@ -4482,6 +4650,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "已付款，积分稍后自动到账"
+          }
+        }
+      }
+    },
+    "credits.recorded": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This purchase has already been processed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这笔购买已处理。"
+          }
+        }
+      }
+    },
+    "credits.reversed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple reversed this purchase."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple 已撤销这笔购买。"
+          }
+        }
+      }
+    },
+    "credits.suppressed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This test purchase was recorded without adding credits."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这笔测试购买已记录，未发放积分。"
           }
         }
       }
