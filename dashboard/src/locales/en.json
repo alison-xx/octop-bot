@@ -939,6 +939,7 @@
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",
     "LOGIN_LOCKED": "Too many failed sign-in attempts. Try again in {{minutes}} minutes.",
+    "RATE_LIMITED": "Too many requests. Please try again later.",
     "USERNAME_TAKEN": "Username is already taken.",
     "EMAIL_TAKEN": "Email is already taken.",
     "BOT_PLAN_UNAVAILABLE": "Plan purchases are not available yet.",

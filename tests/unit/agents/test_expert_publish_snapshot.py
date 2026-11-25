@@ -80,6 +80,45 @@ def test_resolve_published_expert_slug_retries_derived_name_and_rejects_taken_ex
 
 
 @pytest.mark.asyncio
+async def test_cloud_tenant_cannot_publish_expert(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.agents.experts import published_creation as mod
+
+    monkeypatch.setattr(mod, "bot_cloud_enabled", lambda: True)
+    user = User(id=1, username="owner", role=Role.USER, display_name=None)
+    with pytest.raises(OctopError) as exc:
+        await mod.publish_agent_expert(
+            services=None,
+            registry=None,
+            user=user,
+            source=None,
+            workspace=None,
+            name="Example",
+        )
+    assert exc.value.code is ErrorCode.FORBIDDEN
+
+
+@pytest.mark.asyncio
+async def test_cloud_admin_cannot_install_tenant_expert(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.agents.experts import published_creation as mod
+
+    monkeypatch.setattr(mod, "bot_cloud_enabled", lambda: True)
+    services = SimpleNamespace(
+        published_expert_repo=SimpleNamespace(get=lambda _: SimpleNamespace(created_by="2")),
+        user_repo=SimpleNamespace(get=lambda _: SimpleNamespace(role="user")),
+    )
+    user = User(id=1, username="admin", role=Role.ADMIN, display_name=None)
+    with pytest.raises(OctopError) as exc:
+        await mod.install_published_expert(
+            services=services,
+            registry=None,
+            user=user,
+            expert_id="example",
+            options=mod.PublishedExpertInstallOptions(name="Example"),
+        )
+    assert exc.value.code is ErrorCode.FORBIDDEN
+
+
+@pytest.mark.asyncio
 async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) -> None:
     source_dir = tmp_path / "source"
     source_dir.mkdir()

@@ -15,6 +15,7 @@ except ImportError:  # pragma: no cover - optional PostgreSQL driver
 
 from octop.infra.db.file_store import SKILL_PACKAGE_FILES, open_postgres_files
 from octop.infra.db.repos.skill_packages import SkillPackageRepo, SkillPackageRow
+from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.skills.blob_mirror import SkillPackageBlobMirror
 from octop.infra.skills.presentation import apply_skill_presentation
@@ -357,6 +358,8 @@ class SkillPackageStore:
         return read_skill_directory(self._skill_dir(pack_id, slug))
 
     def assert_can_mutate(self, row: SkillPackageRow, user: User) -> None:
+        if bot_cloud_enabled() and not user.is_admin and row.shared:
+            raise OctopError.localized(ErrorCode.FORBIDDEN)
         if self.can_mutate(row, user):
             return
         raise OctopError(ErrorCode.FORBIDDEN, "skill package can only be modified by its creator")
@@ -377,6 +380,21 @@ class SkillPackageStore:
         if not self.can_view(row, user):
             return False
         return self.can_mutate(row, user) or normalize_copy_policy(row.copy_policy) != "deny"
+
+    @staticmethod
+    def assert_can_publish(user: User) -> None:
+        if bot_cloud_enabled() and not user.is_admin:
+            raise OctopError.localized(ErrorCode.FORBIDDEN)
+
+    @staticmethod
+    def assert_can_install(row: SkillPackageRow, user: User, user_repo: Any) -> None:
+        if bot_cloud_enabled() and user.is_admin:
+            try:
+                author = user_repo.get(int(row.created_by))
+            except (TypeError, ValueError):
+                author = None
+            if author is None or author.role != "admin":
+                raise OctopError.localized(ErrorCode.FORBIDDEN)
 
     def assert_can_copy(self, row: SkillPackageRow, user: User) -> None:
         self.assert_can_view(row, user)

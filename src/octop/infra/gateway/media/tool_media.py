@@ -920,7 +920,9 @@ async def _fetch_public(url: str) -> bytes | None:
     from octop.infra.utils.ssrf_guard import UnsafeOutboundUrl, safe_request  # noqa: PLC0415
 
     try:
-        response = await safe_request("GET", url, timeout=30.0)
+        response = await safe_request(
+            "GET", url, timeout=30.0, max_response_bytes=MAX_FETCHED_MEDIA_BYTES
+        )
     except (UnsafeOutboundUrl, httpx.HTTPError):
         logger.info("tool media URL not delivered: not a reachable public https address")
         return None
