@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import now_ts
 from octop.infra.utils.ulid import new_ulid
+
+
+@dataclass(frozen=True)
+class ImportedTimeline:
+    source_key: str
+    memory: str
+    goal: str | None
+    messages: Iterable[dict[str, Any]]
 
 
 def _read_key(user_id: int, group_id: str) -> str:
@@ -34,20 +44,44 @@ class BotGroupRepo:
             ).fetchone()
         return dict(row) if row else None
 
-    def create(self, user_id: int, name: str, admin: str, members: list[str], mode: str) -> str:
+    def create(
+        self,
+        user_id: int,
+        name: str,
+        admin: str,
+        members: list[str],
+        mode: str,
+        *,
+        imported: ImportedTimeline | None = None,
+    ) -> str:
         group_id = new_ulid()
         with self._db.transaction() as conn:
+            if imported is not None:
+                # Claim before publication. A second worker sees the same committed owner/group.
+                conn.execute(
+                    "INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE "
+                    "SET value=excluded.value WHERE NOT EXISTS(SELECT 1 FROM bot_groups "
+                    "WHERE group_id=settings.value AND user_id=?)",
+                    (imported.source_key, group_id, user_id),
+                )
+                row = conn.execute(
+                    "SELECT value FROM settings WHERE key=?", (imported.source_key,)
+                ).fetchone()
+                assert row is not None
+                if row["value"] != group_id:
+                    return str(row["value"])
             conn.execute(
                 "INSERT INTO bot_groups(group_id,user_id,name,admin_id,member_ids,reply_mode,"
                 "created_at) VALUES(?,?,?,?,?,?,?)",
                 (group_id, user_id, name, admin, json.dumps(members), mode, now_ts()),
             )
-            # Groups without a cursor predate read tracking; activity() starts them
-            # at their latest message.
-            conn.execute(
-                "INSERT INTO settings(key,value) VALUES(?,'0') ON CONFLICT(key) DO NOTHING",
-                (_read_key(user_id, group_id),),
-            )
+            if imported is not None:
+                conn.execute(
+                    "UPDATE bot_groups SET memory=?, goal=? WHERE group_id=?",
+                    (imported.memory, imported.goal, group_id),
+                )
+                self._insert_messages(conn, group_id, imported.messages)
+            self._mark_read(conn, group_id, user_id)
         return group_id
 
     def activity(self, user_id: int) -> list[dict[str, Any]]:
@@ -90,13 +124,17 @@ class BotGroupRepo:
 
     def mark_read(self, group_id: str, user_id: int) -> None:
         with self._db.transaction() as conn:
-            conn.execute(
-                "INSERT INTO settings(key,value) SELECT ?, CAST(COALESCE(MAX(m.id),0) AS TEXT) "
-                "FROM bot_groups g LEFT JOIN bot_group_messages m ON m.group_id=g.group_id "
-                "WHERE g.group_id=? AND g.user_id=? GROUP BY g.group_id "
-                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                (_read_key(user_id, group_id), group_id, user_id),
-            )
+            self._mark_read(conn, group_id, user_id)
+
+    @staticmethod
+    def _mark_read(conn: Any, group_id: str, user_id: int) -> None:
+        conn.execute(
+            "INSERT INTO settings(key,value) SELECT ?, CAST(COALESCE(MAX(m.id),0) AS TEXT) "
+            "FROM bot_groups g LEFT JOIN bot_group_messages m ON m.group_id=g.group_id "
+            "WHERE g.group_id=? AND g.user_id=? GROUP BY g.group_id "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (_read_key(user_id, group_id), group_id, user_id),
+        )
 
     def update(
         self, group_id: str, user_id: int, name: str, admin: str, members: list[str], mode: str
@@ -229,27 +267,31 @@ class BotGroupRepo:
         ``created_at``. A request already present is skipped, so a retried move adds nothing.
         """
         with self._db.transaction() as conn:
-            for message in messages:
-                conn.execute(
-                    "INSERT INTO bot_group_turns(group_id,request_id,input_json,lease_until,"
-                    "finished) VALUES(?,?,'[]',0,1) ON CONFLICT(group_id,request_id) DO NOTHING",
-                    (group_id, message["request_id"]),
-                )
-                conn.execute(
-                    "INSERT INTO bot_group_messages(message_id,group_id,request_id,slot,role,"
-                    "agent_id,text,created_at) VALUES(?,?,?,?,?,?,?,?) "
-                    "ON CONFLICT(group_id,request_id,slot) DO NOTHING",
-                    (
-                        new_ulid(),
-                        group_id,
-                        message["request_id"],
-                        message["slot"],
-                        message["role"],
-                        message["agent_id"],
-                        message["text"],
-                        message["created_at"],
-                    ),
-                )
+            self._insert_messages(conn, group_id, messages)
+
+    @staticmethod
+    def _insert_messages(conn: Any, group_id: str, messages: Iterable[dict[str, Any]]) -> None:
+        for message in messages:
+            conn.execute(
+                "INSERT INTO bot_group_turns(group_id,request_id,input_json,lease_until,"
+                "finished) VALUES(?,?,'[]',0,1) ON CONFLICT(group_id,request_id) DO NOTHING",
+                (group_id, message["request_id"]),
+            )
+            conn.execute(
+                "INSERT INTO bot_group_messages(message_id,group_id,request_id,slot,role,"
+                "agent_id,text,created_at) VALUES(?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(group_id,request_id,slot) DO NOTHING",
+                (
+                    new_ulid(),
+                    group_id,
+                    message["request_id"],
+                    message["slot"],
+                    message["role"],
+                    message["agent_id"],
+                    message["text"],
+                    message["created_at"],
+                ),
+            )
 
     def has_turn(self, group_id: str, request_id: str) -> bool:
         with self._db.connect() as conn:
