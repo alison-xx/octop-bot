@@ -421,10 +421,58 @@ def _control_attr(node: ET.Element, key: str) -> str | None:
     return next((v for k, v in node.attrib.items() if k.rsplit("}", 1)[-1] == key), None)
 
 
+def _screen_bounds(node: ET.Element) -> tuple[float, float, float, float] | None:
+    origin = _pair(_control_attr(node, "screencoord"))
+    size = _pair(_control_attr(node, "size"))
+    if not origin or not size or min(size) <= 0 or not all(map(math.isfinite, (*origin, *size))):
+        return None
+    x, y = origin
+    right, bottom = x + size[0], y + size[1]
+    if not math.isfinite(right) or not math.isfinite(bottom):
+        return None
+    if right <= 0 or bottom <= 0 or x >= SCREEN[0] or y >= SCREEN[1]:
+        return None
+    return x, y, right, bottom
+
+
 def _password_boxes(xml: str) -> list[tuple[float, float, float, float]]:
     root = ET.fromstring(xml)
-    if not any(_control_attr(node, "showing") == "true" for node in root.iter()):
-        raise ValueError("No visible controls in the desktop tree.")
+    containers = {
+        "alert",
+        "dialog",
+        "application",
+        "desktop",
+        "desktop-frame",
+        "frame",
+        "panel",
+        "root-pane",
+        "window",
+    }
+    windows = [
+        node
+        for node in root.iter()
+        if node.tag.rsplit("}", 1)[-1] in {"frame", "dialog", "window", "alert"}
+        and _control_attr(node, "showing") == "true"
+    ]
+    foreground_verified = False
+    for window in windows:
+        controls = [
+            node
+            for node in window.iter()
+            if node is not window
+            and not len(node)
+            and node.tag.rsplit("}", 1)[-1] not in containers
+            and _control_attr(node, "showing") == "true"
+            and _screen_bounds(node) is not None
+        ]
+        if not controls:
+            raise ValueError("A visible window has no verifiable controls.")
+        if _control_attr(window, "active") == "true" or any(
+            _control_attr(node, "focused") == "true" for node in controls
+        ):
+            foreground_verified = True
+    if not foreground_verified:
+        raise ValueError("The foreground window could not be verified.")
     boxes = []
     for node in root.iter():
         if (
@@ -432,27 +480,23 @@ def _password_boxes(xml: str) -> list[tuple[float, float, float, float]]:
             or _control_attr(node, "showing") == "false"
         ):
             continue
-        origin = _pair(_control_attr(node, "screencoord"))
-        size = _pair(_control_attr(node, "size"))
-        if (
-            not origin
-            or not size
-            or min(size) <= 0
-            or not all(map(math.isfinite, (*origin, *size)))
-        ):
+        bounds = _screen_bounds(node)
+        if bounds is None:
             raise ValueError("Password control has no usable bounds.")
-        x, y = origin
-        boxes.append((x, y, x + size[0], y + size[1]))
+        boxes.append(bounds)
     return boxes
 
 
 def handback_view(driver: ComputerDriver, instance: str) -> tuple[bytes, bool]:
-    """Check before and after capture and cover both sets of bounds before resizing."""
+    """Withhold unstable frames; mask a verified, stable layout before resizing."""
     from PIL import Image, ImageDraw
 
-    boxes = _password_boxes(driver.accessibility(instance))
+    before = driver.accessibility(instance)
+    boxes = _password_boxes(before)
     picture = driver.screenshot(instance)
-    boxes.extend(_password_boxes(driver.accessibility(instance)))
+    if driver.accessibility(instance) != before:
+        raise ValueError("The desktop tree changed during capture.")
+
     with Image.open(io.BytesIO(picture)) as source:
         image = source.convert("RGB")
     if image.size != SCREEN:
