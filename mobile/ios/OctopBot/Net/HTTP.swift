@@ -126,6 +126,15 @@ struct FormPart {
     var mimeType: String? = nil
 }
 
+/// Wallet and sign-in APIs must receive credentials and receipts only at the requested endpoint.
+final class NoAPIRedirect: NSObject, URLSessionTaskDelegate {
+    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask,
+                                willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+                                completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+}
+
 enum HTTP {
     static let session: URLSession = {
         let config = URLSessionConfiguration.default
@@ -186,11 +195,11 @@ enum HTTP {
     }
 
     /// Send a request and return the raw body, mapping transport and HTTP failures.
-    static func data(for request: URLRequest, using session: URLSession = HTTP.session) async throws -> (Data, HTTPURLResponse) {
+    static func data(for request: URLRequest, using session: URLSession = HTTP.session, delegate: URLSessionTaskDelegate? = nil) async throws -> (Data, HTTPURLResponse) {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: delegate)
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as URLError where error.code == .cancelled {
