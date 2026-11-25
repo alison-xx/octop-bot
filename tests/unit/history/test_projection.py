@@ -338,14 +338,14 @@ def test_history_hides_a_stored_copy_of_the_whole_stream(tmp_path: Path) -> None
     server = SimpleNamespace(services=SimpleNamespace(thread_message_repo=repo))
 
     for limit in (25, 1):
-        messages, _ = _load_projected_thread_messages(server, "agt", "thr", limit, user=None)
+        messages, _, _ = _load_projected_thread_messages(server, "agt", "thr", limit, user=None)
         texts = [
             "".join(block.get("text", "") for block in m["content"] if block["type"] == "text")
             for m in messages
             if m["role"] in ("ai", "assistant")
         ]
         assert not any("Let me verify the output file:\n\n搞定了" in text for text in texts)
-    messages, _ = _load_projected_thread_messages(server, "agt", "thr", 25, user=None)
+    messages, _, _ = _load_projected_thread_messages(server, "agt", "thr", 25, user=None)
     assert messages[-1]["content"][0]["text"] == "Partial answer"
 
 
