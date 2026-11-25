@@ -140,7 +140,8 @@ def _image(data: bytes, result: Inspection) -> None:
     result.add("pixels", width * height, w=width, h=height)
 
 
-def inspect_file(name: str, data: bytes) -> Inspection:
+def inspect_file(name: str, data: bytes | None) -> Inspection:
+    """Inspect available content. None requests the name-only check for large files."""
     result = Inspection()
     path = PurePosixPath(name.replace("\\", "/"))
     suffix = path.suffix.lower()
@@ -148,6 +149,8 @@ def inspect_file(name: str, data: bytes) -> Inspection:
         result.problems.append(
             f"the name {path.name!r} does not say what it is; rename it (e.g. 竞品价格对比_2026Q3.xlsx)"
         )
+    if data is None:
+        return result
     if not data:
         result.problems.append("the file is empty")
         return result
@@ -155,9 +158,18 @@ def inspect_file(name: str, data: bytes) -> Inspection:
         if not data.startswith(b"%PDF"):
             result.problems.append("it does not open (not a PDF)")
         else:
-            pages = len(re.findall(rb"/Type\s*/Page(?!s)", data))
-            if pages:
-                result.add("pages", pages)
+            from pypdf import PdfReader  # noqa: PLC0415
+            from pypdf.errors import PyPdfError  # noqa: PLC0415
+
+            try:
+                pages = len(PdfReader(io.BytesIO(data)).pages)
+            except (PyPdfError, ValueError, KeyError, TypeError, OSError):
+                result.problems.append("the PDF does not open")
+            else:
+                if pages:
+                    result.add("pages", pages)
+                else:
+                    result.problems.append("the PDF contains no pages")
     elif suffix in {".docx", ".xlsx", ".pptx"}:
         _office(data, suffix, result)
     elif suffix == ".csv":

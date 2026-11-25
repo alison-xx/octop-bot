@@ -385,10 +385,7 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
             return result
         name = str(block.get("filename") or block.get("path") or "file")
         size = local.stat().st_size
-        # Past the cap only the name is checked: a stand-in byte keeps it from reading as empty.
-        inspection = inspect_file(name, local.read_bytes() if size <= MAX_INSPECT_BYTES else b"x")
-        if size > MAX_INSPECT_BYTES:
-            inspection.facts = []
+        inspection = inspect_file(name, local.read_bytes() if size <= MAX_INSPECT_BYTES else None)
         if not inspection.ok:
             return ToolMessage(
                 content=NOT_SENT.format(problems="; ".join(inspection.problems)),
@@ -408,7 +405,7 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
                             name=name[:300],
                             path=str(block.get("path") or name)[:1000],
                             size=size,
-                            version=len(same) + 1,
+                            version=max((d.version for d in same), default=0) + 1,
                             facts=inspection.facts,
                         ),
                     ]

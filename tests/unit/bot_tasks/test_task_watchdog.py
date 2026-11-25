@@ -272,11 +272,27 @@ def test_a_file_that_fails_the_checks_never_reaches_the_user(
 def test_delivered_files_are_kept_on_the_task_with_versions(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
-    middleware, store, _task = _setup(monkeypatch)
+    middleware, store, _task = _setup(monkeypatch, steps=60)
     send = _sent(tmp_path, "价格对比.csv", "公司,价格\nA,1\n".encode())
-    for _ in range(2):
+    for _ in range(33):
         result = middleware.wrap_tool_call(_call("send_file_to_user"), send)
         assert result.status != "error"
     delivered = store.running("thr1").deliverables
-    assert [(d.name, d.version) for d in delivered] == [("价格对比.csv", 1), ("价格对比.csv", 2)]
+    assert [(d.name, d.version) for d in delivered] == [("价格对比.csv", v) for v in range(4, 34)]
     assert delivered[0].facts == [{"k": "rows", "n": 1}] and delivered[0].size > 0
+
+
+def test_large_delivery_only_checks_its_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    middleware, store, _task = _setup(monkeypatch)
+    monkeypatch.setattr(watchdog, "MAX_INSPECT_BYTES", 4)
+    result = middleware.wrap_tool_call(
+        _call("send_file_to_user"), _sent(tmp_path, "价格对比.csv", b"name,value\nA,42\n")
+    )
+    assert result.status == "success"
+    assert store.running("thr1").deliverables[0].facts == []
+    refused = middleware.wrap_tool_call(
+        _call("send_file_to_user"), _sent(tmp_path, "output.csv", b"name,value\nA,42\n")
+    )
+    assert refused.status == "error"

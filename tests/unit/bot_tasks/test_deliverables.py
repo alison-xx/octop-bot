@@ -51,8 +51,15 @@ def test_what_was_checked_is_returned_as_data_for_the_client() -> None:
         {"ppt/slides/slide1.xml": "<a:t>封面</a:t>", "ppt/slides/slide2.xml": "<a:t>结论</a:t>"}
     )
     assert inspect_file("汇报.pptx", deck).facts == [{"k": "slides", "n": 2}]
-    pdf = b"%PDF-1.7\n1 0 obj << /Type /Pages >>\n2 0 obj << /Type /Page >>\n3 0 obj << /Type /Page >>"
-    assert inspect_file("报告.pdf", pdf).facts == [{"k": "pages", "n": 2}]
+    from pypdf import PdfWriter
+
+    pdf = io.BytesIO()
+    writer = PdfWriter()
+    for _ in range(2):
+        writer.add_blank_page(width=100, height=100)
+    writer.write(pdf)
+    assert inspect_file("报告.pdf", pdf.getvalue()).facts == [{"k": "pages", "n": 2}]
+    assert not inspect_file("报告.pdf", pdf.getvalue()[:50]).ok
 
 
 def test_real_images_report_their_size() -> None:
