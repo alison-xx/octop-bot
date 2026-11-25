@@ -41,7 +41,14 @@ data class ConversationSummary(
     /** Epoch milliseconds. */
     val updatedAt: Long?,
     val botId: String?,
-)
+    val owned: Boolean? = null,
+    val active: Boolean = false,
+) {
+    companion object {
+        fun personalDefault(rows: List<ConversationSummary>) =
+            rows.firstOrNull { it.owned == true && it.active } ?: rows.firstOrNull { it.owned == true }
+    }
+}
 
 /** [Note] is a centered caption in the timeline (e.g. "Approved: …"); it is never sent to a model. */
 enum class MessageRole { User, Assistant, Note }

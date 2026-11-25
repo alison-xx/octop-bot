@@ -36,6 +36,22 @@ class ServerProtocolTest {
         } catch (_: ApiException) { }
     }
 
+    @Test fun automaticConversationRequiresPersonalOwnershipAndPrefersActive() {
+        val rows = ServerProtocol.conversations(Http.parse("""[{"thread_id":"shared","owned":false,"is_active":true},{"thread_id":"unknown"},{"thread_id":"recent","owned":true},{"thread_id":"active","owned":true,"is_active":true}]"""), "bot")
+        assertNull(io.github.alisonxx.octopbot.model.ConversationSummary.personalDefault(rows.take(2)))
+        assertEquals("active", io.github.alisonxx.octopbot.model.ConversationSummary.personalDefault(rows)?.id)
+    }
+
+    @Test fun observedQuestionAndReplyPrefixSurviveReconnectAndSavedUserIsNotDuplicated() {
+        val previous = io.github.alisonxx.octopbot.model.ChatMessage("old", MessageRole.Assistant, "previous")
+        val user = io.github.alisonxx.octopbot.model.ChatMessage("u", MessageRole.User, "question")
+        val reply = io.github.alisonxx.octopbot.model.ChatMessage("reply", MessageRole.Assistant, "prefix", status = MessageStatus.Streaming)
+        val current = io.github.alisonxx.octopbot.app.ChatSession.ObservedTurn("turn", previous, mutableListOf(user, reply))
+        assertEquals(listOf(previous, user, reply), current.merged(listOf(previous)))
+        assertEquals(listOf(previous, user, reply), current.merged(listOf(previous, user)))
+        assertEquals(listOf(user), current.committedTail(listOf(previous, user)))
+    }
+
     @Test fun historyPageOverlapRetainsNewestVersionAndOriginalOrder() {
         val old = Http.parse("""[{"id":"a"},{"history_seq":2,"content":"partial"}]""").asArray()!!
         val new = Http.parse("""[{"history_seq":2,"content":"finished"},{"id":"b"}]""").asArray()!!
