@@ -1,10 +1,29 @@
 import CryptoKit
+import StoreKit
+import StoreKitTest
 import SwiftUI
 import XCTest
 @testable import OctopBot
 
 @MainActor
 final class CharacterTests: XCTestCase {
+    func testLateRotationAndLogoutCannotReplaceAnotherLogin() {
+        let key = "qa.session." + UUID().uuidString
+        defer { Keychain.set(nil, for: key) }
+        let a = ServerBackend.Session(baseURL: URL(string: "https://example.invalid")!, token: "a", displayName: "A", cloud: true)
+        var b = a
+        b.token = "b"
+        var rotated = a
+        rotated.token = "rotated"
+        Keychain.setCodable(b, for: key)
+        XCTAssertFalse(Keychain.replace(a, with: rotated, for: key))
+        XCTAssertFalse(Keychain.replace(a, with: nil, for: key))
+        XCTAssertEqual(Keychain.codable(ServerBackend.Session.self, for: key), b)
+        XCTAssertTrue(Keychain.replace(b, with: rotated, for: key))
+        XCTAssertTrue(Keychain.replace(rotated, with: nil, for: key))
+        XCTAssertFalse(Keychain.replace(rotated, with: a, for: key))
+    }
+
     func testComputerCreditCodesAreRecognized() {
         XCTAssertTrue(APIError.isCreditsRequired(APIError.computerCreditsRequired))
         XCTAssertTrue(APIError.isCreditsRequired(APIError.computerPausedNoCredits))
@@ -611,19 +630,42 @@ final class AppUpdaterTests: XCTestCase {
 private final class SellingAccount: CreditAccount {
     var signupCredits: Double?
     var signupExpiryDay: String?
-    var packRequests = 0
-    var intents = 0
+    let token = UUID()
+    var enabled = true
+    var offline = false
+    var delivered: Set<UInt64> = []
+    var attempted: Set<UInt64> = []
 
     func wallet() async throws -> Wallet { Wallet(credits: 50, accountId: "a1") }
     func creditPacks() async throws -> (packs: [LynxceBackend.CreditPack], enabled: Bool) {
-        packRequests += 1
-        return ([LynxceBackend.CreditPack(id: "p1", name: "Small", credits: 1000, productId: "cn.lynxce.octopbot.credits.1000")], true)
+        let packs = [5000, 10000, 52500, 110000].map { amount in
+            LynxceBackend.CreditPack(id: String(amount), name: "Credits", credits: Double(amount),
+                                     productId: "cn.lynxce.octopbot.credits." + String(amount))
+        }
+        return (packs, enabled)
     }
     func purchaseIntent(packId: String) async throws -> (productId: String, accountToken: UUID) {
-        intents += 1
-        return ("cn.lynxce.octopbot.credits.1000", UUID())
+        ("cn.lynxce.octopbot.credits." + packId, token)
     }
-    func submitTransaction(_ signedTransaction: String) async throws {}
+    func submitTransaction(_ signedTransaction: String) async throws -> CreditReceipt {
+        // The fixture only inspects the local StoreKit payload. Lynxce verifies the JWS in production.
+        let parts = signedTransaction.split(separator: ".")
+        guard parts.count == 3 else { throw APIError.network }
+        var payload = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
+        guard let data = Data(base64Encoded: payload),
+              let row = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = row["transactionId"] as? String, let number = UInt64(id),
+              let product = row["productId"] as? String else { throw APIError.network }
+        attempted.insert(number)
+        guard !offline else { throw APIError.network }
+        guard (row["appAccountToken"] as? String).flatMap(UUID.init(uuidString:)) == token else {
+            throw APIError(kind: .rejected, status: 403, message: nil, code: "apple_account_token_mismatch")
+        }
+        let first = delivered.insert(number).inserted
+        return try CreditReceipt(["transactionId": id, "productId": product,
+                                  "outcome": ["status": first ? "fulfilled" : "duplicate", "orderId": "test-order"]])
+    }
     func requestDeletion() async throws -> Int? { nil }
 }
 
@@ -641,19 +683,147 @@ final class CloudComputerTests: XCTestCase {
 
 @MainActor
 final class CreditTests: XCTestCase {
-    /// 1.0.1 ships before the credit packs have been through App Review: the app must not offer them
-    /// even when Lynxce says purchases are on, and must not show "top up" copy with no way to do it.
-    func testCreditPacksStayHiddenWhateverLynxceSays() async {
-        XCTAssertFalse(CreditPurchases.inApp)
+    func testCatalogHonorsServerSwitch() async {
         let account = SellingAccount()
+        account.enabled = false
         let store = CreditStore()
         store.start(account: { account }, credited: {})
         await store.load()
         XCTAssertEqual(store.phase, .unavailable)
         XCTAssertTrue(store.offers.isEmpty)
-        XCTAssertEqual(account.packRequests, 0)
-        XCTAssertEqual(APIError(kind: .credits, status: 402, message: nil).errorDescription, L("error.creditsNoPurchase"))
-        XCTAssertFalse(L("credits.titleNoPurchase").isEmpty)
+    }
+
+    func testStoreKitPurchaseAndRetryAfterAccountSwitch() async throws {
+        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "CreditPacks", withExtension: "storekit"))
+        let session = try SKTestSession(contentsOf: file)
+        session.resetToDefaultState()
+        session.askToBuyEnabled = false
+        session.disableDialogs = true
+        session.clearTransactions()
+        defer { session.clearTransactions(); session.resetToDefaultState() }
+        let purchaser = SellingAccount()
+        var current = purchaser
+        let store = CreditStore()
+        store.start(account: { current }, credited: {})
+        await store.load()
+        let prices = ["5000": "9.99", "10000": "19.99", "52500": "99.99", "110000": "199.99"]
+        XCTAssertEqual(Set(store.offers.map(\.id)), Set(prices.keys))
+        for item in store.offers {
+            XCTAssertEqual(item.product.id, "cn.lynxce.octopbot.credits." + item.id)
+            XCTAssertEqual(item.product.price, prices[item.id].flatMap { Decimal(string: $0) })
+            XCTAssertEqual(item.product.type, .consumable)
+        }
+        let offer = try XCTUnwrap(store.offers.first)
+        XCTAssertEqual(offer.product.price, Decimal(string: "9.99"))
+        XCTAssertEqual(offer.product.type, .consumable)
+        let purchase = await store.buy(offer)
+        XCTAssertTrue(purchase == .credited || purchase == .recorded)
+        XCTAssertEqual(purchaser.delivered.count, 1)
+
+        // Exercise a distinct transaction even if StoreKit briefly replays the previous purchase.
+        let nextOffer = try XCTUnwrap(store.offers.first { $0.id != offer.id })
+        purchaser.offline = true
+        let offlinePurchase = await store.buy(nextOffer)
+        XCTAssertEqual(offlinePurchase, .failed(L("credits.deliveryPending")))
+        let undelivered = try XCTUnwrap(purchaser.attempted.subtracting(purchaser.delivered).first)
+        let other = SellingAccount()
+        current = other
+        let staleOffer = await store.buy(nextOffer)
+        XCTAssertEqual(staleOffer, .failed(L("credits.unavailable")))
+        // StoreKit publishes the unfinished transaction asynchronously after the purchase sheet closes.
+        for _ in 0..<40 where !other.attempted.contains(undelivered) {
+            await store.flush()
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertTrue(other.attempted.contains(undelivered))
+        XCTAssertTrue(other.delivered.isEmpty)
+        purchaser.offline = false
+        current = purchaser
+        await store.flush()
+        await store.flush()
+        XCTAssertEqual(purchaser.delivered.count, 2)
+        var unfinished = 0
+        for await verification in Transaction.unfinished where verification.unsafePayloadValue.productID == nextOffer.product.id {
+            unfinished += 1
+        }
+        XCTAssertEqual(unfinished, 0)
+    }
+
+    func testOnlyOfficialCloudCanAcknowledgeApplePurchases() throws {
+        func supports(_ address: String, cloud: Bool = true) throws -> Bool {
+            let base = try XCTUnwrap(URL(string: address))
+            return ServerBackend(session: .init(baseURL: base, token: "", displayName: "", cloud: cloud))
+                .supportsAppStorePurchases
+        }
+        XCTAssertTrue(try supports("https://bot.lynxce.cn"))
+        XCTAssertTrue(try supports("https://bot.lynxce.cn:443/"))
+        XCTAssertFalse(try supports("https://bot.lynxce.cn", cloud: false))
+        for address in ["http://bot.lynxce.cn", "https://cloud.example", "https://bot.lynxce.cn:8443",
+                        "https://bot.lynxce.cn/tenant", "https://bot.lynxce.cn/?tenant=2"] {
+            XCTAssertFalse(try supports(address))
+        }
+    }
+
+    func testStoreKitCancelledAndPendingPurchases() async throws {
+        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "CreditPacks", withExtension: "storekit"))
+        let session = try SKTestSession(contentsOf: file)
+        session.resetToDefaultState()
+        session.askToBuyEnabled = false
+        session.disableDialogs = true
+        session.clearTransactions()
+        defer { session.clearTransactions(); session.resetToDefaultState() }
+        let account = SellingAccount()
+        let store = CreditStore()
+        store.start(account: { account }, credited: {})
+        await store.load()
+        let offer = try XCTUnwrap(store.offers.first)
+        try await session.setSimulatedError(.generic(.userCancelled), forAPI: .purchase)
+        let cancelled = await store.buy(offer)
+        XCTAssertEqual(cancelled, .cancelled)
+        try await session.setSimulatedError(nil, forAPI: .purchase)
+        session.askToBuyEnabled = true
+        let pending = await store.buy(offer)
+        XCTAssertEqual(pending, .pending)
+        XCTAssertTrue(account.delivered.isEmpty)
+        let requested = try XCTUnwrap(session.allTransactions().last)
+        try session.approveAskToBuyTransaction(identifier: requested.identifier)
+        for _ in 0..<30 where account.delivered.isEmpty {
+            await store.flush()
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(account.delivered.count, 1)
+    }
+
+    func testAccountAPIRejectsRedirectBeforeFollowingIt() throws {
+        let endpoint = URL(string: "https://bot.lynxce.cn/api/octop-bot/wallet/apple/transaction")!
+        let delegate = NoAPIRedirect()
+        let task = URLSession.shared.dataTask(with: endpoint)
+        defer { task.cancel() }
+        for code in [301, 302, 303, 307, 308] {
+            let response = try XCTUnwrap(HTTPURLResponse(url: endpoint, statusCode: code, httpVersion: nil, headerFields: nil))
+            let called = expectation(description: "Reject redirect")
+            delegate.urlSession(.shared, task: task, willPerformHTTPRedirection: response,
+                                newRequest: URLRequest(url: endpoint.appendingPathComponent("other"))) { selected in
+                XCTAssertNil(selected)
+                called.fulfill()
+            }
+            wait(for: [called], timeout: 1)
+        }
+    }
+
+    func testAcceptedResponseRequiresFulfillmentEvidence() throws {
+        func receipt(_ outcome: [String: Any]) throws -> CreditReceipt.Result {
+            try CreditReceipt(["transactionId": "123", "productId": "p", "outcome": outcome]).result
+        }
+        XCTAssertThrowsError(try CreditReceipt(["ok": true]))
+        XCTAssertEqual(try receipt(["status": "fulfilled"]), .retry)
+        XCTAssertEqual(try receipt(["orderId": " ", "status": "fulfilled"]), .retry)
+        XCTAssertEqual(try receipt(["orderId": "1", "status": "fulfilled"]), .credited)
+        XCTAssertEqual(try receipt(["orderId": "1", "status": "fulfilled", "creditsSuppressed": "sandbox"]), .suppressed)
+        XCTAssertEqual(try receipt(["orderId": "1", "status": "duplicate"]), .recorded)
+        XCTAssertEqual(try receipt(["orderId": "1", "status": "revoked"]), .reversed)
+        XCTAssertEqual(try receipt(["status": "blocked"]), .retry)
+        XCTAssertEqual(try receipt(["status": "ignored"]), .retry)
     }
 
     func testBalanceIsTheWalletNotAMemberAllowance() {
@@ -751,7 +921,8 @@ final class CreditTests: XCTestCase {
     }
 
     func testOnlyThisAppsProductsAreDelivered() {
-        XCTAssertTrue(CreditStore.isCreditPack("cn.lynxce.octopbot.credits.1000"))
+        XCTAssertTrue(CreditStore.isCreditPack("cn.lynxce.octopbot.credits.5000"))
+        XCTAssertFalse(CreditStore.isCreditPack("cn.lynxce.octopbot.credits.1000"))
         XCTAssertFalse(CreditStore.isCreditPack("cn.lynxce.omni.credits.1000"))
         XCTAssertFalse(CreditStore.isCreditPack("cn.lynxce.octopbot"))
     }

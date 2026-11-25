@@ -4,7 +4,7 @@ import UIKit
 /// Signed in with a personal Lynxce (灵策智算) account: chat goes straight to the Lynxce model gateway and
 /// conversations sync through Lynxce web-chat sessions, so they also appear in Octop Bot on the desktop.
 final class LynxceBackend: ChatBackend {
-    struct Grant: Codable {
+    struct Grant: Codable, Equatable {
         var accountId: String
         var displayName: String?
         var accessToken: String
@@ -164,7 +164,7 @@ final class LynxceBackend: ChatBackend {
         query: [String: String] = [:], json: Any? = nil, form: [FormPart]? = nil, iap: Bool = false
     ) async throws -> Any {
         let request = try HTTP.request(url(path, query: query), method: method, headers: headers(bearer, iap: iap), json: json, form: form)
-        let (data, response) = try await HTTP.data(for: request)
+        let (data, response) = try await HTTP.data(for: request, delegate: NoAPIRedirect())
         return try unwrap(data, status: response.statusCode)
     }
 
@@ -192,15 +192,16 @@ final class LynxceBackend: ChatBackend {
             var next = current
             next.accessToken = access
             if let refresh = body["refreshToken"] as? String { next.refreshToken = refresh }
+            guard Keychain.replace(current, with: next, for: Self.grantKey) else { throw CancellationError() }
+            self.grant = next
             return next
         }
         refreshing = task
         defer { refreshing = nil }
         do {
-            let next = try await task.value
-            grant = next
-            Keychain.setCodable(next, for: Self.grantKey)
-            return next
+            return try await task.value
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw APIError(kind: .unauthorized, status: 401, message: nil)
         }
@@ -375,7 +376,7 @@ final class LynxceBackend: ChatBackend {
             request.timeoutInterval = 300
             let (bytes, response): (URLSession.AsyncBytes, URLResponse)
             do {
-                (bytes, response) = try await HTTP.session.bytes(for: request)
+                (bytes, response) = try await HTTP.session.bytes(for: request, delegate: NoAPIRedirect())
             } catch {
                 if Task.isCancelled { throw CancellationError() }
                 throw APIError.network
@@ -554,8 +555,8 @@ final class LynxceBackend: ChatBackend {
     }
 
     /// Report a StoreKit transaction; Lynxce verifies it with Apple and credits the wallet once.
-    func submitTransaction(_ signedTransaction: String) async throws {
-        _ = try await call(.post, "/api/billing/apple/transactions", json: ["signedTransaction": signedTransaction], iap: true)
+    func submitTransaction(_ signedTransaction: String) async throws -> CreditReceipt {
+        try CreditReceipt(await call(.post, "/api/billing/apple/transactions", json: ["signedTransaction": signedTransaction], iap: true))
     }
 
     /// App Store rule 5.1.1(v): accounts created in the app can be deleted in the app. Lynxce keeps a
@@ -567,7 +568,7 @@ final class LynxceBackend: ChatBackend {
 
     func signOut() async {
         chat.cancelAll()
+        Keychain.replace(grant, with: nil, for: Self.grantKey)
         _ = try? await Self.call(.post, "/api/auth/logout", bearer: grant.accessToken, json: [:])
-        Keychain.set(nil, for: Self.grantKey)
     }
 }

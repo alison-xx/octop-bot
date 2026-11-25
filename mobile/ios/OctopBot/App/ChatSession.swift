@@ -255,7 +255,12 @@ final class ChatSession {
             } catch {
                 let message = error.localizedDescription
                 update(replyId) { $0.status = .failed(message) }
-                if case .unauthorized = (error as? APIError)?.kind { Task { await self.app?.signOut() } }
+                if case .unauthorized = (error as? APIError)?.kind {
+                    Task {
+                        guard self.app?.backend === backend else { return }
+                        await self.app?.signOut()
+                    }
+                }
             }
             guard currentRun == run else { return }
             isStreaming = false

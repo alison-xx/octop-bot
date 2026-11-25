@@ -28,6 +28,7 @@
 		4BACAF514D63D9CBB1311E3D /* CreditStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BFCE63FDD2FE3C02C5B5158 /* CreditStore.swift */; };
 		50D8356BA21790C2FFF46F1D /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2022CECD87289127591F30D /* AppUpdater.swift */; };
 		553DE571AD3DA45038FF89FF /* CompletionChat.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFA9F70320ADB3FE7A4ED21C /* CompletionChat.swift */; };
+		5D2AECE4E4D5170F8A22EECF /* CreditPacks.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 8B0D044DCA559D07FCE3738E /* CreditPacks.storekit */; };
 		5E31F9FF32F06FBE952A0A9F /* octop-mascot.webp in Resources */ = {isa = PBXBuildFile; fileRef = 7B4198C3433D9E46B368560D /* octop-mascot.webp */; };
 		60F09A2E479DE5872452964A /* FileOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = E35158BD983E0060775BA507 /* FileOpener.swift */; };
 		61864BBBDBAF326EBC51EAD0 /* FileAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10FF5FBFB12C25C04EE30FDB /* FileAttachment.swift */; };
@@ -111,6 +112,7 @@
 		7D05B2CADB1735B180DD738F /* LaunchSplash@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LaunchSplash@1x.png"; sourceTree = "<group>"; };
 		7F42D68AD0EF0EE042F76EBF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		853AB250E633AC85F64B4B8E /* ServerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerBackend.swift; sourceTree = "<group>"; };
+		8B0D044DCA559D07FCE3738E /* CreditPacks.storekit */ = {isa = PBXFileReference; path = CreditPacks.storekit; sourceTree = "<group>"; };
 		8FD0386C1154594D3587BBE1 /* DeviceBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceBackend.swift; sourceTree = "<group>"; };
 		9735A9518666F7DBF0C0A976 /* OctopBot.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OctopBot.entitlements; sourceTree = "<group>"; };
 		9D571B602D444EEE48A8962B /* soft-characters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "soft-characters.json"; sourceTree = "<group>"; };
@@ -196,6 +198,7 @@
 		9D64B23DB0D3B0296C73026A /* OctopBotTests */ = {
 			isa = PBXGroup;
 			children = (
+				8B0D044DCA559D07FCE3738E /* CreditPacks.storekit */,
 				185F69E704AE68F0C0ED11C1 /* OctopBotTests.swift */,
 			);
 			path = OctopBotTests;
@@ -338,6 +341,7 @@
 			buildConfigurationList = 189F00353816406FE427C09E /* Build configuration list for PBXNativeTarget "OctopBotTests" */;
 			buildPhases = (
 				F437881A54CCB9D24A41C3D7 /* Sources */,
+				895819D4BB0CA9E67D27B6D8 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -407,6 +411,14 @@
 				5E31F9FF32F06FBE952A0A9F /* octop-mascot.webp in Resources */,
 				1817702AC266425468DBAA87 /* own-key-vendors.json in Resources */,
 				130DA3D3E41D2DEBBF1B8002 /* soft-characters.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		895819D4BB0CA9E67D27B6D8 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5D2AECE4E4D5170F8A22EECF /* CreditPacks.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

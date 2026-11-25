@@ -50,6 +50,8 @@ schemes:
       targets:
         OctopBot: all
         OctopBotTests: [test]
+    run:
+      storeKitConfiguration: OctopBotTests/CreditPacks.storekit
     test:
       targets:
         - OctopBotTests
