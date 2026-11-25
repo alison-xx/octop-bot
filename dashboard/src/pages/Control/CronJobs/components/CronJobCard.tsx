@@ -87,7 +87,7 @@ export function CronJobCard({
   const pillColor =
     phase === "failed"
       ? "#ef4444"
-      : phase === "missed" || phase === "waiting"
+      : phase === "missed" || phase === "waiting" || phase === "expired"
       ? "#d97706"
       : phase === "pending"
       ? ENABLED_ACCENT

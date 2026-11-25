@@ -146,7 +146,7 @@
   let catalog = null;
   let liveCatalog = false;
   let ratesVisible = false;
-  let cycle = "month";
+  const yearlyBilling = () => $("#billing-year").checked;
   let pack = 50;
   let customAmount = "";
 
@@ -173,7 +173,7 @@
   function updateBilling(card, plan) {
     const amount = card.querySelector(".amount");
     const renew = card.querySelector(".renew");
-    const yearly = cycle === "year" && plan.yearly;
+    const yearly = yearlyBilling() && plan.yearly;
     amount.replaceChildren(node("span", "currency", "¥"), node("strong", "", num(yearly ? plan.yearly : plan.monthly)));
     if (plan.monthly) amount.append(node("small", "", yearly ? t("/年", "/yr") : t("/月", "/mo")));
     if (!plan.monthly) renew.textContent = t("免费", "Free");
@@ -284,7 +284,7 @@
           )
         : t("月度积分 1 个月有效，年付一次付清、积分按月到账。", "Monthly credits last one month; yearly plans are paid once and credits arrive monthly.");
       note.textContent += " " + t("会员积分仅限 Octop 使用。", "Membership credits are for Octop Bot only.");
-      if (cycle === "year") note.textContent += " " + t("年付升档请联系客服。", "Contact support to upgrade a yearly plan.");
+      if (yearlyBilling()) note.textContent += " " + t("年付升档请联系客服。", "Contact support to upgrade a yearly plan.");
     }
   }
 
@@ -339,7 +339,6 @@
   }
 
   /* ---------- unit prices and model price table ---------- */
-  let modelTab = "text";
   // Lynxce publishes these amounts per million tokens already, for this specific route.
   function rateDescription(route) {
     let schedule = (route.description || "").split("峰谷计费：").slice(1).join("").trim();
@@ -357,8 +356,7 @@
     return [prices, schedule].filter(Boolean).join(" ");
   }
 
-  function renderRates() {
-    if (!ratesVisible) return;
+  function renderUnitPrices() {
     if (!pricing) return;
     const m = media();
     const r = pricing.rates;
@@ -382,7 +380,12 @@
         return div;
       }),
     );
-    document.querySelectorAll("#model-tabs button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tab === modelTab)));
+  }
+
+  function renderRates() {
+    if (!ratesVisible) return;
+    renderUnitPrices();
+    const modelTab = $("#model-tabs :checked").value;
     $("#catalog-source").textContent = !catalog ? "" : liveCatalog
       ? t("灵策实时价目，表中单价为本次查询时的价格。", "Live Lynxce prices at the time of this lookup.")
       : t("灵策价目快照。表中单价为保存时的价格，分时线路按调用时适用的费率结算。", "Saved Lynxce prices. The table shows rates at the time of capture. Time-based rates apply when a call starts.");
@@ -463,37 +466,19 @@
   let currentView = null;
   function showView(view, animate = true) {
     const changed = currentView !== view;
-    document.querySelectorAll("#price-tabs button").forEach((b) => {
-      const selected = b.dataset.view === view;
-      b.setAttribute("aria-selected", String(selected));
-      b.tabIndex = selected ? 0 : -1;
-    });
+    $("#tab-" + view).checked = true;
     for (const name of Object.keys(VIEW_HASH)) {
       const panel = $("#v-" + name);
       panel.hidden = name !== view;
       panel.classList.remove("pricing-enter");
       if (name === view && changed && animate) {
-          panel.classList.add("pricing-enter");
+        panel.classList.add("pricing-enter");
       }
     }
     currentView = view;
   }
 
   document.addEventListener("click", (e) => {
-    const tab = e.target.closest("#price-tabs button");
-    if (tab) {
-      showView(tab.dataset.view);
-      history.replaceState(null, "", VIEW_HASH[tab.dataset.view] || location.pathname + location.search);
-    }
-    const c = e.target.closest("#cycle button");
-    if (c && cycle !== c.dataset.cycle) {
-      cycle = c.dataset.cycle;
-      document.querySelectorAll("#cycle button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.cycle === cycle)));
-      if (pricing) {
-        document.querySelectorAll("#plans .plan").forEach((card, index) => updateBilling(card, pricing.plans[index]));
-        updatePlanNote(media());
-      }
-    }
     const p = e.target.closest("button.pack[data-yuan]");
     if (p) {
       pack = Number(p.dataset.yuan);
@@ -506,11 +491,6 @@
       routePick.set(line.dataset.choice, line.dataset.route);
       renderRates();
       return;
-    }
-    const m = e.target.closest("#model-tabs button");
-    if (m) {
-      modelTab = m.dataset.tab;
-      renderRates();
     }
     const checkout = e.target.closest('#pack-buy, [data-checkout="member"]');
     if (checkout) {
@@ -556,22 +536,31 @@
     customAmount = e.target.value.trim();
     renderPacks();
   });
-  function switchWithKeyboard(e) {
-    const buttons = [...e.currentTarget.querySelectorAll("button")];
-    const index = buttons.indexOf(e.target);
-    if (index < 0) return;
-    let next;
-    if (e.key === "ArrowRight") next = (index + 1) % buttons.length;
-    else if (e.key === "ArrowLeft") next = (index + buttons.length - 1) % buttons.length;
-    else if (e.key === "Home") next = 0;
-    else if (e.key === "End") next = buttons.length - 1;
-    else return;
-    e.preventDefault();
-    buttons[next].focus();
-    buttons[next].click();
-  }
-  $("#price-tabs").addEventListener("keydown", switchWithKeyboard);
-  $("#cycle").addEventListener("keydown", switchWithKeyboard);
+  $("#price-tabs").addEventListener("change", () => {
+    const view = $("#price-tabs :checked").value;
+    showView(view);
+    history.replaceState(null, "", VIEW_HASH[view] || location.pathname + location.search);
+  });
+  $("#cycle").addEventListener("change", () => {
+    if (!pricing) return;
+    document.querySelectorAll("#plans .plan").forEach((card, index) => updateBilling(card, pricing.plans[index]));
+    updatePlanNote(media());
+  });
+  $("#model-tabs").addEventListener("change", renderRates);
+
+  document.querySelectorAll('main [role="radiogroup"]').forEach((group) => {
+    group.addEventListener("keydown", (event) => {
+      if (!event.target.matches('input[type="radio"]')) return;
+      const options = group.querySelectorAll("input");
+      let option = event.target;
+      if (event.key === "Home") option = options[0];
+      else if (event.key === "End") option = options[options.length - 1];
+      else if (event.key !== "Enter") return;
+      event.preventDefault();
+      option.focus();
+      option.click();
+    });
+  });
   document.addEventListener("langchange", () => {
     renderAll();
   });
@@ -579,7 +568,9 @@
     const view = Object.keys(VIEW_HASH).find((name) => VIEW_HASH[name] === location.hash);
     if (view) showView(view);
   });
-  showView(Object.keys(VIEW_HASH).find((name) => VIEW_HASH[name] === location.hash) || "plans", false);
+  const selectedView = $("#price-tabs :checked").value;
+  const linkedView = Object.keys(VIEW_HASH).find((name) => VIEW_HASH[name] === location.hash);
+  showView(selectedView === "plans" && linkedView ? linkedView : selectedView, false);
   window.OctopAuth.ready.then(async () => {
     await window.OctopAuth.redeemHash("recharge");
     if (pricing && window.OctopAuth.config.checkoutEnabled) renderPlans();

@@ -1,3 +1,4 @@
+import BotPlacement from "./BotPlacement";
 import { useEffect, useRef, useState } from "react";
 import { Button, Drawer, Grid } from "antd";
 import {
@@ -44,6 +45,7 @@ import BotActivityLibrary from "./BotActivityLibrary";
 import BotComputerCard from "./BotComputerCard";
 import BotSchedulesDialog from "./BotSchedulesDialog";
 import BotUsageDialog from "./BotUsageDialog";
+import ComputerTargetPicker from "./ComputerTargetPicker";
 import CloudComputerCard from "./CloudComputerCard";
 import { useBotServerInfo } from "./useBotServerInfo";
 import ModelName from "./ModelName";
@@ -57,6 +59,7 @@ interface Props {
   onSide: () => void;
   onAppearance: () => void;
   onEdit: () => void;
+  onComputerChanged?: () => void;
   onMemory: () => void;
   onPrivacy: () => void;
   onDelete: () => void;
@@ -73,10 +76,16 @@ export default function BotDetailsPanel({
   onMemory,
   onPrivacy,
   onDelete,
+  onComputerChanged,
 }: Props) {
   const { t } = useTranslation();
-  const edition = useBotServerInfo()?.edition;
-  const cloud = edition === "cloud";
+  const info = useBotServerInfo();
+  const edition = info?.edition;
+  const cloud =
+    edition === "cloud" ||
+    (edition === "desktop" &&
+      bot.computer === "cloud" &&
+      info?.capabilities?.cloud_computer);
   const { agents, refresh } = useAgent();
   const user = useCurrentUser();
   const navigate = useNavigate();
@@ -322,7 +331,19 @@ export default function BotDetailsPanel({
             </small>
           )}
         </section>
-        {agent?.kind === "expert" &&
+        {edition === "desktop" &&
+          info?.capabilities?.cloud_computer &&
+          agent &&
+          !agent.is_shared && (
+            <ComputerTargetPicker
+              key={bot.agent_id}
+              id={bot.agent_id}
+              target={bot.computer ?? "local"}
+              onChanged={() => onComputerChanged?.()}
+            />
+          )}
+        {!cloud &&
+          agent?.kind === "expert" &&
           !agent.is_shared &&
           canAccessPath(user, "/remote-desktop/desktop") && (
             <section className={styles.block}>
@@ -340,6 +361,13 @@ export default function BotDetailsPanel({
               {t("cloudComputer.section")}
             </h4>
             <CloudComputerCard key={bot.agent_id} botId={bot.agent_id} />
+            {!bot.is_private && (
+              <BotPlacement
+                key={`placement-${bot.agent_id}`}
+                bot={bot.agent_id}
+                defaults
+              />
+            )}
           </section>
         )}
         <section className={styles.block}>

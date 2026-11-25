@@ -145,13 +145,19 @@ async def iter_dashboard_hitl_resume_sse(
     )
     disconnected = False
     followup_pause = False
-    # Clear the in-memory pause before the (possibly long) resume stream so
+    # Claim the pause before the (possibly long) resume stream so
     # history reload cannot reinject the same card while the turn continues.
-    if pending is not None:
-        hitl_coordinator.store.mark_resolved(
-            pending.pending_id,
-            "rejected" if rejected else "approved",
+    if pending is not None and not hitl_coordinator.store.mark_resolved(
+        pending.pending_id, "rejected" if rejected else "approved"
+    ):
+        from octop.i18n.domains.slash import tr as slash_tr
+        from octop.infra.utils.locale import normalize_locale
+
+        yield format_sse(
+            "chunk",
+            {"type": "error", "message": slash_tr("hitl.expired", normalize_locale(locale))},
         )
+        return
     try:
         async for chunk in processor.iter_hitl_resume_chunks(
             agent_id=agent_id,

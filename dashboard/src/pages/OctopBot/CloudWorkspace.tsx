@@ -75,6 +75,7 @@ export default function CloudWorkspace() {
       const next = await attempt();
       ++seq.current;
       setAccount(next);
+      window.dispatchEvent(new Event("octop-bot-account-changed"));
     } catch (err) {
       setError(apiErrorMessage(err, t("octopBot.failed"), t));
       return err;
@@ -103,6 +104,7 @@ export default function CloudWorkspace() {
       const next = await botCloudApi.loginWorkbuddy(result.code);
       ++seq.current;
       setAccount(next);
+      window.dispatchEvent(new Event("octop-bot-account-changed"));
     } catch (err) {
       setError(apiErrorMessage(err, t("octopBot.failed"), t));
     } finally {
@@ -115,6 +117,7 @@ export default function CloudWorkspace() {
     setError("");
     try {
       await botCloudApi.logout(account.account_id);
+      window.dispatchEvent(new Event("octop-bot-account-changed"));
       ++seq.current;
       setAccount({ connected: false, account_id: null, display_name: null });
     } catch (err) {

@@ -16,6 +16,7 @@ class Metrics:
     query_token_ws_total: int = 0
     query_token_sse_total: int = 0
     query_token_http_total: int = 0
+    token_login_without_src_total: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def inc(self, name: str, n: int = 1) -> None:
@@ -37,6 +38,7 @@ class Metrics:
                 "query_token_ws_total": self.query_token_ws_total,
                 "query_token_sse_total": self.query_token_sse_total,
                 "query_token_http_total": self.query_token_http_total,
+                "token_login_without_src_total": self.token_login_without_src_total,
             }
 
 

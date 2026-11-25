@@ -1,6 +1,7 @@
 import { request, requestBlob, requestUpload } from "../request";
 
 export interface WorkspaceBot {
+  computer?: "local" | "cloud";
   avatar?: BotAppearance;
   agent_id: string;
   state: string;

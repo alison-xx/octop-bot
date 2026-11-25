@@ -50,6 +50,11 @@ MAX_TEXT_SCAN = 2_000_000
 class Inspection:
     problems: list[str] = field(default_factory=list)
     facts: list[dict[str, int | str]] = field(default_factory=list)
+    open_failed: bool = False
+
+    def refuse_open(self, reason: str) -> None:
+        self.open_failed = True
+        self.problems.append(reason)
 
     def add(self, kind: str, count: int, **extra: int) -> None:
         self.facts.append({"k": kind, "n": count, **extra})
@@ -78,13 +83,13 @@ def _office(data: bytes, suffix: str, result: Inspection) -> None:
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile:
-        result.problems.append("it does not open (not a valid Office file)")
+        result.refuse_open("it does not open (not a valid Office file)")
         return
     with archive:
         names = archive.namelist()
         if suffix == ".docx":
             if "word/document.xml" not in names:
-                result.problems.append("it does not open (no document body)")
+                result.refuse_open("it does not open (no document body)")
                 return
             xml = archive.read("word/document.xml").decode("utf-8", "replace")
             text = re.sub(r"<[^>]+>", "", xml)
@@ -135,12 +140,13 @@ def _image(data: bytes, result: Inspection) -> None:
             picture.verify()
             width, height = picture.size
     except (UnidentifiedImageError, OSError, SyntaxError, ValueError):
-        result.problems.append("the image does not open")
+        result.refuse_open("the image does not open")
         return
     result.add("pixels", width * height, w=width, h=height)
 
 
-def inspect_file(name: str, data: bytes) -> Inspection:
+def inspect_file(name: str, data: bytes | None) -> Inspection:
+    """Inspect available content. None requests the name-only check for large files."""
     result = Inspection()
     path = PurePosixPath(name.replace("\\", "/"))
     suffix = path.suffix.lower()
@@ -148,16 +154,28 @@ def inspect_file(name: str, data: bytes) -> Inspection:
         result.problems.append(
             f"the name {path.name!r} does not say what it is; rename it (e.g. 竞品价格对比_2026Q3.xlsx)"
         )
+    if data is None:
+        result.add("filenameOnly", 1)
+        return result
     if not data:
         result.problems.append("the file is empty")
         return result
     if suffix == ".pdf":
         if not data.startswith(b"%PDF"):
-            result.problems.append("it does not open (not a PDF)")
+            result.refuse_open("it does not open (not a PDF)")
         else:
-            pages = len(re.findall(rb"/Type\s*/Page(?!s)", data))
-            if pages:
-                result.add("pages", pages)
+            from pypdf import PdfReader  # noqa: PLC0415
+            from pypdf.errors import PyPdfError  # noqa: PLC0415
+
+            try:
+                pages = len(PdfReader(io.BytesIO(data)).pages)
+            except (PyPdfError, ValueError, KeyError, TypeError, OSError):
+                result.refuse_open("the PDF does not open")
+            else:
+                if pages:
+                    result.add("pages", pages)
+                else:
+                    result.problems.append("the PDF contains no pages")
     elif suffix in {".docx", ".xlsx", ".pptx"}:
         _office(data, suffix, result)
     elif suffix == ".csv":
@@ -167,6 +185,8 @@ def inspect_file(name: str, data: bytes) -> Inspection:
             json.loads(data)
         except ValueError:
             result.problems.append("it is not valid JSON")
+        else:
+            result.add("validJson", 1)
     elif suffix in IMAGE_SUFFIXES:
         _image(data, result)
     elif suffix == ".zip":
@@ -177,7 +197,7 @@ def inspect_file(name: str, data: bytes) -> Inspection:
                 else:
                     result.add("files", len(archive.namelist()))
         except zipfile.BadZipFile:
-            result.problems.append("the archive does not open")
+            result.refuse_open("the archive does not open")
     elif suffix in TEXT_SUFFIXES:
         text = _decode(data)
         if text is None:
@@ -187,4 +207,6 @@ def inspect_file(name: str, data: bytes) -> Inspection:
         else:
             _placeholder(text, result)
             result.add("lines", len(text.splitlines()))
+    else:
+        result.add("nonempty", 1)
     return result

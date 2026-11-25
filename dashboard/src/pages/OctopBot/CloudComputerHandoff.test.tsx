@@ -44,4 +44,23 @@ describe("cloud computer handoff", () => {
     );
     expect(takeover).toHaveBeenCalledWith("bot1", true);
   });
+  it("opens a legacy desktop screen without taking control away from the Bot", async () => {
+    const takeover = vi.spyOn(botCloudComputerApi, "takeover");
+    vi.spyOn(botCloudComputerApi, "openScreen").mockResolvedValue({
+      ws_path: "/ws?ticket=read",
+      expires_in: 60,
+      session: { viewOnly: true },
+    });
+    render(<CloudComputerHandoff botId="bot1" />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /cloudComputer.handoffOpen/ }),
+    );
+    expect(await screen.findByTestId("screen")).toHaveTextContent(
+      "/ws?ticket=read view",
+    );
+    expect(
+      screen.getByText("cloudComputer.legacyViewOnly"),
+    ).toBeInTheDocument();
+    expect(takeover).not.toHaveBeenCalled();
+  });
 });

@@ -18,8 +18,9 @@ import httpx
 from filelock import AsyncFileLock
 from pydantic import BaseModel
 
+from octop.infra.cloud.computers import DiskBalanceInsufficient
 from octop.infra.crypto.fernet import decrypt_json, encrypt_json
-from octop.infra.db.services import SharedServices
+from octop.infra.db.services import RepoBundle, SharedServices
 from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -111,6 +112,10 @@ def _key(user_id: int) -> str:
     return f"lynxce.cloud.user.{user_id}"
 
 
+def has_session(services: SharedServices | RepoBundle, user_id: int) -> bool:
+    return services.secret_repo.get(_key(user_id)) is not None
+
+
 def _load(services: SharedServices, user_id: int) -> _Grant | None:
     repo = services.secret_repo
     key = _key(user_id)
@@ -130,6 +135,16 @@ def _save(services: SharedServices, user_id: int, grant: _Grant) -> None:
         repo.delete(key)
         repo.delete(key + ".fernet")
         raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
+
+
+def cloud_accounts(services: SharedServices) -> dict[int, str]:
+    """Map existing local users to the identities in their encrypted grants."""
+    result: dict[int, str] = {}
+    for user in services.user_repo.list(include_disabled=True):
+        grant = _load(services, user.id)
+        if grant is not None:
+            result[user.id] = grant.account_id
+    return result
 
 
 def cloud_status(services: SharedServices, user_id: int) -> CloudAccountStatus:
@@ -196,29 +211,43 @@ async def _finish[T](operation: Coroutine[Any, Any, T]) -> T:
 
 
 class _UpstreamFailure(Exception):
-    def __init__(self, status: int, code: str | None = None):
+    def __init__(self, status: int, code: str | None = None, business_code: int | None = None):
         self.status = status
-        self.code = code  # Lynxce's ``error.code``, when it sent one
+        self.code = code
+        self.business_code = business_code
 
 
-def _error_code(response: httpx.Response) -> str | None:
+def _response_failure(response: httpx.Response) -> _UpstreamFailure:
     try:
         body = response.json()
     except ValueError:
-        return None
+        body = None
     error = body.get("error") if isinstance(body, dict) else None
     code = error.get("code") if isinstance(error, dict) else None
-    return code if isinstance(code, str) else None
+    number = body.get("code") if isinstance(body, dict) else None
+    return _UpstreamFailure(
+        response.status_code,
+        code if isinstance(code, str) else None,
+        number if type(number) is int else None,
+    )
 
 
 def _rejected(status: int) -> OctopError:
-    if status == 402:
-        return OctopError.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
     if status == 404:
         return OctopError.localized(ErrorCode.NOT_FOUND)
-    if status in {400, 403, 409, 422, 429}:
+    if status in {400, 402, 403, 409, 422, 429}:
         return OctopError.localized(ErrorCode.BOT_CLOUD_REQUEST_REJECTED, status=status)
     return OctopError.localized(ErrorCode.NETWORK_ERROR)
+
+
+def _operation_rejected(method: str, path: str, failure: _UpstreamFailure) -> OctopError:
+    if failure.status == 402 and failure.code == "insufficient_balance":
+        if method == "POST" and path == "/api/billing/octop-bot/compute/disk/charge":
+            if failure.business_code == 40204:
+                return DiskBalanceInsufficient.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
+            return _rejected(failure.status)
+        return OctopError.localized(ErrorCode.BOT_CLOUD_CREDITS_REQUIRED)
+    return _rejected(failure.status)
 
 
 async def _send(
@@ -249,7 +278,7 @@ async def _send(
     except httpx.HTTPError:
         raise _UpstreamFailure(502) from None
     if not response.is_success:
-        raise _UpstreamFailure(response.status_code, _error_code(response))
+        raise _response_failure(response)
     try:
         body = response.json()
     except ValueError:
@@ -379,6 +408,14 @@ _CODE = re.compile(r"[0-9]{6}")
 
 
 CodeChannel = Literal["phone", "email"]
+
+
+def login_account_key(account: str) -> str:
+    """Match Lynxce normalizeChinaPhone for account counters, keeping other logins distinct."""
+    value = account.strip().lower()
+    compact = re.sub(r"[\s-]", "", value)
+    phone = re.fullmatch(r"(?:\+86|0086|86)?(1[3-9][0-9]{9})", compact)
+    return f"+86{phone[1]}" if phone else value
 
 
 def code_target(target: str) -> tuple[CodeChannel, str]:
@@ -527,11 +564,30 @@ async def logout_cloud(
         return CloudAccountStatus()
     if expected_account_id is not None and expected_account_id != initial.account_id:
         raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
+    remote_token = None
+    if bot_desktop_enabled():
+        from octop.infra.cloud.computers.remote import RemoteCredentials, clear_token, pause_shadows
+
+        shadows = await asyncio.to_thread(
+            services.settings_repo.with_prefix, f"octop_bot:shadow:{user_id}:"
+        )
+        if shadows:
+            with suppress(OctopError, TimeoutError):
+                async with asyncio.timeout(5):
+                    remote_token = await RemoteCredentials(services, user_id).token(
+                        binding=initial.binding
+                    )
     async with _lock(services, user_id):
         grant = await asyncio.to_thread(_load, services, user_id)
         if grant:
             if initial.binding != grant.binding:
                 raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
+            if bot_desktop_enabled():
+                if remote_token:
+                    with suppress(Exception):
+                        async with asyncio.timeout(8):
+                            await pause_shadows(services, user_id, grant.account_id, remote_token)
+                await _finish(asyncio.to_thread(clear_token, services, user_id))
             await _finish(asyncio.to_thread(services.secret_repo.delete, _key(user_id)))
             # Local sign-out is durable even if Lynxce is temporarily unavailable.
             with suppress(_UpstreamFailure):
@@ -687,6 +743,25 @@ async def open_refresh_session(refresh_token: str) -> CloudSession:
     )
 
 
+async def account_of_access_token(access_token: str) -> str:
+    """The Lynxce account id an access token belongs to (the desktop's ``token-login``).
+
+    Only reads the profile: the caller keeps its own session; nothing is renewed or stored.
+    """
+    if not (1 <= len(access_token) <= 32768) or not access_token.isascii():
+        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422)
+    try:
+        profile = await _send("GET", "/api/user/profile", bearer=access_token)
+    except _UpstreamFailure as exc:
+        if exc.status in {400, 401, 403}:
+            raise OctopError.localized(ErrorCode.AUTH_FAILED, status=403) from None
+        raise _rejected(exc.status) from None
+    account = profile.get("id") if isinstance(profile, dict) else None
+    if not isinstance(account, str) or not account.strip():
+        raise OctopError.localized(ErrorCode.NETWORK_ERROR)
+    return account
+
+
 async def hand_over_session[T](
     services: SharedServices, user_id: int, accept: Callable[[str], Awaitable[T]]
 ) -> T:
@@ -802,14 +877,14 @@ async def tenant_call(
             return await _send(method, path, bearer=grant.access_token, json=json, headers=extra)
         except _UpstreamFailure as exc:
             if exc.status != 401:
-                raise _rejected(exc.status) from None
+                raise _operation_rejected(method, path, exc) from None
             grant = await _refresh(services, user_id, grant)
             try:
                 return await _send(
                     method, path, bearer=grant.access_token, json=json, headers=extra
                 )
             except _UpstreamFailure as again:
-                raise _rejected(again.status) from None
+                raise _operation_rejected(method, path, again) from None
 
 
 async def model_key_rejected(secret: str) -> bool:

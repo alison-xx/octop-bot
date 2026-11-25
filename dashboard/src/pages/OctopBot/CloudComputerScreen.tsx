@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { botCloudComputerApi } from "../../api/modules/botCloudComputer";
+import {
+  botCloudComputerApi,
+  viewOnlyScreen,
+  type ScreenSession,
+} from "../../api/modules/botCloudComputer";
 import { ACCESS_TOKEN_RENEWED_EVENT, getAuthToken } from "../../api/request";
 import { apiErrorMessage } from "../../utils/apiError";
 import CloudComputerInputBar from "./CloudComputerInputBar";
@@ -40,7 +44,7 @@ export default function CloudComputerScreen({
 }: {
   wsPath: string;
   interactive: boolean;
-  session?: string;
+  session?: ScreenSession;
   botId?: string;
 }) {
   const { t } = useTranslation();
@@ -51,10 +55,33 @@ export default function CloudComputerScreen({
   const [phase, setPhase] = useState<Phase>("connecting");
   const [note, setNote] = useState("");
   // Read when the client is created: takeover may land while noVNC is still loading.
-  const interactiveRef = useRef(interactive);
+  const viewOnly = viewOnlyScreen(session);
+  const canControl = interactive && !viewOnly;
+  const expiresAt =
+    typeof session === "object" && "expiresAt" in session
+      ? session.expiresAt
+      : undefined;
+  const [expired, setExpired] = useState(false);
+  useEffect(() => {
+    setExpired(false);
+    if (expiresAt === undefined) return;
+    const timeout = window.setTimeout(
+      () => setExpired(true),
+      Math.max(0, expiresAt - Date.now()),
+    );
+    return () => window.clearTimeout(timeout);
+  }, [expiresAt]);
+  const interactiveRef = useRef(canControl);
 
   useEffect(() => {
-    if (!botId || !session) return;
+    // Negotiated desktop sessions expire with the original sign-in and ticket.
+    if (
+      !botId ||
+      !session ||
+      viewOnlyScreen(session) ||
+      (typeof session === "object" && !session.renewable)
+    )
+      return;
     let lastToken = "";
     // The viewer can stay open across sliding login renewals. Only a changed
     // sign-in credential needs sending; this never starts or resumes a computer.
@@ -97,12 +124,19 @@ export default function CloudComputerScreen({
   }, [wsPath]);
 
   useEffect(() => {
-    interactiveRef.current = interactive;
-    if (rfb.current) rfb.current.viewOnly = !interactive;
-  }, [interactive]);
+    interactiveRef.current = canControl;
+    if (rfb.current) rfb.current.viewOnly = !canControl;
+  }, [canControl]);
 
   useEffect(() => {
-    if (!interactive || !host.current || !isApplePlatform()) return;
+    if (
+      !canControl ||
+      expired ||
+      !host.current ||
+      !isApplePlatform() ||
+      (typeof session === "object" && phase !== "connected")
+    )
+      return;
     const failed = (e: unknown) =>
       setNote(apiErrorMessage(e, t("cloudComputer.inputFailed"), t));
     return installMacShortcuts(
@@ -137,9 +171,13 @@ export default function CloudComputerScreen({
     );
     // Install once per session and mode; `t` changing is not a reason to reinstall.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interactive, session]);
+  }, [canControl, expired, session, phase]);
 
-  const typing = interactive && session !== "";
+  const typing =
+    canControl &&
+    !expired &&
+    session !== "" &&
+    (typeof session === "string" || phase === "connected");
   return (
     <>
       <div className={styles.frame} data-phase={phase}>

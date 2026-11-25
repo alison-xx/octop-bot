@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from octop.infra.db.pool import DatabasePool
 
 
@@ -19,8 +21,10 @@ class SettingsRepo:
     def set(self, key: str, value: str) -> None:
         self.set_many({key: value})
 
-    def set_many(self, values: dict[str, str]) -> None:
+    def set_many(self, values: dict[str, str], *, delete: Iterable[str] = ()) -> None:
         with self._db.transaction() as conn:
+            if delete:
+                conn.executemany("DELETE FROM settings WHERE key=?", ((key,) for key in delete))
             conn.executemany(
                 "INSERT INTO settings(key, value) VALUES(?, ?)"
                 " ON CONFLICT(key) DO UPDATE SET value = excluded.value",

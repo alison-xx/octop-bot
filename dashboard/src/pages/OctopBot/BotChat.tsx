@@ -1,3 +1,4 @@
+import BotPlacement from "./BotPlacement";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -44,6 +45,7 @@ import BotComputerSettings from "./BotComputerSettings";
 import AppearanceModal from "./AppearancePicker";
 import { BotCharacter, type BotMotion } from "./BotCharacter";
 import RoomIdentity from "./RoomIdentity";
+import { ComputerReverification } from "./ComputerTargetPicker";
 import BotDetailsPanel from "./BotDetailsPanel";
 import CloudComputerFloat, { CloudComputerToggle } from "./CloudComputerFloat";
 import { useBotServerInfo } from "./useBotServerInfo";
@@ -306,14 +308,28 @@ export default function BotChat({
           />
         ) : null;
       },
-      composerTop,
+      composerTop: (
+        <>
+          {composerTop}
+          {!bot.is_private && (
+            <BotPlacement
+              key={bot.agent_id + (threadId ?? "")}
+              bot={bot.agent_id}
+            />
+          )}
+        </>
+      ),
     }),
-    [openSide, openReference, bot, roster, motion, composerTop],
+    [openSide, openReference, bot, roster, motion, composerTop, threadId],
   );
   const standalone = isBotClient();
   const agent = agents.find((a) => a.agent_id === bot.agent_id);
   // Octop Bot cloud: a floating live screen while the Bot works on its cloud computer.
   const serverInfo = useBotServerInfo();
+  const showCloudComputer =
+    serverInfo?.capabilities.cloud_computer &&
+    (bot.computer === "cloud" ||
+      (bot.computer === undefined && serverInfo.edition === "cloud"));
   const capabilityLinks = [
     ["/personalization/memory", "nav.memory"],
     ["/workbench/browser", "chat.openBrowser"],
@@ -327,6 +343,9 @@ export default function BotChat({
   ].filter(([path]) => canAccessPath(user, path));
   return (
     <>
+      {serverInfo?.edition === "desktop" && (
+        <ComputerReverification key={bot.agent_id} />
+      )}
       <div
         className={standalone ? directory.chatLayout : directory.transparent}
       >
@@ -335,14 +354,12 @@ export default function BotChat({
             <RoomIdentity
               actions={
                 <>
-                  {serverInfo?.capabilities.cloud_computer &&
-                    agent &&
-                    !agent.is_shared && (
-                      <CloudComputerToggle
-                        key={bot.agent_id}
-                        botId={bot.agent_id}
-                      />
-                    )}
+                  {showCloudComputer && agent && !agent.is_shared && (
+                    <CloudComputerToggle
+                      key={bot.agent_id}
+                      botId={bot.agent_id}
+                    />
+                  )}
                   {threadId && publicShareAvailable() ? (
                     <button
                       type="button"
@@ -373,14 +390,12 @@ export default function BotChat({
                       botId={bot.agent_id}
                     />
                   )}
-                {serverInfo?.capabilities.cloud_computer &&
-                  agent &&
-                  !agent.is_shared && (
-                    <CloudComputerToggle
-                      key={bot.agent_id}
-                      botId={bot.agent_id}
-                    />
-                  )}
+                {showCloudComputer && agent && !agent.is_shared && (
+                  <CloudComputerToggle
+                    key={bot.agent_id}
+                    botId={bot.agent_id}
+                  />
+                )}
                 <Button
                   type="text"
                   title={t("octopBot.history")}
@@ -460,18 +475,17 @@ export default function BotChat({
               </ChatRouteContext.Provider>
             )}
           </div>
-          {serverInfo?.capabilities.cloud_computer &&
-            agent &&
-            !agent.is_shared && (
-              <CloudComputerFloat
-                key={bot.agent_id}
-                botId={bot.agent_id}
-                botName={bot.name}
-              />
-            )}
+          {showCloudComputer && !details && agent && !agent.is_shared && (
+            <CloudComputerFloat
+              key={bot.agent_id}
+              botId={bot.agent_id}
+              botName={bot.name}
+            />
+          )}
         </div>
         {standalone && details && (
           <BotDetailsPanel
+            onComputerChanged={onChanged}
             key={bot.agent_id}
             bot={bot}
             motion={motion}

@@ -6,10 +6,11 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 from octop.i18n import tr
-from octop.i18n.domains.agents import agent_error_message
 from octop.infra.agents.bot_appearance import appearance_prefix, bot_appearance
+from octop.infra.agents.error_display import visible_agent_error
 from octop.infra.agents.experts.avatar import display_agent_icon_url
 from octop.infra.agents.settings.profile import parse_config_json
+from octop.infra.db.repos.agents import SHADOW
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_user_locale
 from octop.infra.utils.ulid import new_short_id
@@ -54,9 +55,10 @@ def assert_removable_bot(repos: RepoBundle, row: AgentRow) -> None:
 
 
 def require_own_bot(services: SharedServices, user_id: int, agent_id: str) -> AgentRow:
-    """My own Bot (not a team), or 404 so other people's Bots stay invisible."""
+    """My own Bot (not a team, nor a desktop Bot's hidden shadow), or 404 so other people's
+    Bots stay invisible."""
     row = services.agent_repo.get(agent_id)
-    if row is None or row.user_id != user_id or row.kind == "team":
+    if row is None or row.user_id != user_id or row.kind in {"team", SHADOW}:
         raise OctopError.localized(ErrorCode.AGENT_NOT_FOUND)
     return row
 
@@ -68,10 +70,17 @@ def bot_card(
     cached: dict[str, str] | None = None,
     *,
     locale: str = "en",
+    is_admin: bool = False,
+    desktop_connected: bool = False,
 ) -> dict[str, Any]:
+    from octop.infra.cloud.computers.remote import configured_target
+    from octop.infra.desktop import bot_cloud_enabled
+
+    computer = configured_target(row) if desktop_connected and not row.is_shared else "local"
     avatar = bot_appearance(settings, row, chief_id, cached)
     return {
         "agent_id": row.agent_id,
+        "computer": "cloud" if bot_cloud_enabled() else computer,
         "name": row.name,
         "description": row.description,
         "avatar": avatar.model_dump(),
@@ -90,17 +99,34 @@ def bot_card(
         "default_model": row.default_model,
         "state": row.last_state or "unknown",
         "preparing": row.last_state == "starting",
-        "last_error": agent_error_message(row.last_error, locale) or None,
+        "last_error": visible_agent_error(
+            row.agent_id, row.last_error, is_admin=is_admin, locale=locale
+        )
+        or None,
     }
 
 
 def list_bot_cards(
     services: SharedServices, owner: int, chief_id: str, *, include_private: bool = True
 ) -> list[dict[str, Any]]:
+    from octop.infra.auth.lynxce_cloud import has_session
+    from octop.infra.desktop import bot_desktop_enabled
+
+    connected = bot_desktop_enabled() and has_session(services, owner)
     cached = services.settings_repo.with_prefix(appearance_prefix(owner))
     locale = resolve_user_locale(user_repo=services.user_repo, user_id=owner)
+    owner_row = services.user_repo.get(owner)
+    is_admin = owner_row is not None and owner_row.role == "admin"
     return [
-        bot_card(row, chief_id, services.settings_repo, cached, locale=locale)
+        bot_card(
+            row,
+            chief_id,
+            services.settings_repo,
+            cached,
+            locale=locale,
+            is_admin=is_admin,
+            desktop_connected=connected,
+        )
         for row in services.agent_repo.list_by_user(owner)
         if row.kind != "team" and (include_private or not is_private_bot(row))
     ]

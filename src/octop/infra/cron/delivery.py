@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -156,6 +157,50 @@ class CronDeliveryService:
             session_key,
             _locked,
         )
+
+    async def publish_expirations(self) -> None:
+        """Write the timeout to the original checkpoint without opening a computer or model turn."""
+        repo = self._repos.handoff_repo
+        for _ in range(16):
+            due = await asyncio.to_thread(repo.claim_deadline, time.time())
+            if due is None:
+                return
+            try:
+                locale = await asyncio.to_thread(
+                    resolve_user_locale, user_repo=self._repos.user_repo, user_id=due.user_id
+                )
+                if due.origin and due.origin.startswith("cron:"):
+                    text = tr("cron.waiting.expired", locale)
+                    await asyncio.to_thread(
+                        self._repos.cron_repo.expire_wait,
+                        due.origin.removeprefix("cron:"),
+                        due.agent_id,
+                        deadline=due.expires_at,
+                        text=text,
+                    )
+                else:
+                    text = tr("octop_bot.approval.expired", locale)
+                thread = await asyncio.to_thread(self._repos.thread_repo.get, due.thread_id)
+                if thread and thread.user_id == due.user_id and thread.agent_id == due.agent_id:
+                    harness = self._agent_manager.get_agent(due.agent_id)
+                    messages = await harness.aappend_messages(
+                        due.thread_id,
+                        [
+                            AIMessage(
+                                content=text,
+                                id=f"handoff-timeout:{due.pending_id}",
+                                additional_kwargs={"octop_task_outcome": "expired"},
+                            )
+                        ],
+                    )
+                    await asyncio.to_thread(
+                        self._repos.thread_message_repo.append_if_ready,
+                        due.thread_id,
+                        message_inputs(messages, dedupe_missing_ids=True),
+                    )
+                await asyncio.to_thread(repo.finish_deadline, due.pending_id)
+            except Exception:
+                logger.warning("Scheduled handoff expiry will be retried", exc_info=True)
 
     async def _publish_fixed(
         self,
@@ -442,6 +487,7 @@ class CronDeliveryService:
         )
         if servers:
             request["mcp_servers"] = servers
+        request.setdefault("configurable", {})["octop_scheduled_turn"] = True
         self._attach_turn_knowledge_config(request, command, session)
         return request
 

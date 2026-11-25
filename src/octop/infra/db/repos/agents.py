@@ -88,7 +88,7 @@ class AgentRow:
         except (KeyError, IndexError):
             kind_raw = None
         kind = str(kind_raw).strip() if kind_raw else "expert"
-        if kind not in {"expert", "team", "managed"}:
+        if kind not in AGENT_KINDS:
             kind = "expert"
         return cls(
             id=r["id"],
@@ -120,6 +120,13 @@ class AgentRow:
         )
 
 
+# Octop Bot cloud: a hidden stand-in for a Bot that lives on someone's desktop, kept only so
+# that Bot can have a cloud computer (no agent runtime, no chats). Lists leave it out unless
+# asked; ``get`` still finds it, so the computer's ownership, billing and reaping work as usual.
+SHADOW = "shadow"
+AGENT_KINDS = frozenset({"expert", "team", "managed", SHADOW})
+
+
 class AgentRepo:
     def __init__(self, db: DatabasePool) -> None:
         self._db = db
@@ -148,7 +155,7 @@ class AgentRepo:
         kind: str = "expert",
     ) -> str:
         ts = now_ts()
-        agent_kind = kind if kind in {"expert", "team", "managed"} else "expert"
+        agent_kind = kind if kind in AGENT_KINDS else "expert"
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO agents(agent_id, user_id, name, description, "
@@ -188,10 +195,14 @@ class AgentRepo:
             r = conn.execute("SELECT * FROM agents WHERE agent_id = ?", (agent_id,)).fetchone()
         return AgentRow.from_row(r) if r else None
 
-    def list_by_user(self, user_id: int, *, include_disabled: bool = True) -> list[AgentRow]:
+    def list_by_user(
+        self, user_id: int, *, include_disabled: bool = True, include_shadows: bool = False
+    ) -> list[AgentRow]:
         sql = "SELECT * FROM agents WHERE user_id = ?"
         if not include_disabled:
             sql += " AND enabled = 1"
+        if not include_shadows:
+            sql += f" AND kind != '{SHADOW}'"
         sql += " ORDER BY created_at ASC, id ASC"
         with self._db.connect() as conn:
             rows = conn.execute(sql, (user_id,)).fetchall()
@@ -209,20 +220,43 @@ class AgentRepo:
         if kind is not None:
             sql += " AND kind = ?"
             params.append(kind)
+        else:
+            sql += f" AND kind != '{SHADOW}'"
         if not include_disabled:
             sql += " AND enabled = 1"
         with self._db.connect() as conn:
             row = conn.execute(sql, params).fetchone()
         return int(row["c"]) if row is not None else 0
 
-    def list_all(self, *, include_disabled: bool = True) -> list[AgentRow]:
-        sql = "SELECT * FROM agents"
+    def list_all(
+        self, *, include_disabled: bool = True, include_shadows: bool = False
+    ) -> list[AgentRow]:
+        where = [] if include_shadows else [f"kind != '{SHADOW}'"]
         if not include_disabled:
-            sql += " WHERE enabled = 1"
+            where.append("enabled = 1")
+        sql = "SELECT * FROM agents" + (" WHERE " + " AND ".join(where) if where else "")
         sql += " ORDER BY created_at ASC, id ASC"
         with self._db.connect() as conn:
             rows = conn.execute(sql).fetchall()
         return map_rows(rows, AgentRow)
+
+    def list_shadows(self, user_id: int | None = None) -> list[AgentRow]:
+        """Shadow Bots (see ``SHADOW``): one user's, or everyone's."""
+        sql = f"SELECT * FROM agents WHERE kind = '{SHADOW}'"
+        params: tuple[object, ...] = ()
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params = (user_id,)
+        with self._db.connect() as conn:
+            rows = conn.execute(sql + " ORDER BY created_at ASC, id ASC", params).fetchall()
+        return map_rows(rows, AgentRow)
+
+    def touch(self, agent_id: str) -> None:
+        """Mark a row as just used (``updated_at`` = now)."""
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE agents SET updated_at = ? WHERE agent_id = ?", (now_ts(), agent_id)
+            )
 
     def set_enabled(self, agent_id: str, enabled: bool) -> None:
         with self._db.transaction() as conn:
@@ -237,6 +271,18 @@ class AgentRepo:
                 "UPDATE agents SET is_shared = ?, updated_at = ? WHERE agent_id = ?",
                 (bool_int(shared), now_ts(), agent_id),
             )
+
+    def replace_owned_bot_config(
+        self, user_id: int, agent_id: str, expected: str | None, config: str
+    ) -> bool:
+        with self._db.transaction() as conn:
+            result = conn.execute(
+                "UPDATE agents SET config_json=?, updated_at=? WHERE user_id=? AND agent_id=? "
+                "AND is_shared=0 AND kind IN ('expert','managed') "
+                "AND COALESCE(config_json,'')=COALESCE(?,'')",
+                (config, now_ts(), user_id, agent_id, expected),
+            )
+            return int(result.rowcount) == 1
 
     def set_bot_privacy(
         self,

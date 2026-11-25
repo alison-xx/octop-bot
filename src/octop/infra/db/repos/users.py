@@ -399,7 +399,7 @@ class UserRepo:
             # appearance and computer-control grants. Retained private folders are keyed
             # by agent and intentionally survive until released.
             conn.execute(
-                "DELETE FROM settings WHERE key IN (?,?,?,?) OR key LIKE ? OR key LIKE ?",
+                "DELETE FROM settings WHERE key IN (?,?,?,?) OR key LIKE ? OR key LIKE ? OR key LIKE ?",
                 (
                     f"octop_bot:chief:{user_id}",
                     f"octop_bot:layout:{user_id}",
@@ -407,6 +407,7 @@ class UserRepo:
                     f"octop_bot:lynxce:model:{user_id}",
                     f"octop_bot:appearance:{user_id}:%",
                     f"octop_bot:computer:{user_id}:%",
+                    f"octop_bot:moved:{user_id}:%",
                 ),
             )
             conn.execute(

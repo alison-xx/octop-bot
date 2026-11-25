@@ -1,6 +1,7 @@
 """Independent Octop Bot surfaces reached through the local desktop shell."""
 
-from typing import Annotated
+from asyncio import Event
+from typing import Annotated, cast
 
 from fastapi import Depends, Request
 
@@ -50,3 +51,17 @@ Services = Annotated[SharedServices, Depends(_desktop_services)]
 AccountServices = Annotated[SharedServices, Depends(_account_services)]
 ModelKeyServices = Annotated[SharedServices, Depends(_model_key_services)]
 Owner = Annotated[User, Depends(current_user)]
+
+
+def screen_login(request: Request, user_id: int) -> Event:
+    """In-memory lifetime shared by screens opened under this local desktop login."""
+    sessions = getattr(request.app.state, "desktop_screen_logins", None)
+    if sessions is None:
+        sessions = request.app.state.desktop_screen_logins = {}
+    return cast("dict[int, Event]", sessions).setdefault(user_id, Event())
+
+
+def close_login_screens(request: Request, user_id: int) -> None:
+    sessions = getattr(request.app.state, "desktop_screen_logins", {})
+    if event := sessions.pop(user_id, None):
+        event.set()

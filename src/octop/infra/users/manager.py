@@ -886,6 +886,11 @@ class UserManager:
         async with self._lock:
             self._users.pop(username, None)
         await asyncio.to_thread(self._remove_user_files, row.id, row.username)
+        # Octop Bot cloud: shadow Bots hold only a cloud computer, which the computer reaper
+        # stops and settles once its Bot is gone.
+        for shadow in self._services.agent_repo.list_shadows(row.id):
+            self._services.agent_repo.delete(shadow.agent_id)
+            self._services.settings_repo.delete(f"octop_bot:shadow:{shadow.agent_id}")
         self._services.user_repo.delete(row.id)
         self._services.audit_repo.write(actor=ACTOR_ADMIN, action="user.delete", target=username)
 

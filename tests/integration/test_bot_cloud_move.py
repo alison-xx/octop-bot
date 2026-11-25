@@ -22,6 +22,7 @@ from octop.infra.auth import lynxce_cloud
 from octop.infra.bot_groups.service import create_group, list_messages
 from octop.infra.cloud import move_out
 from octop.infra.cloud.bot_cloud import accounts as cloud_accounts
+from octop.infra.errors import OctopError
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.history.projection import message_inputs
 
@@ -52,7 +53,8 @@ async def both(env_admin_alice, monkeypatch):
     monkeypatch.setattr(auth_lynxce, "bot_cloud_enabled", lambda: True)
     monkeypatch.setattr(auth_lynxce, "bot_cloud_session_login_enabled", lambda: True)
     monkeypatch.setattr(bot_move_in, "bot_cloud_move_in_enabled", lambda: True)
-    monkeypatch.setenv("OCTOP_BOT_CLOUD_ORIGIN", "http://cloud.test")
+    monkeypatch.setenv("OCTOP_DASHBOARD_DEV", "1")
+    monkeypatch.setenv("OCTOP_BOT_CLOUD_ORIGIN", "http://127.0.0.1:18400")
     monkeypatch.setattr(
         lynxce_cloud, "_client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(_lynxce))
     )
@@ -192,3 +194,187 @@ def test_move_in_and_session_login_stay_off_in_cloud_mode_unless_switched_on(mon
     monkeypatch.delenv("OCTOP_BOT_CLOUD")
     assert not desktop.bot_cloud_move_in_enabled()
     assert not desktop.bot_cloud_session_login_enabled()
+
+
+async def test_large_desktop_chat_resumes_at_the_acknowledged_offset(both, monkeypatch, request):
+    from contextlib import contextmanager
+
+    from langchain_core.messages import messages_to_dict
+    from langgraph.graph import END, START, MessagesState, StateGraph
+    from octop_memory import Memory
+
+    from octop.infra.agents.memory import thread_cleanup
+    from octop.infra.cloud import move_in
+
+    client, server, admin = both
+    owner = server.user_manager.get("admin").id
+    agent_id = "large-chat"
+    server.services.agent_repo.create(agent_id=agent_id, user_id=owner, name="Large chat")
+    graph = StateGraph(MessagesState)
+    graph.add_node("done", lambda state: {})
+    graph.add_edge(START, "done")
+    graph.add_edge("done", END)
+    db = server.services.paths.agent_workspace(agent_id) / "memory.sqlite"
+    db.parent.mkdir(parents=True, exist_ok=True)
+    memory = Memory(namespace="move-test", backend="sqlite", backend_config={"db_path": str(db)})
+    request.addfinalizer(memory.backend.close)
+    graph = graph.compile(checkpointer=memory)
+    monkeypatch.setattr(
+        server.app_runtime.agent_registry, "get_agent", lambda _: SimpleNamespace(graph=graph)
+    )
+    messages = messages_to_dict([HumanMessage(f"{i}:" + "t" * 100_000) for i in range(110)])
+    # A single multibyte message exceeds even the whole-request ceiling.
+    messages[17]["data"]["content"] = "界🙂" * 1_510_000
+    cleanup_tasks = []
+    started = asyncio.Event()
+    cleanup_calls = 0
+    real_lock = thread_cleanup.FileLock
+    loop = asyncio.get_running_loop()
+
+    @contextmanager
+    def observed_lock(path):
+        nonlocal cleanup_calls
+        if path == thread_cleanup.checkpoint_publication_lock(server.services.paths.root, agent_id):
+            cleanup_calls += 1
+            if cleanup_calls == 2:
+                loop.call_soon_threadsafe(started.set)
+        with real_lock(path):
+            yield
+
+    real_write = move_in.write_checkpoint_messages
+
+    async def simultaneous_cleanup(harness, *, thread_id, messages):
+        await real_write(harness, thread_id=thread_id, messages=messages)
+        if cleanup_tasks:
+            return
+        monkeypatch.setattr(thread_cleanup, "FileLock", observed_lock)
+        cleanup_tasks.extend(
+            (
+                asyncio.create_task(
+                    asyncio.to_thread(
+                        thread_cleanup.gc_orphan_checkpoints,
+                        server.services,
+                        agent_id=agent_id,
+                        apply=True,
+                    )
+                ),
+                asyncio.create_task(
+                    asyncio.to_thread(
+                        thread_cleanup.sweep_deleted_residuals, server.app_runtime.agent_registry
+                    )
+                ),
+            )
+        )
+        await asyncio.wait_for(started.wait(), timeout=10)
+        assert all(not task.done() for task in cleanup_tasks)
+
+    monkeypatch.setattr(move_in, "write_checkpoint_messages", simultaneous_cleanup)
+    header = {
+        "source": "desktop:large",
+        "bot_id": agent_id,
+        "title": "Large history",
+        "last_active": 1_800_000_000,
+    }
+    observed = []
+    replies_to_lose = {"first", "final"}
+
+    async def bridge(request):
+        assert request.url.path == "/api/octop-bot/move-in/thread-parts"
+        assert len(request.content) < 10 * 1024 * 1024
+        body = json.loads(request.content)
+        observed.append(body["offset"])
+        response = await client.post(
+            request.url.path,
+            headers={**admin, "Content-Type": "application/json"},
+            content=request.content,
+        )
+        assert response.is_success, response.text[:200]
+        key = "final" if response.json()["id"] else "first"
+        if key in replies_to_lose:
+            replies_to_lose.remove(key)
+            raise httpx.ReadError("simulated lost acknowledgement")
+        return response
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(bridge), base_url="http://test"
+    ) as http:
+        cloud = move_out._Cloud(http, move_out._Run())
+        with pytest.raises(OctopError):
+            await move_out._send_thread(cloud, header, messages)
+        assert (
+            server.services.thread_repo.list_by_agent_user(agent_id=agent_id, user_id=owner) == []
+        )
+        with pytest.raises(OctopError):
+            await move_out._send_thread(cloud, header, messages)
+        await move_out._send_thread(cloud, header, messages)
+    assert observed[0] == observed[1] == observed[-1] == 0
+    assert len([v for v in observed if v > 0]) >= 2
+    assert cleanup_tasks
+    scan, sweep = await asyncio.gather(*cleanup_tasks)
+    assert not scan.orphans and sweep["threads"] == 0
+    [thread] = server.services.thread_repo.list_by_agent_user(agent_id=agent_id, user_id=owner)
+    rows, more = server.services.thread_message_repo.page(thread.thread_id, limit=200)
+    assert not more
+    assert len(rows) == len(messages)
+    checkpoint = await graph.aget_state({"configurable": {"thread_id": thread.thread_id}})
+    for idx, row in enumerate(rows):
+        assert json.loads(row.message_json)["data"]["content"] == messages[idx]["data"]["content"]
+        assert checkpoint.values["messages"][idx].content == messages[idx]["data"]["content"]
+
+
+async def test_missing_staged_chat_page_restarts_the_same_snapshot(both, monkeypatch):
+    from langchain_core.messages import messages_to_dict
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.graph import END, START, MessagesState, StateGraph
+
+    from octop.infra.cloud import move_in, move_wire
+
+    client, server, admin = both
+    user = server.user_manager.get("admin")
+    services = server.services
+    aid = "retry-page"
+    services.agent_repo.create(agent_id=aid, user_id=user.id, name="Restore page")
+    graph = StateGraph(MessagesState)
+    graph.add_node("turn", lambda _state: {})
+    graph.add_edge(START, "turn")
+    graph.add_edge("turn", END)
+    compiled = graph.compile(checkpointer=InMemorySaver())
+    registry = server.app_runtime.agent_registry
+    monkeypatch.setattr(registry, "get_agent", lambda _: SimpleNamespace(graph=compiled))
+    monkeypatch.setattr(move_wire, "PAGE_BYTES", 1024)
+
+    async def discard(_aid, thread_id, *, reclaim=False):
+        await compiled.checkpointer.adelete_thread(thread_id)
+
+    monkeypatch.setattr(registry, "delete_thread_checkpoint", discard)
+    header = {"source": "desktop:resume-missing", "bot_id": aid, "title": "Recover"}
+    messages = messages_to_dict(
+        [HumanMessage("Message " + str(i) + ("界" * 1000)) for i in range(3)]
+    )
+    prefix = move_in._key(user.id, "thread", header["source"]) + ":parts"
+    lost, receipts = False, []
+
+    async def bridge(req):
+        nonlocal lost
+        res = await client.post(
+            req.url.path, headers={**admin, "content-type": "application/json"}, content=req.content
+        )
+        assert res.is_success
+        receipts.append(res.json()["next_offset"])
+        if not lost:
+            lost = True
+            services.settings_repo.delete(prefix + ":0")
+        return res
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(bridge), base_url="http://test"
+    ) as http:
+        await move_out._send_thread(move_out._Cloud(http, move_out._Run()), header, messages)
+    assert 0 in receipts
+    assert services.settings_repo.with_prefix(prefix) == {}
+    [thread] = services.thread_repo.list_by_agent_user(agent_id=aid, user_id=user.id)
+    rows, more = services.thread_message_repo.page(thread.thread_id, limit=10)
+    assert not more
+    assert [json.loads(r.message_json)["data"]["content"] for r in rows] == [
+        m["data"]["content"] for m in messages
+    ]

@@ -9,6 +9,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
+from octop.api.common.bot_desktop import close_login_screens
 from octop.api.common.client_ip import resolve_client_ip
 from octop.api.deps import ACCESS_TOKEN_RESPONSE_HEADER, current_user, get_server
 from octop.infra.auth.captcha import current_env, ensure_captcha, load_effective, public_config
@@ -236,9 +237,12 @@ async def login(
 
 @router.post("/logout-all", status_code=204, summary="Sign out everywhere")
 @router.post("/logout", status_code=204, summary="Sign out")
-async def logout(user: Any = Depends(current_user), server: Any = Depends(get_server)) -> Response:
+async def logout(
+    request: Request, user: Any = Depends(current_user), server: Any = Depends(get_server)
+) -> Response:
     """Invalidate all access sessions for the current user."""
     server.user_manager.revoke_sessions(user.id)
+    close_login_screens(request, user.id)
     server.services.audit_repo.write(actor=user.username, action="auth.logout")
     return Response(status_code=204)
 

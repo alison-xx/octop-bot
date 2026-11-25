@@ -59,6 +59,10 @@ if ((!SUPERVISED)); then
   exec node "$SCRIPT_DIR/dev-process.mjs" bash "$SCRIPT_DIR/run-dev.sh" --supervised
 fi
 
+if [[ " ${EXTRA_ARGS[*]-} " == *" --octop-bot "* ]]; then
+  "$REPO_ROOT/.venv/bin/python3" "$SCRIPT_DIR/bot_harness_wheel.py"
+fi
+
 if ((BUILD)); then
   if ! command -v pnpm >/dev/null 2>&1; then
     echo "[dev] pnpm not found. Enable it with: corepack enable pnpm" >&2
