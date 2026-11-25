@@ -43,7 +43,9 @@
   Object.assign(translations, { "已支付": "Paid", "待支付": "Pending payment", "已取消": "Cancelled", "已退款": "Refunded", "失败": "Failed", "积分充值": "Credit recharge", "会员": "Membership", "待处理": "Pending", "已开票": "Issued", "已拒绝": "Rejected" });
   Object.assign(translations, {
     "逐笔": "Transactions", "按类别": "By category", "按模型": "By model", "当前页分组": "Group current page", "套餐": "Membership", "Octop Bot 会员": "Octop Bot membership",
-    "查看订单": "View orders", "灵策账号会员": "Lynxce account membership", "到期时间": "Expires",
+    "查看订单": "View orders", "到期时间": "Expires", "未订阅会员": "No membership", "月付": "Monthly", "年付": "Yearly",
+    "体验": "Trial", "标准": "Standard", "进阶": "Plus", "专业": "Pro", "卓越": "Max", "已到期": "Expired", "未生效": "Inactive",
+    "选择续费或换档方案": "View renewal and plan options", "年付升档请联系客服。": "Contact support to upgrade a yearly plan.",
     "Octop Bot 可用积分": "Credits available in Octop Bot", "通用积分": "Shared credits", "Octop 专属积分": "Octop-only credits",
     "未来 30 天到期": "Expiring in 30 days", "先使用最早到期的积分。": "Credits expiring soonest are used first.",
     "买加油包": "View credit packs", "账号用量包含其他灵策产品。": "Account usage includes other Lynxce products.",
@@ -111,19 +113,33 @@
     }
     add(box, link("查看明细", "#usage"), link("买加油包", "/pricing.html#credits"));
   }
-  function membership(box, q) {
-    box.append(el("p", "套餐状态暂无法查询，可在订单中查看购买记录。", "account-muted"));
-    // This subscription belongs to the Lynxce organization, independently of Octop ProductSubscription.
-    const sub = q?.subscription;
-    if (sub?.active && sub.planName) {
-      box.append(el("p", tr("灵策账号会员") + " · " + sub.planName));
+  async function membership(box) {
+    const id = renderId;
+    let data;
+    try { data = await auth.api("/api/user/octop-bot/membership"); } catch (_) { /* May be unavailable during the API rollout. */ }
+    if (id !== renderId) return;
+    const sub = data?.product === "octop_bot" ? data.subscription : undefined;
+    if (sub === null) {
+      box.append(el("strong", "未订阅会员", "account-number"));
+    } else if (typeof sub?.active === "boolean") {
+      const tiers = { trial: "体验", standard: "标准", plus: "进阶", pro: "专业", max: "卓越" };
+      const name = Object.hasOwn(tiers, sub.tier) ? tr(tiers[sub.tier]) : sub.planName || tr("Octop Bot 会员");
+      const status = sub.active ? name : name + " · " + tr(sub.status === "expired" ? "已到期" : sub.status === "cancelled" ? "已取消" : "未生效");
+      box.append(el("strong", status, "account-number"));
+      if (sub.period === "monthly" || sub.period === "yearly") box.append(el("span", sub.period === "monthly" ? "月付" : "年付"));
       if (sub.currentPeriodEnd) box.append(el("p", tr("到期时间") + " · " + dateTime(sub.currentPeriodEnd)));
+      if (sub.active && sub.period === "yearly") {
+        const support = button("加入社群", () => {}); support.setAttribute("data-community", "");
+        add(box, el("p", "年付升档请联系客服。", "account-muted"), support);
+      }
+    } else {
+      box.append(el("p", "套餐状态暂无法查询，可在订单中查看购买记录。", "account-muted"));
     }
-    add(box, link("查看订单", "#orders"), link("查看套餐", "/pricing.html"));
+    add(box, link("查看订单", "#orders"), link(sub?.active ? "选择续费或换档方案" : "查看套餐", "/pricing.html"));
   }
   async function planPage(root) {
     const box = card("Octop Bot 会员"); root.append(box);
-    membership(box, await request("/api/user/quota", box));
+    await membership(box);
   }
   async function overview(root) {
     const id = renderId;
@@ -131,10 +147,9 @@
     const balance = card("Octop Bot 可用积分"), plan = card("Octop Bot 会员"), used = card("本月已用"); add(cards, balance, plan, used);
     const activity = card("积分活动"); root.append(activity);
     used.append(el("p", "账号用量包含其他灵策产品。", "account-muted"));
-    const [q, ledger, t] = await Promise.all([request("/api/user/quota", balance), request(ledgerPath(shanghaiMonth(), 1, 1), used), request("/api/user/usage-trend?days=365", activity)]);
+    const [q, ledger, t] = await Promise.all([request("/api/user/quota", balance), request(ledgerPath(shanghaiMonth(), 1, 1), used), request("/api/user/usage-trend?days=365", activity), membership(plan)]);
     if (id !== renderId) return;
     if (q) showBalance(balance, q);
-    membership(plan, q);
     if (ledger?.summary) {
       used.append(el("strong", value(ledger.summary.totalCredits), "account-number"));
       const group = ledger.summary.categories;
