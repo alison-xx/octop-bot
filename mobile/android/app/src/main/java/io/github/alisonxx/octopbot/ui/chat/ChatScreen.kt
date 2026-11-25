@@ -195,20 +195,20 @@ fun ChatScreen(model: AppViewModel, botId: String, onBack: () -> Unit, onEditBot
     val saveTo = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { target ->
         val file = savingFile
         savingFile = null
-        if (file != null && target != null) model.copyAttachment(file, target)
+        if (file != null && target != null && backend is ServerBackend) model.copyAttachment(backend, file, target)
     }
     // Files Bots send live on their server (server mode only).
     val fileActions = remember(backend) {
         if (backend !is ServerBackend) return@remember null
         AttachmentActions(
-            size = model::attachmentSize,
-            previewFile = model::attachmentPreviewFile,
-            open = { file -> model.withAttachment(file) { AttachmentFiles.openWith(context, it, AttachmentFiles.mimeOf(file)) } },
-            openImage = { file -> model.withAttachment(file) { viewing = Uri.fromFile(it).toString() } },
-            share = { file -> model.withAttachment(file) { AttachmentFiles.share(context, it, AttachmentFiles.mimeOf(file)) } },
+            size = { model.attachmentSize(backend, it) },
+            previewFile = { model.attachmentPreviewFile(backend, it) },
+            open = { file -> model.withAttachment(backend, file) { AttachmentFiles.openWith(context, it, AttachmentFiles.mimeOf(file)) } },
+            openImage = { file -> model.withAttachment(backend, file) { viewing = Uri.fromFile(it).toString() } },
+            share = { file -> model.withAttachment(backend, file) { AttachmentFiles.share(context, it, AttachmentFiles.mimeOf(file)) } },
             save = { file ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    model.saveAttachment(file)
+                    model.saveAttachment(backend, file)
                 } else {
                     savingFile = file
                     saveTo.launch(file.name)

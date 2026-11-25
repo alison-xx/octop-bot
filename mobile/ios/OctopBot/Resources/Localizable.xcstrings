@@ -4558,6 +4558,54 @@
         }
       }
     },
+    "credits.recorded": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This purchase has already been processed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这笔购买已处理。"
+          }
+        }
+      }
+    },
+    "credits.reversed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple reversed this purchase."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple 已撤销这笔购买。"
+          }
+        }
+      }
+    },
+    "credits.suppressed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This test purchase was recorded without adding credits."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这笔测试购买已记录，未发放积分。"
+          }
+        }
+      }
+    },
     "credits.done": {
       "localizations": {
         "en": {
