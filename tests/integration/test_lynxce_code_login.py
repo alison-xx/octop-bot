@@ -26,6 +26,7 @@ class Upstream:
         self.counts: Counter[str] = Counter()
         self.bodies: dict[str, Any] = {}
         self.send_status = 200
+        self.profiles: dict[str, dict[str, str]] = {}
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         assert req.url.host == "api.lynxce.cn" and req.url.scheme == "https"
@@ -37,15 +38,14 @@ class Upstream:
         if path == "/api/auth/logout":
             return httpx.Response(200, json={"code": 0, "data": {}})
         if path == "/api/user/profile":
-            account = req.headers["authorization"].removeprefix("Bearer access-")
+            profile = self.profiles.get(req.headers.get("Authorization", ""))
+            if profile is None:
+                return httpx.Response(401)
             return httpx.Response(
                 200,
                 json={
                     "code": 0,
-                    "data": {
-                        "id": "id-" + account,
-                        "avatarUrl": "https://cdn.avatars.test/owner.jpg",
-                    },
+                    "data": {**profile, "avatarUrl": "https://cdn.avatars.test/owner.jpg"},
                 },
             )
         body = json.loads(req.content)
@@ -70,6 +70,8 @@ class Upstream:
                     },
                 )
             uid = body.get("phone") or body["email"]
+            profile = {"id": "id-" + uid, "displayName": "Name " + uid}
+            self.profiles[f"Bearer access-{uid}"] = profile
             return httpx.Response(
                 200,
                 json={
@@ -77,7 +79,7 @@ class Upstream:
                     "data": {
                         "accessToken": f"access-{uid}",
                         "refreshToken": f"refresh-{uid}",
-                        "user": {"id": "id-" + uid, "displayName": "Name " + uid},
+                        "user": profile,
                     },
                 },
             )
@@ -290,3 +292,60 @@ async def test_cloud_code_session_passes_the_signup_password(upstream: Upstream)
     # A phone number never needs one, and none is sent unasked.
     await cloud.open_code_session("13800000000", "123456")
     assert "password" not in upstream.bodies["/api/auth/phone-login"]
+
+
+async def _post_from(
+    client: httpx.AsyncClient, address: str, path: str, **body: str
+) -> httpx.Response:
+    transport = httpx.ASGITransport(app=client._octop_app, client=(address, 12345))
+    async with httpx.AsyncClient(transport=transport, base_url=client.base_url) as caller:
+        return await caller.post(path, json=body)
+
+
+async def test_sign_in_lockouts_follow_real_clients_and_accounts(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Behind a proxy, one client's wrong codes must not lock everyone out; and trying one
+    account from many addresses still locks it."""
+    monkeypatch.setenv("OCTOP_BOT_WEB", "1")
+    async with octop_client(tmp_octop_home) as (client, _srv):
+
+        async def wrong(target: str, address: str) -> httpx.Response:
+            return await _post_from(client, address, CODE_LOGIN, target=target, code="000000")
+
+        for _ in range(5):
+            assert (await wrong("13800000001", "203.0.113.1")).status_code == 401
+        locked = await wrong("13800000002", "203.0.113.1")
+        assert locked.status_code == 429 and locked.json()["error"]["code"] == "LOGIN_LOCKED"
+        # Someone else, elsewhere, is not affected.
+        assert (await wrong("13800000003", "203.0.113.2")).status_code == 401
+
+        # One account tried from many addresses: locked for that account only.
+        for n in range(10):
+            assert (await wrong("13800000009", f"198.51.100.{n}")).status_code == 401
+        account = await wrong("13800000009", "198.51.100.50")
+        assert account.status_code == 429
+        assert (await wrong("13800000010", "198.51.100.50")).status_code == 401
+
+
+async def test_code_sends_are_limited_per_phone_too(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_BOT_WEB", "1")
+    async with octop_client(tmp_octop_home) as (client, _srv):
+        for n in range(5):
+            sent = await _post_from(client, f"192.0.2.{n}", CODE, target="13800000020")
+            assert sent.status_code == 200, sent.text
+        flood = await _post_from(client, "192.0.2.99", CODE, target="13800000020")
+        assert flood.json()["error"]["code"] == "LYNXCE_CODE_THROTTLED"
+        other = await _post_from(client, "192.0.2.99", CODE, target="13800000021")
+        assert other.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["139 2345 6789", "+86 139-2345-6789", "86 13923456789", "0086 13923456789"],
+)
+def test_account_key_uses_lynxce_phone_identity(value: str) -> None:
+    assert cloud.login_account_key(value) == "+8613923456789"
+    assert cloud.login_account_key(" Someone@Example.COM ") == "someone@example.com"
