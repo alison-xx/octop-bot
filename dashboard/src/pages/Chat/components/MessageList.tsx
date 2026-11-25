@@ -20,7 +20,15 @@ import MessageBubble from "./MessageBubble";
 import AssistantTurnView from "./AssistantTurnView";
 import BotTurnView from "../../OctopBot/BotTurnView";
 import BotWorkingLine from "../../OctopBot/BotWorkingLine";
-import { indexBotTasks, type BotTaskIndex } from "../../OctopBot/botTasks";
+import {
+  readBotTaskStatuses,
+  type BotTaskStatus,
+} from "../../../api/modules/botTaskStatus";
+import {
+  indexBotTasks,
+  isTaskTool,
+  type BotTaskIndex,
+} from "../../OctopBot/botTasks";
 import { BotTimeDivider } from "../../OctopBot/BotClientWelcome";
 import { isBotClient } from "../../../utils/desktopBridge";
 import ScrollToBottomButton from "./ScrollToBottomButton";
@@ -859,10 +867,44 @@ export default function MessageList(props: MessageListProps) {
     return at;
   }, [messageGroups]);
 
+  // The model watchdog may stop a task after its last streamed tool result.
+  const [taskStatuses, setTaskStatuses] = useState<{
+    agent: string;
+    thread: string;
+    items: BotTaskStatus[];
+  }>();
+  const hasTaskCard =
+    isBotClient() && messages.some((m) => isTaskTool(m.toolData?.name));
+  const lastMessage = messages.at(-1)?.id;
+  useEffect(() => {
+    if (!hasTaskCard || !agentId || !sessionKey || isStreaming) return;
+    let current = true;
+    void readBotTaskStatuses(agentId, sessionKey)
+      .then((items) => {
+        if (current)
+          setTaskStatuses({ agent: agentId, thread: sessionKey, items });
+      })
+      .catch(() => {
+        /* Older servers still supply task snapshots in messages. */
+      });
+    return () => {
+      current = false;
+    };
+  }, [agentId, sessionKey, isStreaming, hasTaskCard, lastMessage]);
   // Bot client: a task check made in a later turn updates the card where the task started.
   const botTasks = useMemo(
-    () => (isBotClient() ? indexBotTasks(messages) : undefined),
-    [messages],
+    () =>
+      isBotClient()
+        ? indexBotTasks(
+            messages,
+            taskStatuses &&
+              taskStatuses.agent === agentId &&
+              taskStatuses.thread === sessionKey
+              ? taskStatuses.items
+              : [],
+          )
+        : undefined,
+    [messages, taskStatuses, agentId, sessionKey],
   );
 
   const groupContext = useMemo<GroupRenderContext>(
