@@ -23,12 +23,12 @@ final class CompletionChat {
     static let maxToolRounds = 6
 
     private let stream: Stream
-    private let finished: (_ turn: Turn, _ sessionId: String) async -> Void
+    private let finished: (_ turn: Turn, _ sessionId: String) async throws -> Void
     private var running: [String: Task<Void, Never>] = [:]
     /// Turns waiting on device tools the phone runs (PROTOCOL.md §C), by conversation.
     private var loops: [String: Turn] = [:]
 
-    init(stream: @escaping Stream, finished: @escaping (Turn, String) async -> Void) {
+    init(stream: @escaping Stream, finished: @escaping (Turn, String) async throws -> Void) {
         self.stream = stream
         self.finished = finished
     }
@@ -63,6 +63,7 @@ final class CompletionChat {
                     announce()
                     continuation.yield(.conversation(sessionId))
                 }
+                var streamError: Error?
                 do {
                     while true {
                         var calls = ToolCallAccumulator()
@@ -105,16 +106,27 @@ final class CompletionChat {
                         running[sessionId] = nil
                         return
                     }
+                } catch {
+                    streamError = error
+                }
+                // The stream owns the UI's background task. Keep it open until the history write returns.
+                do {
+                    try await finished(turn, sessionId)
+                } catch {
+                    if streamError == nil { streamError = error }
+                }
+                running[sessionId] = nil
+                if let streamError {
+                    continuation.finish(throwing: streamError)
+                } else {
                     continuation.yield(.done)
                     continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
                 }
-                await finished(turn, sessionId)
-                running[sessionId] = nil
             }
             running[sessionId] = task
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { reason in
+                if case .cancelled = reason { task.cancel() }
+            }
         }
     }
 

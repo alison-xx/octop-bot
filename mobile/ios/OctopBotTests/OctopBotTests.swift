@@ -92,6 +92,45 @@ final class CharacterTests: XCTestCase {
 
 @MainActor
 final class StreamTests: XCTestCase {
+    func testCompletionRemainsOpenUntilHistoryIsSaved() async throws {
+        var saved = false
+        let chat = CompletionChat(stream: { _, _, _, emit in
+            emit(.text("answer"))
+        }, finished: { turn, sessionId in
+            // A cancellable wait reproduces the behavior of the history POST.
+            try await Task.sleep(for: .milliseconds(5))
+            XCTAssertEqual(sessionId, "legacy")
+            XCTAssertEqual(turn.answer, "answer")
+            saved = true
+        })
+        let turn = CompletionChat.Turn(body: [:], user: "question", startedAt: .now)
+        var completions = 0
+        for try await event in chat.start(turn, sessionId: "legacy", announce: nil) {
+            if case .done = event {
+                XCTAssertTrue(saved)
+                completions += 1
+            }
+        }
+        XCTAssertEqual(completions, 1)
+    }
+
+    func testFailedHistoryWriteDoesNotReportTurnAsSaved() async {
+        let chat = CompletionChat(stream: { _, _, _, emit in emit(.text("answer")) },
+                                  finished: { _, _ in throw APIError.network })
+        let turn = CompletionChat.Turn(body: [:], user: "question", startedAt: .now)
+        var text = ""
+        do {
+            for try await event in chat.start(turn, sessionId: "legacy", announce: nil) {
+                if case .text(let delta) = event { text += delta }
+                if case .done = event { XCTFail("History did not save") }
+            }
+            XCTFail("Expected the history write error")
+        } catch {
+            XCTAssertEqual(error as? APIError, .network)
+        }
+        XCTAssertEqual(text, "answer")
+    }
+
     func testSSEParserJoinsDataAndSplitsOnBlankLines() {
         var parser = SSEParser()
         XCTAssertNil(parser.feed("event: chunk"))
@@ -488,6 +527,32 @@ private final class FakeBackend: ChatBackend {
 
 @MainActor
 final class QueueTests: XCTestCase {
+    func testRetryHistorySaveKeepsReplyAndDoesNotRunModelAgain() async throws {
+        let app = AppModel()
+        let backend = FakeBackend()
+        await app.use(backend)
+        let chat = app.session(for: app.bots[0])
+        chat.send("question")
+        let reply = try XCTUnwrap(backend.replies.first)
+        reply.yield(.text("answer"))
+        var saves = 0
+        reply.finish(throwing: LynxceBackend.HistorySaveError(retry: {
+            saves += 1
+            if saves == 1 { throw APIError.network }
+        }))
+        for _ in 0..<50 where chat.isStreaming { try await Task.sleep(for: .milliseconds(20)) }
+        let id = try XCTUnwrap(chat.unsavedReplies.keys.first)
+        await chat.retrySaving(id)
+        XCTAssertNotNil(chat.unsavedReplies[id])
+        await chat.retrySaving(id)
+        await chat.retrySaving(id)
+        XCTAssertEqual(saves, 2)
+        XCTAssertEqual(backend.sent, ["question"])
+        XCTAssertNil(chat.unsavedReplies[id])
+        XCTAssertEqual(chat.messages.last?.text, "answer")
+        XCTAssertEqual(chat.messages.last?.status, .done)
+    }
+
     func testPreparingAndFailedBotsDoNotSend() async {
         let app = AppModel()
         let backend = FakeBackend()

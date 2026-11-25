@@ -646,6 +646,38 @@
         }
       }
     },
+    "chat.historySaveFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This reply is still on screen. Chat history could not be saved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回复仍在当前页面，但未能保存到历史会话。"
+          }
+        }
+      }
+    },
+    "chat.retrySave": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry saving"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新保存"
+          }
+        }
+      }
+    },
     "chat.failed": {
       "localizations": {
         "en": {

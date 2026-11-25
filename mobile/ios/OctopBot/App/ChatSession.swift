@@ -24,6 +24,9 @@ final class ChatSession {
     private(set) var isRunningDevice = false
     /// Messages written while a reply was streaming; sent in order when it ends.
     private(set) var queued: [ChatMessage] = []
+    private weak var historyBackend: ChatBackend?
+    private(set) var unsavedReplies: [String: LynxceBackend.HistorySaveError] = [:]
+    private(set) var savingReplies: Set<String> = []
     private var currentRun: UUID?
     /// Called with the finished reply text (voice mode reads it aloud).
     var onReply: ((String) -> Void)?
@@ -242,6 +245,11 @@ final class ChatSession {
             } catch is CancellationError {
                 update(replyId) { $0.status = .done }
                 removeEmptyReply(replyId)
+            } catch let failure as LynxceBackend.HistorySaveError {
+                guard currentRun == run, app?.backend === backend else { return }
+                historyBackend = backend
+                unsavedReplies[replyId] = failure
+                update(replyId) { $0.status = .failed(failure.localizedDescription) }
             } catch let error as APIError where error.kind == .credits {
                 // Out of credits: the reply becomes a top-up card with "Continue" instead of an error.
                 update(replyId) {
@@ -300,6 +308,20 @@ final class ChatSession {
         messages.removeAll { $0.id == id && $0.text.isEmpty && $0.tools.isEmpty && $0.thinking.isEmpty && $0.attachments.isEmpty }
     }
 
+    func retrySaving(_ id: String) async {
+        guard let historyBackend, historyBackend === app?.backend,
+              let failure = unsavedReplies[id], savingReplies.insert(id).inserted else { return }
+        defer { savingReplies.remove(id) }
+        do {
+            try await failure.retry()
+            guard historyBackend === app?.backend, unsavedReplies.removeValue(forKey: id) != nil else { return }
+            update(id) { $0.status = .done }
+            await reloadConversations()
+        } catch {
+            // Leave the reply and its original payload available for the next save attempt.
+        }
+    }
+
     func stop() {
         guard isStreaming, let backend = app?.backend else { return }
         if let conversationId { Task { await backend.stop(conversation: conversationId, bot: bot) } }
@@ -307,6 +329,7 @@ final class ChatSession {
     }
 
     func cancel() {
+        unsavedReplies.removeAll()
         queued = []
         currentRun = nil
         task?.cancel()

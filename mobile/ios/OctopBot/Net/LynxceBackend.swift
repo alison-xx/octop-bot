@@ -280,8 +280,9 @@ final class LynxceBackend: ChatBackend {
                 try await streamCompletion(body, calls: &calls, onEvent: onEvent)
             }
         },
-        finished: { [unowned self] turn, sessionId in
-            await sync(sessionId: sessionId, user: turn.user, startedAt: turn.startedAt, answer: turn.answer, thinking: turn.thinking, model: turn.model)
+        finished: { [weak self] turn, sessionId in
+            guard let self else { throw CancellationError() }
+            try await self.sync(sessionId: sessionId, user: turn.user, startedAt: turn.startedAt, answer: turn.answer, thinking: turn.thinking, model: turn.model)
         }
     )
 
@@ -433,8 +434,13 @@ final class LynxceBackend: ChatBackend {
         return tags.contains { $0 == APIError.creditsRequired.lowercased() || $0.contains("insufficient") }
     }
 
+    struct HistorySaveError: LocalizedError {
+        let retry: @MainActor () async throws -> Void
+        var errorDescription: String? { L("chat.historySaveFailed") }
+    }
+
     /// Append the finished turn to the synced Lynxce session (idempotent on the server).
-    private func sync(sessionId: String, user: String, startedAt: Date, answer: String, thinking: String, model: String?) async {
+    private func sync(sessionId: String, user: String, startedAt: Date, answer: String, thinking: String, model: String?) async throws {
         var items: [[String: Any]] = [["role": "user", "content": String(user.prefix(20_000)), "createdAt": ISO8601.string(startedAt)]]
         let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
@@ -445,11 +451,19 @@ final class LynxceBackend: ChatBackend {
         }
         let title = String(user.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
         let id = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
-        _ = try? await call(.post, "/api/user/web-chat-sessions/\(id)/items", json: [
-            "title": title.isEmpty ? "Octop Bot" : title,
-            "model": model ?? "auto",
-            "items": items,
-        ])
+        // Each retry must keep the original timestamps: Lynxce deduplicates by role and createdAt.
+        let body: [String: Any] = ["title": title.isEmpty ? "Octop Bot" : title, "model": model ?? "auto", "items": items]
+        let write: @MainActor () async throws -> Void = { [weak self] in
+            guard let self else { throw CancellationError() }
+            _ = try await self.call(.post, "/api/user/web-chat-sessions/\(id)/items", json: body)
+        }
+        do {
+            try await write()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw HistorySaveError(retry: write)
+        }
     }
 
     func stop(conversation: String, bot: BotProfile) async {

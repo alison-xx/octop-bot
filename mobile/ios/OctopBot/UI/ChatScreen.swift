@@ -481,7 +481,13 @@ struct MessageRow: View {
                     HStack(spacing: 10) {
                         Label { LinkedText(text: reason) } icon: { Image(systemName: "exclamationmark.triangle") }
                             .font(.footnote).foregroundStyle(.red)
-                        if isLast { Button("chat.retry") { chat.retry() }.font(.footnote.weight(.semibold)) }
+                        if chat.unsavedReplies[message.id] != nil {
+                            Button("chat.retrySave") { Task { await chat.retrySaving(message.id) } }
+                                .font(.footnote.weight(.semibold))
+                                .disabled(chat.savingReplies.contains(message.id))
+                        } else if isLast {
+                            Button("chat.retry") { chat.retry() }.font(.footnote.weight(.semibold))
+                        }
                     }
                 } else if message.status == .done && !message.text.isEmpty {
                     ReplyActions(chat: chat, message: message, isLast: isLast)
@@ -495,7 +501,7 @@ struct MessageRow: View {
                 Speaker.shared.speak(message.text, backend: model.backend, id: message.id)
             }
             ShareLink(item: message.text) { Label("common.share", systemImage: "square.and.arrow.up") }
-            if isLast && message.status != .streaming && !message.status.isStoppedByLynxce {
+            if isLast && chat.unsavedReplies[message.id] == nil && message.status != .streaming && !message.status.isStoppedByLynxce {
                 Button("chat.retry", systemImage: "arrow.clockwise") { chat.retry() }
             }
         }
