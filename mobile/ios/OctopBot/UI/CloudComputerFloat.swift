@@ -115,6 +115,7 @@ final class CloudFloat {
     }
 
     func open() {
+        pinned = true
         pillOnly = false
         mode = .card
     }

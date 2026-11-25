@@ -208,6 +208,7 @@ class CloudFloatState(val server: ServerBackend, val botId: String, context: Con
     }
 
     fun open() {
+        pinned = true
         pillOnly = false
         mode = Mode.Card
     }
