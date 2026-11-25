@@ -810,6 +810,46 @@ final class CreditTests: XCTestCase {
         XCTAssertEqual(unfinished, 0)
     }
 
+    func testRepeatPurchaseOfSamePackAfterFirstDelivery() async throws {
+        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "CreditPacks", withExtension: "storekit"))
+        let session = try SKTestSession(contentsOf: file)
+        session.resetToDefaultState()
+        session.disableDialogs = true
+        session.clearTransactions()
+        defer { session.clearTransactions(); session.resetToDefaultState() }
+        let owner = SellingAccount()
+        let productID = "cn.lynxce.octopbot.credits.5000"
+        var signedIn = owner
+        let store = CreditStore()
+        store.start(account: { signedIn }, credited: {})
+        let first = try await session.buyProduct(identifier: productID, options: [.appAccountToken(owner.token)])
+        for _ in 0..<40 {
+            await store.flush()
+            var unfinished = false
+            for await result in Transaction.unfinished where result.unsafePayloadValue.id == first.id { unfinished = true }
+            if owner.delivered.contains(first.id), !unfinished { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(owner.delivered, [first.id])
+
+        owner.offline = true
+        let second = try await session.buyProduct(identifier: productID, options: [.appAccountToken(owner.token)])
+        XCTAssertNotEqual(first.id, second.id)
+        let other = SellingAccount()
+        signedIn = other
+        for _ in 0..<40 where !other.attempted.contains(second.id) {
+            await store.flush()
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertTrue(other.attempted.contains(second.id))
+        XCTAssertTrue(other.delivered.isEmpty)
+        signedIn = owner
+        owner.offline = false
+        await store.flush()
+        await store.flush()
+        XCTAssertEqual(owner.delivered, [first.id, second.id])
+    }
+
     func testOnlyOfficialCloudCanAcknowledgeApplePurchases() throws {
         func supports(_ address: String, cloud: Bool = true) throws -> Bool {
             let base = try XCTUnwrap(URL(string: address))
