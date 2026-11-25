@@ -53,6 +53,7 @@ export default function CloudComputerHandoff({ botId }: { botId: string }) {
       >
         {screen && (
           <CloudComputerScreen
+            botId={botId}
             wsPath={screen.ws}
             interactive
             session={screen.session}

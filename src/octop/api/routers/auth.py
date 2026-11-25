@@ -354,14 +354,12 @@ async def create_stream_ticket(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> StreamTicketResponse:
-    from octop.api.common.stream_auth import issue_ticket
+    from octop.api.common.stream_auth import StreamSession, issue_ticket
     from octop.api.deps import _decode, extract_raw_token
 
     raw = extract_raw_token(authorization=request.headers.get("authorization"))
     if not raw:
         raise OctopError(ErrorCode.MISSING_CREDENTIALS, "missing credentials")
     claims = _decode(server, raw)
-    deadline = int(claims.get("auth_time", claims["iat"])) + 30 * 86400
-    return StreamTicketResponse(
-        ticket=issue_ticket(server, user, body.purpose, deadline), expires_in=60
-    )
+    session = StreamSession.from_claims(claims)
+    return StreamTicketResponse(ticket=issue_ticket(session, body.purpose), expires_in=60)

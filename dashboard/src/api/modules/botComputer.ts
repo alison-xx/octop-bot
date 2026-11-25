@@ -1,6 +1,8 @@
 import { request } from "../request";
 
 export type ComputerLevel = "off" | "view" | "background" | "foreground";
+/** macOS privacy grants the Bot's computer needs. */
+export type ComputerPermission = "screen_recording" | "accessibility";
 export interface ComputerApp {
   id: string;
   name: string;
@@ -11,6 +13,8 @@ export interface ComputerState {
   apps: ComputerApp[];
   paused: boolean;
   active_app: string | null;
+  /** Grants macOS still lacks; the screen and app control fail until they are on. */
+  permissions_needed?: ComputerPermission[];
 }
 const endpoint = (id: string) =>
   `/octop-bot/bots/${encodeURIComponent(id)}/computer`;

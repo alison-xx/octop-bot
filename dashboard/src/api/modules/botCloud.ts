@@ -129,6 +129,33 @@ export const botCloudApi = {
       root + "/account/code-login",
       json("POST", { target, code, password: password || undefined }),
     ),
+  wechatStart: () =>
+    request<{ flow_id: string; qr_url: string; redirect_uri: string }>(
+      "/octop-bot/account/wechat/start",
+      { method: "POST" },
+    ),
+  wechatFinish: (flow_id: string, code: string, state: string) =>
+    request<
+      | CloudAccount
+      | {
+          need_bind_phone: true;
+          nickname: string | null;
+          avatar_url: string | null;
+        }
+    >(
+      "/octop-bot/account/wechat/finish",
+      json("POST", { flow_id, code, state }),
+    ),
+  wechatBind: (
+    flow_id: string,
+    phone: string,
+    code: string,
+    password?: string,
+  ) =>
+    request<CloudAccount>(
+      "/octop-bot/account/wechat/bind",
+      json("POST", { flow_id, phone, code, password }),
+    ),
   loginWorkbuddy: (handoffCode: string) =>
     request<CloudAccount>(
       root + "/account/workbuddy",

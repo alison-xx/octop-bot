@@ -175,6 +175,7 @@ class _FakeWS:
     """Minimal starlette-WebSocket stand-in for the terminal handler."""
 
     def __init__(self, server: object, received: tuple[str, ...] = ()) -> None:
+        self.state = SimpleNamespace()
         self.app = SimpleNamespace(state=SimpleNamespace(octop_server=server))
         self.application_state = WebSocketState.CONNECTING
         self.query_params: dict[str, str] = {}
@@ -216,6 +217,7 @@ def _sent_messages(ws: _FakeWS) -> list[dict[str, object]]:
 
 
 def _patch_user(monkeypatch, user_id: int = 1) -> None:
+    monkeypatch.setattr("octop.api.deps._decode", lambda *_: {"sub": user_id, "iat": 0, "exp": 1})
     monkeypatch.setattr(
         terminal,
         "resolve_user_from_token",

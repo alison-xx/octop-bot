@@ -26,6 +26,7 @@ export const UNAUTHORIZED_EVENT = "octop:unauthorized";
 export const FORBIDDEN_EVENT = "octop:forbidden";
 
 /** Response header used by the server for JWT sliding renewal. */
+export const ACCESS_TOKEN_RENEWED_EVENT = "octop:access-token-renewed";
 export const ACCESS_TOKEN_RESPONSE_HEADER = "X-Octop-Access-Token";
 
 /** Quiet error thrown when setup lockdown blocks a non-wizard API call. */
@@ -115,6 +116,7 @@ export function applyRenewedAccessToken(response: Response): void {
   const renewed = response.headers.get(ACCESS_TOKEN_RESPONSE_HEADER);
   if (renewed) {
     setAuthToken(renewed, !isSessionOnlyAuth());
+    window.dispatchEvent(new Event(ACCESS_TOKEN_RENEWED_EVENT));
   }
 }
 

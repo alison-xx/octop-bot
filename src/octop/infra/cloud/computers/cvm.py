@@ -37,7 +37,7 @@ import ssl
 import threading
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Any
 
@@ -63,7 +63,7 @@ _ZONE_ERRORS = (
 @dataclass(frozen=True)
 class CvmConfig:
     secret_id: str
-    secret_key: str
+    secret_key: str = field(repr=False)
     region: str
     image_id: str
     vpc_id: str
@@ -72,7 +72,7 @@ class CvmConfig:
     types: Mapping[Spec, str]
     disk_gb: int
     bandwidth: int
-    instance_secret: str = ""
+    instance_secret: str = field(default="", repr=False)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> CvmConfig | None:
@@ -328,6 +328,10 @@ class CvmDriver(AgsDriver):
         request = self._models().StartInstancesRequest()
         request.InstanceIds = [instance_id]
         self._api().StartInstances(request)
+
+    def disk_gb(self, instance_id: str) -> int:
+        """The system disk, billed by Tencent Cloud for as long as the instance exists."""
+        return self._cvm_config.disk_gb
 
     def pause(self, instance_id: str) -> None:
         self._forget(instance_id)

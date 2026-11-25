@@ -14,8 +14,8 @@ from pydantic import BaseModel, Field
 from starlette.websockets import WebSocketState
 
 from octop.api.common.bot_cloud import is_cloud_tenant, no_cloud_tenant_http
-from octop.api.common.stream_auth import stream_user
-from octop.api.deps import get_server, require_permission, resolve_user_from_token
+from octop.api.common.stream_auth import bind_ws_user, stream_user
+from octop.api.deps import get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.groups import RESOURCE_BRIDGE, GroupAccess
 from octop.infra.users.permissions import user_has_permission
@@ -754,7 +754,7 @@ async def bridge_inbound_ws(
             and not websocket.query_params.get("ticket")
             and header.lower().startswith("bearer ")
         ):
-            user = resolve_user_from_token(server, header[7:].strip())
+            user = bind_ws_user(server, websocket, header[7:].strip())
         else:
             user = stream_user(server, websocket, "bridge", raw)
     except OctopError as exc:

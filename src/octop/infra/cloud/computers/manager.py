@@ -19,7 +19,9 @@ import time
 import uuid
 from collections.abc import Callable, Coroutine
 from dataclasses import asdict, dataclass, field
-from typing import TYPE_CHECKING, Any
+from datetime import date, datetime, timedelta, timezone
+from datetime import time as daytime
+from typing import TYPE_CHECKING, Any, Literal
 
 from octop.infra.cloud.computers.driver import AgsConfig, AgsDriver, ComputerDriver, Spec
 from octop.infra.errors import ErrorCode, OctopError
@@ -66,6 +68,30 @@ SERVER_ID_KEY = "octop_bot:computers:server_id"
 # When AGS is out of capacity, a running computer whose Bot has not acted for this long is
 # paused to make room (it would pause at IDLE_PAUSE_SECONDS anyway; resuming takes seconds).
 MAKE_ROOM_IDLE_SECONDS = 2 * 60
+# A disk charge Lynxce did not take (out of credits, Lynxce down, disk not priced) is tried
+# again this much later, not on every 30 s pass.
+DISK_RETRY_SECONDS = 10 * 60
+# Display fallback; Lynxce's admin price is the source of truth for charges.
+DISK_DAILY_CREDITS_PER_GB = 4.80
+_BEIJING_OFFSET_SECONDS = 8 * 3600
+
+
+def disk_billing_enabled() -> bool:
+    return os.environ.get("OCTOP_DISK_BILLING", "").strip().lower() in {"1", "true", "on", "yes"}
+
+
+def reclaim_enabled() -> bool:
+    return os.environ.get("OCTOP_COMPUTER_RECLAIM", "").strip().lower() in {
+        "1",
+        "true",
+        "on",
+        "yes",
+    }
+
+
+def beijing_day(timestamp: float) -> str:
+    """The calendar day in Beijing time, which is how Lynxce prepays disks (YYYY-MM-DD)."""
+    return time.strftime("%Y-%m-%d", time.gmtime(timestamp + _BEIJING_OFFSET_SECONDS))
 
 
 @dataclass
@@ -143,6 +169,15 @@ class ComputerRecord:
     unsettled: list[Unsettled] = field(default_factory=list)
     # The Bot's object-store files were copied onto its computer once.
     seeded: bool = False
+    # The Beijing day the disk is paid for, and when to retry a disk charge that failed.
+    disk_paid_day: str = ""
+    disk_failed_day: str = ""
+    disk_retry_at: float = 0.0
+    reminded_at: float | None = None
+    reclaim_reason: Literal["idle", "unpaid"] | None = None
+    reclaim_at: float | None = None
+    reclaim_seen_at: float | None = None
+    reclaim_unpaid_since: str = ""
 
     def controlled(self, now: float) -> bool:
         """Taken over and still watched: a closed tab or a phone that left hands it back."""
@@ -254,6 +289,20 @@ class Billing:
             )
         )
 
+    def charge_disk(self, record: ComputerRecord, day: str, size_gb: int) -> None:
+        """Prepay the disk for a Beijing day; Lynxce charges each computer once per day."""
+        from octop.infra.auth import lynxce_cloud  # noqa: PLC0415
+
+        _run(
+            lynxce_cloud.tenant_call(
+                self._services,
+                record.user_id,
+                "POST",
+                "/api/billing/octop-bot/compute/disk/charge",
+                {"computerId": record.agent_id, "day": day, "sizeGb": size_gb},
+            )
+        )
+
 
 class FreeBilling:
     """No Lynxce billing: a self-hosted server on its own AGS account, or a local test run
@@ -263,6 +312,9 @@ class FreeBilling:
         return Reservation(f"free-{uuid.uuid4().hex[:12]}", minutes)
 
     def settle(self, record: ComputerRecord, reservation: Reservation, used_seconds: int) -> None:
+        return None
+
+    def charge_disk(self, record: ComputerRecord, day: str, size_gb: int) -> None:
         return None
 
 
@@ -313,7 +365,7 @@ class ComputerManager:
         self._driver = driver
         self._billing = billing or Billing(services)
         self._clock = clock
-        self._locks: dict[str, threading.Lock] = {}
+        self._locks: dict[str, threading.RLock] = {}
         # Commands running right now, per agent: a computer mid-command is never idle.
         self._busy: dict[str, int] = {}
         self._guard = threading.Lock()
@@ -328,6 +380,7 @@ class ComputerManager:
         self._last_orphan_scan = 0.0
         # Per Bot: called whenever its computer starts or resumes (see ``on_wake``).
         self._wakers: dict[str, Waker] = {}
+        self.remind: Callable[[ComputerRecord, float], bool] | None = None
 
     # Records
 
@@ -335,9 +388,9 @@ class ComputerManager:
     def _key(agent_id: str) -> str:
         return f"octop_bot:computer:{agent_id}"
 
-    def _lock(self, agent_id: str) -> threading.Lock:
+    def _lock(self, agent_id: str) -> threading.RLock:
         with self._guard:
-            return self._locks.setdefault(agent_id, threading.Lock())
+            return self._locks.setdefault(agent_id, threading.RLock())
 
     def record(self, agent_id: str, user_id: int) -> ComputerRecord:
         raw = self._services.settings_repo.get(self._key(agent_id))
@@ -352,6 +405,93 @@ class ComputerManager:
 
     def is_running(self, agent_id: str, user_id: int) -> bool:
         return self.record(agent_id, user_id).running
+
+    def disk_status(self, record: ComputerRecord) -> tuple[int, int]:
+        """Billed disk size and days since the first unpaid Beijing day (inclusive)."""
+        disk_gb = getattr(self._driver, "disk_gb", None)
+        size = max(0, int(disk_gb(record.instance_id))) if record.instance_id and disk_gb else 0
+        overdue = 0
+        if record.disk_failed_day:
+            overdue = max(
+                0,
+                (
+                    date.fromisoformat(beijing_day(self._clock()))
+                    - date.fromisoformat(record.disk_failed_day)
+                ).days
+                + 1,
+            )
+        return size, overdue
+
+    def _cancel_reclaim(self, record: ComputerRecord, *, used: bool = False) -> None:
+        if used and record.reclaim_reason == "unpaid":
+            record.reclaim_unpaid_since = beijing_day(self._clock())
+        record.reminded_at = None
+        record.reclaim_reason = None
+        record.reclaim_at = None
+
+    def reclaim_status(self, record: ComputerRecord) -> tuple[int, str | None, float | None]:
+        now = self._clock()
+        last = max(record.active_at or 0, record.started_at or 0, record.reclaim_seen_at or 0)
+        idle_days = max(0, int((now - last) // 86400)) if last else 0
+        if not record.instance_id:
+            return idle_days, None, None
+        if record.reminded_at is not None and record.reclaim_at is not None:
+            state = "pending_reclaim" if now >= record.reclaim_at else "reminded"
+            return idle_days, state, record.reclaim_at
+        failed_day = record.reclaim_unpaid_since or record.disk_failed_day
+        if failed_day:
+            first = date.fromisoformat(failed_day)
+            overdue = (date.fromisoformat(beijing_day(now)) - first).days + 1
+            if overdue >= 23:
+                deadline = datetime.combine(
+                    first + timedelta(days=29), daytime.min, tzinfo=timezone(timedelta(hours=8))
+                ).timestamp()
+                return idle_days, "pending_reclaim" if now >= deadline else "reminded", deadline
+        if not record.running and last and idle_days >= 30:
+            deadline = last + 37 * 86400
+            return idle_days, "pending_reclaim" if now >= deadline else "reminded", deadline
+        return idle_days, None, None
+
+    def _reclaim_tick(self, agent_id: str, user_id: int, now: float) -> None:
+        with self._lock(agent_id):
+            record = self.record(agent_id, user_id)
+            if not record.instance_id:
+                return
+            if not record.active_at and not record.started_at and record.reclaim_seen_at is None:
+                record.reclaim_seen_at = now
+                self._save(record)
+            _, state, deadline = self.reclaim_status(record)
+            if not reclaim_enabled() or state is None:
+                return
+            if record.reminded_at is not None:
+                if state == "pending_reclaim" and not self._busy.get(agent_id, 0):
+                    self._release(agent_id, user_id)
+                return
+            failed_day = record.reclaim_unpaid_since or record.disk_failed_day
+            overdue = (
+                (date.fromisoformat(beijing_day(now)) - date.fromisoformat(failed_day)).days + 1
+                if failed_day
+                else 0
+            )
+            record.reclaim_reason = "unpaid" if overdue >= 23 else "idle"
+            # A delayed reaper or unavailable notification must still allow seven days.
+            deadline = max(deadline or now, now + 7 * 86400)
+        # Delivery runs on the server event loop; never hold the computer lock while waiting.
+        if self.remind is None or not self.remind(record, deadline):
+            return
+        with self._lock(agent_id):
+            current = self.record(agent_id, user_id)
+            if (
+                current.instance_id != record.instance_id
+                or current.active_at != record.active_at
+                or current.disk_failed_day != record.disk_failed_day
+                or current.reminded_at is not None
+            ):
+                return
+            current.reclaim_reason = record.reclaim_reason
+            current.reminded_at = now
+            current.reclaim_at = deadline
+            self._save(current)
 
     def server_id(self) -> str:
         """Stable id of this Octop server, labelled on its instances (several servers may share
@@ -376,6 +516,7 @@ class ComputerManager:
             record = self.record(agent_id, user_id)
             now = self._clock()
             record.active_at = now
+            self._cancel_reclaim(record, used=True)
             if record.running and record.instance_id:
                 self._save(record)
                 return record.instance_id
@@ -502,6 +643,7 @@ class ComputerManager:
         with self._lock(agent_id):
             record = self.record(agent_id, user_id)
             record.active_at = self._clock()
+            self._cancel_reclaim(record, used=True)
             self._save(record)
 
     def pause(self, agent_id: str, user_id: int) -> None:
@@ -617,6 +759,10 @@ class ComputerManager:
         if self._services.agent_repo.get(record.agent_id) is None:
             self._release(record.agent_id, record.user_id)
             return
+        # Before the running check: a stopped CVM computer still has a disk to pay for.
+        self._charge_disk(record.agent_id, record.user_id, now)
+        self._reclaim_tick(record.agent_id, record.user_id, now)
+        record = self.record(record.agent_id, record.user_id)
         if not record.running:
             return
         if record.instance_id and self._driver.state(record.instance_id) == "gone":
@@ -643,6 +789,48 @@ class ComputerManager:
             except Exception:  # noqa: BLE001 - out of credits (402) or Lynxce down
                 logger.info("computer %s could not be paid for; pausing", record.agent_id)
         self.pause(record.agent_id, record.user_id)
+
+    def _charge_disk(self, agent_id: str, user_id: int, now: float) -> None:
+        """Prepay today's disk once per Beijing day while the computer exists.
+
+        A failed charge (out of credits, Lynxce down, disk not priced yet) is retried every
+        ``DISK_RETRY_SECONDS``; prolonged non-payment may trigger the reclaim policy.
+        """
+        if not disk_billing_enabled():
+            return
+        disk_gb = getattr(self._driver, "disk_gb", None)
+        if disk_gb is None:
+            return
+        day = beijing_day(now)
+        with self._lock(agent_id):
+            record = self.record(agent_id, user_id)
+            if not record.instance_id or record.disk_paid_day == day or now < record.disk_retry_at:
+                return
+            try:
+                size = int(disk_gb(record.instance_id))
+                # A stopped computer's record is not polled otherwise; never bill a disk the
+                # provider has already deleted (terminated in the console, expired).
+                gone = size > 0 and self._driver.state(record.instance_id) == "gone"
+            except Exception:  # noqa: BLE001 - provider hiccup, tried on the next pass
+                logger.warning("checking the disk of computer %s failed", agent_id)
+                return
+            if size <= 0 or gone:
+                return
+            try:
+                self._billing.charge_disk(record, day, size)
+            except Exception:  # noqa: BLE001 - out of credits (402), unpriced (503) or Lynxce down
+                logger.info("disk of computer %s not paid for %s; retrying later", agent_id, day)
+                record.disk_failed_day = record.disk_failed_day or day
+                record.disk_retry_at = now + DISK_RETRY_SECONDS
+                self._save(record)
+                return
+            if record.reclaim_reason == "unpaid":
+                self._cancel_reclaim(record)
+            record.reclaim_unpaid_since = ""
+            record.disk_paid_day = day
+            record.disk_failed_day = ""
+            record.disk_retry_at = 0.0
+            self._save(record)
 
     def _lost(self, agent_id: str, user_id: int) -> None:
         """The provider no longer has the instance (stopped, expired): close its billing."""
@@ -743,6 +931,7 @@ class ComputerManager:
         with self._lock(agent_id):
             record = self.record(agent_id, user_id)
             record.viewed_at = record.active_at = self._clock()
+            self._cancel_reclaim(record, used=True)
             self._save(record)
 
     def set_takeover(self, agent_id: str, user_id: int, active: bool) -> ComputerRecord:
@@ -750,11 +939,20 @@ class ComputerManager:
             record = self.record(agent_id, user_id)
             record.takeover = active
             record.active_at = self._clock()
+            self._cancel_reclaim(record, used=True)
             if active:
                 # The screen opens right after; its heartbeat keeps the takeover from here.
                 record.viewed_at = record.active_at
             self._save(record)
             return record
+
+    def release_takeover_if_held(self, agent_id: str, user_id: int) -> None:
+        with self._lock(agent_id):
+            record = self.record(agent_id, user_id)
+            if record.takeover:
+                record.takeover = False
+                record.active_at = self._clock()
+                self._save(record)
 
     def taken_over(self, agent_id: str, user_id: int) -> bool:
         return self.record(agent_id, user_id).controlled(self._clock())

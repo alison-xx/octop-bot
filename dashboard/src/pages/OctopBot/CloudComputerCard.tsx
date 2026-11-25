@@ -97,6 +97,25 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
             ? t("cloudComputer.runningFor", { minutes })
             : t("cloudComputer.hint")}
         </small>
+        {!!status?.disk_gb && (
+          <small>
+            {t("cloudComputer.diskFee", {
+              gb: status.disk_gb,
+              credits: status.disk_daily_credits,
+            })}
+            {!status.disk_billing && ` · ${t("cloudComputer.diskBillingOff")}`}
+          </small>
+        )}
+        {status?.reclaim_notified && (
+          <small className={styles.overdue}>
+            {t("cloudComputer.reclaimWarning")}
+          </small>
+        )}
+        {!!status?.disk_overdue_days && (
+          <small className={styles.overdue}>
+            {t("cloudComputer.diskOverdue", { days: status.disk_overdue_days })}
+          </small>
+        )}
       </span>
       <Space size={6}>
         {status && (
@@ -145,6 +164,7 @@ export default function CloudComputerCard({ botId }: { botId: string }) {
       >
         {screen && (
           <CloudComputerScreen
+            botId={botId}
             wsPath={screen}
             interactive={status?.takeover === true}
             session={session}

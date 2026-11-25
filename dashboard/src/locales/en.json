@@ -36,6 +36,14 @@
     "openFailed": "Couldn’t open the top-up page. Please try again."
   },
   "botCloud": {
+    "wechatFailed": "WeChat sign-in failed. Please try again.",
+    "wechatBack": "‹ Other options",
+    "wechatBindTitle": "Bind phone number",
+    "wechatBindBody": "Bind a phone number to complete registration.",
+    "wechatUser": "WeChat user",
+    "wechatPhone": "Phone number",
+    "wechatExpires": "Complete binding within 10 minutes or scan again.",
+    "wechatSubmit": "Bind and sign in",
     "stop": "Stop cloud task",
     "stopConfirm": "Stop this cloud task? Its chat history will be kept.",
     "importChat": "Continue this local chat in the cloud",
@@ -178,28 +186,9 @@
     "skip": "Skip guide",
     "resume": "Continue guide",
     "next": "Next",
-    "previous": "Back",
-    "openDraft": "Edit in Chief’s chat",
     "model": {
-      "label": "Connect a model",
       "title": "Choose a chat model",
       "description": "Sign in to Lynxce to choose a model available to your account. Chats use that account’s credits. You can also connect another provider or a local model under Account and models."
-    },
-    "team": {
-      "label": "Meet your team",
-      "title": "Work with Chief",
-      "description": "Chief coordinates your team. Give Chief a concrete task and ask who can help.",
-      "chat": "Talk one-on-one or as a team",
-      "chatHint": "Select a contact for a private chat. Ask Chief to bring people into a group, then post a question or @mention a member.",
-      "groups": "Organize your contacts",
-      "groupsHint": "Right-click an empty area to create a section, or right-click a contact to move it into one. Open a group chat to read the team’s messages.",
-      "cloud": "Pick up on another computer",
-      "cloudHint": "Sign in to Cloud workspace with the same Lynxce account to continue a cloud chat. Tasks scheduled there can run while your computer is off."
-    },
-    "draft": {
-      "label": "Your first message",
-      "title": "What would you like to try?",
-      "description": "Choose a starting point to bring a draft into Chief’s chat. Edit it to fit your task and send it when you’re ready."
     }
   },
   "lynxceSignIn": {
@@ -244,7 +233,46 @@
     "localFailed": "Could not open the local account. Try again.",
     "loginLegacyBody": "This Octop Bot used a local password. It now signs in with a Lynxce account. Enter the old password once with your first sign-in; after that only your Lynxce account is needed.",
     "legacyPassword": "Old local password (needed only this once)",
-    "loginUnavailable": "This server has not turned on Lynxce sign-in yet. Ask its admin to update Octop Bot."
+    "loginUnavailable": "This server has not turned on Lynxce sign-in yet. Ask its admin to update Octop Bot.",
+    "guide": {
+      "welcomeTitle": "Welcome, I'm Chief",
+      "welcomeLead": "What's your industry, or your job? Pick one and I'll put together a team of bots for it, with a group chat.",
+      "reopenHint": "Skipped guides stay closed. Reopen any time from the account menu → Getting started",
+      "step": "Step {{step}} of {{total}}",
+      "skip": "Skip guide",
+      "skipped": "Getting started skipped. Reopen it from the account menu → Getting started.",
+      "askTitle": "Chief hasn't built the team yet",
+      "askHint": "Answer Chief's question, or say again what you need in the message box.",
+      "buildingTitle": "Chief is building your team",
+      "buildingHint": "Usually 20–40 seconds. New bots and the group appear on the left.",
+      "teamTitle": "“{{name}}” is ready",
+      "teamHint": "The new group chat and bots are in a section on the left. Open the group to give it a first task.",
+      "openGroup": "Open group chat",
+      "coachTitle": "Your team is ready",
+      "coachBody": "Open the group chat and give it a first task.",
+      "groupTitle": "Post your first message",
+      "groupHint": "Chief drafted one for you. Send it as is or edit it. To call on a bot, type @ and pick it.",
+      "done": "You're all set: the team is at work. Reopen the guide any time from the account menu → Getting started.",
+      "new": "New",
+      "industries": "Industry",
+      "other": "Something else",
+      "noteLabel": "Anything specific? (optional)",
+      "notePlaceholder": "For example: home goods, selling on Amazon US",
+      "startTeam": "Build my team",
+      "askHintRetry": "Answer Chief's question, or tap Send again to build a team for the industry you picked.",
+      "retry": "Send again",
+      "roles": "Job",
+      "customIndustry": "What's your industry?",
+      "customIndustryPlaceholder": "For example: pet shop, bookstore",
+      "customRole": "What's your job?",
+      "customRolePlaceholder": "For example: photographer, accountant",
+      "request": {
+        "industry": "I work in {{label}}. ",
+        "role": "I'm a {{label}}. ",
+        "note": "More detail: {{note}}. ",
+        "team": "Please build me a team and set up its group chat."
+      }
+    }
   },
   "botClient": {
     "showOrb": "Show floating button",
@@ -543,7 +571,19 @@
       "card": "Bot's computer",
       "asleep": "Asleep",
       "paused": "You're in control",
-      "using": "Using {{app}}"
+      "using": "Using {{app}}",
+      "needsPermission": "Needs macOS permission",
+      "permTitle": "Octop Bot can't use this Mac yet",
+      "permBody": "To see the screen and work in the apps you allow, turn on these permissions in System Settings → Privacy & Security.",
+      "permScreen": "Screen Recording",
+      "permScreenHint": "Shows this computer's screen",
+      "permAccessibility": "Accessibility",
+      "permAccessibilityHint": "Lets the Bot click and type in the apps you allow",
+      "permGrant": "Allow",
+      "permRelaunchHint": "After turning on Screen Recording, restart Octop Bot for it to take effect.",
+      "permRelaunch": "Restart",
+      "permManual": "In System Settings → Privacy & Security, find Octop Bot, turn these permissions on, then restart Octop Bot.",
+      "streamFailed": "Couldn't connect to the screen"
     },
     "imChats": "Linked IM conversations",
     "imEmpty": "Pair a channel and send it a message to select that conversation here.",
@@ -797,6 +837,9 @@
     "LYNXCE_CODE_TARGET_INVALID": "Enter a valid phone number or email.",
     "LYNXCE_CODE_THROTTLED": "Codes were requested too often. Try again in a moment.",
     "LYNXCE_SIGNUP_PASSWORD_REQUIRED": "This email has no Lynxce account yet. Set a sign-in password (at least 8 characters) to create one, then sign in with the same code.",
+    "LYNXCE_WECHAT_FLOW_EXPIRED": "WeChat sign-in expired. Please try again.",
+    "LYNXCE_WECHAT_FAILED": "WeChat sign-in failed. Please try again.",
+    "LYNXCE_WECHAT_DISABLED": "WeChat sign-in is unavailable.",
     "BOT_CLOUD_REQUEST_REJECTED": "Lynxce Cloud could not complete this action.",
     "BOT_CLOUD_CREDITS_REQUIRED": "You're out of Lynxce credits. Top up at https://admin.lynxce.cn/recharge to continue.",
     "BOT_LYNXCE_DAILY_LIMIT": "Today's Lynxce usage hit its daily limit. It resets at 00:00 UTC. To raise the limit, open your Lynxce account centre at https://admin.lynxce.cn and edit the Octop Bot key.",
@@ -964,6 +1007,8 @@
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({{used}}/{{quota}}).",
     "AGENT_QUOTA_EXCEEDED": "This account has reached its expert limit. Please contact an administrator to raise the limit ({{used}}/{{quota}}).",
+    "BOT_COUNT_LIMIT": "This account can have up to {{limit}} Bots and has reached that. Delete Bots you no longer use, then try again.",
+    "BOT_GROUP_COUNT_LIMIT": "This account can have up to {{limit}} group chats and has reached that. Delete group chats you no longer use, then try again.",
     "BACKEND_TYPE_NOT_ALLOWED": "This account cannot use backend type {{types}}.",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
@@ -9042,6 +9087,10 @@
     "soundHint": "Play a short chime when a new message arrives"
   },
   "cloudComputer": {
+    "diskFee": "Disk {{gb}} GB · {{credits}} credits per day",
+    "diskBillingOff": "Billing currently off",
+    "reclaimWarning": "This computer and its disk files are scheduled for removal. Your Bot, chats, and cloud storage files stay.",
+    "diskOverdue": "Disk fees are {{days}} days overdue.",
     "section": "Cloud computer",
     "state": {
       "none": "Not started",

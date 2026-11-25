@@ -13,8 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
-from octop.api.common.stream_auth import stream_user
-from octop.api.deps import resolve_user_from_token
+from octop.api.common.stream_auth import bind_ws_user, stream_user
 from octop.infra.control.mobile.adb import (
     KEYCODE_APP_SWITCH,
     KEYCODE_BACK,
@@ -535,7 +534,7 @@ async def mobile_stream_ws(
                 user: User = stream_user(server, websocket, "mobile", token)
             else:
                 assert auth_token is not None  # checked above
-                user = resolve_user_from_token(server, auth_token)
+                user = bind_ws_user(server, websocket, auth_token)
         except Exception as exc:
             await _send_json(
                 websocket, {"type": "error", "code": "AUTH_FAILED", "message": str(exc)}

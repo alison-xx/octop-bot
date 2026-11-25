@@ -28,6 +28,15 @@ export interface CloudComputerStatus {
   /** Its latest action: click, type, key, scroll, screenshot, command, … */
   activity?: string | null;
   activity_at?: number | null;
+  reclaim_notified?: boolean;
+  idle_days?: number;
+  reclaim_state?: "reminded" | "pending_reclaim" | null;
+  reclaim_at?: number | null;
+  disk_gb?: number;
+  disk_daily_credits?: number;
+  disk_billing?: boolean;
+  disk_paid_through?: string | null;
+  disk_overdue_days?: number;
 }
 
 /** Front window title and a small thumbnail of a running computer. */
@@ -66,6 +75,11 @@ export const botCloudComputerApi = {
     request<CloudComputerGlance>(endpoint(id) + "/glance"),
   openScreen: (id: string) =>
     request<ScreenTicket>(endpoint(id) + "/screen", { method: "POST" }),
+  renewScreen: (id: string, session: string) =>
+    request<void>(endpoint(id) + "/screen/renew", {
+      method: "POST",
+      body: JSON.stringify({ session }),
+    }),
   /** Types text (any language) at the taken-over desktop's cursor. */
   typeText: (session: string, text: string) =>
     request<void>(sessionEndpoint(session) + "/type", {
