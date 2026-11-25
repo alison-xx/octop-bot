@@ -475,22 +475,26 @@ struct MessageRow: View {
                     OutOfCreditsCard(
                         reason: message.status == .dailyLimit ? .dailyLimit : .outOfCredits,
                         scenario: message.creditScenario,
-                        canContinue: isLast && !chat.isStreaming
+                        canContinue: isLast && !chat.isStreaming && chat.unsavedReplies[message.id] == nil
                     ) { chat.retry() }
                 } else if case .failed(let reason) = message.status {
                     HStack(spacing: 10) {
                         Label { LinkedText(text: reason) } icon: { Image(systemName: "exclamationmark.triangle") }
                             .font(.footnote).foregroundStyle(.red)
-                        if chat.unsavedReplies[message.id] != nil {
-                            Button("chat.retrySave") { Task { await chat.retrySaving(message.id) } }
-                                .font(.footnote.weight(.semibold))
-                                .disabled(chat.savingReplies.contains(message.id))
-                        } else if isLast {
+                        if isLast && chat.unsavedReplies[message.id] == nil {
                             Button("chat.retry") { chat.retry() }.font(.footnote.weight(.semibold))
                         }
                     }
                 } else if message.status == .done && !message.text.isEmpty {
-                    ReplyActions(chat: chat, message: message, isLast: isLast)
+                    ReplyActions(chat: chat, message: message, isLast: isLast && chat.unsavedReplies[message.id] == nil)
+                }
+                if chat.unsavedReplies[message.id] != nil {
+                    HStack {
+                        Text("chat.historySaveFailed").font(.footnote).foregroundStyle(.secondary)
+                        Button("chat.retrySave") { Task { await chat.retrySaving(message.id) } }
+                            .font(.footnote.weight(.semibold))
+                            .disabled(chat.savingReplies.contains(message.id))
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

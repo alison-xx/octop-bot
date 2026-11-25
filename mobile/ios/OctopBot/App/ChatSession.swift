@@ -65,7 +65,7 @@ final class ChatSession {
 
     func reloadConversations() async {
         guard let backend = app?.backend else { return }
-        if let rows = try? await backend.conversations(for: bot) { conversations = rows }
+        if let rows = try? await backend.conversations(for: bot), app?.backend === backend { conversations = rows }
     }
 
     func open(_ conversation: ConversationSummary) async {
@@ -79,7 +79,11 @@ final class ChatSession {
         defer { isLoading = false }
         do {
             let loaded = try await backend.messages(in: conversation, bot: bot)
-            if conversationId == conversation.id {
+            if conversationId == conversation.id, app?.backend === backend {
+                if let direct = backend as? LynxceBackend {
+                    historyBackend = direct
+                    unsavedReplies = direct.pendingSaves(bot: bot.id, session: conversation.id)
+                }
                 messages = loaded
                 pause = backend.openPause(in: conversation)
                 runDeviceReads()
@@ -228,8 +232,10 @@ final class ChatSession {
             }
             do {
                 for try await event in stream {
+                    guard currentRun == run, app?.backend === backend else { return }
                     apply(event, to: replyId)
                 }
+                guard currentRun == run, app?.backend === backend else { return }
                 update(replyId) { $0.status = .done }
                 removeEmptyReply(replyId)
                 // Paused only for device reads: the phone answers by itself and the reply goes on.
@@ -254,7 +260,7 @@ final class ChatSession {
                 guard currentRun == run, app?.backend === backend else { return }
                 historyBackend = backend
                 unsavedReplies[replyId] = failure
-                update(replyId) { $0.status = .failed(failure.localizedDescription) }
+                update(replyId) { $0.status = failure.generationStatus }
             } catch let error as APIError where error.kind == .credits {
                 // Out of credits: the reply becomes a top-up card with "Continue" instead of an error.
                 update(replyId) {
@@ -266,6 +272,7 @@ final class ChatSession {
                 // Credits are left but today's cap is used up: a card that says when it resets.
                 update(replyId) { $0.status = .dailyLimit }
             } catch {
+                guard currentRun == run, app?.backend === backend else { return }
                 let message = error.localizedDescription
                 update(replyId) { $0.status = .failed(message) }
                 if case .unauthorized = (error as? APIError)?.kind { Task { await self.app?.signOut() } }
@@ -322,7 +329,6 @@ final class ChatSession {
         do {
             try await failure.retry()
             guard historyBackend === app?.backend, unsavedReplies.removeValue(forKey: id) != nil else { return }
-            update(id) { $0.status = .done }
             await reloadConversations()
         } catch {
             // Leave the reply and its original payload available for the next save attempt.

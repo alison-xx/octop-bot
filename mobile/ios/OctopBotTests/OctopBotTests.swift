@@ -159,6 +159,64 @@ final class StreamTests: XCTestCase {
         XCTAssertEqual(text, "answer")
     }
 
+    func testInterruptedGenerationKeepsPartialAnswerAndIndependentSaveRetry() async throws {
+        var modelCalls = 0
+        var writes = 0
+        let chat = CompletionChat(stream: { _, _, _, emit in
+            modelCalls += 1
+            emit(.thinking("reason"))
+            emit(.text("partial"))
+            throw APIError.network
+        }, finished: { turn, session in
+            let receipt = PendingHistory(turn: turn, sessionID: session)
+            XCTAssertEqual(receipt.answer, "partial")
+            XCTAssertEqual(receipt.thinking, "reason")
+            XCTAssertEqual(receipt.status, .failed(APIError.network.localizedDescription))
+            let items = try XCTUnwrap(receipt.body["items"] as? [[String: String]])
+            XCTAssertEqual(items.last?["status"], "failed")
+            writes += 1
+            throw LynxceBackend.HistorySaveError(generationStatus: receipt.status) { writes += 1 }
+        })
+        let turn = CompletionChat.Turn(body: [:], user: "question", startedAt: .now)
+        do {
+            for try await _ in chat.start(turn, sessionId: "thread", announce: nil) {}
+            XCTFail("Expected both failures")
+        } catch let failure as LynxceBackend.HistorySaveError {
+            XCTAssertEqual(failure.generationStatus, .failed(APIError.network.localizedDescription))
+            try await failure.retry()
+        }
+        XCTAssertEqual(modelCalls, 1)
+        XCTAssertEqual(writes, 2)
+    }
+
+    func testPendingHistorySurvivesReopenWithinAccountOriginBotAndThread() throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let origin = LynxceBackend.origin
+        let original = PendingHistoryStore(origin: origin, account: "A", root: root)
+        let turn = CompletionChat.Turn(body: [:], user: "question", startedAt: .now,
+                                       botID: "my-bot", answer: "complete answer")
+        let receipt = PendingHistory(turn: turn, sessionID: "thread")
+        try original.put(receipt)
+        let reopened = PendingHistoryStore(origin: origin, account: "A", root: root)
+        XCTAssertTrue(reopened.turns(bot: "another-bot").isEmpty)
+        XCTAssertTrue(reopened.turns(bot: "my-bot", session: "other").isEmpty)
+        XCTAssertTrue(PendingHistoryStore(origin: origin, account: "B", root: root).turns(bot: "my-bot").isEmpty)
+        XCTAssertTrue(PendingHistoryStore(origin: URL(string: "https://nas.example")!, account: "A", root: root)
+            .turns(bot: "my-bot").isEmpty)
+        let recovered = try XCTUnwrap(reopened.turns(bot: "my-bot", session: "thread").first)
+        XCTAssertEqual(recovered.id, receipt.id)
+        XCTAssertEqual(try JSONSerialization.data(withJSONObject: recovered.body, options: .sortedKeys),
+                       try JSONSerialization.data(withJSONObject: receipt.body, options: .sortedKeys))
+        var rows: [ChatMessage] = []
+        recovered.overlay(on: &rows)
+        recovered.overlay(on: &rows)
+        XCTAssertEqual(rows.map(\.text), ["question", "complete answer"])
+        XCTAssertEqual(rows.last?.status, .done)
+        try reopened.remove(recovered)
+        XCTAssertTrue(original.turns(bot: "my-bot").isEmpty)
+    }
+
     func testSSEParserJoinsDataAndSplitsOnBlankLines() {
         var parser = SSEParser()
         XCTAssertNil(parser.feed("event: chunk"))
@@ -582,6 +640,10 @@ final class QueueTests: XCTestCase {
         }))
         for _ in 0..<50 where chat.isStreaming { try await Task.sleep(for: .milliseconds(20)) }
         let id = try XCTUnwrap(chat.unsavedReplies.keys.first)
+        let next = LynxceBackend.chatBody(text: "follow-up", images: [], bot: chat.bot, history: chat.messages,
+                                          sessionId: "thread", model: nil)
+        let context = try XCTUnwrap(next["messages"] as? [[String: String]])
+        XCTAssertEqual(context.suffix(3).compactMap { $0["content"] }, ["question", "answer", "follow-up"])
         await chat.retrySaving(id)
         XCTAssertNotNil(chat.unsavedReplies[id])
         await chat.retrySaving(id)
@@ -1409,5 +1471,52 @@ final class SignupCreditNoticeTests: XCTestCase {
         for invalid: Any in [true, "100", -1, 0, Double.infinity] as [Any] {
             XCTAssertNil(newSignupCredits(["isNewUser": true, "signupGrant": ["credits": invalid]]))
         }
+    }
+}
+
+/// Ordinary transport fixture for a connection lost during history reads.
+private final class OfflineHistoryProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet)) }
+    override func stopLoading() {}
+}
+
+extension StreamTests {
+    func testOfflineAccountCanReopenAndRetryOnlyItsOwnUnacknowledgedTurn() async throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [OfflineHistoryProtocol.self]
+        let transport = URLSession(configuration: config)
+        defer { transport.invalidateAndCancel() }
+        func openAccount(_ id: String) -> LynxceBackend {
+            LynxceBackend(grant: .init(accountId: id, accessToken: "synthetic", refreshToken: "synthetic"),
+                          historyRoot: root, session: transport)
+        }
+        let bot = BotProfile(id: "bot", name: "QA", look: .fallback, isChief: true)
+        let receipt = PendingHistory(turn: .init(body: [:], user: "question", startedAt: .now,
+                                                botID: bot.id, answer: "answer"), sessionID: "octop-bot-v1-first")
+        let store = PendingHistoryStore(origin: LynxceBackend.origin, account: "A", root: root)
+        try store.put(receipt)
+        let other = openAccount("B")
+        XCTAssertTrue(other.pendingSaves(bot: bot.id, session: receipt.sessionID).isEmpty)
+        do {
+            _ = try await other.conversations(for: bot)
+            XCTFail("B cannot recover A's local history")
+        } catch { XCTAssertEqual(error as? APIError, .network) }
+        let restored = openAccount("A")
+        let conversations = try await restored.conversations(for: bot)
+        XCTAssertEqual(conversations.map(\.id), [receipt.sessionID])
+        let conversation = try XCTUnwrap(conversations.first)
+        let messages = try await restored.messages(in: conversation, bot: bot)
+        XCTAssertEqual(messages.map(\.text), ["question", "answer"])
+        let id = try XCTUnwrap(messages.last?.id)
+        let failure = try XCTUnwrap(restored.pendingSaves(bot: bot.id, session: conversation.id)[id])
+        do {
+            try await failure.retry()
+            XCTFail("Expected the offline history append to fail")
+        } catch { XCTAssertEqual(error as? APIError, .network) }
+        XCTAssertNotNil(restored.pendingSaves(bot: bot.id, session: conversation.id)[id])
     }
 }
