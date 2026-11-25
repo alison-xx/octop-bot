@@ -22,7 +22,11 @@
   await auth.ready;
   if (!auth.session()) { signIn(); return; }
   let stopped = false;
-  auth.onChange(session => { if (!session) { stopped = true; signIn(); } });
+  auth.onChange((session, changed) => {
+    if (!changed) return;
+    stopped = true; signIn();
+    if (session) location.reload();
+  });
   if (!order) {
     show("没有可查询的订单，请到个人中心查看购买记录。", "No order was returned. Check your purchase history in your account.");
     return;

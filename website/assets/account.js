@@ -16,14 +16,15 @@
   let renderId = 0;
   let sessionId = 0;
   let ledgerRequestId = 0;
-  auth.onChange((session) => {
-    if (session) return;
+  auth.onChange((session, changed) => {
+    if (!changed) return;
     sessionId++;
     renderId++;
     ledgerRequestId++;
-    shell.hidden = true;
     content.replaceChildren();
-    trend = null;
+    trend = null; page = 1; orderPage = 1; month = shanghaiMonth();
+    if (session) { if (!shell.hidden) route(); return; }
+    shell.hidden = true;
     location.href = "/login.html?next=/account.html";
   });
   const translations = {
