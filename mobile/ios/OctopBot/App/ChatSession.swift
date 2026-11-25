@@ -179,14 +179,14 @@ final class ChatSession {
         do {
             if let server = backend as? ServerBackend {
                 let page = try await server.historyPage(conversation.id, bot: bot)
-                guard historyRevision == revision else { return }
+                guard historyRevision == revision, app?.backend === backend else { return }
                 var fresh = page.rows
                 var next = page.next
                 let known = Set(historyRows.compactMap(Self.historyKey))
                 while !known.isEmpty, !fresh.contains(where: { Self.historyKey($0).map(known.contains) == true }),
                       let position = next {
                     let prior = try await server.historyPage(conversation.id, bot: bot, position: position)
-                    guard historyRevision == revision else { return }
+                    guard historyRevision == revision, app?.backend === backend else { return }
                     fresh = Self.joinHistory(older: prior.rows, newer: fresh)
                     next = prior.next
                 }
@@ -238,7 +238,7 @@ final class ChatSession {
         defer { loadingOlder = false }
         do {
             let page = try await server.historyPage(thread, bot: bot, position: older)
-            guard historyRevision == revision, !isStreaming else { return }
+            guard historyRevision == revision, app?.server === server, !isStreaming else { return }
             historyRows = Self.joinHistory(older: page.rows, newer: historyRows)
             self.older = page.next
             installObservedHistory(server.historyMessages(historyRows, bot: bot))
