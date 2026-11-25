@@ -29,6 +29,7 @@ final class ChatSession {
     private(set) var loadingOlder = false
     private var historyRevision = 0
     private var visited = false
+    private var durableAnchor: ChatMessage?
     /// Uncommitted rows on a subscribed turn survive a socket or foreground reconciliation.
     struct ObservedTurn {
         var id: String?
@@ -42,6 +43,16 @@ final class ChatSession {
                 ?? history.lastIndex { $0.role == anchor.role && $0.text == anchor.text }
             guard let position else { return history[history.endIndex...] }
             return history.suffix(from: position + 1)
+        }
+
+        func hasCommittedReply(_ history: [ChatMessage]) -> Bool {
+            let tail = committedTail(history)
+            if let user = rows.first(where: { $0.role == .user }) {
+                guard let at = tail.lastIndex(where: { $0.id == user.id || ($0.role == .user && $0.text == user.text) })
+                else { return anchor?.id == user.id && tail.contains { $0.role == .assistant } }
+                return tail.suffix(from: at + 1).contains { $0.role == .assistant }
+            }
+            return tail.contains { $0.role == .assistant }
         }
 
         func merged(_ history: [ChatMessage]) -> [ChatMessage] {
@@ -85,6 +96,7 @@ final class ChatSession {
         visited = true
         historyRevision += 1
         historyRows = []
+        durableAnchor = nil
         older = nil
         isLoading = false
         observedTurn = nil
@@ -94,18 +106,20 @@ final class ChatSession {
         error = nil
     }
 
-    func reloadConversations() async {
-        guard let backend = app?.backend else { return }
-        if let rows = try? await backend.conversations(for: bot) { conversations = rows }
+    @discardableResult
+    func reloadConversations() async -> Bool {
+        guard let backend = app?.backend, let rows = try? await backend.conversations(for: bot),
+              app?.backend === backend else { return false }
+        conversations = rows
+        return true
     }
 
     /// Restore the latest server thread on the first visit; keep an explicitly empty new chat.
     func showConversation() async {
         let first = !visited
-        visited = true
         let revision = historyRevision
-        await reloadConversations()
-        guard revision == historyRevision, !isStreaming, !isLoading else { return }
+        guard await reloadConversations(), revision == historyRevision, !isStreaming, !isLoading else { return }
+        visited = true
         if let id = conversationId, let row = conversations.first(where: { $0.id == id }) {
             await open(row)
         } else if first, conversationId == nil, messages.isEmpty, let row = app?.server == nil ? conversations.first : ConversationSummary.personalDefault(conversations) {
@@ -121,6 +135,7 @@ final class ChatSession {
         if conversationId != conversation.id {
             observedTurn = nil
             historyRows = []
+            durableAnchor = nil
             older = nil
             messages = []
             pause = nil
@@ -143,14 +158,13 @@ final class ChatSession {
                     fresh = Self.joinHistory(older: prior.rows, newer: fresh)
                     next = prior.next
                 }
-                let previousCount = historyRows.count
                 if next == nil {
                     historyRows = fresh
                     older = nil
                 } else {
                     historyRows = Self.joinHistory(older: historyRows, newer: fresh)
                     if historyRows.count == fresh.count { older = next }
-                    else if older?.cursor == nil { older?.offset += max(0, historyRows.count - previousCount) }
+                    else if older?.cursor == nil { older?.offset = historyRows.count }
                 }
                 // The selected thread may have a pending write, so restore its approval card too.
                 installObservedHistory(server.historyMessages(historyRows, bot: bot))
@@ -198,7 +212,8 @@ final class ChatSession {
     }
 
     private func installObservedHistory(_ history: [ChatMessage]) {
-        if let turn = observedTurn, turn.ended, turn.committedTail(history).contains(where: { $0.role == .assistant }) {
+        durableAnchor = history.last
+        if let turn = observedTurn, turn.ended, turn.hasCommittedReply(history) {
             observedTurn = nil
         }
         messages = observedTurn?.merged(history) ?? history
@@ -213,7 +228,7 @@ final class ChatSession {
                 observedTurn = nil
                 messages = server.historyMessages(historyRows, bot: bot)
             }
-            if observedTurn == nil { observedTurn = ObservedTurn(id: id, anchor: messages.last) }
+            if observedTurn == nil { observedTurn = ObservedTurn(id: id, anchor: durableAnchor) }
             if let id { observedTurn?.id = id }
             observedTurn?.ended = false
         }
@@ -235,6 +250,9 @@ final class ChatSession {
                         if active {
                             if let turn, let prior = observedTurn?.id, prior != turn { await finish() }
                             start(turn)
+                            if let prefix = observedTurn?.rows.last, prefix.role == .assistant {
+                                update(prefix.id) { $0.status = .streaming }
+                            }
                         } else { await finish() }
                     case .finished:
                         await finish()
@@ -296,12 +314,13 @@ final class ChatSession {
         historyRevision += 1
         isLoading = false
         let history = messages
-        messages.append(ChatMessage(role: .user, text: trimmed, images: images))
+        let user = ChatMessage(role: .user, text: trimmed, images: images)
+        messages.append(user)
         // A choice saved before Lynxce moved Octop Bot to its Tencent line falls back to the default.
         let model = app?.isLynxce == true
             ? app?.selectedModel.flatMap { $0.hasPrefix(LynxceBackend.modelPrefix) ? $0 : nil }
             : nil
-        run(backend.send(trimmed, images: images, to: bot, conversation: conversationId, history: history, model: model))
+        run(backend.send(trimmed, messageId: user.id, images: images, to: bot, conversation: conversationId, history: history, model: model))
     }
 
     /// Drop a queued message before it is sent.
@@ -385,12 +404,15 @@ final class ChatSession {
         error = nil
         isStreaming = true
         let replyId = reply.id
+        let request = messages.dropLast().last.flatMap { $0.role == .user ? $0 : nil }
+        let anchor = durableAnchor
         let backend = app?.backend
         let background = UIApplication.shared.beginBackgroundTask(withName: "reply")
         // A cancelled earlier reply must not touch the state of this one.
         let run = UUID()
         currentRun = run
         task = Task {
+            var turnId: String?
             defer {
                 if currentRun == run { isStreaming = false }
                 // Nothing keeps spinning once the reply is over.
@@ -402,7 +424,7 @@ final class ChatSession {
             do {
                 for try await event in stream {
                     guard currentRun == run, !Task.isCancelled else { return }
-                    apply(event, to: replyId)
+                    if case .turnStarted(let id) = event { turnId = id } else { apply(event, to: replyId) }
                 }
                 update(replyId) { $0.status = .done }
                 removeEmptyReply(replyId)
@@ -436,6 +458,11 @@ final class ChatSession {
                 update(replyId) { $0.status = .dailyLimit }
             } catch {
                 let message = error.localizedDescription
+                if currentRun == run, (error as? APIError)?.kind == .network,
+                   backend is ServerBackend, let partial = messages.last(where: { $0.id == replyId }),
+                   turnId != nil || !partial.text.isEmpty || !partial.thinking.isEmpty {
+                    observedTurn = ObservedTurn(id: turnId, anchor: anchor, rows: [request, partial].compactMap { $0 })
+                }
                 update(replyId) { $0.status = .failed(message) }
                 if case .unauthorized = (error as? APIError)?.kind { Task { await self.app?.signOut() } }
             }
@@ -468,7 +495,7 @@ final class ChatSession {
             }
         case .pause(let pause):
             self.pause = pause
-        case .done:
+        case .turnStarted, .done:
             break
         }
     }

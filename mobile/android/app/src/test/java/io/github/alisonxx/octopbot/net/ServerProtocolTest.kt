@@ -35,6 +35,21 @@ class ServerProtocolTest {
         assertEquals(listOf(user), current.committedTail(listOf(previous, user)))
     }
 
+    @Test fun interruptedSenderUsesPersistentAnchorAndWaitsForItsOwnQuestion() {
+        val mapper = ServerProtocol.FrameMapper(emptyMap())
+        val start = mapper.map(Http.parse("""{"type":"turn.started","turn_id":"run"}""").asObject()!!, "thread")
+        assertEquals(listOf(StreamEvent.TurnStarted("run")), (start as ServerProtocol.FrameMapper.Outcome.Events).events)
+        val previous = io.github.alisonxx.octopbot.model.ChatMessage("old", MessageRole.Assistant, "previous")
+        val user = io.github.alisonxx.octopbot.model.ChatMessage("local-user", MessageRole.User, "question")
+        val partial = io.github.alisonxx.octopbot.model.ChatMessage("local-reply", MessageRole.Assistant, "prefix", status = MessageStatus.Streaming)
+        val turn = io.github.alisonxx.octopbot.app.ChatSession.ObservedTurn("run", previous, mutableListOf(user, partial))
+        val savedUser = user.copy(id = "saved-user")
+        val other = previous.copy(id = "other", text = "previous completed turn")
+        assertFalse(turn.hasCommittedReply(listOf(previous, other, savedUser)))
+        assertEquals("local-reply", turn.merged(listOf(previous, savedUser)).last().id)
+        assertTrue(turn.hasCommittedReply(listOf(previous, savedUser, partial.copy(id = "saved-reply", text = "prefix and complete response"))))
+    }
+
     @Test fun historyPageOverlapRetainsNewestVersionAndOriginalOrder() {
         val old = Http.parse("""[{"id":"a"},{"history_seq":2,"content":"partial"}]""").asArray()!!
         val new = Http.parse("""[{"history_seq":2,"content":"finished"},{"id":"b"}]""").asArray()!!
@@ -154,7 +169,7 @@ class ServerProtocolTest {
         fun map(frame: String) = mapper.map(obj(frame), "th1")
         fun events(frame: String) = (map(frame) as ServerProtocol.FrameMapper.Outcome.Events).events
 
-        assertEquals(emptyList<StreamEvent>(), events("""{"type":"turn.started","turn_id":"x","thread_id":"th1"}"""))
+        assertEquals(listOf(StreamEvent.TurnStarted("x")), events("""{"type":"turn.started","turn_id":"x","thread_id":"th1"}"""))
         assertEquals(listOf(StreamEvent.Thinking("plan")), events("""{"type":"reasoning","content":"plan"}"""))
         assertEquals(listOf(StreamEvent.Tool("c1", "Web search", false)), events("""{"type":"tool_call_chunk","id":"c1","name":"web_search","display_name":"Web search"}"""))
         // Argument chunks for the same call don't repeat the step.

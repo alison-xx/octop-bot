@@ -481,6 +481,7 @@ class ServerBackend(
 
     override fun send(
         text: String,
+        messageId: String,
         images: List<ImageAttachment>,
         bot: BotProfile,
         conversation: String?,
@@ -507,7 +508,7 @@ class ServerBackend(
             }
         }
         try {
-            socket.send(ServerProtocol.userTurn(threadId, text, content, model, deviceTools).toString())
+            socket.send(ServerProtocol.userTurn(threadId, text, content, model, deviceTools, messageId).toString())
             val mapper = ServerProtocol.FrameMapper(toolLabels())
             for (raw in frames) {
                 val frame = Http.parse(raw).asObject() ?: continue

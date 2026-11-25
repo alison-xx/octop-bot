@@ -106,6 +106,7 @@ struct ChatMessage: Identifiable, Hashable {
 /// Incremental output of one reply.
 enum StreamEvent {
     case conversation(String)
+    case turnStarted(String)
     case text(String)
     case thinking(String)
     case tool(id: String, name: String, done: Bool)
@@ -204,6 +205,7 @@ protocol ChatBackend: AnyObject {
     /// Stream one reply. The first event may be `.conversation` with the id of a newly created conversation.
     func send(
         _ text: String,
+        messageId: String,
         images: [Data],
         to bot: BotProfile,
         conversation: String?,
