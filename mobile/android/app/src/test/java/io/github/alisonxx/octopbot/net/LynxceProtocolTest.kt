@@ -17,6 +17,36 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class LynxceProtocolTest {
+    @Test fun accountPhotoMatchesTheCurrentAccountAndUsesHttpsPhotosOnly() {
+        val direct = Http.parse("""{"id":"a","displayName":"  林一 ","avatarUrl":"https://photos.example/a"}""").jsonObject
+        assertEquals(AccountPhoto("林一", "https://photos.example/a"), AccountPhoto.direct(direct, "a"))
+        assertNull(AccountPhoto.direct(direct, "b"))
+        fun local(url: String) = AccountPhoto.localAvatar(Http.parse("""{"id":7,"avatar_url":"$url"}""").jsonObject)
+        assertEquals("/api/users/7/avatar" to mapOf("v" to "123"), local("/api/users/7/avatar?v=123"))
+        for (wrong in listOf("/api/users/8/avatar", "//elsewhere.example/api/users/7/avatar", "/api/users/7/avatar?v=1&u=2")) {
+            assertNull(local(wrong))
+        }
+        assertEquals(AccountPhoto("NAS", null), AccountPhoto.owner(Http.parse("""{"display_name":"NAS","avatar_url":"/api/users/1/avatar"}""").jsonObject))
+        fun cloud(json: String) = AccountPhoto.cloud(Http.parse(json).jsonObject)
+        assertEquals(AccountPhoto("Zoe", null), cloud("""{"connected":true,"display_name":"Zoe","avatar_url":"file:///tmp/photo"}"""))
+        assertNull(cloud("""{"connected":false,"avatar_url":"https://photos.example/b"}""").url)
+        assertEquals("https://photos.example/b", cloud("""{"connected":true,"avatar_url":"https://photos.example/b"}""").url)
+        assertEquals("林", io.github.alisonxx.octopbot.ui.common.accountInitial("  林一 "))
+        assertEquals("🐙", io.github.alisonxx.octopbot.ui.common.accountInitial("🐙 Zoe"))
+    }
+
+    @Test fun signupNoticeUsesOnlyPositiveCreditsIssuedToANewAccount() {
+        fun credits(json: String) = newSignupCredits(Http.parse(json).jsonObject)
+        assertEquals(125.5, credits("""{"isNewUser":true,"signupGrant":{"credits":125.5}}""")!!, 0.0)
+        assertNull(credits("""{"isNewUser":false,"signupGrant":{"credits":100}}"""))
+        assertNull(credits("""{"isNewUser":true}"""))
+        assertEquals("2026-12-08", signupExpiryDayUTC(Http.parse("""{"isNewUser":true,"signupGrant":{"credits":100,"expiresAt":"2026-12-09T01:00:00+08:00"}}""").jsonObject))
+        assertNull(signupExpiryDayUTC(Http.parse("""{"isNewUser":true,"signupGrant":{"credits":100}}""").jsonObject))
+        for (invalid in listOf("true", "\"100\"", "-1", "0", "1e999")) {
+            assertNull(credits("""{"isNewUser":true,"signupGrant":{"credits":$invalid}}"""))
+        }
+    }
+
     @Test
     fun parsesContentAndReasoningDeltas() {
         assertEquals(

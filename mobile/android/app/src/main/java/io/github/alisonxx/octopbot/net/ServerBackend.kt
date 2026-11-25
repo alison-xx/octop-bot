@@ -48,6 +48,8 @@ class ServerBackend(
     private val store: AppStore,
 ) : ChatBackend, CreditAccount {
     @Volatile private var session = session
+    override var signupCredits: Double? = null
+    override val signupExpiryDay get() = session.signupExpiryDay
     private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sockets = ConcurrentHashMap<String, WebSocket>()
     private var voice: VoiceSupport? = null
@@ -180,9 +182,10 @@ class ServerBackend(
             // Only a display name is ever shown; without one the UI says "Lynxce user".
             val name = user?.str("display_name")?.trim().orEmpty()
             // Octop Bot cloud says so in its sign-in response.
-            val session = ServerSession(base, token, name, cloud = body.bool("cloud") == true)
+            val cloud = body.bool("cloud") == true
+            val session = ServerSession(base, token, name, cloud, if (cloud) signupExpiryDayUTC(body) else null)
             store.setServerSession(session)
-            return ServerBackend(session, store)
+            return ServerBackend(session, store).also { it.signupCredits = if (session.cloud) newSignupCredits(body) else null }
         }
     }
 
@@ -221,6 +224,21 @@ class ServerBackend(
         body: RequestBody? = null,
         http: OkHttpClient = client,
     ): JsonElement = Http.parse(raw(method, path, query, body, http).decodeToString())
+
+    override suspend fun accountPhoto(): AccountPhoto? {
+        if (isCloud) {
+            runCatching { json("GET", "/api/octop-bot/cloud/account").asObject() }.getOrNull()?.let {
+                return AccountPhoto.cloud(it)
+            }
+        }
+        val me = json("GET", "/api/auth/me").asObject() ?: return null
+        val photo = AccountPhoto.owner(me)
+        val local = AccountPhoto.localAvatar(me) ?: return photo
+        val bytes = runCatching {
+            raw("GET", local.first, local.second, http = client.newBuilder().followRedirects(false).build())
+        }.getOrNull()
+        return photo.copy(localImage = bytes)
+    }
 
     // Lynxce wallet (Octop Bot cloud only)
 

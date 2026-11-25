@@ -1,9 +1,7 @@
 {
   "schemaVersion": 1,
   "product": "octop-bot",
-  "hidden": [
-    "ios"
-  ],
+  "hidden": [],
   "releases": [
     {
       "version": "1.0.5",
@@ -102,6 +100,12 @@
           "sha256": "fb2f85534dd4a71e4efadc12b8bee3ae34920cbabf512023a7251c527edd1fbf",
           "size": 335294177,
           "url": "https://dl.lynxce.cn/releases/octop-bot/1.0.4/Octop-Bot-1.0.4-mac-arm64.dmg"
+        },
+        {
+          "platform": "ios",
+          "kind": "store",
+          "appVersion": "1.0.0",
+          "url": "https://apps.apple.com/app/id6838257776"
         }
       ]
     },

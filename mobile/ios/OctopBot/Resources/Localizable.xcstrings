@@ -4406,6 +4406,54 @@
         }
       }
     },
+    "account.signupExpiry %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trial credit expiry: %@ (UTC)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验积分到期日：%@（UTC）"
+          }
+        }
+      }
+    },
+    "credits.signup %@ %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ trial credits added for use in Octop. Expires on %2$@ (UTC)."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已到账 %1$@ 体验积分，仅限 Octop 使用。到期日：%2$@（UTC）。"
+          }
+        }
+      }
+    },
+    "credits.signup %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ trial credits have been added for use in Octop."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已到账 %@ 体验积分，仅限 Octop 使用。"
+          }
+        }
+      }
+    },
     "credits.balance": {
       "localizations": {
         "en": {

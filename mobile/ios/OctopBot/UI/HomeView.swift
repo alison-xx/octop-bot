@@ -169,8 +169,11 @@ struct HomeView: View {
         .navigationTitle("Octop Bot")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button { showSettings = true } label: { Image(systemName: "person.crop.circle") }
-                    .accessibilityIdentifier("openSettings")
+                Button { showSettings = true } label: {
+                    LynxceAvatar(name: model.accountName, url: model.accountPhotoURL, localImage: model.localAccountImage, size: 26, branded: false)
+                }
+                .accessibilityLabel(Text("settings.title"))
+                .accessibilityIdentifier("openSettings")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 if model.server != nil {
