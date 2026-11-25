@@ -1573,6 +1573,34 @@ extension StreamTests {
         XCTAssertEqual(saved, "partial")
     }
 
+    func testInterruptedDeleteRestartsOnlyInOriginalAccountAndBot() async throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = PendingHistoryStore(origin: LynxceBackend.origin, account: "A", root: root)
+        let turn = PendingHistory(turn: .init(body: [:], user: "q", startedAt: .now, botID: "bot"),
+                                  sessionID: "octop-bot-v1-thread")
+        store.remember(turn)
+        do {
+            try await store.delete(bot: "bot", session: turn.sessionID) { throw APIError.network }
+            XCTFail("Expected interrupted delete")
+        } catch { XCTAssertEqual(error as? APIError, .network) }
+        let reopened = PendingHistoryStore(origin: LynxceBackend.origin, account: "A", root: root)
+        let other = PendingHistoryStore(origin: LynxceBackend.origin, account: "B", root: root)
+        XCTAssertEqual(reopened.interruptedDeletions(bot: "bot"), [turn.sessionID])
+        XCTAssertTrue(reopened.interruptedDeletions(bot: "other").isEmpty)
+        XCTAssertTrue(other.interruptedDeletions(bot: "bot").isEmpty)
+        let backend = LynxceBackend(grant: .init(accountId: "A", accessToken: "synthetic", refreshToken: "synthetic"), historyRoot: root)
+        let bot = BotProfile(id: "bot", name: "qa", look: .fallback, isChief: true)
+        let stream = backend.send("new", images: [], to: bot, conversation: turn.sessionID, history: [], model: nil)
+        do {
+            for try await _ in stream { XCTFail("Model dispatch must wait for deletion") }
+            XCTFail("Expected pending deletion")
+        } catch { XCTAssertEqual((error as? APIError)?.status, 409) }
+        try await reopened.delete(bot: "bot", session: turn.sessionID) {}
+        XCTAssertTrue(reopened.interruptedDeletions(bot: "bot").isEmpty)
+        XCTAssertTrue(reopened.turns(bot: "bot").isEmpty)
+    }
+
     func testReopenedSaveAcknowledgementAndDeleteOrderAcrossBackendInstances() async throws {
         let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -1604,7 +1632,8 @@ extension StreamTests {
         try await deleting.value
         XCTAssertEqual(order, ["append", "delete"])
         XCTAssertFalse(reopened.canRetry(turn))
-        XCTAssertFalse(reopened.hasRecords(bot: "bot", session: turn.sessionID))
+        let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?.allObjects as? [URL]
+        XCTAssertFalse(try XCTUnwrap(files).contains { $0.lastPathComponent == failed.id.uuidString })
         XCTAssertFalse(store.isPending(failed))
         store.remember(turn)
         XCTAssertTrue(reopened.turns(bot: "bot", session: "thread").isEmpty)

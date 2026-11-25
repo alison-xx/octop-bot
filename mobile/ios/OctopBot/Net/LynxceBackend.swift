@@ -232,6 +232,10 @@ final class LynxceBackend: ChatBackend {
     }
 
     func conversations(for bot: BotProfile) async throws -> [ConversationSummary] {
+        for session in pending.interruptedDeletions(bot: bot.id) where session.hasPrefix(Self.sessionPrefix) {
+            guard !signedOut else { throw CancellationError() }
+            try? await deleteHistory(session: session, bot: bot.id)
+        }
         let data: Any
         do { data = try await call(.get, "/api/user/web-chat-sessions", query: ["limit": "50"]) }
         catch {
@@ -294,15 +298,25 @@ final class LynxceBackend: ChatBackend {
     }
 
     func deleteConversation(_ conversation: ConversationSummary, bot: BotProfile) async throws {
-        let id = conversation.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? conversation.id
-        chat.stop(conversation.id)
-        try await pending.delete(bot: bot.id, session: conversation.id) {
+        try await deleteHistory(session: conversation.id, bot: bot.id)
+    }
+
+    private func deletedConversation() -> AsyncThrowingStream<StreamEvent, Error> {
+        AsyncThrowingStream { $0.finish(throwing: APIError(kind: .rejected, status: 409, message: L("chat.deletionInProgress"))) }
+    }
+
+    private func deleteHistory(session: String, bot: String) async throws {
+        guard !signedOut else { throw CancellationError() }
+        let id = session.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session
+        chat.stop(session)
+        try await pending.delete(bot: bot, session: session) {
+            guard !signedOut else { throw CancellationError() }
             do { _ = try await call(.delete, "/api/user/web-chat-sessions/\(id)") }
-            catch let error as APIError where error.status == 404 && pending.hasRecords(bot: bot.id, session: conversation.id) {
+            catch let error as APIError where error.status == 404 {
                 // The append never reached Lynxce. Only the device copy needs removal.
             }
         }
-        sessionBots[conversation.id] = nil
+        sessionBots[session] = nil
     }
 
     func models() async throws -> [ModelOption] {
@@ -343,6 +357,7 @@ final class LynxceBackend: ChatBackend {
         _ text: String, images: [Data], to bot: BotProfile, conversation: String?,
         history: [ChatMessage], model: String?
     ) -> AsyncThrowingStream<StreamEvent, Error> {
+        if let conversation, pending.isDeleted(conversation) { return deletedConversation() }
         let sessionId = conversation ?? Self.sessionPrefix + UUID().uuidString.lowercased()
         // A model the user picked on this phone (their own key, a local server) wins over Lynxce's.
         let endpoint = PhoneModels.shared.endpoint()
@@ -359,7 +374,8 @@ final class LynxceBackend: ChatBackend {
     func resume(
         _ pause: HitlPause, decisions: [[String: Any]], conversation: String, bot: BotProfile
     ) -> AsyncThrowingStream<StreamEvent, Error> {
-        chat.resume(pause, decisions: decisions, conversation: conversation)
+        guard !pending.isDeleted(conversation) else { return deletedConversation() }
+        return chat.resume(pause, decisions: decisions, conversation: conversation)
     }
 
     func openPause(in conversation: ConversationSummary) -> HitlPause? { nil }

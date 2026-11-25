@@ -131,8 +131,22 @@ struct PendingHistoryStore {
         return directory.appendingPathComponent("delete-" + hash)
     }
 
-    private func isDeleted(_ session: String) -> Bool {
-        operations.deleted.contains(session) || FileManager.default.fileExists(atPath: deletionMarker(session).path)
+    func isDeleted(_ session: String) -> Bool {
+        operations.deleting.contains(session) || operations.deleted.contains(session) || FileManager.default.fileExists(atPath: deletionMarker(session).path)
+    }
+
+    private struct Deletion: Codable {
+        let bot: String
+        let session: String
+    }
+
+    func interruptedDeletions(bot: String) -> [String] {
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        return files.filter { $0.lastPathComponent.hasPrefix("delete-") }.compactMap { url in
+            guard let data = try? Data(contentsOf: url), let row = try? JSONDecoder().decode(Deletion.self, from: data),
+                  row.bot == bot, deletionMarker(row.session) == url, !operations.deleting.contains(row.session) else { return nil }
+            return row.session
+        }
     }
 
     private func records(bot: String, session: String?) -> [PendingHistory] {
@@ -172,8 +186,6 @@ struct PendingHistoryStore {
         try await task.value
     }
 
-    func hasRecords(bot: String, session: String) -> Bool { !records(bot: bot, session: session).isEmpty }
-
     func delete(bot: String, session: String, request: () async throws -> Void) async throws {
         guard operations.deleting.insert(session).inserted else { throw CancellationError() }
         defer { operations.deleting.remove(session) }
@@ -183,9 +195,11 @@ struct PendingHistoryStore {
         // must not turn a leftover file back into a retryable append on relaunch.
         try prepareDirectory()
         let marker = deletionMarker(session)
-        try Data().write(to: marker, options: .atomic)
+        let intent = try JSONEncoder().encode(Deletion(bot: bot, session: session))
+        try intent.write(to: marker, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         do { try await request() }
-        catch {
+        catch let error as APIError where error.kind == .rejected && (400..<500).contains(error.status) && error.status != 429 {
+            // A definitive rejection leaves the conversation and its pending replies available.
             try FileManager.default.removeItem(at: marker)
             throw error
         }

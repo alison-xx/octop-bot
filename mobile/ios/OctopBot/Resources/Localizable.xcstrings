@@ -646,6 +646,12 @@
         }
       }
     },
+    "chat.deletionInProgress": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This conversation is being deleted. Refresh the list or start a new conversation." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "此会话正在删除。请刷新列表或新建会话。" } }
+      }
+    },
     "chat.historySaveFailed": {
       "localizations": {
         "en": {
