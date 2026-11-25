@@ -217,14 +217,32 @@ final class AppModel {
         defaults.removeObject(forKey: "chat.unread")
     }
 
+    enum SavedBackend: String, Codable {
+        case server, device, signedOut
+
+        static func restore(_ selected: Self?, hasLegacy: Bool, hasServer: Bool, official: Bool) -> Self {
+            if let selected { return selected }
+            if hasLegacy { return official ? .server : .signedOut }
+            return hasServer ? .server : .device
+        }
+    }
+
+    private static let backendSelectionKey = "session.selectedBackend"
+
     func start() async {
+        let selected = Keychain.codable(SavedBackend.self, for: Self.backendSelectionKey)
         let legacy = LynxceBackend.restore()
         let server = ServerBackend.restore()
-        let activeServer = legacy == nil || server?.isOfficialCloud == true ? server : nil
-        if let restored: ChatBackend = activeServer ?? (legacy == nil ? DeviceBackend.restore() : nil) {
-            await use(restored)
+        let restored: ChatBackend?
+        switch SavedBackend.restore(selected, hasLegacy: legacy != nil, hasServer: server != nil, official: server?.isOfficialCloud == true) {
+        case .server: restored = server
+        case .device: restored = DeviceBackend.restore()
+        case .signedOut: restored = nil
+        }
+        if let restored {
+            await use(restored, rememberSelection: false)
         } else {
-            if legacy != nil {
+            if selected == nil && legacy != nil {
                 Self.archiveUnattributedPreviews(.standard)
                 previews = [:]
                 unread = []
@@ -235,7 +253,11 @@ final class AppModel {
         }
     }
 
-    func use(_ backend: ChatBackend) async {
+    func use(_ backend: ChatBackend, rememberSelection: Bool = true) async {
+        if rememberSelection {
+            if backend is ServerBackend { Keychain.setCodable(SavedBackend.server, for: Self.backendSelectionKey) }
+            if backend is DeviceBackend { Keychain.setCodable(SavedBackend.device, for: Self.backendSelectionKey) }
+        }
         photoRefresh?.cancel()
         stopHistoryRecovery()
         for session in sessions.values { session.cancel() }
@@ -495,6 +517,7 @@ final class AppModel {
     }
 
     func signOut() async {
+        Keychain.setCodable(SavedBackend.signedOut, for: Self.backendSelectionKey)
         photoRefresh?.cancel()
         photoRefresh = nil
         notificationChat = nil

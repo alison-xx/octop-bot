@@ -6,6 +6,7 @@ import io.github.alisonxx.octopbot.model.MessageStatus
 import io.github.alisonxx.octopbot.model.StreamEvent
 import io.github.alisonxx.octopbot.model.ToolStep
 import io.github.alisonxx.octopbot.model.VoiceSupport
+import io.github.alisonxx.octopbot.store.SavedBackend
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -19,6 +20,15 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class ServerProtocolTest {
+    @Test fun lastSuccessfulServerSelectionSurvivesAStoredLegacyGrant() {
+        assertEquals(SavedBackend.SignedOut, SavedBackend.restore(null, hasLegacy = true, hasServer = true, official = false))
+        assertEquals(SavedBackend.Server, SavedBackend.restore(SavedBackend.Server, hasLegacy = true, hasServer = true, official = false))
+        assertEquals(SavedBackend.Server, SavedBackend.restore(null, hasLegacy = false, hasServer = true, official = false))
+        assertEquals(SavedBackend.Server, SavedBackend.restore(null, hasLegacy = true, hasServer = true, official = true))
+        assertEquals(SavedBackend.Device, SavedBackend.restore(SavedBackend.Device, hasLegacy = true, hasServer = true, official = false))
+        assertEquals(SavedBackend.SignedOut, SavedBackend.restore(SavedBackend.SignedOut, hasLegacy = true, hasServer = true, official = true))
+    }
+
     @Test fun legacyRecoveryReadsEveryPageAndPreservesIncompleteState() = kotlinx.coroutines.test.runTest {
         val cursors = mutableListOf<String?>()
         val complete = ServerProtocol.restoreLegacyPages { cursor ->

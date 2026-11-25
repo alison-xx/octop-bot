@@ -92,6 +92,16 @@ final class CharacterTests: XCTestCase {
 
 @MainActor
 final class StreamTests: XCTestCase {
+    func testLastSuccessfulServerSelectionSurvivesAStoredLegacyGrant() {
+        typealias Mode = AppModel.SavedBackend
+        XCTAssertEqual(Mode.restore(nil, hasLegacy: true, hasServer: true, official: false), .signedOut)
+        XCTAssertEqual(Mode.restore(.server, hasLegacy: true, hasServer: true, official: false), .server)
+        XCTAssertEqual(Mode.restore(nil, hasLegacy: false, hasServer: true, official: false), .server)
+        XCTAssertEqual(Mode.restore(nil, hasLegacy: true, hasServer: true, official: true), .server)
+        XCTAssertEqual(Mode.restore(.device, hasLegacy: true, hasServer: true, official: false), .device)
+        XCTAssertEqual(Mode.restore(.signedOut, hasLegacy: true, hasServer: true, official: true), .signedOut)
+    }
+
     func testUpgradeSealsOwnerlessPreviewsOutsideEverySignedInAccount() throws {
         let suite = UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

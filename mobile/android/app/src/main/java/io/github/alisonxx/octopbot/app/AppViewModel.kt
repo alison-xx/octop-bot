@@ -35,6 +35,7 @@ import io.github.alisonxx.octopbot.store.Appearance
 import io.github.alisonxx.octopbot.store.BotPreview
 import io.github.alisonxx.octopbot.store.DirectoryCache
 import io.github.alisonxx.octopbot.store.Previews
+import io.github.alisonxx.octopbot.store.SavedBackend
 import io.github.alisonxx.octopbot.store.SpeechRate
 import io.github.alisonxx.octopbot.store.TextSize
 import io.github.alisonxx.octopbot.store.UserSettings
@@ -196,15 +197,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
         viewModelScope.launch {
             val legacy = store.lynxceGrant()
             val server = store.serverSession()?.let { ServerBackend(it, store) }
-            val activeServer = server?.takeIf { legacy == null || it.isOfficialCloud }
-            if (legacy != null && activeServer == null) store.archiveLegacyPreviews()
-            val backend = activeServer
-                ?: if (legacy == null && app.phoneModels.phoneOnly) deviceBackend() else null
+            val selected = store.selectedBackend()
+            val backend = when (SavedBackend.restore(selected, legacy != null, server != null, server?.isOfficialCloud == true)) {
+                SavedBackend.Server -> server
+                SavedBackend.Device -> if (app.phoneModels.phoneOnly) deviceBackend() else null
+                SavedBackend.SignedOut -> null
+            }
             if (backend == null) {
-                _session.value = SessionState.SignedOut(if (legacy != null) resources.getString(R.string.history_reauthenticate) else null)
+                val legacyUpgrade = selected == null && legacy != null
+                if (legacyUpgrade) store.archiveLegacyPreviews()
+                _session.value = SessionState.SignedOut(if (legacyUpgrade) resources.getString(R.string.history_reauthenticate) else null)
                 _launchReady.value = true
             } else {
-                enter(backend)
+                enter(backend, rememberSelection = false)
             }
         }
         viewModelScope.launch { settings.collect { speaker.rate = it.speechRate.rate } }
@@ -314,16 +319,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
 
     /** Called after the server form finished signing in. Replaces whatever account was active. */
     fun useServer(backend: ServerBackend) {
-        viewModelScope.launch {
-            (session.value as? SessionState.Ready)?.backend?.takeIf { it !== backend && it is LynxceBackend }?.let {
-                it.signOut()
-                store.clearCaches()
-            }
-            enter(backend)
-        }
+        viewModelScope.launch { enter(backend) }
     }
 
-    private suspend fun enter(backend: ChatBackend) {
+    private suspend fun enter(backend: ChatBackend, rememberSelection: Boolean = true) {
+        if (rememberSelection) {
+            when (backend) {
+                is ServerBackend -> store.selectBackend(SavedBackend.Server)
+                is DeviceBackend -> store.selectBackend(SavedBackend.Device)
+            }
+        }
         stopHistoryRecovery()
         detachChats()
         val previous = (session.value as? SessionState.Ready)?.backend
@@ -394,8 +399,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Ch
                 // "Switch account or server": the server form opens with this server's full address.
                 store.setLastServer(backend.baseUrl)
             }
+            store.selectBackend(SavedBackend.SignedOut)
             backend.signOut()
-            store.clearAccount()
+            store.clearCaches()
             _session.value = SessionState.SignedOut(notice, reopenServer = reopen)
         }
     }
