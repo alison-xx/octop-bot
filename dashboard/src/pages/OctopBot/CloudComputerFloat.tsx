@@ -53,6 +53,12 @@ interface FloatState {
 export function toggleCloudFloat(botId: string) {
   bus.dispatchEvent(new CustomEvent("toggle", { detail: botId }));
 }
+/** A handoff card can also be shown outside the conversation that owns this float. */
+export function expandForHandoff(botId: string, status: CloudComputerStatus) {
+  return !bus.dispatchEvent(
+    new CustomEvent("handoff", { detail: { botId, status }, cancelable: true }),
+  );
+}
 function announce(state: FloatState) {
   bus.dispatchEvent(new CustomEvent("state", { detail: state }));
 }
@@ -219,6 +225,23 @@ export default function CloudComputerFloat({
     setPinned(false);
     writeStored(`closed.${botId}`, true);
     setMode("hidden");
+  }, [botId]);
+
+  useEffect(() => {
+    const handoff = (event: Event) => {
+      const next = (
+        event as CustomEvent<{ botId: string; status: CloudComputerStatus }>
+      ).detail;
+      if (next.botId !== botId) return;
+      event.preventDefault();
+      setStatus(next.status);
+      setClosed(false);
+      setStartError(null);
+      setStarting(next.status.state !== "running");
+      setMode("expanded");
+    };
+    bus.addEventListener("handoff", handoff);
+    return () => bus.removeEventListener("handoff", handoff);
   }, [botId]);
 
   // The header button: show the float (as the live window) or close it.
@@ -495,6 +518,7 @@ export default function CloudComputerFloat({
           <div className={styles.view} data-fit={fit || undefined}>
             {screen && (
               <CloudComputerScreen
+                botId={botId}
                 wsPath={screen.ws}
                 interactive={false}
                 session={screen.session}
@@ -606,6 +630,7 @@ export default function CloudComputerFloat({
             data-control={status?.takeover || undefined}
           >
             <CloudComputerScreen
+              botId={botId}
               wsPath={screen.ws}
               interactive={status?.takeover === true}
               session={screen.session}

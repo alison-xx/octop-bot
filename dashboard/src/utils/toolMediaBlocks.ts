@@ -149,6 +149,16 @@ export function toMediaPreviewSource(
   return posix.replace(/^\/+/, "");
 }
 
+function fileUriPath(uri: string): string {
+  const raw = uri.slice("file://".length);
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // Older tools sometimes put literal percent signs in a file reference.
+    return raw;
+  }
+}
+
 /** Extract path from dashboard media/download API URLs (preserve absolute). */
 export function workspacePathFromAccessUrl(url: string): string | undefined {
   try {
@@ -159,7 +169,7 @@ export function workspacePathFromAccessUrl(url: string): string | undefined {
       const raw = parsed.searchParams.get(key);
       if (!raw) continue;
       if (raw.startsWith("file://")) {
-        let abs = raw.slice("file://".length);
+        let abs = fileUriPath(raw);
         if (abs.startsWith("//")) abs = abs.slice(1);
         return abs.startsWith("/") || /^[A-Za-z]:/.test(abs) ? abs : `/${abs}`;
       }
@@ -700,7 +710,7 @@ export function extractImagePathFromText(text: string): string | null {
 
   const patterns = [
     new RegExp(
-      `(?:saved to|written to|file(?:\\s+path)?[:\\s]+)\\s*([^\\s(]+\\.${IMAGE_EXT})`,
+      `(?:saved to|written to|file(?:\\s+path)?[:\\s]+)\\s*["'\`]?([^\\s("'\`]+\\.${IMAGE_EXT})`,
       "i",
     ),
     new RegExp(`(file://[^\\s"'()]+\\.${IMAGE_EXT})`, "i"),

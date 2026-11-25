@@ -100,5 +100,6 @@ describe("<MBTISelector /> selection line", () => {
     render(<MBTISelector agentId="ag1" showHeader={false} />);
 
     expect(await meta(0)).toHaveTextContent("已选中「ENTP」");
+    expect(api.listMBTITypes).toHaveBeenCalledTimes(1);
   });
 });

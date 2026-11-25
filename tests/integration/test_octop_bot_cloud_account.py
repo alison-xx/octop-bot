@@ -4,6 +4,7 @@ import asyncio
 import json
 from collections import Counter
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from threading import Event
 from typing import Any
 
@@ -34,6 +35,8 @@ class Upstream:
         self.observed: list[str] = []
         self.envelope: dict[str, Any] | None = None
         self.refreshed_account: str | None = None
+        self.profile_avatar = "https://cdn.avatars.test/profile.jpg"
+        self.profile_status = 200
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         assert req.url.host == "api.lynxce.cn" and req.url.scheme == "https"
@@ -107,13 +110,13 @@ class Upstream:
             return httpx.Response(401)
         if path == "/api/user/profile":
             return httpx.Response(
-                200,
+                self.profile_status,
                 json={
                     "code": 0,
                     "data": {
                         "id": self.refreshed_account
                         or bearer.removeprefix("renewed-").removeprefix("access-"),
-                        "avatarUrl": "https://cdn.avatars.test/profile.jpg",
+                        "avatarUrl": self.profile_avatar,
                     },
                 },
             )
@@ -451,8 +454,36 @@ async def test_avatar_lookup_failure_still_returns_the_account(
     old = cloud._load(services, aid)
     assert old is not None
     cloud._save(services, aid, cloud._Grant(**{**cloud.asdict(old), "avatar_url": None}))
-    upstream.expired.add("access-a")
+    upstream.profile_status = 503
 
     body = (await client.get(API, headers=alice)).json()
     assert body["connected"] and body["account_id"] == "a" and body["avatar_url"] is None
     assert cloud._load(services, aid) == cloud._Grant(**{**cloud.asdict(old), "avatar_url": None})
+
+
+async def test_cloud_reads_only_its_bound_profile_and_repairs_cached_empty_avatar(
+    env_admin_alice: Env, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, server, admin, alice = env_admin_alice
+    uid = server.user_manager.get("alice").id
+    assert server.services is not None
+    services = server.services
+    await cloud.login_cloud(services, uid, "a", "test-password")
+    grant = cloud._load(services, uid)
+    assert grant is not None
+    cloud._save(services, uid, replace(grant, avatar_url="", profile_checked_at=0))
+    monkeypatch.delenv("OCTOP_DESKTOP_SHELL")
+    monkeypatch.setenv("OCTOP_BOT_CLOUD", "1")
+    upstream.expired.add("access-a")
+    response = await client.get(API, headers=alice)
+    assert response.status_code == 200
+    assert response.json()["avatar_url"] == upstream.profile_avatar
+    assert (await client.get(API, headers=admin)).json()["connected"] is False
+    assert (
+        await client.post(API, headers=alice, json={"account": "b", "password": "password"})
+    ).status_code == 403
+    grant = cloud._load(services, uid)
+    assert grant is not None
+    cloud._save(services, uid, replace(grant, profile_checked_at=0))
+    upstream.profile_avatar = ""
+    assert (await client.get(API, headers=alice)).json()["avatar_url"] is None

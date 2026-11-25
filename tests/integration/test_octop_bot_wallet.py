@@ -46,6 +46,13 @@ def connect_model(services: SharedServices, user_id: int, name: str, scope: str)
     return str(grant["connection_id"])
 
 
+@pytest.fixture(autouse=True)
+def _fresh_recharge_limit() -> None:
+    from octop.infra.auth import lynxce_wallet
+
+    lynxce_wallet._recharges.clear()
+
+
 async def test_cloud_checkout_only_mints_for_displayed_wallet(
     env_admin_alice: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -102,16 +109,38 @@ async def test_cloud_checkout_only_mints_for_displayed_wallet(
     body = {"source": "cloud", "expected_account_id": "first"}
     good = await client.post(API + "/recharge", headers=admin, json=body)
     assert "no-store" in good.headers["cache-control"]
-    assert good.json()["url"] == PORTAL + token("first") and good.json()["expires_at"]
+    assert good.json()["url"] == PORTAL + token("first") + "&tab=boost"
+    assert good.json()["expires_at"]
     # The official result page learns which client to go back to; unknown clients get none.
     for origin in ("desktop", "phone"):
         resp = await client.post(API + "/recharge", headers=admin, json={**body, "from": origin})
-        assert resp.json()["url"] == PORTAL + token("first")
+        assert resp.json()["url"] == PORTAL + token("first") + "&tab=boost"
     assert returns == [
         "https://octop-bot.lynxce.cn/pay/result.html",
         "https://octop-bot.lynxce.cn/pay/result.html?from=desktop",
         "https://octop-bot.lynxce.cn/pay/result.html",
     ]
+    plan = await client.post(API + "/recharge", headers=admin, json={**body, "intent": "plan"})
+    assert plan.status_code == 400
+    assert plan.json()["error"]["code"] == "BOT_PLAN_UNAVAILABLE"
+    for fields in (
+        {"reason": "other"},
+        {"need": 0},
+        {"need": True},
+    ):
+        invalid = await client.post(API + "/recharge", headers=admin, json={**body, **fields})
+        assert invalid.status_code == 422
+    enriched = await client.post(
+        API + "/recharge",
+        headers=admin,
+        json={**body, "from": "desktop", "need": 1200, "reason": "image"},
+    )
+    assert enriched.json()["url"] == PORTAL + token("first") + "&tab=boost"
+    # A shortfall past the cap is capped for the page, not refused.
+    huge = await client.post(API + "/recharge", headers=admin, json={**body, "need": 10**12})
+    assert huge.status_code == 200, huge.text
+    # Five links this minute; the per-minute limit has its own test.
+    lynxce_wallet._recharges.clear()
     assert (await client.post(API + "/recharge", headers=alice, json=body)).status_code == 403
     (
         await client.post(
@@ -126,7 +155,7 @@ async def test_cloud_checkout_only_mints_for_displayed_wallet(
             json={"source": "model", "expected_connection_id": "first"},
         )
     ).status_code == 403
-    assert minted == ["first"] * 3  # the plain request and the two with `from`
+    assert minted == ["first"] * 5  # plain, two with `from`, enriched, capped need
 
 
 async def test_model_wallet_checks_grant_scope_and_account_switches(
@@ -188,7 +217,7 @@ async def test_model_wallet_checks_grant_scope_and_account_switches(
         body["expected_connection_id"] = grant
         assert (await client.post(API + "/recharge", headers=admin, json=body)).status_code == 403
         good = await client.post(API + "/recharge", headers=alice, json=body)
-        assert good.json()["url"] == PORTAL + MODEL_TICKET
+        assert good.json()["url"] == PORTAL + MODEL_TICKET + "&tab=boost"
         deny = True
         denied = await client.post(API + "/recharge", headers=alice, json=body)
         assert denied.json()["error"]["code"] == "BOT_LYNXCE_RECHARGE_AUTH_REQUIRED"
@@ -238,3 +267,20 @@ def test_checkout_rejects_expired_and_long_lived_links() -> None:
 def test_model_checkout_cannot_return_a_full_cloud_checkout_ticket() -> None:
     with pytest.raises(OctopError):
         lynxce_wallet._checkout({"url": PORTAL + token("cloud"), "expires_at": expires()}, "model")
+
+
+def test_recharge_is_limited_per_account(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.auth import lynxce_wallet
+    from octop.infra.errors import OctopError
+
+    clock = [1000.0]
+    monkeypatch.setattr(lynxce_wallet.time, "monotonic", lambda: clock[0])
+    for _ in range(lynxce_wallet.RECHARGE_LIMIT):
+        lynxce_wallet._limit_recharges(7)
+    with pytest.raises(OctopError) as limited:
+        lynxce_wallet._limit_recharges(7)
+    assert limited.value.code == "BOT_RECHARGE_RATE_LIMITED"
+    assert limited.value.status == 429
+    lynxce_wallet._limit_recharges(8)  # another account is not affected
+    clock[0] += 61
+    lynxce_wallet._limit_recharges(7)  # a minute later it works again

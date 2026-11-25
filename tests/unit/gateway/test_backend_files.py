@@ -16,6 +16,7 @@ from octop.infra.gateway.media.backend_files import (
     extract_workspace_rel,
     read_file_url_bytes,
     resolve_preview_payload,
+    tenant_workspace_path,
 )
 
 
@@ -149,3 +150,13 @@ async def test_cloud_tenant_media_never_reads_host_files() -> None:
             source="outbound/own.png", workspace=workspace, host_files=False
         )
         assert own is not None and own[0] == b"own"
+
+
+def test_previously_delivered_materialized_path_uses_original_workspace_key(tmp_path: Path) -> None:
+    key = "generated/首页 100%.png"
+    cache = tmp_path / ".harness-materialize" / key
+    assert tenant_workspace_path(str(cache), [tmp_path]) == key
+    assert (
+        tenant_workspace_path(".harness-materialize/" + key, [tmp_path])
+        == ".harness-materialize/" + key
+    )

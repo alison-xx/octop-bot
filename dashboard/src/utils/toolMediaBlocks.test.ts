@@ -3,12 +3,14 @@ import {
   agentAttachmentAccessUrl,
   agentMediaPreviewUrl,
   canonicalizeMediaApiUrl,
+  extractImagePathFromText,
   isHostAbsoluteMediaPath,
   needsAuthBlobFetch,
   parseStructuredToolOutput,
   parseToolExecutionFeedback,
   toMediaPreviewSource,
   workspaceDownloadUrl,
+  workspacePathFromAccessUrl,
 } from "./toolMediaBlocks";
 
 describe("workspaceDownloadUrl", () => {
@@ -201,4 +203,19 @@ describe("agentAttachmentAccessUrl", () => {
       agentAttachmentAccessUrl("a1", "inbound/x.pdf", "application/pdf"),
     ).toContain("/workspace/download?");
   });
+});
+
+it("opens a Unicode file URI after exactly one URI decoding step", () => {
+  const path = "/work/generated/首页 %20 100%.png";
+  const source = "file://" + encodeURI(path);
+  const url =
+    "/api/agents/test/media/preview?" + new URLSearchParams({ source });
+  expect(workspacePathFromAccessUrl(url)).toBe(path);
+  expect(toMediaPreviewSource(source)).toBe(source);
+});
+
+it("omits Markdown delimiters around an image path in a tool result", () => {
+  expect(extractImagePathFromText("File path: `/generated/首页.png`")).toBe(
+    "/generated/首页.png",
+  );
 });

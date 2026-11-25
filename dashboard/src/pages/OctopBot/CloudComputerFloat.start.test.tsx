@@ -5,6 +5,7 @@ import {
   type CloudComputerStatus,
 } from "../../api/modules/botCloudComputer";
 import { ApiResponseError } from "../../api/responseError";
+import CloudComputerHandoff from "./CloudComputerHandoff";
 import CloudComputerFloat, {
   nextMode,
   toggleCloudFloat,
@@ -45,6 +46,32 @@ beforeEach(() => {
 });
 
 describe("opening the cloud computer from its icon", () => {
+  it("opens one interactive screen when the chat and its handoff card are mounted together", async () => {
+    api.status.mockResolvedValue({ ...off, state: "running" });
+    api.takeover.mockResolvedValue({
+      ...off,
+      state: "running",
+      takeover: true,
+    });
+    api.openScreen.mockResolvedValue({
+      ws_path: "/ws",
+      session: "s",
+      expires_in: 60,
+    });
+    render(
+      <>
+        <CloudComputerFloat botId="writer" botName="Writer" />
+        <CloudComputerHandoff botId="writer" />
+      </>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "cloudComputer.handoffOpen" }),
+    );
+    expect(await screen.findByText("live screen")).toBeInTheDocument();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(api.openScreen).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the window open while the computer starts", () => {
     const rules = { pillOnly: false, idleSinceMs: null, nowMs: 0 };
     expect(nextMode("window", off, { ...rules, starting: true })).toBe(

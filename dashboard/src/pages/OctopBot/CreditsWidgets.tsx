@@ -17,6 +17,7 @@ import {
   isLowCredits,
   LOW_CREDITS,
   refreshCredits,
+  rememberCheckout,
   useLynxceCredits,
   type CreditsState,
 } from "./useLynxceCredits";
@@ -45,6 +46,7 @@ export function useRecharge() {
       const link = await lynxceWalletApi.recharge(wallet);
       const url = checkoutUrl(link.url, link.expires_at, wallet.source);
       if (!url) throw new Error(t("botCredits.openFailed"));
+      rememberCheckout(wallet, link.expires_at);
       if (tab) tab.location.href = url;
       else window.open(url, "_blank", "noopener,noreferrer");
     } catch (e) {

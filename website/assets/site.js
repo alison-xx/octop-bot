@@ -111,9 +111,11 @@
   const mobileNav = $(".mobile-nav");
   function setMenu(open) {
     if (!menuBtn || !mobileNav) return;
+    mobileNav.inert = !open;
     mobileNav.classList.toggle("open", open);
     menuBtn.setAttribute("aria-expanded", String(open));
   }
+  setMenu(false);
   menuBtn?.addEventListener("click", () =>
     setMenu(menuBtn.getAttribute("aria-expanded") !== "true"),
   );
@@ -121,17 +123,39 @@
     if (e.target.closest("a")) setMenu(false);
   });
   addEventListener("keydown", (e) => {
-    if (e.key === "Escape") setMenu(false);
+    if (e.key === "Escape" && mobileNav?.classList.contains("open")) {
+      setMenu(false);
+      menuBtn.focus();
+    }
   });
+
+  document.addEventListener("pointerdown", (e) => {
+    if (mobileNav?.classList.contains("open") && !mobileNav.contains(e.target) && !menuBtn.contains(e.target)) setMenu(false);
+  });
+  header?.addEventListener("focusout", (e) => {
+    if (e.relatedTarget && !header.contains(e.relatedTarget)) setMenu(false);
+  });
+  matchMedia("(max-width: 1180px)").addEventListener("change", () => setMenu(false));
+  addEventListener("pageshow", () => setMenu(false));
 
   const helpMenus = $$(".nav-more");
   function setHelp(menu, open) {
     menu.classList.toggle("open", open);
     $("button", menu).setAttribute("aria-expanded", String(open));
   }
-  helpMenus.forEach((menu) =>
-    $("button", menu).addEventListener("click", () => setHelp(menu, !menu.classList.contains("open"))),
-  );
+  helpMenus.forEach((menu) => {
+    const button = $("button", menu);
+    button.addEventListener("click", () => setHelp(menu, !menu.classList.contains("open")));
+    menu.addEventListener("pointerenter", (e) => {
+      if (e.pointerType === "mouse") setHelp(menu, true);
+    });
+    menu.addEventListener("pointerleave", () => {
+      if (!menu.contains(document.activeElement)) setHelp(menu, false);
+    });
+    menu.addEventListener("focusout", (e) => {
+      if (!menu.contains(e.relatedTarget)) setHelp(menu, false);
+    });
+  });
   document.addEventListener("click", (e) => {
     helpMenus.forEach((menu) => {
       if (!menu.contains(e.target)) setHelp(menu, false);
@@ -307,12 +331,23 @@
     const trigger = e.target.closest("[data-community]");
     if (!trigger || !community) return;
     e.preventDefault();
+    if (mobileNav?.contains(trigger)) menuBtn.focus();
     setMenu(false);
     community.dataset.kind = trigger.dataset.community === "business" ? "business" : "community";
     openDialog(community);
   });
 
   const lightbox = $("#lightbox");
+  if (lightbox) $$("[data-zoom]").forEach((shot) => {
+    shot.tabIndex = 0;
+    shot.setAttribute("role", "button");
+    shot.setAttribute("aria-haspopup", "dialog");
+    shot.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      shot.click();
+    });
+  });
   document.addEventListener("click", (e) => {
     const shot = e.target.closest("[data-zoom]");
     if (!shot || !lightbox) return;
@@ -381,13 +416,30 @@
     document.addEventListener("langchange", muteLoop);
   });
 
+  function wireTabKeys(tabs) {
+    tabs.forEach((tab, i) => tab.addEventListener("keydown", (e) => {
+      const target = {
+        ArrowLeft: tabs[(i - 1 + tabs.length) % tabs.length],
+        ArrowRight: tabs[(i + 1) % tabs.length],
+        Home: tabs[0],
+        End: tabs[tabs.length - 1],
+      }[e.key];
+      if (!target) return;
+      e.preventDefault();
+      target.focus();
+      target.click();
+    }));
+  }
+
   /* ---------------- Showcase tabs ---------------- */
   $$("[data-showcase]").forEach((box) => {
     const img = $("img", box);
     const caption = $(".showcase-caption", box);
     const tabs = $$("[role=tab]", box);
     let current = tabs.find((tab) => tab.getAttribute("aria-selected") === "true") || tabs[0];
+    let swapTimer;
     const show = (tab, animate) => {
+      clearTimeout(swapTimer);
       current = tab;
       tabs.forEach((other) => {
         const on = other === tab;
@@ -398,40 +450,33 @@
       const apply = () => {
         img.src = src;
         img.alt = tab.dataset[lang === "en" ? "altEn" : "alt"] || "";
-        caption.innerHTML = lang === "en" ? tab.dataset.captionEn : tab.dataset.caption;
+        caption.textContent = lang === "en" ? tab.dataset.captionEn : tab.dataset.caption;
         img.classList.remove("swap");
       };
       if (animate && !reduceMotion) {
         img.classList.add("swap");
-        setTimeout(apply, 180);
+        swapTimer = setTimeout(apply, 180);
       } else apply();
     };
-    tabs.forEach((tab, i) => {
-      tab.addEventListener("click", () => show(tab, true));
-      tab.addEventListener("keydown", (e) => {
-        const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-        if (!step) return;
-        const next = tabs[(i + step + tabs.length) % tabs.length];
-        next.focus();
-        show(next, true);
-      });
-    });
+    tabs.forEach((tab) => tab.addEventListener("click", () => show(tab, true)));
+    wireTabKeys(tabs);
     document.addEventListener("langchange", () => show(current, false));
     show(current, false);
   });
 
   /* ---------------- Downloads ---------------- */
+  const appleMobile = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   function detectOS() {
     const ua = navigator.userAgent;
     const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
-    if (/iPhone|iPad|iPod|Android/i.test(ua)) return "mobile";
+    if (appleMobile || /Android/i.test(ua)) return "mobile";
     if (/Win/i.test(platform) || /Windows/i.test(ua)) return "win";
     if (/Mac/i.test(platform) || /Mac OS X/i.test(ua)) return "mac";
     if (/Linux/i.test(platform)) return "linux";
     return "other";
   }
   const os = detectOS();
-  const phone = /Android/i.test(navigator.userAgent) ? "android" : /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "ios" : null;
+  const phone = /Android/i.test(navigator.userAgent) ? "android" : appleMobile ? "ios" : null;
   root.dataset.os = os;
 
   const esc = (s) =>
@@ -555,21 +600,30 @@
   const OUT =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M8 7h9v9"/></svg>';
   const WEB_APP = "https://bot.lynxce.cn";
-  const storeName = (url) => (/testflight\.apple\.com/.test(url) ? "TestFlight" : "App Store");
+  const IOS_STORE_URL = "https://apps.apple.com/app/id6838257776";
 
   /* A release can skip a platform (say, no Windows build). Offer that platform's newest package instead. */
   function releaseWith(test) {
-    const list = site ? [site.latest, ...site.history] : [];
+    const list = site ? [site.latest, ...site.history].filter((r) => r.channel === "stable") : [];
     return list.find((r) => r.assets.some(test) || (test.nas && r.nas && r.nas.image)) || null;
   }
-  const versionTag = (r) => (site && r !== site.latest && r.version !== site.latest.version ? ` · ${t("版本", "Version")} ${esc(r.version)}` : "");
+  const versionTag = (r) => ` · ${t("正式版", "Stable")} ${esc(r.version)}`;
   const isWin = (a) => a.platform === "win32";
   const isMac = (a) => a.platform === "darwin";
-  const isPhone = (a) => a.platform === "android" || a.platform === "ios";
+  const isAndroid = (a) => a.platform === "android";
   const isNas = Object.assign((a) => a.platform === "nas", { nas: true });
 
-  function primaryChoice(latest) {
-    const release = releaseWith(os === "win" ? isWin : os === "mac" ? isMac : isPhone) || latest;
+  function iosVersion() {
+    const listed = (asset) => asset.platform === "ios" && asset.url === IOS_STORE_URL && asset.appVersion;
+    return releaseWith(listed)?.assets.find(listed)?.appVersion;
+  }
+
+  function primaryChoice() {
+    if (phone === "ios") {
+      return { href: IOS_STORE_URL, external: true, label: t("前往 App Store 下载", "Download on the App Store"), sub: "iPhone · iPad", icon: OS_ICON.phone, version: iosVersion() };
+    }
+    const release = releaseWith(os === "win" ? isWin : os === "mac" ? isMac : isAndroid);
+    if (!release) return null;
     if (os === "win") {
       const a = pick(release, "win32", "installer", "x64");
       return a && { href: assetUrl(release, a), label: t("下载 Windows 版", "Download for Windows"), sub: `x64 · ${formatSize(a.size)}`, icon: OS_ICON.win, version: release.version };
@@ -582,15 +636,11 @@
       const a = pick(release, "android");
       return a && { href: assetUrl(release, a), label: t("下载 Android 版", "Download for Android"), sub: `APK · ${formatSize(a.size)}`, icon: OS_ICON.phone, version: a.appVersion };
     }
-    if (phone === "ios") {
-      const a = pick(release, "ios");
-      return a && { href: a.url, external: true, label: t("下载 iPhone 版", "Get it for iPhone"), sub: storeName(a.url), icon: OS_ICON.phone, version: a.appVersion };
-    }
     return null;
   }
 
   function renderPrimary(release) {
-    const choice = primaryChoice(release);
+    const choice = primaryChoice();
     $$("[data-download-primary]").forEach((btn) => {
       btn.removeAttribute("target");
       btn.removeAttribute("rel");
@@ -603,24 +653,26 @@
         } else btn.setAttribute("download", "");
         btn.innerHTML = `${choice.icon}<span>${choice.label}</span>`;
       } else {
-        btn.href = "download.html";
+        btn.href = $("#platforms") ? "#platforms-section" : "download.html";
         btn.removeAttribute("download");
         btn.innerHTML = `${ARROW}<span>${t("选择版本下载", "Choose a download")}</span>`;
       }
     });
     $$("[data-download-note]").forEach((el) => {
       el.textContent = choice
-        ? `${t("版本", "Version")} ${choice.version} · ${choice.sub} · ${t("免费开源", "Free & open source")}`
+        ? `${choice.version ? `${t("版本", "Version")} ${choice.version} · ` : ""}${choice.sub} · ${t("免费开源", "Free & open source")}`
         : os === "mobile"
-          ? t("在手机上可以直接用网页版，客户端请在 Windows 或 Mac 电脑上下载。", "On a phone, use the web app. The desktop app is for Windows PCs and Macs.")
-          : t("提供 Windows x64 和 Apple 芯片 Mac 版本。", "Available for Windows x64 and Macs with Apple silicon.");
+          ? t("手机也可以用浏览器登录灵策账号，继续云端对话。", "Sign in with Lynxce in your mobile browser to continue a cloud chat.")
+          : t("Windows x64 · Apple 芯片 Mac · Android APK", "Windows x64 · Apple silicon Mac · Android APK");
     });
+    if (!release) return;
     $$("[data-version]").forEach((el) => (el.textContent = release.version));
     $$("[data-release-date]").forEach((el) => (el.textContent = release.date));
   }
 
   function fileRow(release, asset, title, meta, recommended) {
-    return `<div class="file">
+    const key = [asset.platform, asset.kind, asset.arch].filter(Boolean).join("-");
+    return `<div class="file" data-package="${esc(key)}">
       <div><b>${title}${recommended ? ` <span class="badge" style="margin-left:6px">${t("推荐", "Recommended")}</span>` : ""}</b><small>${meta} · ${formatSize(asset.size)}</small></div>
       <a class="btn ${recommended ? "btn-primary" : "btn-ghost"} btn-sm" href="${esc(assetUrl(release, asset))}" download>${ARROW}<span>${t("下载", "Download")}</span></a>
       <div class="sha"><span>SHA-256</span><code title="${esc(asset.sha256)}">${esc(asset.sha256)}</code><button class="copy" type="button" data-copy="${esc(asset.sha256)}">${t("复制", "Copy")}</button></div>
@@ -631,20 +683,27 @@
         <div class="platform-head">${icon}<div><h3 class="h3">${title}</h3><small class="muted">${sub}</small></div>${detected ? `<span class="badge">${t("你的系统", "Your system")}</span>` : ""}</div>
         ${body}</article>`;
 
+  let platformRefreshPending = false;
   function renderPlatforms(latest, beta) {
     const box = $("#platforms");
     if (!box) return;
-    const winRel = releaseWith(isWin) || latest;
-    const macRel = releaseWith(isMac) || latest;
-    const phoneRel = releaseWith(isPhone) || latest;
+    // Keep the pressed link or button in the DOM through its activation.
+    if ($("a:active, button:active", box)) {
+      platformRefreshPending = true;
+      return;
+    }
+    platformRefreshPending = false;
+    const winRel = releaseWith(isWin);
+    const macRel = releaseWith(isMac);
+    const androidRel = releaseWith(isAndroid);
     const nasRel = releaseWith(isNas) || latest;
-    const win = pick(winRel, "win32", "installer", "x64");
-    const winArm = pick(winRel, "win32", "installer", "arm64");
-    const zip = pick(winRel, "win32", "portable");
-    const mac = pick(macRel, "darwin", null, "arm64");
-    const intel = pick(macRel, "darwin", null, "x64");
-    const apk = pick(phoneRel, "android");
-    const ios = pick(phoneRel, "ios");
+    const win = winRel && pick(winRel, "win32", "installer", "x64");
+    const winArm = winRel && pick(winRel, "win32", "installer", "arm64");
+    const zip = winRel && pick(winRel, "win32", "portable");
+    const mac = macRel && pick(macRel, "darwin", null, "arm64");
+    const intel = macRel && pick(macRel, "darwin", null, "x64");
+    const apk = androidRel && pick(androidRel, "android");
+    const storeVersion = iosVersion();
     const fpk = pick(nasRel, "nas");
     const image = nasRel.nas && nasRel.nas.image;
     const cards = [];
@@ -679,23 +738,25 @@
         ),
       );
     }
-    if (apk || ios) {
-      const version = (apk || ios).appVersion;
+    cards.push(
+      card(
+        "ios",
+        OS_ICON.phone,
+        "iOS / iPadOS",
+        "iPhone · iPad",
+        `<div class="files"><div class="file"><div><b>App Store</b>${storeVersion ? `<small>${esc(storeVersion)}</small>` : ""}</div><a class="btn ${phone === "ios" ? "btn-primary" : "btn-ghost"} btn-sm" href="${IOS_STORE_URL}"><span>${t("前往 App Store 下载", "Download on the App Store")}</span>${OUT}</a></div></div>`,
+        phone === "ios",
+      ),
+    );
+    if (apk) {
       cards.push(
         card(
-          "phone",
+          "android",
           OS_ICON.phone,
-          t("手机", "Phone"),
-          `${[apk && "Android", ios && "iPhone"].filter(Boolean).join(" · ")}${version ? ` · ${t("版本", "Version")} ${esc(version)}` : ""}`,
-          `<div class="files">
-          ${apk ? fileRow(phoneRel, apk, "Android", "APK", phone === "android") : ""}
-          ${
-            ios
-              ? `<div class="file"><div><b>iPhone / iPad</b><small>${storeName(ios.url)}</small></div><a class="btn ${phone === "ios" ? "btn-primary" : "btn-ghost"} btn-sm" href="${esc(ios.url)}" target="_blank" rel="noopener"><span>${t("前往获取", "Get it")}</span>${OUT}</a></div>`
-              : ""
-          }
-        </div><p class="muted" style="font-size:14px">${t("手机端连接你电脑或 NAS 上的 Octop Bot 使用。", "The phone app connects to Octop Bot on your computer or NAS.")}</p>`,
-          os === "mobile",
+          "Android",
+          apk.appVersion ? `APK · ${esc(apk.appVersion)}` : "APK",
+          `<div class="files">${fileRow(androidRel, apk, "Android", "APK", phone === "android")}</div>`,
+          phone === "android",
         ),
       );
     }
@@ -744,7 +805,17 @@
         );
       }
     }
+    const focused = $(":focus", box);
+    const packageKey = focused?.closest("[data-package]")?.dataset.package;
     box.innerHTML = cards.join("");
+    if (focused) {
+      const replacement = $$("a, button", box).find((control) => {
+        if (control.tagName !== focused.tagName) return false;
+        if (packageKey) return control.closest("[data-package]")?.dataset.package === packageKey;
+        return focused.href ? control.href === focused.href : control.dataset.copy === focused.dataset.copy;
+      });
+      replacement?.focus({ preventScroll: true });
+    }
     $$("[data-intel-note]").forEach((el) => (el.hidden = Boolean(intel)));
   }
 
@@ -752,16 +823,11 @@
     const box = $("#history");
     if (!box) return;
     box.innerHTML = releases
-      .map((r, i) => {
+      .map((r) => {
         const notes = (r.notes[lang] && r.notes[lang].length ? r.notes[lang] : r.notes.zh) || [];
-        const badge =
-          i === 0
-            ? ` <span class="badge" style="vertical-align:middle">${t("最新", "Latest")}</span>`
-            : r.channel === "beta" && r.live
-              ? ` <span class="badge neutral" style="vertical-align:middle">${t("测试版", "Beta")}</span>`
-              : "";
+        const badge = r.channel === "beta" ? t("测试版", "Beta") : t("正式版", "Stable");
         return `<article class="release reveal in">
-        <div><h3>${esc(r.version)}${badge}</h3><time datetime="${esc(r.date)}">${esc(r.date)}</time></div>
+        <div><h3>${esc(r.version)} <span class="badge neutral">${badge}</span></h3><time datetime="${esc(r.date)}">${esc(r.date)}</time></div>
         <div><ul>${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
         ${
           r.tag
@@ -777,41 +843,77 @@
 
   /* The manifest decides the current version; releases.json keeps older releases for the changelog
      and stands in while no manifest is published. The static HTML is the last fallback. */
-  function loadReleases() {
-    const live = loadManifest()
-      .then((list) => list.map((r) => ({ ...r, live: true })))
-      .catch(() => []);
-    const listed = fetch("releases.json", { cache: "no-cache" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .catch(() => ({}));
-    return Promise.all([live, listed]).then(([manifestReleases, data]) => {
-      /* releases.json "hidden" lists platforms not to offer yet, e.g. "ios" before the App Store listing is live. */
-      const hidden = new Set(data.hidden || []);
-      const fromManifest = manifestReleases.map((r) => ({ ...r, assets: r.assets.filter((a) => !hidden.has(a.platform)) }));
-      const fromList = data.releases || [];
-      const stable = fromManifest.find((r) => r.channel === "stable");
-      const beta = fromManifest.find((r) => r.channel === "beta");
-      const latest = stable || beta || fromList[0];
-      if (!latest) return null;
-      const seen = new Set();
-      /* For a version in both, keep the hand-written bilingual notes from releases.json. */
-      const history = [...fromList, ...fromManifest]
-        .filter((r) => !seen.has(r.version) && seen.add(r.version))
-        .sort((a, b) => compareVersions(b.version, a.version));
-      return { latest, beta: stable && beta && compareVersions(beta.version, stable.version) > 0 ? beta : null, history, hidden };
+  function mergeReleases(manifestReleases, data) {
+    /* The site archive controls which package platforms are visible, including signed assets. */
+    const hidden = new Set(data.hidden || []);
+    const fromManifest = manifestReleases.map((r) => ({ ...r, assets: r.assets.filter((a) => !hidden.has(a.platform)) }));
+    const fromList = (data.releases || []).map((r) => {
+      const assets = r.assets.filter((a) => !hidden.has(a.platform));
+      const live = fromManifest.find((entry) => entry.version === r.version);
+      return live ? { ...r, channel: live.channel, assets: [...live.assets, ...assets] } : { ...r, assets };
     });
+    const stable = fromManifest.find((r) => r.channel === "stable");
+    const beta = fromManifest.find((r) => r.channel === "beta");
+    const latest = stable || fromList.find((r) => r.channel === "stable") || beta || fromList[0];
+    if (!latest) return null;
+    const seen = new Set();
+    /* For a version in both, keep the hand-written bilingual notes from releases.json. */
+    const history = [...fromList, ...fromManifest]
+      .filter((r) => !seen.has(r.version) && seen.add(r.version))
+      .sort((a, b) => compareVersions(b.version, a.version));
+    return { latest, beta: beta && (!stable || compareVersions(beta.version, stable.version) > 0) ? beta : null, history, hidden };
+  }
+
+  async function loadReleases(onAvailable) {
+    let manifestReleases = [];
+    let archive = null;
+    let loaded = null;
+    function update() {
+      // The site archive can hide even a signed package. Wait for its policy or a failed lookup.
+      if (!archive) return;
+      loaded = mergeReleases(manifestReleases, archive);
+      if (loaded) onAvailable?.(loaded);
+    }
+    const live = loadManifest().catch(() => null).then((list) => {
+      if (!list?.length) return;
+      manifestReleases = list.map((r) => ({ ...r, live: true }));
+      update();
+    });
+    const listed = fetch("releases.json", { cache: "no-cache" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((data) => {
+        archive = {
+          releases: Array.isArray(data?.releases) ? data.releases : [],
+          hidden: Array.isArray(data?.hidden) ? data.hidden : [],
+        };
+        update();
+      });
+    await Promise.all([live, listed]);
+    return loaded;
   }
 
   let site = null;
   function renderReleases() {
-    if (!site) return;
+    if (!site) {
+      if (phone === "ios") renderPrimary(null);
+      return;
+    }
     renderPrimary(site.latest);
     renderPlatforms(site.latest, site.beta);
     renderHistory(site.history);
   }
+  if ($("#platforms")) {
+    const finishPress = () => {
+      if (!platformRefreshPending) return;
+      platformRefreshPending = false;
+      requestAnimationFrame(() => renderPlatforms(site.latest, site.beta));
+    };
+    for (const event of ["pointerup", "pointercancel", "keyup", "blur"]) window.addEventListener(event, finishPress);
+  }
   if ($("[data-download-primary], #platforms, #history")) {
-    loadReleases().then((loaded) => {
-      if (!loaded) return;
+    renderReleases();
+    loadReleases((loaded) => {
       site = loaded;
       renderReleases();
     });
@@ -1000,10 +1102,15 @@
     const tabs = $$("[role=tab]", box);
     const panels = $$("[role=tabpanel]", box);
     const select = (id) => {
-      tabs.forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.panel === id)));
+      tabs.forEach((tab) => {
+        const active = tab.dataset.panel === id;
+        tab.setAttribute("aria-selected", String(active));
+        tab.tabIndex = active ? 0 : -1;
+      });
       panels.forEach((panel) => (panel.hidden = panel.id !== id));
     };
     tabs.forEach((tab) => tab.addEventListener("click", () => select(tab.dataset.panel)));
+    wireTabKeys(tabs);
     select(os === "mac" ? "steps-mac" : "steps-win");
   });
 
@@ -1027,6 +1134,7 @@
       if (empty) empty.hidden = shown > 0;
     };
     input?.addEventListener("input", apply);
+    document.addEventListener("langchange", apply);
     buttons.forEach((btn) =>
       btn.addEventListener("click", () => {
         category = btn.dataset.cat;
@@ -1115,9 +1223,40 @@
   const zh = () => document.documentElement.dataset.lang !== "en";
   let profile = null, quota = null, generation = 0;
   function label(cn, en) { return zh() ? cn : en; }
+  const accountIdentity = document.getElementById("account-identity");
+  function displayName(session) {
+    return [profile?.displayName, profile?.name, profile?.nickname, session.user?.displayName, session.user?.name, session.user?.nickname]
+      .find(value => typeof value === "string" && value.trim())?.trim() || label("账号", "Account");
+  }
+  function avatar(session, name) {
+    const node = document.createElement("span"); node.className = "auth-avatar"; node.setAttribute("aria-hidden", "true");
+    const initial = typeof Intl.Segmenter === "function"
+      ? new Intl.Segmenter().segment(name)[Symbol.iterator]().next().value.segment
+      : Array.from(name)[0];
+    node.textContent = initial;
+    const source = profile ? profile.avatarUrl : session.user?.avatarUrl;
+    if (!source) return node;
+    try {
+      const url = new URL(source);
+      if (url.protocol !== "https:" || url.username || url.password) return node;
+    } catch (_) { return node; }
+    const img = document.createElement("img");
+    img.alt = ""; img.referrerPolicy = "no-referrer";
+    img.addEventListener("error", () => { node.textContent = initial; }, { once: true });
+    img.src = source;
+    node.replaceChildren(img);
+    return node;
+  }
+  function identity(session, name) {
+    const row = document.createElement("div"); row.className = "auth-identity";
+    const text = document.createElement("strong"); text.textContent = name;
+    row.append(avatar(session, name), text); return row;
+  }
   function render() {
-    document.querySelectorAll(".auth-nav").forEach((el) => el.remove());
     const session = auth.session();
+    document.querySelectorAll(".auth-nav").forEach((el) => el.remove());
+    const name = session ? displayName(session) : "";
+    if (accountIdentity) accountIdentity.replaceChildren(...(session ? [identity(session, name)] : []));
     if (!session && !auth.config.loginEnabled) return;
     for (const parent of [tools, mobile]) {
       if (!parent) continue;
@@ -1126,27 +1265,30 @@
         const login = document.createElement("a"); login.href = "/login.html?next=" + encodeURIComponent(auth.safePath(location.pathname + location.search + location.hash)); login.textContent = label("登录", "Sign in"); box.append(login);
       } else {
         const details = document.createElement("details"), summary = document.createElement("summary");
-        const avatar = document.createElement("span"); avatar.className = "auth-avatar";
-        const name = profile?.name || profile?.nickname || session.user?.name || session.user?.nickname || "U";
-        if (profile?.avatarUrl && /^https:\/\//i.test(profile.avatarUrl)) { const img = document.createElement("img"); img.src = profile.avatarUrl; img.alt = ""; avatar.append(img); } else avatar.textContent = String(name).slice(0, 1);
-        const balance = document.createElement("span"); const left = Number(quota?.creditsRemaining ?? quota?.balance ?? quota?.remaining); balance.textContent = `✦ ${Number.isFinite(left) ? left.toLocaleString("en-US") : "—"}`;
-        summary.append(avatar, balance); details.append(summary);
+        const balance = document.createElement("span"); const left = quota?.availableCredits ?? quota?.creditsRemaining; balance.textContent = `✦ ${Number.isFinite(left) ? left.toLocaleString("en-US") : "—"}`;
+        summary.setAttribute("aria-label", label("账号菜单", "Account menu") + " · " + name);
+        summary.append(avatar(session, name), balance); details.append(summary);
         const menu = document.createElement("div"); menu.className = "auth-menu";
         const account = document.createElement("a"); account.href = "/account.html"; account.textContent = label("个人中心", "Account");
         const logout = document.createElement("button"); logout.type = "button"; logout.textContent = label("退出登录", "Sign out"); logout.addEventListener("click", () => { profile = null; quota = null; auth.logout(); });
-        menu.append(account, logout); details.append(menu); box.append(details);
+        menu.append(identity(session, name), account, logout); details.append(menu); box.append(details);
       }
       if (parent === tools) parent.insertBefore(box, parent.querySelector(".btn-primary")); else parent.prepend(box);
     }
   }
-  async function update() {
-    const id = ++generation; profile = null; quota = null; render();
+  async function update(changed = false) {
+    const id = ++generation;
+    if (changed) { profile = null; quota = null; }
+    render();
     if (!auth.session()) return;
-    const results = await Promise.allSettled([auth.api("/api/user/profile"), auth.api("/api/user/quota")]);
-    if (id !== generation || !auth.session()) return;
+    const results = await Promise.allSettled([auth.api("/api/user/profile", { cache: "no-store" }), auth.api("/api/user/quota")]);
+    // Reading the session can synchronously notify us of a newer sign-in.
+    if (!auth.session() || id !== generation) return;
     if (results[0].status === "fulfilled") profile = results[0].value;
     if (results[1].status === "fulfilled") quota = results[1].value;
     render();
   }
-  auth.onChange(update); document.addEventListener("langchange", render); auth.ready.then(update);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && auth.session()) update(); });
+  window.addEventListener("pageshow", event => { if (event.persisted && auth.session()) update(); });
+  auth.onChange((_session, changed) => update(changed)); document.addEventListener("langchange", render); auth.ready.then(() => update(true));
 })();

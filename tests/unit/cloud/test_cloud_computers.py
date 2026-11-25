@@ -1356,3 +1356,53 @@ def test_unpaid_use_cancels_and_starts_a_new_warning_cycle(
     clock.now += 15 * 86400
     manager.tick()
     assert sent == ["bot", "bot"]
+
+
+def test_model_checks_handback_before_another_action(setup: Any) -> None:
+    manager, _, _, _ = setup
+    manager.ensure_running("bot1", 7)
+    manager.set_takeover("bot1", 7, True)
+
+    def work(*args: Any) -> str:
+        return "action"
+
+    def review(*args: Any) -> tuple[str, bool]:
+        return "still private", False
+
+    assert manager.model_screen("bot1", 7, "taken", work, review) == "taken"
+    manager.release_takeover_if_held("bot1", 7)
+    assert manager.model_screen("bot1", 7, "taken", work, review) == "still private"
+    assert manager.record("bot1", 7).check_handoff_frame
+    assert manager.model_screen("bot1", 7, "taken", work, lambda *_: ("checked", True)) == "checked"
+    assert manager.model_screen("bot1", 7, "taken", work, review) == "action"
+
+
+@pytest.mark.parametrize("expiry_observer", ["viewing", "model_screen", "tick"])
+def test_expired_control_and_reclaimed_control_each_require_review(
+    setup: Any, expiry_observer: str
+) -> None:
+    manager, _, _, clock = setup
+    manager.ensure_running("bot1", 7)
+    manager.set_takeover("bot1", 7, True)
+    clock.now += computers.VIEWER_GRACE_SECONDS + 1
+
+    def observe() -> str:
+        return manager.model_screen(
+            "bot1", 7, "human control", lambda *_: "ordinary frame", lambda *_: ("review", True)
+        )
+
+    if expiry_observer == "viewing":
+        manager.viewing("bot1", 7)
+    elif expiry_observer == "tick":
+        manager.tick()
+    assert observe() == "review"
+    assert not manager.record("bot1", 7).takeover
+    manager.viewing("bot1", 7)
+    assert observe() == "ordinary frame"
+
+    manager.set_takeover("bot1", 7, True)
+    assert observe() == "human control"
+    manager.release_takeover_if_held("bot1", 7)
+    assert manager.record("bot1", 7).check_handoff_frame
+    assert observe() == "review"
+    assert observe() == "ordinary frame"

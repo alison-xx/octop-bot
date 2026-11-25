@@ -128,6 +128,27 @@ class LynxceCodeLoginBody(BaseModel):
     )
 
 
+class LynxceSignupGrant(BaseModel):
+    credits: int | float = Field(description="Credits granted to the new Lynxce account.")
+    expiresAt: str | None = Field(
+        description="Grant expiration time as an ISO 8601 string, or null when it does not expire."
+    )
+
+
+class LynxceLoginResponse(BaseModel):
+    access_token: str
+    token_type: str
+    expires_in: int
+    user: dict[str, Any]
+    cloud: bool = Field(default=False, description="Whether this is a cloud account.")
+    isNewUser: bool | None = Field(
+        default=None, description="Whether Lynxce created a new account during sign-in."
+    )
+    signupGrant: LynxceSignupGrant | None = Field(
+        default=None, description="Signup credit grant from Lynxce, or null if none."
+    )
+
+
 class LynxceIdentityStatus(BaseModel):
     enabled: bool = Field(description="This build signs its owner in with a Lynxce account.")
     claimed: bool = Field(description="An owner Lynxce account is already bound.")
@@ -204,7 +225,12 @@ async def _claim(server: Any, account_id: str, display_name: str | None, locale:
     return user
 
 
-@router.post("/lynxce/login", summary="Sign in with a Lynxce account")
+@router.post(
+    "/lynxce/login",
+    summary="Sign in with a Lynxce account",
+    response_model=LynxceLoginResponse,
+    response_model_exclude_unset=True,
+)
 async def lynxce_login(
     body: LynxceLoginBody, request: Request, server: Any = Depends(get_server)
 ) -> dict[str, Any]:
@@ -257,7 +283,12 @@ async def lynxce_send_code(
     return LynxceCodeSent(channel=await lynxce_cloud.request_login_code(body.target, locale))
 
 
-@router.post("/lynxce/code-login", summary="Sign in with a Lynxce one-time code")
+@router.post(
+    "/lynxce/code-login",
+    summary="Sign in with a Lynxce one-time code",
+    response_model=LynxceLoginResponse,
+    response_model_exclude_unset=True,
+)
 async def lynxce_code_login(
     body: LynxceCodeLoginBody, request: Request, server: Any = Depends(get_server)
 ) -> dict[str, Any]:
@@ -293,6 +324,8 @@ class LynxceSessionLoginBody(BaseModel):
 @router.post(
     "/lynxce/session-login",
     summary="Sign in with a Lynxce session handed over by the desktop app",
+    response_model=LynxceLoginResponse,
+    response_model_exclude_unset=True,
     description=(
         "Octop Bot cloud only. The desktop app moves its Lynxce sign-in here when it starts "
         "keeping its data in the cloud, so the user does not sign in twice. The session is "
@@ -387,6 +420,7 @@ async def lynxce_token_login(
         ttl_seconds=3600,
         mfa_version=int(user_row.mfa_version),
         password_version=int(user_row.password_version),
+        session_version=int(user_row.session_version),
     )
     services.audit_repo.write(actor=user.username, action="auth.lynxce_token_login")
     return {
@@ -426,7 +460,11 @@ async def _cloud_sign_in(
     locale = normalize_locale(requested_locale or resolve_request_locale(request))
     user = await cloud_accounts.provision(server.services, server.user_manager, session, locale)
     # Tells clients this server also keeps the Lynxce wallet for the account.
-    return {**_issue(server, user, "auth.lynxce_cloud_login"), "cloud": True}
+    return {
+        **_issue(server, user, "auth.lynxce_cloud_login"),
+        "cloud": True,
+        **session.login_fields,
+    }
 
 
 def _issue(server: Any, user: Any, action: str) -> dict[str, Any]:
@@ -482,4 +520,10 @@ async def _sign_in(
         if user is None:
             _failures.setdefault(ip, []).append(time.time())
             raise OctopError.localized(ErrorCode.LYNXCE_OWNER_MISMATCH, status=403)
-    return _issue(server, user, "auth.lynxce_login")
+        previous_avatar = binding.avatar_url if binding else None
+        avatar = previous_avatar if identity.avatar_url is None else identity.avatar_url or None
+        if avatar != previous_avatar:
+            await asyncio.to_thread(bind_owner, settings, identity.account_id, user.id, avatar)
+    issued = _issue(server, user, "auth.lynxce_login")
+    issued["user"]["avatar_url"] = avatar
+    return issued

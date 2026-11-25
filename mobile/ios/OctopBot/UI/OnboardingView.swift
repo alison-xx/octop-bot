@@ -12,11 +12,6 @@ struct OnboardingView: View {
     @State private var error: String?
     @State private var showServer = false
     @State private var ownModel = false
-    /// Octop Bot cloud answered: a Lynxce sign-in lands there (Bots, groups and schedules in the
-    /// cloud). Until it is up, Lynxce sign-in talks to Lynxce directly.
-    @State private var cloud: Bool?
-    /// The cloud check got no answer (even on a slower retry), so this sign-in goes to Lynxce directly.
-    @State private var cloudUnreachable = false
     @FocusState private var focus: Field?
 
     @State private var shakeAccount: CGFloat = 0
@@ -93,15 +88,6 @@ struct OnboardingView: View {
 
     private var target: LynxceBackend.CodeTarget? { LynxceBackend.CodeTarget(account) }
 
-    private func useCloud() async -> Bool {
-        if let cloud { return cloud }
-        let check = await ServerBackend.lynxceCloudAvailable()
-        let available = check == .available
-        cloud = available
-        // Say so rather than switching modes silently on a slow network.
-        cloudUnreachable = check == .unreachable
-        return available
-    }
     /// Signing in with something missing points at the account field first, then the code or password.
     static func missingField(account: String, usePassword: Bool) -> Field {
         let accountMissing = usePassword
@@ -197,24 +183,6 @@ struct OnboardingView: View {
                 .accessibilityIdentifier("loginMode")
             }
             .font(.footnote)
-            if cloudUnreachable {
-                VStack(alignment: .leading, spacing: 4) {
-                    Label("onboarding.cloudUnreachable", systemImage: "icloud.slash")
-                    Button("onboarding.cloudRetry") {
-                        cloud = nil
-                        cloudUnreachable = false
-                        entry.reset()
-                        error = nil
-                    }
-                    .fontWeight(.semibold)
-                    .foregroundStyle(Palette.text)
-                    .disabled(busy)
-                }
-                .font(.footnote)
-                .foregroundStyle(Palette.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityIdentifier("cloudUnreachable")
-            }
             // Always looks tappable: with something missing it shakes that field instead.
             Button(action: signIn) {
                 HStack(spacing: 8) {
@@ -278,17 +246,12 @@ struct OnboardingView: View {
     }
 
     private func sendCode() {
-        guard entry.canSend(to: account), let target else { return }
+        guard entry.canSend(to: account), target != nil else { return }
         error = nil
         Task {
-            let cloud = await useCloud()
             let account = account
             if let failure = await entry.send({
-                if cloud {
-                    try await ServerBackend.sendLynxceCode(ServerBackend.lynxceCloud, target: account)
-                } else {
-                    try await LynxceBackend.requestCode(target: target)
-                }
+                try await ServerBackend.sendLynxceCode(ServerBackend.lynxceCloud, target: account)
             }) {
                 error = LynxceBackend.codeMessage(for: failure)
             }
@@ -312,18 +275,13 @@ struct OnboardingView: View {
             defer { busy = false }
             do {
                 let backend: ChatBackend
-                let cloud = await useCloud()
                 let trimmed = account.trimmingCharacters(in: .whitespaces)
                 if usePassword {
-                    backend = cloud
-                        ? try await ServerBackend.signInWithLynxce(ServerBackend.lynxceCloud, account: trimmed, password: password)
-                        : try await LynxceBackend.signIn(account: trimmed, password: password)
+                    backend = try await ServerBackend.signInWithLynxce(ServerBackend.lynxceCloud, account: trimmed, password: password)
                     password = ""
                 } else {
-                    guard let target else { return }
-                    backend = cloud
-                        ? try await ServerBackend.signInWithLynxceCode(ServerBackend.lynxceCloud, target: trimmed, code: entry.code)
-                        : try await LynxceBackend.signIn(target: target, code: entry.code)
+                    guard target != nil else { return }
+                    backend = try await ServerBackend.signInWithLynxceCode(ServerBackend.lynxceCloud, target: trimmed, code: entry.code)
                     entry.code = ""
                     entry.reset()
                 }
