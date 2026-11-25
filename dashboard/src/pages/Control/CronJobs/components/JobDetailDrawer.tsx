@@ -142,7 +142,9 @@ export function JobDetailDrawer({
                   ? "success"
                   : phase === "failed"
                   ? "error"
-                  : phase === "missed" || phase === "waiting"
+                  : phase === "missed" ||
+                    phase === "waiting" ||
+                    phase === "expired"
                   ? "warning"
                   : "default"
               }

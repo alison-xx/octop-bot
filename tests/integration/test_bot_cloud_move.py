@@ -52,7 +52,8 @@ async def both(env_admin_alice, monkeypatch):
     monkeypatch.setattr(auth_lynxce, "bot_cloud_enabled", lambda: True)
     monkeypatch.setattr(auth_lynxce, "bot_cloud_session_login_enabled", lambda: True)
     monkeypatch.setattr(bot_move_in, "bot_cloud_move_in_enabled", lambda: True)
-    monkeypatch.setenv("OCTOP_BOT_CLOUD_ORIGIN", "http://cloud.test")
+    monkeypatch.setenv("OCTOP_DASHBOARD_DEV", "1")
+    monkeypatch.setenv("OCTOP_BOT_CLOUD_ORIGIN", "http://127.0.0.1:18400")
     monkeypatch.setattr(
         lynxce_cloud, "_client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(_lynxce))
     )

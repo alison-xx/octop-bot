@@ -326,6 +326,26 @@ class CronJobRepo:
                 (ts, status, error, now_ts(), cron_id),
             )
 
+    def expire_wait(self, cron_id: str, agent_id: str, *, deadline: float, text: str) -> None:
+        """Leave a later run untouched if this notice is being retried after an outage."""
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE cron_jobs SET last_status='expired', last_error=?, updated_at=? "
+                "WHERE cron_id=? AND agent_id=? AND last_status='waiting' AND last_run_at<=? "
+                "AND run_lease_token IS NULL AND NOT EXISTS "
+                "(SELECT 1 FROM bot_handoff_deadlines WHERE agent_id=? AND origin=? AND expires_at>?)",
+                (
+                    text,
+                    now_ts(),
+                    cron_id,
+                    agent_id,
+                    int(deadline),
+                    agent_id,
+                    f"cron:{cron_id}",
+                    deadline,
+                ),
+            )
+
     def mark_missed(self, cron_id: str) -> bool:
         """Disable a one-shot that never ran and record ``last_status='missed'``.
 

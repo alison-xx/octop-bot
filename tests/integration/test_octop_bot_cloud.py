@@ -1810,6 +1810,101 @@ async def test_download_limits_read_when_file_grows(monkeypatch: pytest.MonkeyPa
     assert exc.value.status == 413
 
 
+async def test_desktop_model_screen_serializes_actions_and_handback(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import base64
+    import io
+
+    from PIL import Image
+
+    from octop.infra.cloud.computers import manager as computers
+
+    tree = (
+        '<desktop xmlns:st="https://accessibility.ubuntu.example.org/ns/state" '
+        'xmlns:cp="https://accessibility.ubuntu.example.org/ns/component">'
+        '<frame name="Fixture" st:active="true" st:showing="true" cp:screencoord="(0, 0)" cp:size="(1920, 1080)">'
+        '<push-button name="Preview" st:showing="true" cp:screencoord="(120, 120)" cp:size="(120, 120)"/>'
+        "</frame></desktop>"
+    )
+    picture = Image.new("RGB", (1920, 1080), "white")
+    png, jpg = io.BytesIO(), io.BytesIO()
+    picture.save(png, "PNG")
+    picture.resize((1280, 720)).save(jpg, "JPEG")
+    current = tree
+    scripts = []
+
+    class Editor(_Computer):
+        def accessibility(self, instance_id: str) -> str:
+            return current
+
+        def screenshot(self, instance_id: str) -> bytes:
+            return png.getvalue()
+
+        def run_python(self, instance_id: str, code: str) -> str:
+            scripts.append(code)
+            return "SNAPSHOT:" + base64.b64encode(jpg.getvalue()).decode("ascii")
+
+    provider = Editor()
+    monkeypatch.setattr(computers, "_manager", None)
+    monkeypatch.setattr(computers, "computer_driver", lambda: provider)
+    monkeypatch.setenv("OCTOP_BOT_COMPUTE_BILLING", "off")
+    async with octop_client(tmp_octop_home) as (client, _srv):
+        await _sign_in(client, "13800000050")
+        login = await client.post(
+            "/api/auth/lynxce/token-login", json={"access_token": _lynxce_jwt()}
+        )
+        auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        made = await client.put(
+            "/api/octop-bot/remote-bots/01JD3Q8Z2N6W4M5X7Y9A0B1C2D:K7Q2PZ",
+            headers=auth,
+            json={"name": "Editor"},
+        )
+        base = "/api/octop-bot/computers/" + made.json()["agent_id"]
+        status = (await client.get(base, headers=auth)).json()
+        assert status["model_screen_version"] == 1 and status["state"] == "none"
+        assert not provider.states
+
+        async def act(action: str, **args: Any) -> dict[str, Any]:
+            response = await client.post(
+                base + "/model-screen",
+                headers=auth,
+                json={"thread_id": "chat-one", "action": action, **args},
+            )
+            assert response.status_code == 200, response.text
+            assert response.headers["cache-control"] == "no-store"
+            return response.json()
+
+        assert "Preview" in (await act("elements"))["text"]
+        click = await act("click", x=100, y=100)
+        assert click["status"] == "ok" and base64.b64decode(click["image_base64"]) == jpg.getvalue()
+        assert len(scripts) == 1
+        assert (await act("elements", thread_id="chat-two"))["status"] == "busy"
+        for name in ("Submit", "Pay"):
+            current = tree.replace("Preview", name)
+            response = await act("click", x=100, y=100)
+            assert response["status"] == "needs_human" and response["image_base64"] is None
+        await client.post(base + "/takeover", headers=auth, json={"active": True})
+        response = await act("type", text="sample")
+        assert response["status"] == "taken_over" and response["image_base64"] is None
+        await client.post(base + "/takeover", headers=auth, json={"active": False})
+        current = "<desktop/>"
+        for action in ("elements", "screenshot"):
+            response = await act(action)
+            assert response["status"] == "withheld" and response["image_base64"] is None
+        current = tree.replace("push-button", "password-text")
+        masked = await act("type", text="sample")
+        assert masked["status"] == "handback"
+        with Image.open(io.BytesIO(base64.b64decode(masked["image_base64"]))) as masked_image:
+            assert max(masked_image.getpixel((100, 100))) < 5
+        current = tree
+        assert (await act("type", text="sample"))["status"] == "handback"
+        assert len(scripts) == 1
+        assert (await act("type", text="sample"))["status"] == "ok"
+        assert len(scripts) == 2
+        assert (await client.post(base + "/pause", headers=auth)).json()["state"] == "paused"
+
+
 @pytest.mark.parametrize("transport", ["path", "header"])
 async def test_signed_in_screen_renewal_keeps_its_original_deadline(
     tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, transport: str

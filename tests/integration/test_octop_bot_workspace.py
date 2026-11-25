@@ -14,6 +14,23 @@ from octop.infra.db.repos.thread_messages import ThreadMessageInput
 from octop.infra.errors import OctopError
 
 
+async def test_privacy_changes_keep_the_selected_cloud_computer(env_with_agent):
+    client, server, auth, bot = env_with_agent
+    repo = server.services.agent_repo
+    row = repo.get(bot)
+    config = json.loads(row.config_json or "{}")
+    config["octop_bot"] = {"computer": "cloud"}
+    assert repo.replace_owned_bot_config(row.user_id, bot, row.config_json, json.dumps(config))
+
+    for private in (True, False):
+        response = await client.put(
+            f"/api/octop-bot/bots/{bot}/privacy", headers=auth, json={"private": private}
+        )
+        response.raise_for_status()
+        assert response.json()["is_private"] is private
+        assert json.loads(repo.get(bot).config_json)["octop_bot"]["computer"] == "cloud"
+
+
 async def test_private_folder_survives_deletion_until_owner_releases_reservation(env_with_agent):
     from octop.infra.agents.bot_privacy import PrivateDirectoryGuard
 
@@ -401,16 +418,21 @@ async def test_bots_get_the_task_contract_on_bot_chat_turns(env_with_provider):
     assert any(isinstance(m, BotTaskMiddleware) for m in cfg.middleware)
 
 
-async def test_the_inbox_lists_my_waiting_cards_and_only_mine(env_with_provider):
-    client, server, auth = env_with_provider
+async def test_the_inbox_lists_my_waiting_cards_and_only_mine(env_admin_alice):
+    client, server, auth, other_auth = env_admin_alice
     chief = (await client.get("/api/octop-bot/workspace", headers=auth)).json()["chief_id"]
     me = server.app_runtime.agent_registry.get_row(chief).user_id
     store = server.app_runtime.gateway.processor.hitl_coordinator.store
 
-    def pause(user_id: int, thread: str, args: dict, origin: str | None = None) -> None:
+    other = (await client.get("/api/octop-bot/workspace", headers=other_auth)).json()["chief_id"]
+    other_user = server.app_runtime.agent_registry.get_row(other).user_id
+
+    def pause(
+        user_id: int, thread: str, args: dict, origin: str | None = None, bot: str = chief
+    ) -> None:
         store.register(
             thread_id=thread,
-            agent_id=chief,
+            agent_id=bot,
             user_id=user_id,
             session_key=f"sk-{thread}",
             channel_type="dashboard",
@@ -426,7 +448,7 @@ async def test_the_inbox_lists_my_waiting_cards_and_only_mine(env_with_provider)
 
     pause(me, "t-approve", {"approval": {"category": "send"}})
     pause(me, "t-takeover", {"cloud_computer": chief}, origin="cron:j1")
-    pause(me + 1000, "t-other", {})
+    pause(other_user, "t-other", {}, bot=other)
     res = await client.get("/api/octop-bot/inbox", headers=auth)
     assert res.status_code == 200, res.text
     items = {i["thread_id"]: i for i in res.json()["items"]}

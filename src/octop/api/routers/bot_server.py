@@ -6,12 +6,14 @@ import asyncio
 import threading
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
 
-from octop.api.deps import get_server
+from octop.api.deps import extract_raw_token, get_server, resolve_user_from_token
+from octop.infra.auth.lynxce_cloud import has_session
 from octop.infra.cloud.computers.manager import current_manager
 from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled, bot_web_enabled
+from octop.infra.errors import OctopError
 from octop.infra.setup.self_update import get_local_version
 
 router = APIRouter()
@@ -80,7 +82,9 @@ class ServerInfo(BaseModel):
     summary="Describe this server to Octop Bot clients",
     response_model=ServerInfo,
 )
-async def server_info(response: Response, server: Any = Depends(get_server)) -> ServerInfo:
+async def server_info(
+    request: Request, response: Response, server: Any = Depends(get_server)
+) -> ServerInfo:
     """Public: lets a client that was given this address check it before showing a sign-in form."""
     response.headers["Cache-Control"] = "no-store"
     if bot_cloud_enabled():
@@ -96,6 +100,15 @@ async def server_info(response: Response, server: Any = Depends(get_server)) -> 
         "cloud": ["lynxce"],
         "web": ["lynxce", "password"],
     }.get(edition, ["password"])  # type: ignore[assignment]
+    cloud_computer = edition == "cloud" and current_manager() is not None
+    if edition == "desktop":
+        token = extract_raw_token(authorization=request.headers.get("Authorization"))
+        if token:
+            try:
+                user = await asyncio.to_thread(resolve_user_from_token, server, token)
+                cloud_computer = await asyncio.to_thread(has_session, server.services, user.id)
+            except OctopError:
+                pass
     return ServerInfo(
         version=await _cached_local_version(),
         edition=edition,
@@ -104,7 +117,7 @@ async def server_info(response: Response, server: Any = Depends(get_server)) -> 
         sign_in=sign_in,
         capabilities=ServerCapabilities(
             wallet=edition in ("desktop", "cloud"),
-            cloud_computer=edition == "cloud" and current_manager() is not None,
+            cloud_computer=cloud_computer,
             media_generation=True,
             file_store="object" if edition == "cloud" else "local",
         ),

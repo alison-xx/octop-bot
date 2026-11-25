@@ -42,6 +42,10 @@ try {
     $electron = & node -p "require('electron')"
     if ($LASTEXITCODE -or !(Test-Path -LiteralPath $electron)) { throw 'Electron is unavailable. Run pnpm install in desktop/src.' }
     $botClient = $Bot -or ($ElectronArgs -contains '--octop-bot')
+    if ($botClient) {
+        & $python (Join-Path $PSScriptRoot 'bot_harness_wheel.py')
+        if ($LASTEXITCODE) { throw 'Could not install the pinned Bot workspace dependency.' }
+    }
     if (!$env:OCTOP_HOME) {
         $profile = if ($botClient) { 'bot-home' } else { 'home' }
         $env:OCTOP_HOME = Join-Path $runtimeDir $profile

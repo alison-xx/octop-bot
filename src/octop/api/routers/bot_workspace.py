@@ -17,8 +17,6 @@ from octop.api.routers.bot_cloud_import import router as cloud_import_router
 from octop.api.routers.bot_cloud_move import router as cloud_move_router
 from octop.api.routers.bot_cloud_work import router as cloud_work_router
 from octop.api.routers.bot_computer import router as computer_router
-from octop.api.routers.bot_computers import router as computers_router
-from octop.api.routers.bot_computers import session_router as screen_session_router
 from octop.api.routers.bot_devices import router as devices_router
 from octop.api.routers.bot_inbox import router as inbox_router
 from octop.api.routers.bot_lynxce import router as lynxce_router
@@ -55,8 +53,6 @@ from octop.infra.users.identity import User
 router = APIRouter(prefix="/octop-bot")
 router.include_router(server_router)
 router.include_router(account_router)
-router.include_router(computers_router)
-router.include_router(screen_session_router)
 router.include_router(avatar_library_router)
 router.include_router(cloud_account_router)
 router.include_router(wechat_router)
@@ -78,6 +74,7 @@ router.include_router(wallet_router)
 
 
 class Bot(BaseModel):
+    computer: Literal["local", "cloud"] = "local"
     agent_id: str
     name: str
     description: str | None
@@ -163,6 +160,8 @@ async def bot_privacy(
     server: Any = Depends(get_server),
 ) -> Bot:
     from octop.infra.agents.bot_privacy import set_privacy
+    from octop.infra.auth.lynxce_cloud import has_session
+    from octop.infra.desktop import bot_desktop_enabled
 
     row = await set_privacy(
         server.services, server.app_runtime.agent_registry, user.id, agent_id, body.private
@@ -174,6 +173,8 @@ async def bot_privacy(
             server.services.settings_repo.get(chief_key(user.id)) or "",
             server.services.settings_repo,
             is_admin=user.is_admin,
+            desktop_connected=bot_desktop_enabled()
+            and await asyncio.to_thread(has_session, server.services, user.id),
         )
     )
 

@@ -1,5 +1,6 @@
 """Expose the host's app-scoped desktop capability to an authenticated private chat."""
 
+import asyncio
 from typing import Any
 
 from langchain_core.tools import StructuredTool
@@ -32,6 +33,19 @@ def computer_tool(computer: BotComputer, repos: RepoBundle, bot: str, owner: int
             or ctx.get("octop_bot_browser") is not True
         ):
             raise OctopError.localized(ErrorCode.FORBIDDEN)
+        from octop.infra.cloud.computers.remote import configured_target
+        from octop.infra.desktop import bot_desktop_enabled
+
+        if bot_desktop_enabled():
+            from octop.infra.auth.lynxce_cloud import has_session
+
+            row = await asyncio.to_thread(repos.agent_repo.get, bot)
+            if (
+                row is not None
+                and configured_target(row) == "cloud"
+                and await asyncio.to_thread(has_session, repos, owner)
+            ):
+                raise OctopError.localized(ErrorCode.FORBIDDEN)
         return await computer.run(
             repos, owner, bot, action, app_id, pid, window_id, token, value, foreground
         )

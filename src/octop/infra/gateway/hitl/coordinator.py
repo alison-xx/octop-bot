@@ -300,6 +300,7 @@ class HitlChannelCoordinator:
         *,
         ctx: HitlStreamContext,
         resume_agent_id: str | None = None,
+        resume_thread_id: str | None = None,
         origin: str | None = None,
         ttl_seconds: float | None = None,
     ) -> HitlPendingRecord:
@@ -312,6 +313,7 @@ class HitlChannelCoordinator:
             action_requests=parse_action_requests(raw_request),
             review_configs=parse_review_configs(raw_request),
             resume_agent_id=resume_agent_id,
+            resume_thread_id=resume_thread_id,
             origin=origin,
             ttl_seconds=ttl_seconds,
         )
@@ -345,11 +347,11 @@ class HitlChannelCoordinator:
         """
         if not record.resume_agent_id:
             return None
+        if not self._store.mark_resolved(record.pending_id, "rejected" if rejected else "approved"):
+            return False
         ok = bool(deliver is not None and deliver(record.pending_id, decisions))
-        self._store.mark_resolved(
-            record.pending_id,
-            ("rejected" if rejected else "approved") if ok else "expired",
-        )
+        if not ok:
+            self._store.mark_resolved(record.pending_id, "expired")
         return ok
 
     def expire_pending_for_thread(
@@ -536,7 +538,9 @@ class HitlChannelCoordinator:
         state = projection_state if projection_state is not None else StreamProjectionState()
         # Resolve before streaming: a follow-up question registered mid-stream
         # must not be clobbered by a late mark_resolved on the old record.
-        self._store.mark_resolved(record.pending_id, "approved")
+        if not self._store.mark_resolved(record.pending_id, "approved"):
+            yield MessageEvent.text(tr("hitl.expired", lang))
+            return
         resume_stream = project_resume_stream(
             agent_manager,
             record.agent_id,
@@ -696,9 +700,12 @@ class HitlChannelCoordinator:
         history_completed = False
         had_output = False
         ack_sent = False
-        resolved_status: Literal["approved", "rejected"] | None = (
-            "approved" if approve else "rejected"
-        )
+        if record is not None and not self._store.mark_resolved(
+            record.pending_id, "approved" if approve else "rejected"
+        ):
+            self._restore_sticky(stamps)
+            yield MessageEvent.text(tr("hitl.expired", lang))
+            return
         try:
             resume_stream = project_resume_stream(
                 agent_manager,
@@ -725,6 +732,10 @@ class HitlChannelCoordinator:
             finally:
                 await close_event_stream(resume_stream)
         except Exception as exc:
+            if record is not None and not had_output:
+                self._store.restore_unstarted(
+                    record.pending_id, "approved" if approve else "rejected"
+                )
             self._restore_sticky(stamps)
             if record is None and not had_output:
                 yield MessageEvent.text(tr("hitl.none_pending", lang))
@@ -742,9 +753,6 @@ class HitlChannelCoordinator:
 
         if record is not None and not ack_sent:
             yield MessageEvent.text(self._decision_ack(lang, approve=approve, sticky=effective))
-
-        if record is not None and resolved_status is not None:
-            self._store.mark_resolved(record.pending_id, resolved_status)
 
         if projection_state.hitl_paused:
             yield MessageEvent.text(tr("hitl.followup_pending", lang))

@@ -910,6 +910,10 @@
   },
   "apiErrors": {
     "BOT_CLOUD_ACCOUNT_REQUIRED": "请登录灵策云账号。切换账号后，请重新打开此操作。",
+    "BOT_COMPUTER_OPERATION_TIMEOUT": "云电脑响应超时，刚才的操作可能还在执行。请先查看云电脑，再决定是否重试。",
+    "BOT_CLOUD_REVERIFY_REQUIRED": "请再验证一次灵策账号以开通云电脑。",
+    "BOT_COMPUTER_TRANSFERS_BUSY": "已有两个文件正在传输，请等其中一个完成后重试。",
+    "BOT_WORKSPACE_BOUNDED_READ_REQUIRED": "当前工作区无法按上传上限读取文件。请使用支持有界读取的工作区后端，或更新工作区组件。",
     "LYNXCE_OWNER_MISMATCH": "这台 Octop Bot 已绑定其他灵策账号。请使用首次登录时的灵策账号。",
     "LYNXCE_LEGACY_PASSWORD_REQUIRED": "这台 Octop Bot 之前设置过本地登录密码。第一次用灵策账号登录时，请同时输入这个密码，之后就只用灵策账号登录。",
     "LYNXCE_CODE_INVALID": "验证码错误或已过期，请重新获取。",
@@ -3679,6 +3683,7 @@
     "lastStatusOk": "成功",
     "lastStatusError": "失败",
     "lastStatusMissed": "已错过",
+    "lastStatusExpired": "需要你处理，已过期",
     "lastStatusWaiting": "等你处理",
     "oneShotEnableBlocked": "执行时间已过，请改到将来的时间后再启用",
     "form": {
@@ -9172,6 +9177,11 @@
     "soundHint": "收到新消息时播放一声短提示音"
   },
   "cloudComputer": {
+    "targetLocal": "本机电脑",
+    "targetCloud": "云电脑",
+    "targetConsent": "Bot 在云电脑上看到和输入的内容会经过灵策云；这台电脑上的文件只有在 Bot 传上去时才会上云电脑。",
+    "targetVerify": "开通云电脑：再验证一次灵策账号",
+    "verifyContinue": "验证并继续",
     "diskFee": "盘 {{gb}} GB · 每天 {{credits}} 积分",
     "diskBillingOff": "暂未收费",
     "reclaimWarning": "云电脑及磁盘文件即将回收；Bot、聊天记录和云存储文件会保留。",
@@ -9205,6 +9215,7 @@
     "copyBlocked": "云电脑里已复制，但浏览器不允许网页写你的剪贴板，请点「取回云电脑剪贴板」。",
     "macShortcuts": "Mac 上 ⌘C / ⌘V 在这台 Mac 和云电脑之间复制粘贴，其他 ⌘ 快捷键按 Ctrl 处理。",
     "handoffOpen": "接管云电脑",
+    "legacyViewOnly": "当前云端版本仅支持观看画面。升级云端后即可接管、粘贴中文和使用剪贴板。",
     "handoffHint": "完成后关掉画面，在对话里选「我完成了」，Bot 会接着干。",
     "float": {
       "open": "打开云电脑画面",

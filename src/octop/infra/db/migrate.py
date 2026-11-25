@@ -2859,6 +2859,14 @@ def run_migrations(db: DatabasePool) -> None:
         with db.transaction() as conn:
             for statement in _split_pg_sql(sql):
                 conn.execute(statement)
+    if _current_version(db) >= 29 and not all(
+        _table_exists(db, name) for name in ("bot_handoffs", "bot_handoff_deadlines")
+    ):
+        path = next(p for version, p in _discover(db.dialect) if version == 29)
+        ddl = path.read_text(encoding="utf-8").split("UPDATE _schema_version", 1)[0]
+        with db.transaction() as conn:
+            for statement in _split_pg_sql(ddl):
+                conn.execute(statement)
     _ensure_control_blobs_schema(db)
     _ensure_thread_contributed_schema(db)
     _ensure_care_push_reply_schema(db)
