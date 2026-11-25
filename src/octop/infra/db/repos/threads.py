@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from octop.infra.db.pool import DatabasePool
@@ -14,6 +14,7 @@ from octop.infra.db.repos._base import (
     now_ts,
     sql_in_placeholders,
 )
+from octop.infra.db.repos.thread_messages import ThreadMessageInput
 from octop.infra.utils.thread_artifact import (
     MAX_THREAD_ARTIFACTS,
     ThreadArtifact,
@@ -173,6 +174,8 @@ class ThreadRepo:
         session_key: str,
         title: str | None = None,
         last_active: int | None = None,
+        initial_messages: Iterable[ThreadMessageInput] = (),
+        restore_entry: tuple[str, str] | None = None,
     ) -> None:
         ts = now_ts()
         with self._db.transaction() as conn:
@@ -196,6 +199,22 @@ class ThreadRepo:
                 "VALUES (?, 'ready', ?, NULL) ON CONFLICT(thread_id) DO NOTHING",
                 (thread_id, ts),
             )
+
+            if initial_messages:
+                conn.executemany(
+                    "INSERT INTO thread_messages(thread_id, seq, message_id, role, message_json, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        (thread_id, seq, m.message_id, m.role, m.message_json, m.created_at)
+                        for seq, m in enumerate(initial_messages, start=1)
+                    ),
+                )
+            if restore_entry is not None:
+                conn.execute(
+                    "INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) "
+                    "DO UPDATE SET value=excluded.value",
+                    restore_entry,
+                )
 
     def get(self, thread_id: str) -> ThreadRow | None:
         with self._db.connect() as conn:

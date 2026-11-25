@@ -10,11 +10,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import tempfile
 import time
 from collections import deque
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal, TextIO
 
+from filelock import AsyncFileLock
 from langchain_core.messages import messages_from_dict
 from pydantic import BaseModel, Field, StringConstraints, field_validator
 from pydantic_core import PydanticKnownError
@@ -26,13 +29,18 @@ from octop.infra.agents.bot_workspace import (
     ensure_chief,
     require_own_bot,
 )
+from octop.infra.agents.memory.thread_cleanup import checkpoint_publication_lock
 from octop.infra.agents.threads.fork import write_checkpoint_messages
+from octop.infra.auth.lynxce_cloud import _finish
 from octop.infra.bot_groups.service import Goal, ReplyMode, create_group
+from octop.infra.cloud import move_wire
+from octop.infra.db.repos.thread_messages import ThreadMessageInput
 from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.history.projection import message_inputs
 from octop.infra.users.identity import User
+from octop.infra.utils.ulid import new_ulid
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
@@ -93,11 +101,14 @@ class MovedBot(BaseModel):
     chief: bool = Field(default=False, description="The desktop's Chief: joins the cloud Chief.")
 
 
-class MovedThread(BaseModel):
+class ThreadHeader(BaseModel):
     source: Source
     bot_id: str = Field(min_length=1, max_length=64, description="The Bot on this server.")
     title: str | None = Field(default=None, max_length=500)
     last_active: int = Field(default=0, ge=0)
+
+
+class MovedThread(ThreadHeader):
     messages: list[dict[str, Any]] = Field(
         min_length=1,
         max_length=5000,
@@ -111,6 +122,15 @@ class MovedThread(BaseModel):
             if len(json.dumps(message, ensure_ascii=False, separators=(",", ":"))) > 200_000:
                 raise PydanticKnownError("string_too_long", {"max_length": 200_000})
         return messages
+
+
+class MovedThreadPart(ThreadHeader, move_wire.WirePart):
+    message_count: int = Field(ge=1, le=move_wire.MAX_MESSAGES)
+
+
+class ThreadPartReceipt(BaseModel):
+    next_offset: int = Field(description="First byte the cloud still needs.")
+    id: str | None = Field(default=None, description="Cloud thread ID after complete publication.")
 
 
 class MovedGroupMessage(BaseModel):
@@ -195,39 +215,129 @@ async def move_thread(
     user: User,
     body: MovedThread,
 ) -> Moved:
-    key = _key(user.id, "thread", body.source)
-    known = await asyncio.to_thread(services.settings_repo.get, key)
-    if known and await asyncio.to_thread(threads.get_thread, known) is not None:
-        return Moved(id=known)
     await asyncio.to_thread(require_own_bot, services, user.id, body.bot_id)
-    try:
-        messages = messages_from_dict(body.messages)
-    except (KeyError, TypeError, ValueError):
-        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422) from None
+    key = _key(user.id, "thread", body.source)
+    async with AsyncFileLock(services.paths.root / f".move-chats-{user.id}.lock"):
+        known = await _existing_thread(services, threads, user, body, key)
+        if known:
+            return Moved(id=known)
+        tid = await _finish(
+            _publish_thread(services, registry, threads, user, body, key, iter([body.messages]))
+        )
+        await asyncio.to_thread(move_wire.discard_upload, services.settings_repo, key)
+        return Moved(id=tid)
+
+
+async def _existing_thread(
+    services: SharedServices, threads: ThreadRegistry, user: User, body: ThreadHeader, key: str
+) -> str | None:
+    known = await asyncio.to_thread(services.settings_repo.get, key)
+    if known:
+        row = await asyncio.to_thread(threads.get_thread, known)
+        if row:
+            if row.user_id != user.id or row.agent_id != body.bot_id:
+                raise OctopError.localized(ErrorCode.FORBIDDEN)
+            await asyncio.to_thread(move_wire.discard_upload, services.settings_repo, key)
+            return known
+    return None
+
+
+async def move_thread_part(
+    services: SharedServices,
+    registry: AgentManager,
+    threads: ThreadRegistry,
+    user: User,
+    body: MovedThreadPart,
+) -> ThreadPartReceipt:
+    await asyncio.to_thread(require_own_bot, services, user.id, body.bot_id)
+    key = _key(user.id, "thread", body.source)
+    async with AsyncFileLock(services.paths.root / f".move-chats-{user.id}.lock"):
+        known = await _existing_thread(services, threads, user, body, key)
+        if known:
+            return ThreadPartReceipt(next_offset=body.total, id=known)
+        offset, page_count = await _finish(
+            asyncio.to_thread(move_wire.stage_page, services.settings_repo, key, body)
+        )
+        if offset < body.total:
+            return ThreadPartReceipt(next_offset=offset)
+        batches = move_wire.read_batches(
+            services.settings_repo, key + ":parts", page_count, body.snapshot, body.message_count
+        )
+        try:
+            tid = await _finish(
+                _publish_thread(services, registry, threads, user, body, key, batches)
+            )
+        except move_wire.InvalidUpload:
+            # The durable bytes are missing or inconsistent; resending the same source restarts at zero.
+            await _finish(asyncio.to_thread(move_wire.discard_upload, services.settings_repo, key))
+            return ThreadPartReceipt(next_offset=0)
+        await _finish(asyncio.to_thread(move_wire.discard_upload, services.settings_repo, key))
+        return ThreadPartReceipt(next_offset=offset, id=tid)
+
+
+async def _publish_thread(
+    services: SharedServices,
+    registry: AgentManager,
+    threads: ThreadRegistry,
+    user: User,
+    body: ThreadHeader,
+    key: str,
+    batches: Iterator[list[dict[str, Any]]],
+) -> str:
     try:
         harness = registry.get_agent(body.bot_id)
-    except OctopError:
+    except OctopError as exc:
+        if exc.code != ErrorCode.AGENT_NOT_RUNNING:
+            raise
         await registry.start(body.bot_id)
         harness = registry.get_agent(body.bot_id)
-    thread_id = threads.create_thread(
-        agent_id=body.bot_id,
-        user_id=user.id,
-        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
-        session_key=ThreadRegistry.dashboard_key(agent_id=body.bot_id, user_id=user.id),
-        title=body.title,
-        last_active=body.last_active,
-    )
-    try:
-        # The Bot remembers the chat (its checkpoint) and the app shows it (the projection).
-        await write_checkpoint_messages(harness, thread_id=thread_id, messages=messages)
-        await asyncio.to_thread(
-            services.thread_message_repo.append_if_ready, thread_id, message_inputs(messages)
+    tid = f"thr_{new_ulid()}"
+    position = 0
+    async with AsyncFileLock(checkpoint_publication_lock(services.paths.root, body.bot_id)):
+        # Project incrementally on disk. Only the current page or one long message needs decoding.
+        with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as projection:
+            try:
+                while batch := await asyncio.to_thread(next, batches, None):
+                    try:
+                        messages = messages_from_dict(batch)
+                    except (KeyError, TypeError, ValueError):
+                        raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422) from None
+                    for message in messages:
+                        if not message.id:
+                            message.id = f"{tid}:{position}"
+                        position += 1
+                    await write_checkpoint_messages(harness, thread_id=tid, messages=messages)
+                    await asyncio.to_thread(_save_projection, projection, messages)
+                await asyncio.to_thread(
+                    services.thread_repo.insert,
+                    thread_id=tid,
+                    agent_id=body.bot_id,
+                    user_id=user.id,
+                    channel_type=threads.CHANNEL_DASHBOARD,
+                    session_key=threads.dashboard_key(agent_id=body.bot_id, user_id=user.id),
+                    title=body.title,
+                    last_active=body.last_active,
+                    initial_messages=_read_projection(projection),
+                    restore_entry=(key, tid),
+                )
+            except Exception:
+                await registry.delete_thread_checkpoint(body.bot_id, tid, reclaim=False)
+                raise
+    return tid
+
+
+def _save_projection(projection: TextIO, messages: list[Any]) -> None:
+    for m in message_inputs(messages):
+        projection.write(
+            json.dumps([m.message_id, m.role, m.message_json, m.created_at], ensure_ascii=False)
+            + "\n"
         )
-    except Exception:
-        threads.delete_thread(thread_id)
-        raise
-    await asyncio.to_thread(services.settings_repo.set, key, thread_id)
-    return Moved(id=thread_id)
+
+
+def _read_projection(projection: TextIO) -> Iterator[ThreadMessageInput]:
+    projection.seek(0)
+    for line in projection:
+        yield ThreadMessageInput(*json.loads(line))
 
 
 def move_group(services: SharedServices, user: User, body: MovedGroup) -> Moved:

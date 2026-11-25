@@ -328,6 +328,14 @@ _CODE = re.compile(r"[0-9]{6}")
 CodeChannel = Literal["phone", "email"]
 
 
+def login_account_key(account: str) -> str:
+    """Match Lynxce normalizeChinaPhone for account counters, keeping other logins distinct."""
+    value = account.strip().lower()
+    compact = re.sub(r"[\s-]", "", value)
+    phone = re.fullmatch(r"(?:\+86|0086|86)?(1[3-9][0-9]{9})", compact)
+    return f"+86{phone[1]}" if phone else value
+
+
 def code_target(target: str) -> tuple[CodeChannel, str]:
     """Classify a Lynxce sign-in target as ``("email", …)`` or ``("phone", …)``.
 

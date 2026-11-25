@@ -641,6 +641,7 @@
     "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
     "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit.",
     "REQUEST_TOO_LARGE": "The request is too large (at most {limit_mb} MB).",
+    "BOT_MOVE_CHAT_LIMIT": "One chat can contain up to 5,000 messages and 1 GiB of content for import. Your original chat is saved on this computer.",
     "BOT_MOVE_IN_LIMITED": "Too much is being moved to the cloud, or too fast. Try again later.",
     "INVITE_INVALID": "This invite code is invalid.",
     "INVITE_ROLE_MISSING": "The role on this invite was deleted or renamed, so the account cannot be created.",

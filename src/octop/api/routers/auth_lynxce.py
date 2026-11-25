@@ -118,7 +118,7 @@ def _keys(request: Request, account: str | None = None) -> list[str]:
     peer = request.client.host if request.client else "unknown"
     keys = [f"ip:{peer}"]
     if account and account.strip():
-        keys.append(f"account:{account.strip().lower()}")
+        keys.append(f"account:{lynxce_cloud.login_account_key(account)}")
     return keys
 
 

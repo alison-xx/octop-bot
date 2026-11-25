@@ -92,3 +92,13 @@ def test_each_account_has_an_hourly_and_daily_allowance(monkeypatch: pytest.Monk
     now += 86400
     move_in.charge_move_request(1, 10)
     assert 2 not in move_in._move_usage
+
+
+async def test_full_chat_over_the_documented_count_remains_on_the_desktop() -> None:
+    from octop.infra.cloud import move_out, move_wire
+
+    original = [{"type": "human", "data": {"content": "source"}}] * (move_wire.MAX_MESSAGES + 1)
+    with pytest.raises(OctopError) as denied:
+        await move_out._send_thread(None, {}, original)
+    assert denied.value.code == ErrorCode.BOT_MOVE_CHAT_LIMIT
+    assert len(original) == 5001 and original[-1]["data"]["content"] == "source"

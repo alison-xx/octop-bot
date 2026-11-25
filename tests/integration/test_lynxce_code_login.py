@@ -26,6 +26,7 @@ class Upstream:
         self.counts: Counter[str] = Counter()
         self.bodies: dict[str, Any] = {}
         self.send_status = 200
+        self.profiles: dict[str, dict[str, str]] = {}
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         assert req.url.host == "api.lynxce.cn" and req.url.scheme == "https"
@@ -36,6 +37,11 @@ class Upstream:
         self.counts[path] += 1
         if path == "/api/auth/logout":
             return httpx.Response(200, json={"code": 0, "data": {}})
+        if path == "/api/user/profile":
+            profile = self.profiles.get(req.headers.get("Authorization", ""))
+            if profile is None:
+                return httpx.Response(401)
+            return httpx.Response(200, json={"code": 0, "data": profile})
         body = json.loads(req.content)
         self.bodies[path] = body
         if path in {"/api/auth/phone-code", "/api/auth/email-code"}:
@@ -58,6 +64,8 @@ class Upstream:
                     },
                 )
             uid = body.get("phone") or body["email"]
+            profile = {"id": "id-" + uid, "displayName": "Name " + uid}
+            self.profiles[f"Bearer access-{uid}"] = profile
             return httpx.Response(
                 200,
                 json={
@@ -65,7 +73,7 @@ class Upstream:
                     "data": {
                         "accessToken": f"access-{uid}",
                         "refreshToken": f"refresh-{uid}",
-                        "user": {"id": "id-" + uid, "displayName": "Name " + uid},
+                        "user": profile,
                     },
                 },
             )
@@ -321,3 +329,12 @@ async def test_code_sends_are_limited_per_phone_too(
         assert flood.json()["error"]["code"] == "LYNXCE_CODE_THROTTLED"
         other = await _post_from(client, "192.0.2.99", CODE, target="13800000021")
         assert other.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["139 2345 6789", "+86 139-2345-6789", "86 13923456789", "0086 13923456789"],
+)
+def test_account_key_uses_lynxce_phone_identity(value: str) -> None:
+    assert cloud.login_account_key(value) == "+8613923456789"
+    assert cloud.login_account_key(" Someone@Example.COM ") == "someone@example.com"
