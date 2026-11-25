@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from octop.infra.agents.security.hitl_session import (
     HitlSessionPolicy,
     HitlSessionPolicyStore,
 )
+from octop.infra.cloud.computers.handoff import BackgroundComputerTurn, pause_background_computer
 from octop.infra.gateway.hitl.format import (
     extract_questions,
     format_ask_card,
@@ -56,6 +58,7 @@ class HitlStreamContext:
     user_id: int
     session_key: str
     channel_type: str
+    group_inbox: bool = False
 
 
 @dataclass
@@ -317,6 +320,32 @@ class HitlChannelCoordinator:
             origin=origin,
             ttl_seconds=ttl_seconds,
         )
+
+    async def register_waiting_turn(
+        self,
+        raw_request: dict[str, Any],
+        *,
+        ctx: HitlStreamContext,
+        turn: BackgroundComputerTurn | None,
+        origin: str | None = None,
+        ttl_seconds: float | None = None,
+    ) -> HitlPendingRecord:
+        if self.store.repo is None:
+            return self.register_from_request(
+                raw_request, ctx=ctx, origin=origin, ttl_seconds=ttl_seconds
+            )
+        record = await asyncio.to_thread(
+            self.register_from_request, raw_request, ctx=ctx, origin=origin, ttl_seconds=ttl_seconds
+        )
+        if turn is not None:
+            try:
+                await asyncio.to_thread(pause_background_computer, turn)
+            except Exception:
+                # The card is committed. A failed optional pause must not hide it.
+                _log.warning(
+                    "background computer handoff failed for %s", ctx.thread_id, exc_info=True
+                )
+        return record
 
     @staticmethod
     def build_decisions(

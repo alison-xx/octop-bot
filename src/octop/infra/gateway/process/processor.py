@@ -42,6 +42,7 @@ from octop.infra.agents.teams.team_manager import (
     stamp_team_host_chunk as _maybe_stamp_team_host,
 )
 from octop.infra.agents.turn_resources import attach_turn_knowledge, resolve_turn_mcp
+from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.cli.events import message_event_to_cli_chunks
 from octop.infra.gateway.hitl.coordinator import (
@@ -51,7 +52,7 @@ from octop.infra.gateway.hitl.coordinator import (
     HitlStreamContext,
     iter_with_session_auto_approve,
 )
-from octop.infra.gateway.hitl.format import normalize_hitl_request
+from octop.infra.gateway.hitl.format import needs_owner_decision, normalize_hitl_request
 from octop.infra.gateway.hitl.phrases import ApprovalUtterance, match_approval_utterance
 from octop.infra.gateway.hitl.stream_compat import install_harness_hitl_compat
 from octop.infra.gateway.media.attachment_hints import (
@@ -74,6 +75,7 @@ from octop.infra.gateway.process.harness_request import (
 )
 from octop.infra.gateway.process.message_keys import (
     INBOUND_ATTACHMENTS_KEY,
+    chat_type_from_message,
     resolve_user_id_for_message,
     session_key_from_message,
     session_metadata_from_message,
@@ -88,6 +90,7 @@ from octop.infra.gateway.slash.catalog import HITL_APPROVAL_COMMANDS, spec_for
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.parser import parse_slash
 from octop.infra.gateway.slash.runner import try_handle_slash
+from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.history.projection import (
     TurnHistoryTracker,
     message_inputs,
@@ -109,7 +112,6 @@ if TYPE_CHECKING:
     from octop.infra.db.repos.connectors import ConnectorRepo
     from octop.infra.db.repos.users import UserRepo
     from octop.infra.gateway.slash.dispatcher import SlashDispatcher
-    from octop.infra.gateway.threads import ThreadRegistry
 
 logger = logging.getLogger(__name__)
 install_harness_hitl_compat()
@@ -982,6 +984,35 @@ class GlobalProcessor:
             channel_type=channel_type,
             metadata=msg.metadata,
         )
+        subject_type = msg.channel_subject.chat_type if msg.channel_subject else ""
+        group_inbox = False
+        if not ThreadRegistry.is_virtual_channel(channel_type):
+            shared_types = ("group", "supergroup", "channel")
+            group_inbox = (
+                chat_type_from_message(msg) == ThreadRegistry.CHAT_TYPE_GROUP
+                or subject_type in shared_types
+                or (msg.metadata or {}).get("chat_type") in shared_types
+            )
+            if not group_inbox and (msg.metadata or {}).get("session_key"):
+                bound = await asyncio.to_thread(self._thread_registry.get_session, session_key)
+                group_inbox = bound is not None and (
+                    bound.chat_type in shared_types or bound.channel_chat_type in shared_types
+                )
+            # IM routing associates a conversation with the Bot owner's storage. Only an
+            # authenticated account can decide on the owner's behalf.
+            cards = self._hitl.store.list_pending_for_session(session_key, agent_id=agent_id)
+            hosted = bot_cloud_enabled()
+            owner_action = any(
+                needs_owner_decision(card.action_requests, hosted=hosted) for card in cards
+            )
+            owner_command = (
+                (group_inbox or hosted) and cmd is not None and cmd.name in {"approve", "reject"}
+            )
+            group_pending = group_inbox and (bool(cards) or (cmd and cmd.name == "pending"))
+            if owner_action or owner_command or group_pending:
+                yield MessageEvent.text(tr("slash.hitl.owner_inbox", locale))
+                yield MessageEvent.completed()
+                return
         if cmd is not None and cmd.name in HITL_APPROVAL_COMMANDS:
             async for ev in self._relay_im_approval(
                 msg,
@@ -1195,6 +1226,7 @@ class GlobalProcessor:
                 projection_state=projection_state,
                 hitl_coordinator=self._hitl,
                 hitl_ctx=HitlStreamContext(
+                    group_inbox=group_inbox,
                     thread_id=thread_id,
                     agent_id=agent_id,
                     user_id=user_id,

@@ -84,6 +84,24 @@ def is_ask_action_requests(action_requests: list[dict[str, Any]]) -> bool:
     return any(isinstance(a, dict) and a.get("name") == ASK_USER_TOOL_NAME for a in action_requests)
 
 
+def needs_owner_decision(actions: list[dict[str, Any]], *, hosted: bool) -> bool:
+    """Bot owner approvals need a signed-in account. Self-hosted channel tools keep their policy."""
+    for action in actions:
+        args = action.get("args")
+        if isinstance(args, dict) and any(
+            key in args for key in ("approval", "cloud_computer", "local_device_wait")
+        ):
+            return True
+        if hosted and (
+            action.get("name") != ASK_USER_TOOL_NAME
+            or not isinstance(args, dict)
+            or not isinstance(args.get("questions"), list)
+            or not args["questions"]
+        ):
+            return True
+    return hosted and not actions
+
+
 def extract_questions(action_requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Pull the normalized ``questions`` list out of an ask action request."""
     for action in action_requests:

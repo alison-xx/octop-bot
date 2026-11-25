@@ -13,12 +13,21 @@ from langchain_core.messages import AIMessage, HumanMessage
 from octop.i18n import tr
 from octop.infra.agents.security.hitl_session import HitlSessionPolicy, ephemeral_hitl_policy
 from octop.infra.agents.turn_resources import attach_turn_knowledge, resolve_turn_mcp
+from octop.infra.cloud.computers.handoff import (
+    BackgroundComputerTurn,
+    background_computer_turn,
+)
 from octop.infra.cron.script_run import ScriptRunError, run_cron_script
 from octop.infra.cron.session_target import pinned_thread_id
 from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.db.repos.threads import ThreadRow
+from octop.infra.desktop import bot_cloud_enabled
 from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator, HitlStreamContext
-from octop.infra.gateway.hitl.format import normalize_hitl_request
+from octop.infra.gateway.hitl.format import (
+    needs_owner_decision,
+    normalize_hitl_request,
+    parse_action_requests,
+)
 from octop.infra.gateway.process import build_harness_request
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
@@ -342,28 +351,31 @@ class CronDeliveryService:
                 session.thread_id,
                 HitlSessionPolicy(mode="allow_all"),
             )
-            with write_scope(allowed=False), policy:
-                async for chunk in self._agent_manager.stream(command.agent_id, request):
-                    tracker.observe(chunk)
-                    usage.observe(chunk)
-                    kind = chunk.get("type")
-                    if kind == "tool_call_chunk":
-                        saw_tool_call = True
-                    elif kind == "tool_result":
-                        log_failed_tool_results(
-                            chunk,
-                            agent_id=command.agent_id,
-                            thread_id=session.thread_id,
-                            seen=emitted_tool_error_ids,
-                            live=saw_tool_call,
-                        )
-                    if kind in ("token", "delta"):
-                        parts.append(str(chunk.get("content") or chunk.get("text") or ""))
-                    elif kind == "hitl_required":
-                        raw = chunk.get("request")
-                        pause = raw if isinstance(raw, dict) else {}
-            if pause is not None:
-                await self._wait_for_user(command, session, pause)
+            with background_computer_turn(
+                session.user_id, command.agent_id, session.thread_id
+            ) as turn:
+                with write_scope(allowed=False), policy:
+                    async for chunk in self._agent_manager.stream(command.agent_id, request):
+                        tracker.observe(chunk)
+                        usage.observe(chunk)
+                        kind = chunk.get("type")
+                        if kind == "tool_call_chunk":
+                            saw_tool_call = True
+                        elif kind == "tool_result":
+                            log_failed_tool_results(
+                                chunk,
+                                agent_id=command.agent_id,
+                                thread_id=session.thread_id,
+                                seen=emitted_tool_error_ids,
+                                live=saw_tool_call,
+                            )
+                        if kind in ("token", "delta"):
+                            parts.append(str(chunk.get("content") or chunk.get("text") or ""))
+                        elif kind == "hitl_required":
+                            raw = chunk.get("request")
+                            pause = raw if isinstance(raw, dict) else {}
+                if pause is not None:
+                    await self._wait_for_user(command, session, pause, turn)
             outbound = strip_thinking("".join(parts)).strip()
             if not outbound:
                 raise RuntimeError("cron agent run produced no visible response")
@@ -413,11 +425,12 @@ class CronDeliveryService:
         command: CronDeliveryCommand,
         session: SessionRow,
         request: dict[str, Any],
+        turn: BackgroundComputerTurn,
     ) -> None:
         """Leave the run's card answerable for a day, tell the user, and stop without failing."""
         hitl = self._hitl()
         if hitl is not None and request:
-            hitl.register_from_request(
+            await hitl.register_waiting_turn(
                 normalize_hitl_request(request),
                 ctx=HitlStreamContext(
                     thread_id=session.thread_id,
@@ -426,13 +439,28 @@ class CronDeliveryService:
                     session_key=session.session_key,
                     channel_type=session.channel_type,
                 ),
+                turn=turn,
                 origin=cron_origin(command.cron_id),
                 ttl_seconds=WAIT_FOR_USER_SECONDS,
             )
         text = self._waiting_text(command, session.user_id, session.channel_type, "needs_you")
-        detail = pause_summary(request)
-        if detail:
-            text = f"{text}\n{detail}"
+        shared_chat_types = ("group", "supergroup", "channel")
+        in_owner_inbox = not ThreadRegistry.is_virtual_channel(session.channel_type) and (
+            session.chat_type in shared_chat_types
+            or session.channel_chat_type in shared_chat_types
+            or needs_owner_decision(parse_action_requests(request), hosted=bot_cloud_enabled())
+        )
+        if in_owner_inbox:
+            locale = resolve_user_locale(
+                user_repo=self._repos.user_repo,
+                user_id=session.user_id,
+                channel_type=session.channel_type,
+            )
+            text = tr("slash.hitl.owner_inbox", locale)
+        else:
+            detail = pause_summary(request)
+            if detail:
+                text = f"{text}\n{detail}"
         if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD:
             # The card itself is already in the conversation; a notification points at it.
             await self._notify_best_effort(session, command.agent_id, text)

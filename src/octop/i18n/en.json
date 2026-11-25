@@ -167,6 +167,7 @@
       "done": "Resumed {short}."
     },
     "hitl": {
+      "owner_inbox": "The Bot owner can review this request in their inbox after signing in.",
       "card_title": "⚠️ Tool approval required",
       "card_intro": "The agent wants to run the following tool(s):",
       "action_line": "{index}. **{name}**",

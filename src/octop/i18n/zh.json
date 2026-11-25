@@ -167,6 +167,7 @@
       "done": "已恢复 {short}。"
     },
     "hitl": {
+      "owner_inbox": "请 Bot 主人登录后在待办中处理。",
       "card_title": "⚠️ 需要工具审批",
       "card_intro": "智能体请求执行以下工具：",
       "action_line": "{index}. **{name}**",
