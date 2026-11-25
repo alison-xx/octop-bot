@@ -18,10 +18,10 @@
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="stylesheet" href="assets/site.css?v=public-1">
-  <script src="assets/auth.js?v=2" defer></script>
-  <script src="assets/site.js?v=public-1" defer></script>
+  <script src="assets/auth.js?v=3" defer></script>
+  <script src="assets/site.js?v=account-public-1" defer></script>
   <link rel="stylesheet" href="assets/market.css?v=2">
-  <script src="assets/market.js?v=2" defer></script>
+  <script src="assets/market.js?v=3" defer></script>
 </head>
 <body>
   <a class="skip" href="#main" data-en="Skip to content">跳到正文</a>
@@ -76,6 +76,7 @@
     <div class="market-bar" data-market-home>
       <div class="wrap market-bar-inner">
         <div class="market-tabs" role="group" aria-label="分类" data-en-aria-label="Categories"></div>
+        <select class="market-role m-tab" aria-label="按岗位筛选" data-en-aria-label="Filter by role"></select>
         <label class="market-search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input type="search" placeholder="搜索 Bot" data-en-placeholder="Search Bots" aria-label="搜索 Bot" data-en-aria-label="Search Bots">
@@ -105,7 +106,7 @@
       </a>
       <a class="market-choice" data-target="desktop" href="#">
         <strong data-en="Desktop app">桌面客户端</strong>
-        <span data-en="Open an installed desktop version with Bot Market support. If your version lacks the market, use the web app.">用已安装且支持 Bot 市场的桌面版打开。旧版用户可选网页版导入。</span>
+        <span data-en="Open the template in the Mac app from version 1.0.5. On desktop version 1.0.4, choose the web app above.">Mac 1.0.5 起可以在客户端导入模板。使用 1.0.4 桌面版时，请选上方的网页版。</span>
       </a>
       <p class="market-dialog-foot"><span data-en="No app yet?">还没有安装？</span> <a class="link" href="download.html" data-en="Download →">去下载 →</a></p>
       <button class="icon-btn market-dialog-close" value="close" aria-label="关闭" data-en-aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>

@@ -9,6 +9,7 @@
   const detail = $(".market-detail");
   const tabs = $(".market-tabs");
   const search = $(".market-search input");
+  const roleFilter = $(".market-role");
   const dialog = $(".market-dialog");
   let data = null;
   let tab = "all";
@@ -55,6 +56,9 @@
       { id: "featured", name: t("精选", "Featured") },
       ...data.categories.map((c) => ({ id: c.id, name: tx(c.name) })),
     ];
+    const selected = roleFilter.value;
+    roleFilter.replaceChildren(new Option(t("所有岗位", "All roles"), ""), ...(data.roles || []).map(role => new Option(tx(role.name), role.id)));
+    roleFilter.value = selected;
     tabs.innerHTML = items
       .map(
         (c) =>
@@ -65,16 +69,17 @@
 
   function renderList() {
     const q = search.value.trim().toLowerCase();
-    const shown = data.templates.filter((x) => {
-      const inCategory = tab === "all" || (tab === "featured" ? x.featured : x.category === tab);
-      return inCategory && (!q || [x.name.zh, x.name.en, x.tagline.zh, x.tagline.en]
-        .some((value) => value.toLowerCase().includes(q)));
-    });
+    const shown = data.templates.filter(
+      (x) =>
+        (!roleFilter.value || x.roles?.includes(roleFilter.value)) &&
+        (tab === "all" || (tab === "featured" ? x.featured : tab === x.category)) &&
+        (!q || [x.name.zh, x.name.en, x.tagline.zh, x.tagline.en].some((s) => s.toLowerCase().includes(q))),
+    );
     if (!shown.length) {
       list.innerHTML = `<p class="m-empty">${t("没有找到匹配的 Bot。", "No Bots match your search.")}</p>`;
       return;
     }
-    if (q) {
+    if (q || roleFilter.value) {
       list.innerHTML = `<section class="m-block">${grid(shown)}</section>`;
       return;
     }
@@ -235,6 +240,7 @@
     if (e.target === dialog) dialog.close();
     if (e.target.closest(".market-choice")) setTimeout(() => dialog.close(), 300);
   });
+  roleFilter.addEventListener("change", renderList);
   search.addEventListener("input", renderList);
   window.addEventListener("popstate", () => {
     if (!data) return;
@@ -244,7 +250,7 @@
   });
   document.addEventListener("langchange", () => data && route());
 
-  fetch("market/catalog.json?v=1")
+  fetch("market/catalog.json?v=2")
     .then((r) => r.json())
     .then((json) => {
       data = json;

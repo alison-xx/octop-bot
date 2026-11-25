@@ -5,30 +5,34 @@
   const content = document.getElementById("account-content");
   const notice = document.getElementById("account-notice");
   const shell = document.getElementById("account-shell");
-  let month = new Date();
+  const shanghaiMonth = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit" }).format(new Date());
+  let month = shanghaiMonth();
+  let orderPage = 1;
   let page = 1;
   let category = "全部";
+  let dimension = "逐笔";
   let trend = null;
   let mode = "每日";
   let renderId = 0;
   let sessionId = 0;
   let ledgerRequestId = 0;
-  auth.onChange((session) => {
-    if (session) return;
+  auth.onChange((session, changed) => {
+    if (!changed) return;
     sessionId++;
     renderId++;
     ledgerRequestId++;
-    shell.hidden = true;
     content.replaceChildren();
-    trend = null;
+    trend = null; page = 1; orderPage = 1; month = shanghaiMonth();
+    if (session) { if (!shell.hidden) route(); return; }
+    shell.hidden = true;
     location.href = "/login.html?next=/account.html";
   });
   const translations = {
     "概览": "Overview", "用量明细": "Usage", "订单与发票": "Orders & invoices", "账号与安全": "Account & security", "登录设备": "Devices", "我的 Bot 与下载": "My Bots & downloads",
-    "积分余额": "Credit balance", "当前套餐": "Current plan", "本月已用": "Used this month", "加载中…": "Loading…", "查看明细": "View usage", "免费版": "Free", "查看套餐": "View plans", "积分活动": "Credit activity",
+    "积分余额": "Credit balance", "当前套餐": "Current plan", "本月已用": "Used this month", "加载中…": "Loading…", "查看明细": "View usage", "查看套餐": "View plans", "积分活动": "Credit activity",
     "每日": "Daily", "每周": "Weekly", "累计": "Cumulative", "暂无用量数据": "No usage data", "接口尚未提供完整一年数据，以上统计仅覆盖已返回的日期。": "A full year of data is not available; statistics cover only the dates returned.", "点按方块查看用量": "Select a cell to see usage", "少": "Less", "多": "More",
     "全部": "All", "文本对话": "Text chat", "作图": "Images", "做视频": "Video", "云电脑": "Cloud computer", "云电脑磁盘": "Cloud computer disk", "作图 / 视频（未区分）": "Images / video (unspecified)", "其他": "Other",
-    "上个月": "Previous month", "下个月": "Next month", "用量流水": "Usage history", "时间": "Time", "类别": "Category", "模型 / 内容": "Model / content", "积分": "Credits", "当前页没有记录。": "No records on this page.", "导出 CSV": "Export CSV", "上一页": "Previous", "下一页": "Next", "类别筛选和导出仅包含当前已加载页。": "Filtering and export include only the current page.",
+    "上个月": "Previous month", "下个月": "Next month", "用量流水": "Usage history", "时间": "Time", "类别": "Category", "模型 / 内容": "Model / content", "积分": "Credits", "当前页没有记录。": "No records on this page.", "导出 CSV": "Export CSV", "上一页": "Previous", "下一页": "Next", "筛选、分组和导出仅包含当前页。": "Filtering, grouping and export cover the current page.",
     "订单": "Orders", "发票申请": "Invoice requests", "订单号": "Order number", "内容": "Type", "金额": "Amount", "状态": "Status", "仅显示最近 100 条订单。": "Only the latest 100 orders are shown.", "抬头": "Invoice title", "暂无可申请开票的订单。": "No orders are eligible for invoicing.", "申请开票": "Request invoice", "收起申请": "Close form", "退款请联系客服。": "Contact support for refunds.", "加入社群": "Join the community",
     "选择订单": "Select order", "发票类型": "Invoice type", "增值税普通发票": "Standard VAT invoice", "增值税专用发票": "Special VAT invoice", "发票抬头": "Invoice title", "税号": "Tax number", "收票邮箱": "Invoice email", "注册地址": "Registered address", "电话": "Phone", "开户行": "Bank name", "银行账号": "Bank account", "提交开票申请": "Submit invoice request", "确认提交该订单的开票申请？请先核对发票信息。": "Submit an invoice request for this order? Please check the invoice details first.",
     "绑定情况": "Linked accounts", "项目": "Item", "手机": "Phone", "邮箱": "Email", "已绑定": "Linked", "未绑定": "Not linked", "接口未提供": "Not available", "修改密码、换绑和注销需要重新验证，请前往灵策账号设置。": "To change your password, linked accounts or close your account, verify your identity in Lynxce account settings.", "前往灵策账号设置 ↗": "Open Lynxce account settings ↗", "已登记设备": "Registered devices", "设备": "Device", "平台": "Platform", "最近活动": "Last active", "网页登录不会单独列出。移除设备或全部下线需要重新验证，请前往灵策账号设置操作。": "Web logins are not listed separately. To remove devices or sign out everywhere, verify your identity in Lynxce account settings.",
@@ -37,7 +41,22 @@
   const tr = (text) => document.documentElement.dataset.lang === "en" ? (translations[text] || text) : text;
   const label = (value, names) => Object.hasOwn(names, value) ? tr(names[value]) : value;
   Object.assign(translations, { "已支付": "Paid", "待支付": "Pending payment", "已取消": "Cancelled", "已退款": "Refunded", "失败": "Failed", "积分充值": "Credit recharge", "会员": "Membership", "待处理": "Pending", "已开票": "Issued", "已拒绝": "Rejected" });
-  const orderStatus = (v) => label(v, { paid: "已支付", pending: "待支付", cancelled: "已取消", refunded: "已退款", failed: "失败" });
+  Object.assign(translations, {
+    "逐笔": "Transactions", "按类别": "By category", "按模型": "By model", "当前页分组": "Group current page", "套餐": "Membership", "Octop Bot 会员": "Octop Bot membership",
+    "查看订单": "View orders", "灵策账号会员": "Lynxce account membership", "到期时间": "Expires",
+    "Octop Bot 可用积分": "Credits available in Octop Bot", "通用积分": "Shared credits", "Octop 专属积分": "Octop-only credits",
+    "未来 30 天到期": "Expiring in 30 days", "先使用最早到期的积分。": "Credits expiring soonest are used first.",
+    "买加油包": "View credit packs", "账号用量包含其他灵策产品。": "Account usage includes other Lynxce products.",
+    "账号订单包含其他灵策产品。发票按当前组织显示。": "Orders include other Lynxce products. Invoices are for the current organization.",
+    "本页已支付": "Paid on this page", "可开票": "Eligible for invoice", "已开票金额": "Invoiced amount",
+    "可开票金额统计最近 100 笔符合条件的订单，已开票金额统计最近 200 条申请。": "Eligible amounts cover the latest 100 qualifying orders. Invoiced amounts cover the latest 200 requests.",
+    "查看发票": "View invoice", "处理说明": "Details", "微信": "WeChat", "已关闭": "Closed",
+    "批量申请会为每笔订单分别提交。": "Each selected order gets a separate invoice request.",
+    "请选择需要开票的订单。": "Select orders to invoice.", "确认提交所选订单的开票申请？": "Submit an invoice request for each selected order?",
+    "部分订单未确认提交，请刷新申请记录后重试。": "Some requests could not be confirmed. Refresh the records before retrying.",
+    "刷新申请记录": "Refresh requests", "累计支付": "Total paid", "套餐状态暂无法查询，可在订单中查看购买记录。": "Membership status is unavailable. View your orders for purchase history."
+  });
+  const orderStatus = (v) => label(v, { paid: "已支付", pending: "待支付", cancelled: "已关闭", expired: "已关闭", refunded: "已退款", failed: "失败" });
   const orderType = (v) => label(v, { recharge: "积分充值", subscription: "会员" });
   const invoiceStatus = (v) => label(v, { pending: "待处理", issued: "已开票", rejected: "已拒绝", cancelled: "已取消" });
   const dateTime = (v) => {
@@ -65,26 +84,62 @@
   // Current upstream omits metadata.type from ledger entries; never guess media categories.
   function mapLedger(x) {
     const type = x.subjectType, media = x.metadata?.type;
-    const kind = type === "media" ? ({ image: "作图", video: "做视频" }[media] || "作图 / 视频（未区分）") : ({ model: "文本对话", computer: "云电脑", cloud_computer: "云电脑", disk: "云电脑磁盘", cloud_computer_disk: "云电脑磁盘" }[type] || "其他");
+    const appCategory = type === "app" && ({ "云电脑": "云电脑", "Cloud Computer": "云电脑", "octop-compute": "云电脑", "云电脑磁盘": "云电脑磁盘", "Cloud Computer Disk": "云电脑磁盘", "octop-disk": "云电脑磁盘" })[x.model];
+    const kind = appCategory || (type === "media" ? ({ image: "作图", video: "做视频" }[media] || "作图 / 视频（未区分）") : ({ model: "文本对话", computer: "云电脑", cloud_computer: "云电脑", disk: "云电脑磁盘", cloud_computer_disk: "云电脑磁盘" }[type] || "其他"));
     return { date: x.createdAt || "", kind, model: x.model || "—", credits: x.creditsUsed };
   }
   function mapTrend(data) {
     if (!Array.isArray(data?.days) || !Array.isArray(data?.credits)) return [];
     return data.days.map((date, i) => ({ date: String(date).slice(0, 10), credits: Number(data.credits[i]) || 0 }));
   }
+  function ledgerPath(yearMonth, currentPage, size) {
+    const [year, number] = yearMonth.split("-").map(Number);
+    const last = new Date(Date.UTC(year, number, 0)).getUTCDate();
+    const query = new URLSearchParams({ from: yearMonth + "-01T00:00:00+08:00", to: yearMonth + "-" + last + "T23:59:59.999+08:00", page: currentPage, pageSize: size });
+    return "/api/user/usage-ledger?" + query;
+  }
+  function showBalance(box, q) {
+    box.append(el("strong", value(q.availableCredits ?? q.creditsRemaining), "account-number"));
+    if (q.availableCredits != null) {
+      const lots = q.octopCredits;
+      const expiring = lots ? lots.expiring : [];
+      box.append(table(["类别", "积分"], [
+        [tr("通用积分"), value(q.creditsRemaining)], [tr("Octop 专属积分"), value(lots ? lots.available : 0)],
+        [tr("未来 30 天到期"), value(Array.isArray(expiring) ? expiring.reduce((sum, lot) => sum + lot.units, 0) : null)]
+      ]));
+      box.append(el("p", "先使用最早到期的积分。", "account-muted"));
+    }
+    add(box, link("查看明细", "#usage"), link("买加油包", "/pricing.html#credits"));
+  }
+  function membership(box, q) {
+    box.append(el("p", "套餐状态暂无法查询，可在订单中查看购买记录。", "account-muted"));
+    // This subscription belongs to the Lynxce organization, independently of Octop ProductSubscription.
+    const sub = q?.subscription;
+    if (sub?.active && sub.planName) {
+      box.append(el("p", tr("灵策账号会员") + " · " + sub.planName));
+      if (sub.currentPeriodEnd) box.append(el("p", tr("到期时间") + " · " + dateTime(sub.currentPeriodEnd)));
+    }
+    add(box, link("查看订单", "#orders"), link("查看套餐", "/pricing.html"));
+  }
+  async function planPage(root) {
+    const box = card("Octop Bot 会员"); root.append(box);
+    membership(box, await request("/api/user/quota", box));
+  }
   async function overview(root) {
-    const id = sessionId;
+    const id = renderId;
     const cards = el("div", null, "account-stats"); root.append(cards);
-    const balance = card("积分余额"), plan = card("当前套餐"), used = card("本月已用"); add(cards, balance, plan, used);
-    add(balance, el("strong", "加载中…", "account-number"), link("查看明细", "#usage"));
-    add(plan, el("strong", "免费版", "account-number"), link("查看套餐", "pricing.html"));
-    used.append(el("strong", "加载中…", "account-number"));
+    const balance = card("Octop Bot 可用积分"), plan = card("Octop Bot 会员"), used = card("本月已用"); add(cards, balance, plan, used);
     const activity = card("积分活动"); root.append(activity);
-    const [q, o, t] = await Promise.all([request("/api/user/quota", balance), request("/api/user/usage-overview", used), request("/api/user/usage-trend?days=365", activity)]);
-    if (id !== sessionId) return;
-    balance.querySelector("strong").textContent = value(q?.creditsRemaining);
-    if (q && (q.expiringCredits != null || q.permanentCredits != null)) balance.append(el("p", [q.expiringCredits != null ? `${tr("会过期")} ${value(q.expiringCredits)}` : null, q.permanentCredits != null ? `${tr("永久")} ${value(q.permanentCredits)}` : null].filter(Boolean).join(" · "), "account-muted"));
-    used.querySelector("strong").textContent = value(o?.balance?.creditsUsedThisMonth);
+    used.append(el("p", "账号用量包含其他灵策产品。", "account-muted"));
+    const [q, ledger, t] = await Promise.all([request("/api/user/quota", balance), request(ledgerPath(shanghaiMonth(), 1, 1), used), request("/api/user/usage-trend?days=365", activity)]);
+    if (id !== renderId) return;
+    if (q) showBalance(balance, q);
+    membership(plan, q);
+    if (ledger?.summary) {
+      used.append(el("strong", value(ledger.summary.totalCredits), "account-number"));
+      const group = ledger.summary.categories;
+      if (group) used.append(table(["类别", "积分"], [["文本对话", group.chat], ["作图", group.image], ["做视频", group.video], ["其他", group.other]].map(([name, amount]) => [tr(name), value(amount)])));
+    }
     if (t) { trend = mapTrend(t); drawActivity(activity); }
   }
   function drawActivity(box) {
@@ -110,28 +165,73 @@
     const currentPage = page;
     let ledger = [];
     const controls = el("div", null, "account-controls"); root.append(controls);
-    const monthText = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
-    const shift = (n) => { month = new Date(month.getFullYear(), month.getMonth() + n, 1); page = 1; route(); };
+    const monthText = month;
+    const shift = (n) => { const [y, m] = month.split("-").map(Number); month = new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7); page = 1; route(); };
     add(controls, button("上个月", () => shift(-1)), el("strong", monthText), button("下个月", () => shift(1)));
     const filter = el("select"); filter.setAttribute("aria-label", tr("按类别筛选当前页")); ["全部", "文本对话", "作图", "做视频", "云电脑", "云电脑磁盘", "作图 / 视频（未区分）", "其他"].forEach((v) => { const o = el("option", v); o.value = v; filter.append(o); }); filter.value = category; filter.addEventListener("change", () => { category = filter.value; showRows(); }); controls.append(filter);
+    const groupBy = el("select"); groupBy.setAttribute("aria-label", tr("当前页分组"));
+    for (const name of ["逐笔", "按类别", "按模型"]) {
+      const option = el("option", name); option.value = name; groupBy.append(option);
+    }
+    groupBy.value = dimension;
+    groupBy.addEventListener("change", () => { dimension = groupBy.value; showRows(); }); controls.append(groupBy);
     const rowsBox = card("用量流水"); root.append(rowsBox);
-    const last = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
-    const data = await request(`/api/user/usage-ledger?from=${monthText}-01&to=${monthText}-${last}&page=${currentPage}&pageSize=20`, rowsBox);
+    root.prepend(el("p", "账号用量包含其他灵策产品。", "account-muted"));
+    const data = await request(ledgerPath(monthText, currentPage, 20), rowsBox);
     if (!data || requestId !== ledgerRequestId) return; ledger = items(data).map(mapLedger);
-    function showRows() { rowsBox.replaceChildren(el("h3", "用量流水")); const rows = ledger.filter((x) => category === "全部" || x.kind === category); rowsBox.append(table(["时间", "类别", "模型 / 内容", "积分"], rows.map((x) => [dateTime(x.date), tr(x.kind), x.model, value(x.credits)]))); if (!rows.length) rowsBox.append(el("p", "当前页没有记录。", "account-muted")); }
+    function currentRows() {
+      const rows = ledger.filter(x => category === "全部" || x.kind === category);
+      if (dimension === "逐笔") {
+        return [["时间", "类别", "模型 / 内容", "积分"].map(tr), ...rows.map(x => [dateTime(x.date), tr(x.kind), x.model, value(x.credits)])];
+      }
+      const sums = new Map();
+      for (const row of rows) {
+        const key = dimension === "按模型" ? row.model : tr(row.kind);
+        sums.set(key, (sums.get(key) || 0) + row.credits);
+      }
+      return [[tr(dimension === "按模型" ? "模型 / 内容" : "类别"), tr("积分")], ...Array.from(sums, ([key, sum]) => [key, value(sum)])];
+    }
+    function showRows() {
+      const [headers, ...rows] = currentRows();
+      rowsBox.replaceChildren(el("h3", "用量流水"), table(headers, rows));
+      if (!rows.length) rowsBox.append(el("p", "当前页没有记录。", "account-muted"));
+    }
     showRows();
-    controls.append(button("导出 CSV", () => { const dataRows = [["时间", "类别", "模型 / 内容", "积分"].map(tr), ...ledger.filter((x) => category === "全部" || x.kind === category).map((x) => [dateTime(x.date), tr(x.kind), x.model, value(x.credits)])]; const csv = dataRows.map((row) => row.map((cell) => { let s = String(cell ?? ""); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; }).join(",")).join("\r\n"); const url = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" })); const a = link("下载", url); a.download = `usage-${monthText}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }));
-    const pagination = el("div", null, "account-controls"); const prev = button("上一页", () => { page--; route(); }), next = button("下一页", () => { page++; route(); }); prev.disabled = currentPage <= 1; next.disabled = currentPage >= (data.pagination?.totalPages || 1); add(pagination, prev, el("span", document.documentElement.dataset.lang === "en" ? `Page ${value(currentPage)}` : `第 ${value(currentPage)} 页`), next); root.append(pagination, el("p", "类别筛选和导出仅包含当前已加载页。", "account-muted"));
+    controls.append(button("导出 CSV", () => { const dataRows = currentRows(); const csv = dataRows.map((row) => row.map((cell) => { let s = String(cell ?? ""); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; }).join(",")).join("\r\n"); const url = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" })); const a = link("下载", url); a.download = `usage-${monthText}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }));
+    const pagination = el("div", null, "account-controls"); const prev = button("上一页", () => { page--; route(); }), next = button("下一页", () => { page++; route(); }); prev.disabled = currentPage <= 1; next.disabled = currentPage >= (data.pagination?.totalPages || 1); add(pagination, prev, el("span", document.documentElement.dataset.lang === "en" ? `Page ${value(currentPage)}` : `第 ${value(currentPage)} 页`), next); root.append(pagination, el("p", "筛选、分组和导出仅包含当前页。", "account-muted"));
   }
   async function orders(root) {
-    const id = sessionId;
+    const id = renderId;
+    root.append(el("p", "账号订单包含其他灵策产品。发票按当前组织显示。", "account-muted"));
     const orderBox = card("订单"), invoiceBox = card("发票申请"); add(root, orderBox, invoiceBox);
-    const [ordersData, eligible, requests] = await Promise.all([request("/api/user/purchase-orders?page=1&pageSize=100", orderBox), request("/api/user/invoice-requests/orders", invoiceBox), request("/api/user/invoice-requests", invoiceBox)]);
-    if (id !== sessionId) return;
+    const [ordersData, eligible, requests] = await Promise.all([request(`/api/user/purchase-orders?page=${orderPage}&pageSize=100`, orderBox), request("/api/user/invoice-requests/orders", invoiceBox), request("/api/user/invoice-requests", invoiceBox)]);
+    if (id !== renderId) return;
     if (ordersData) orderBox.append(table(["订单号", "时间", "内容", "金额", "状态"], items(ordersData).map((x) => [x.outTradeNo || x.id, dateTime(x.createdAt), orderType(x.orderType), x.amountYuan == null ? "—" : `¥${value(x.amountYuan)}`, orderStatus(x.status)])));
-    if (ordersData?.pagination?.totalPages > 1) orderBox.append(el("p", "仅显示最近 100 条订单。", "account-muted"));
-    if (requests) invoiceBox.append(table(["订单", "时间", "抬头", "金额", "状态"], items(requests).map((x) => [x.orderId, dateTime(x.createdAt), x.title, x.amountYuan == null ? "—" : `¥${value(x.amountYuan)}`, invoiceStatus(x.status)])));
     const available = items(eligible).filter((x) => x.canApply);
+    const amount = (rows) => "¥" + value(rows.reduce((sum, row) => sum + Math.round(row.amountYuan * 100), 0) / 100);
+    if (ordersData) {
+      const pages = ordersData.pagination?.totalPages || 1;
+      const sumLabel = pages > 1 ? "本页已支付" : "累计支付";
+      orderBox.insertBefore(el("p", tr(sumLabel) + " · " + amount(items(ordersData).filter(x => x.status === "paid"))), orderBox.children[1]);
+      if (pages > 1) {
+        const prev = button("上一页", () => { orderPage--; route(); }), next = button("下一页", () => { orderPage++; route(); });
+        prev.disabled = orderPage <= 1; next.disabled = orderPage >= pages;
+        add(orderBox, prev, el("span", ` ${orderPage} / ${pages} `), next);
+      }
+    }
+    if (eligible) invoiceBox.append(el("p", tr("可开票") + " · " + amount(available)));
+    if (requests) {
+      invoiceBox.append(el("p", tr("已开票金额") + " · " + amount(items(requests).filter(x => x.status === "issued"))));
+      invoiceBox.append(table(["订单", "时间", "抬头", "金额", "状态", "处理说明"], items(requests).map(x => {
+        let detail = x.rejectReason || x.invoiceNumber;
+        if (x.status === "issued" && /^https:\/\//i.test(x.invoiceUrl || "")) {
+          detail = link(x.invoiceNumber || "查看发票", x.invoiceUrl);
+          detail.rel = "noreferrer"; detail.target = "_blank";
+        }
+        return [x.orderId, dateTime(x.createdAt), x.title, "¥" + value(x.amountYuan), invoiceStatus(x.status), detail];
+      })));
+    }
+    invoiceBox.append(el("p", "可开票金额统计最近 100 笔符合条件的订单，已开票金额统计最近 200 条申请。", "account-muted"));
     if (eligible && !available.length) invoiceBox.append(el("p", "暂无可申请开票的订单。", "account-muted"));
     if (available.length) {
       const form = invoiceForm(invoiceBox, available);
@@ -142,22 +242,48 @@
     const note = el("p", "退款请联系客服。", "account-muted"), community = button("加入社群", () => {}); community.setAttribute("data-community", ""); note.append(community); root.append(note);
   }
   function invoiceForm(parent, orders) {
-    const form = el("form", null, "account-form"), select = el("select"); select.name = "orderId"; select.required = true;
-    orders.forEach((x) => { const o = el("option", `${x.outTradeNo || x.orderId} · ¥${value(x.amountYuan)}`); o.value = x.orderId; select.append(o); });
+    const form = el("form", null, "account-form"), orderList = el("fieldset");
+    orderList.append(el("legend", "选择订单"));
+    orders.forEach((order) => {
+      const input = el("input"); input.type = "checkbox"; input.name = "orderId"; input.value = order.orderId;
+      input.checked = orders.length === 1;
+      const label = el("label"); label.append(input, document.createTextNode(` ${order.outTradeNo || order.orderId} · ¥${value(order.amountYuan)}`)); orderList.append(label);
+    });
+    form.append(orderList, el("p", "批量申请会为每笔订单分别提交。", "account-muted"));
     const field = (label, name, type = "text", required = true) => { const l = el("label", label), i = el("input"); i.name = name; i.type = type; i.required = required; l.append(i); form.append(l); return i; };
-    const orderLabel = el("label", "选择订单"); orderLabel.append(select); form.append(orderLabel);
     const typeLabel = el("label", "发票类型"), type = el("select"); type.name = "invoiceType"; [["normal", "增值税普通发票"], ["special", "增值税专用发票"]].forEach(([v, label]) => { const o = el("option", label); o.value = v; type.append(o); }); typeLabel.append(type); form.append(typeLabel);
     field("发票抬头", "title"); const tax = field("税号", "taxNumber"); tax.pattern = "[A-Za-z0-9]{15,20}"; field("收票邮箱", "email", "email");
     const extra = [["注册地址", "address"], ["电话", "phone"], ["开户行", "bankName"], ["银行账号", "bankAccount"]].map(([label, name]) => field(label, name, "text", false));
     type.addEventListener("change", () => extra.forEach((input) => { input.required = type.value === "special"; }));
     const submit = el("button", "提交开票申请", "account-button"); submit.type = "submit"; form.append(submit);
-    form.addEventListener("submit", async (event) => { event.preventDefault(); if (!confirm(tr("确认提交该订单的开票申请？请先核对发票信息。"))) return; const id = sessionId; submit.disabled = true; try { const body = Object.fromEntries(new FormData(form)); await auth.api("/api/user/invoice-requests", { method: "POST", body }); if (id === sessionId) route(); } catch (e) { if (id === sessionId) { fail(form, e); submit.disabled = false; } } });
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (submit.disabled) return;
+      const data = new FormData(form), ids = data.getAll("orderId");
+      if (!ids.length) { alert(tr("请选择需要开票的订单。")); return; }
+      if (!confirm(tr("确认提交所选订单的开票申请？") + " (" + ids.length + ")")) return;
+      const id = renderId, session = sessionId;
+      const fields = Object.fromEntries(data);
+      submit.disabled = true;
+      try {
+        for (const orderId of ids) {
+          if (id !== renderId || session !== sessionId) return;
+          await auth.api("/api/user/invoice-requests", { method: "POST", body: { ...fields, orderId } });
+        }
+        if (id === renderId) route();
+      } catch (error) {
+        if (id !== renderId) return;
+        fail(form, error);
+        form.append(el("p", "部分订单未确认提交，请刷新申请记录后重试。"), button("刷新申请记录", route));
+      }
+    });
     parent.append(form); return form;
   }
   async function security(root) {
-    const box = card("绑定情况"); root.append(box); const p = await request("/api/user/profile", box); if (!p) return;
+    const box = card("绑定情况"); root.append(box);
+    const [p, account] = await Promise.all([request("/api/user/profile", box), request("/api/user/account", box)]); if (!p) return;
     const bound = (v) => tr(v === true ? "已绑定" : v === false ? "未绑定" : "接口未提供");
-    box.append(table(["项目", "状态"], [["手机", p.phone || bound(p.phoneBound)], ["邮箱", p.emailBound ? p.email || tr("已绑定") : bound(p.emailBound)], ["WorkBuddy", bound(p.workbuddyBound)]]));
+    box.append(table(["项目", "状态"], [["手机", account?.phoneMasked || bound(account ? false : null)], ["邮箱", p.emailBound ? p.email || tr("已绑定") : bound(p.emailBound)], ["微信", bound(p.wechatBound)], ["WorkBuddy", bound(p.workbuddyBound)]]));
     add(box, el("p", "修改密码、换绑和注销需要重新验证，请前往灵策账号设置。", "account-muted"), link("前往灵策账号设置 ↗", "https://admin.lynxce.cn"));
   }
   async function devices(root) {
@@ -170,8 +296,8 @@
   function route() {
     if (!auth.session()) return;
     ledgerRequestId++;
-    const id = ++renderId; const name = location.hash.slice(1) || "overview"; const pages = { overview: ["概览", overview], usage: ["用量明细", usage], orders: ["订单与发票", orders], security: ["账号与安全", security], devices: ["登录设备", devices], bots: ["我的 Bot 与下载", bots] }; const [title, render] = pages[name] || pages.overview;
-    document.querySelectorAll("[data-section]").forEach((a) => { if (a.dataset.section === (pages[name] ? name : "overview")) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+    const id = ++renderId; const name = location.hash.slice(1) || "overview"; const pages = { overview: ["概览", overview], plan: ["套餐", planPage], usage: ["用量明细", usage], orders: ["订单与发票", orders], security: ["账号与安全", security], devices: ["登录设备", devices], bots: ["我的 Bot 与下载", bots] }; const [title, render] = Object.hasOwn(pages, name) ? pages[name] : pages.overview;
+    document.querySelectorAll("[data-section]").forEach((a) => { if (a.dataset.section === (Object.hasOwn(pages, name) ? name : "overview")) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     const root = el("div"); root.append(el("h1", title)); content.replaceChildren(root); Promise.resolve(render(root)).catch((e) => { if (id === renderId) fail(root, e); });
   }
   async function init() {
@@ -180,7 +306,14 @@
     if (hasCode) { let redeemed = false; try { redeemed = await auth.redeemHash("account"); } catch (_) { history.replaceState(null, "", location.pathname + location.search); } if (auth.config.oneTimeCodeEnabled && !redeemed) auth.logout(); }
     if (!auth.config.loginEnabled) { notice.textContent = tr("个人中心即将开放"); return; }
     if (!auth.requireLogin('/account.html' + location.hash)) return;
-    notice.hidden = true; shell.hidden = false; window.addEventListener("hashchange", route); route();
+    notice.hidden = true; shell.hidden = false; window.addEventListener("hashchange", route);
+    function refresh() {
+      if (shell.hidden || document.hidden || !["", "#", "#overview", "#plan", "#orders"].includes(location.hash)) return;
+      if (!content.querySelector("form:not([hidden]), form button[type=submit]:disabled")) route();
+    }
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("pageshow", event => { if (event.persisted) refresh(); });
+    route();
   }
   Object.assign(translations, { "会过期": "Expiring", "永久": "Permanent", "（所在周）": " (week)", "（累计）": " (cumulative)", "按类别筛选当前页": "Filter current page by category" });
   document.addEventListener("langchange", () => { if (!shell.hidden) route(); else if (!auth.config.loginEnabled) notice.textContent = tr("个人中心即将开放"); });
