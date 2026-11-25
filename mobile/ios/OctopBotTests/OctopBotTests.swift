@@ -106,6 +106,26 @@ final class StreamTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: "chat.unread"))
     }
 
+    func testLegacyGrantRetirementRequiresTheRecoveredOwnerAndOriginalCredential() {
+        let key = "test.legacy-grant." + UUID().uuidString
+        defer { Keychain.set(nil, for: key) }
+        let a = LynxceBackend.Grant(accountId: "a", accessToken: "old-a", refreshToken: "a1")
+        let b = LynxceBackend.Grant(accountId: "b", accessToken: "b", refreshToken: "b1")
+        let rotated = LynxceBackend.Grant(accountId: "a", accessToken: "new-a", refreshToken: "a2")
+        Keychain.setCodable(a, for: key)
+        for other in ["b", ""] {
+            XCTAssertFalse(LynxceBackend.retireRecoveredGrant(a, owner: other, for: key))
+            XCTAssertEqual(Keychain.codable(LynxceBackend.Grant.self, for: key), a)
+        }
+        for current in [b, rotated] {
+            Keychain.setCodable(current, for: key)
+            XCTAssertFalse(LynxceBackend.retireRecoveredGrant(a, owner: "a", for: key))
+            XCTAssertEqual(Keychain.codable(LynxceBackend.Grant.self, for: key), current)
+        }
+        XCTAssertTrue(LynxceBackend.retireRecoveredGrant(rotated, owner: "a", for: key))
+        XCTAssertNil(Keychain.get(key))
+    }
+
     func testLegacyRecoveryReadsEveryPageAndReportsPartialRecords() async throws {
         var cursors: [String?] = []
         let complete = try await ServerBackend.restoreLegacyPages { cursor in

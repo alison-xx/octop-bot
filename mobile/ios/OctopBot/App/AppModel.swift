@@ -179,6 +179,7 @@ final class AppModel {
 
     func recoverLegacyHistory(force: Bool = false) {
         guard let server, server.isOfficialCloud, !recoveringHistory else { return }
+        let legacyGrant = LynxceBackend.restore()?.grant
         recoveringHistory = true
         recoveryTask = Task {
             defer { if self.server === server { recoveringHistory = false } }
@@ -186,9 +187,14 @@ final class AppModel {
                 let owner = try await server.legacyHistoryOwner()
                 let key = "cloud.legacyHistory.completed." + owner
                 guard self.server === server, !Task.isCancelled,
-                      force || !UserDefaults.standard.bool(forKey: key) else { return }
+                      force || legacyGrant?.accountId == owner || !UserDefaults.standard.bool(forKey: key) else { return }
                 let complete = try await server.restoreLegacyHistory()
                 guard self.server === server, !Task.isCancelled else { return }
+                if complete, let legacyGrant, legacyGrant.accountId == owner {
+                    let confirmedOwner = try await server.legacyHistoryOwner(refresh: true)
+                    guard self.server === server, !Task.isCancelled, confirmedOwner == owner else { return }
+                    LynxceBackend.retireRecoveredGrant(legacyGrant, owner: confirmedOwner)
+                }
                 UserDefaults.standard.set(complete, forKey: key)
                 historyRecoveryMessage = L(complete ? "history.restored" : "history.restoreIncomplete")
                 for chat in Array(sessions.values) { await chat.reloadConversations() }

@@ -239,8 +239,8 @@ final class ServerBackend: ChatBackend {
         UserDefaults.standard.set(thread, forKey: "cloud.thread." + owner + "." + bot)
     }
 
-    func legacyHistoryOwner() async throws -> String {
-        if let verifiedHistoryOwner { return verifiedHistoryOwner }
+    func legacyHistoryOwner(refresh: Bool = false) async throws -> String {
+        if !refresh, let verifiedHistoryOwner { return verifiedHistoryOwner }
         guard isOfficialCloud, let profile = try await json(.get, "/api/octop-bot/cloud/account") as? [String: Any],
               profile["connected"] as? Bool == true, let owner = profile["account_id"] as? String, !owner.isEmpty else {
             throw APIError(kind: .server, status: 502, message: nil)

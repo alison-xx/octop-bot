@@ -4,7 +4,7 @@ import UIKit
 /// Signed in with a personal Lynxce (灵策智算) account: chat goes straight to the Lynxce model gateway and
 /// conversations sync through Lynxce web-chat sessions, so they also appear in Octop Bot on the desktop.
 final class LynxceBackend: ChatBackend {
-    struct Grant: Codable {
+    struct Grant: Codable, Equatable {
         var accountId: String
         var displayName: String?
         var accessToken: String
@@ -37,6 +37,13 @@ final class LynxceBackend: ChatBackend {
 
     static func restore() -> LynxceBackend? {
         Keychain.codable(Grant.self, for: grantKey).map { LynxceBackend(grant: $0) }
+    }
+
+    /// The upgrade may retire only the exact direct-login credential captured before recovery.
+    @discardableResult
+    static func retireRecoveredGrant(_ grant: Grant, owner: String, for key: String = grantKey) -> Bool {
+        guard !owner.isEmpty, grant.accountId == owner else { return false }
+        return Keychain.replace(grant, with: nil, for: key)
     }
 
     static func signIn(account: String, password: String) async throws -> LynxceBackend {
