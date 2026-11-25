@@ -974,6 +974,56 @@ def test_an_unpaid_disk_is_retried_later_and_never_deleted(
     assert ("stop", "ins-1") not in driver.calls
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [
+        OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED),
+        RuntimeError("billing unavailable"),
+    ],
+)
+def test_inconclusive_disk_charge_cancels_unpaid_reclaim(
+    setup: Any, monkeypatch: pytest.MonkeyPatch, failure: Exception
+) -> None:
+    monkeypatch.setenv("OCTOP_DISK_BILLING", "on")
+    monkeypatch.setenv("OCTOP_COMPUTER_RECLAIM", "on")
+    manager, driver, billing, clock = setup
+    manager.remind = lambda record, deadline: True
+    driver.disk_size = 40
+    billing.disk_down = True
+    manager.ensure_running("bot", 1)
+    manager.pause("bot", 1)
+    manager.tick()
+    clock.now += 22 * 86400
+    manager.tick()
+    assert manager.record("bot", 1).reclaim_reason == "unpaid"
+    clock.now += 7 * 86400
+    # A deadline alone is insufficient; today's charge must confirm the balance.
+    manager._reclaim_tick("bot", 1, clock.now)
+    assert manager.record("bot", 1).instance_id is not None
+
+    def unavailable(*args: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(billing, "charge_disk", unavailable)
+    manager.tick()
+    record = manager.record("bot", 1)
+    assert manager.disk_status(record) == (40, 0)
+    assert record.reclaim_reason is None
+    assert record.reclaim_at is None
+    assert record.disk_paid_day == ""
+    assert record.disk_retry_at > clock.now
+    assert ("stop", "ins-1") not in driver.calls
+
+
+def test_legacy_unclassified_disk_failures_do_not_authorize_reclaim() -> None:
+    old = computers.ComputerRecord.load(
+        '{"agent_id":"old","user_id":7,"disk_failed_day":"2026-01-01",'
+        '"reclaim_reason":"unpaid","reminded_at":10,"reclaim_at":20}'
+    )
+    assert old.disk_failed_day == ""
+    assert old.reclaim_reason is None and old.reclaim_at is None
+
+
 def test_ags_computers_and_deleted_bots_pay_no_disk(
     setup: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:

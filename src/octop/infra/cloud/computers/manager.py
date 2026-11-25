@@ -172,12 +172,22 @@ class ComputerRecord:
     # The Beijing day the disk is paid for, and when to retry a disk charge that failed.
     disk_paid_day: str = ""
     disk_failed_day: str = ""
+    disk_insufficient_day: str = ""  # Last day Lynxce confirmed insufficient credits.
     disk_retry_at: float = 0.0
     reminded_at: float | None = None
     reclaim_reason: Literal["idle", "unpaid"] | None = None
     reclaim_at: float | None = None
     reclaim_seen_at: float | None = None
     reclaim_unpaid_since: str = ""
+
+    def clear_disk_arrears(self) -> None:
+        self.disk_failed_day = ""
+        self.disk_insufficient_day = ""
+        self.reclaim_unpaid_since = ""
+        if self.reclaim_reason == "unpaid":
+            self.reminded_at = None
+            self.reclaim_reason = None
+            self.reclaim_at = None
 
     def controlled(self, now: float) -> bool:
         """Taken over and still watched: a closed tab or a phone that left hands it back."""
@@ -194,7 +204,11 @@ class ComputerRecord:
             for u in data.get("unsettled", [])
         ]
         known = set(cls.__dataclass_fields__)
-        return cls(**{k: v for k, v in data.items() if k in known})
+        record = cls(**{k: v for k, v in data.items() if k in known})
+        if "disk_insufficient_day" not in data:
+            # Older records counted upstream and authentication errors as unpaid days.
+            record.clear_disk_arrears()
+        return record
 
     def dump(self) -> str:
         return json.dumps(asdict(self))
@@ -435,11 +449,14 @@ class ComputerManager:
         idle_days = max(0, int((now - last) // 86400)) if last else 0
         if not record.instance_id:
             return idle_days, None, None
+        confirmed_today = record.disk_insufficient_day == beijing_day(now)
+        if record.reclaim_reason == "unpaid" and not confirmed_today:
+            return idle_days, None, None
         if record.reminded_at is not None and record.reclaim_at is not None:
             state = "pending_reclaim" if now >= record.reclaim_at else "reminded"
             return idle_days, state, record.reclaim_at
         failed_day = record.reclaim_unpaid_since or record.disk_failed_day
-        if failed_day:
+        if confirmed_today and failed_day:
             first = date.fromisoformat(failed_day)
             overdue = (date.fromisoformat(beijing_day(now)) - first).days + 1
             if overdue >= 23:
@@ -465,6 +482,11 @@ class ComputerManager:
                 return
             if record.reminded_at is not None:
                 if state == "pending_reclaim" and not self._busy.get(agent_id, 0):
+                    if record.reclaim_reason == "unpaid":
+                        # Wait for a balance decision at or after the reclaim deadline.
+                        last_check = record.disk_retry_at - DISK_RETRY_SECONDS
+                        if not disk_billing_enabled() or deadline is None or last_check < deadline:
+                            return
                     self._release(agent_id, user_id)
                 return
             failed_day = record.reclaim_unpaid_since or record.disk_failed_day
@@ -473,7 +495,11 @@ class ComputerManager:
                 if failed_day
                 else 0
             )
-            record.reclaim_reason = "unpaid" if overdue >= 23 else "idle"
+            record.reclaim_reason = (
+                "unpaid"
+                if record.disk_insufficient_day == beijing_day(now) and overdue >= 23
+                else "idle"
+            )
             # A delayed reaper or unavailable notification must still allow seven days.
             deadline = max(deadline or now, now + 7 * 86400)
         # Delivery runs on the server event loop; never hold the computer lock while waiting.
@@ -818,17 +844,18 @@ class ComputerManager:
                 return
             try:
                 self._billing.charge_disk(record, day, size)
-            except Exception:  # noqa: BLE001 - out of credits (402), unpriced (503) or Lynxce down
+            except Exception as exc:  # noqa: BLE001 - retry transient billing failures as well
                 logger.info("disk of computer %s not paid for %s; retrying later", agent_id, day)
-                record.disk_failed_day = record.disk_failed_day or day
+                if isinstance(exc, OctopError) and exc.code == ErrorCode.BOT_CLOUD_CREDITS_REQUIRED:
+                    record.disk_failed_day = record.disk_failed_day or day
+                    record.disk_insufficient_day = day
+                else:
+                    record.clear_disk_arrears()
                 record.disk_retry_at = now + DISK_RETRY_SECONDS
                 self._save(record)
                 return
-            if record.reclaim_reason == "unpaid":
-                self._cancel_reclaim(record)
-            record.reclaim_unpaid_since = ""
+            record.clear_disk_arrears()
             record.disk_paid_day = day
-            record.disk_failed_day = ""
             record.disk_retry_at = 0.0
             self._save(record)
 
