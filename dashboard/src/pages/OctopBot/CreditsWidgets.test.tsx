@@ -13,8 +13,18 @@ import {
   CreditsRequiredCard,
   LowCreditsBanner,
 } from "./CreditsWidgets";
-import { formatCredits, resetCredits } from "./useLynxceCredits";
+import {
+  formatCredits,
+  resetCredits,
+  RECHARGE_RETURN,
+  rememberCheckout,
+  reportCheckoutBalance,
+} from "./useLynxceCredits";
+import { message } from "@/utils/antdMessage";
 
+vi.mock("@/utils/antdMessage", () => ({
+  message: { success: vi.fn(), error: vi.fn() },
+}));
 vi.mock("../../api/request", () => ({ request: vi.fn() }));
 vi.mock("react-i18next", () => {
   const t = (key: string, vars?: Record<string, string>) =>
@@ -180,4 +190,28 @@ it("shows the balance beside the month's usage, by Bot or by model", async () =>
   expect(
     screen.getByRole("link", { name: "botCredits.accountCentre" }),
   ).toHaveAttribute("href", "https://admin.lynxce.cn");
+});
+
+it("refreshes a focused wallet on a desktop checkout callback", async () => {
+  render(<CreditsPanel />);
+  await screen.findByText("0", { selector: "strong" });
+  balance = 240;
+  await act(async () => {
+    window.dispatchEvent(new Event(RECHARGE_RETURN));
+  });
+  expect(
+    await screen.findByText("240", { selector: "strong" }),
+  ).toBeInTheDocument();
+});
+
+it("checks the wallet and never reports a payment from the callback alone", () => {
+  const success = vi.mocked(message.success);
+  success.mockClear();
+  rememberCheckout(wallet(100), checkout.expires_at);
+  reportCheckoutBalance({ ...wallet(500), account_id: "different" });
+  reportCheckoutBalance(wallet(100));
+  expect(success).not.toHaveBeenCalled();
+  reportCheckoutBalance(wallet(200));
+  reportCheckoutBalance(wallet(200));
+  expect(success).toHaveBeenCalledTimes(1);
 });

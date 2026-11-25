@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 
 data class NotificationChat(val botId: String, val threadId: String?)
 
+internal fun isRechargeReturn(url: String?) = url == "octop-bot://recharge/done"
+
 /** AppCompat so per-app language and the appearance setting apply live on every supported Android. */
 class MainActivity : AppCompatActivity() {
     private val model: AppViewModel by viewModels()
@@ -25,12 +27,20 @@ class MainActivity : AppCompatActivity() {
         installSplashScreen().setOnExitAnimationListener { it.remove() }
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        openBot.value = notificationChat(intent)
+        handleLaunchIntent(intent)
         setContent { OctopBotApp(model, openBot) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        handleLaunchIntent(intent)
+    }
+
+    private fun handleLaunchIntent(intent: Intent) {
+        if (intent.action == Intent.ACTION_VIEW) {
+            if (isRechargeReturn(intent.dataString)) model.appResumed(explicitReturn = true)
+            return
+        }
         notificationChat(intent)?.let { openBot.value = it }
     }
 
