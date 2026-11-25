@@ -4,6 +4,39 @@
   "hidden": [],
   "releases": [
     {
+      "version": "1.0.6",
+      "channel": "beta",
+      "date": "2026-11-25",
+      "tag": "octop-bot-v1.0.6-macos",
+      "notes": {
+        "zh": [
+          "第一次使用时，可以选择行业或岗位，让 Chief 帮你组建第一支 Bot 团队并创建群聊。",
+          "登录页和账号菜单换了布局。设置现在按账号、AI、通用和其他分组，外观与语言、通知、桌面与隐私各有独立页面。",
+          "账号菜单和聊天中的本人头像会显示灵策照片；未设置或图片无法加载时，显示名字首字。充值完成后，返回 Mac 应用可查看最新积分余额。",
+          "在「Bot 的电脑」里查看这台 Mac 时，如果缺少屏幕录制或辅助功能权限，应用会提示你到系统设置授权。修复了画面一直黑屏加载的问题。",
+          "正式版与开发版分别保存服务器设置，修复了正式版启动时尝试连接本地开发服务器的问题。"
+        ],
+        "en": [
+          "On your first visit, pick an industry or role and Chief will set up your first Bot team and group chat.",
+          "The sign-in screen and account menu have new layouts. Settings now groups options under Account, AI, General, and Other, with separate pages for appearance and language, notifications, and desktop privacy.",
+          "Your account menu and chat show your Lynxce profile photo, with the first character of your name as a fallback. Return to the Mac app after checkout to see the refreshed credit balance.",
+          "When viewing your Mac in Bot’s computer, the app tells you which screen recording or accessibility permission to grant in System Settings. This fixes a black screen that could keep loading indefinitely.",
+          "The installed Mac app keeps its server settings separate from development builds, so it opens the right server at startup."
+        ]
+      },
+      "assets": [
+        {
+          "platform": "darwin",
+          "arch": "arm64",
+          "kind": "dmg",
+          "name": "Octop-Bot-1.0.6-mac-arm64.dmg",
+          "sha256": "c6a126a53b5f8b24679054e70a5d97b50f7312ed33b3d91a945b2073ca583f65",
+          "size": 356877177,
+          "url": "https://dl.lynxce.cn/releases/octop-bot/1.0.6/Octop-Bot-1.0.6-mac-arm64.dmg"
+        }
+      ]
+    },
+    {
       "version": "1.0.5",
       "channel": "beta",
       "date": "2026-11-25",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import {
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import AuthImage from "../../components/AuthImage";
 import { officeThumbnailUrl } from "../../utils/toolMediaBlocks";
+import { QuoteMessageContext } from "../Chat/ChatRouteContext";
 import Markdown from "../../components/Markdown";
 import FileTypeIcon from "../../components/FileCard/FileTypeIcon";
 import {
@@ -93,26 +94,63 @@ function Criteria({ criteria }: { criteria: BotTaskCriterion[] }) {
   );
 }
 
-function Steps({ todos, live }: { todos: TodoListItem[]; live: boolean }) {
+function Steps({
+  todos,
+  live,
+  task,
+}: {
+  todos: TodoListItem[];
+  live: boolean;
+  task: BotTask;
+}) {
+  const draft = useContext(QuoteMessageContext);
+  const { t } = useTranslation();
   return (
     <ol className={styles.steps}>
-      {todos.map((todo) => (
-        <li
-          key={todo.id}
-          className={cx(styles.step, styles[`step_${todo.status}`], {
-            [styles.stepNow]: live && todo.status === "in_progress",
-          })}
-        >
-          <span className={styles.stepIcon} aria-hidden>
-            {todo.status === "completed" ? (
-              <Check size={13} />
-            ) : (
-              <Circle size={9} />
-            )}
-          </span>
-          <span className={styles.stepText}>{todo.content}</span>
-        </li>
-      ))}
+      {todos.map((todo, index) => {
+        const step = task.steps?.[index];
+        const checkpoint =
+          step?.content === todo.content && step.status === "completed"
+            ? step.checkpoint
+            : null;
+        return (
+          <li
+            key={todo.id}
+            className={cx(styles.step, styles[`step_${todo.status}`], {
+              [styles.stepNow]: live && todo.status === "in_progress",
+            })}
+          >
+            <span className={styles.stepIcon} aria-hidden>
+              {todo.status === "completed" ? (
+                <Check size={13} />
+              ) : (
+                <Circle size={9} />
+              )}
+            </span>
+            <span className={styles.stepText}>{todo.content}</span>
+            {!live &&
+              draft &&
+              checkpoint &&
+              /^[0-9A-HJKMNP-TV-Z]{26}$/.test(task.id) &&
+              /^[0-9A-HJKMNP-TV-Z]{26}$/.test(checkpoint) && (
+                <button
+                  type="button"
+                  className={styles.toggle}
+                  onClick={() =>
+                    draft(
+                      t("botTask.redoDraft", {
+                        step: todo.content,
+                        checkpoint,
+                      }) + "\n\n",
+                    )
+                  }
+                >
+                  {t("botTask.redoStep")}
+                </button>
+              )}
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -245,7 +283,9 @@ export default function BotTaskCard({
       )}
       {open && (
         <div className={styles.body} role="status" aria-live="polite">
-          {todos.length > 0 && <Steps todos={todos} live={phase === "live"} />}
+          {todos.length > 0 && (
+            <Steps todos={todos} live={phase === "live"} task={task} />
+          )}
           {task.criteria.length > 0 && (
             <>
               <button

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import jwt
 import pytest
 
 from octop.api.routers import auth_lynxce
@@ -19,6 +20,10 @@ from tests.support.app import octop_client
 CODE_LOGIN = "/api/auth/lynxce/code-login"
 STATUS = "/api/auth/lynxce/status"
 INFO = "/api/octop-bot/server-info"
+
+
+def _lynxce_jwt(**claims: Any) -> str:
+    return jwt.encode({"typ": "access", **claims}, "test-secret", algorithm="HS256")
 
 
 class Upstream:
@@ -66,8 +71,6 @@ class Upstream:
                     "data": data,
                 },
             )
-        if path == "/api/user/profile":
-            return httpx.Response(200, json={"code": 0, "data": {"id": "lx-13800000001"}})
         if path == "/api/user/personal-api-keys" and req.method == "GET":
             owner = req.headers["Authorization"].removeprefix("Bearer ")
             if self.list_fails:
@@ -106,6 +109,14 @@ class Upstream:
             assert req.headers["Authorization"].startswith("Bearer access-")
             self.patched.append((path.rsplit("/", 1)[1], json.loads(req.content)))
             return httpx.Response(200, json={"code": 0, "data": {}})
+        if path == "/api/user/profile":  # who an access token belongs to (token-login)
+            bearer = req.headers.get("Authorization", "").removeprefix("Bearer ")
+            if bearer.count(".") == 2:
+                return httpx.Response(200, json={"code": 0, "data": {"id": "lx-13800000050"}})
+            if not bearer.startswith("access-"):
+                return httpx.Response(401, json={"error": {"message": "invalid token"}})
+            uid = bearer.removeprefix("access-")
+            return httpx.Response(200, json={"code": 0, "data": {"id": "lx-" + uid}})
         if path == "/api/auth/logout":
             return httpx.Response(200, json={"code": 0, "data": {}})
         if path == "/api/billing/app/recharge-packages":
@@ -578,6 +589,14 @@ async def test_screen_tickets_are_owner_only_and_single_use(
         ).status_code == 404
         ticket = (await client.post(path + "/screen", headers=mine)).json()
         assert ticket["ws_path"].startswith(path + "/screen/ws?ticket=")
+        assert ticket["session_transport"] == "path"
+        desktop = (
+            await client.post(
+                path + "/screen", headers={**mine, "X-Octop-Screen-Transport": "header"}
+            )
+        ).json()
+        assert desktop["session_transport"] == "header"
+        assert desktop["session_expires_in"] == 1800
 
         # Typing and the clipboard go through the screen session, with no sign-in (the
         # phone apps' screen page has none), and only while the user has taken over.
@@ -606,9 +625,9 @@ async def test_screen_tickets_are_owner_only_and_single_use(
         from octop.api.routers import bot_computers
 
         one_time = ticket["ws_path"].split("ticket=", 1)[1]
-        assert one_time in bot_computers._tickets
-        bot_computers._tickets.pop(one_time)
-        assert one_time not in bot_computers._tickets
+        assert one_time in bot_computers._screen_sessions.tickets
+        bot_computers._screen_sessions.tickets.pop(one_time)
+        assert one_time not in bot_computers._screen_sessions.tickets
 
 
 async def test_a_revoked_model_key_is_replaced_at_the_next_sign_in(
@@ -1343,3 +1362,576 @@ async def test_tenant_group_member_builds_in_its_room(
                 room=room,
             )
         assert unbounded.value.code == _Code.FORBIDDEN
+
+
+class _Computer:
+    """A cloud-computer provider that answers instantly (no Tencent Cloud)."""
+
+    def __init__(self) -> None:
+        self.states: dict[str, str] = {}
+        self.files: dict[str, bytes] = {}
+        self.ran: list[str] = []
+
+    def start(self, *, spec: str, labels: Any) -> str:
+        instance = f"ins-{len(self.states) + 1}"
+        self.states[instance] = "running"
+        return instance
+
+    def state(self, instance_id: str) -> str:
+        return self.states.get(instance_id, "gone")
+
+    def resume(self, instance_id: str) -> None:
+        self.states[instance_id] = "running"
+
+    def pause(self, instance_id: str) -> None:
+        self.states[instance_id] = "paused"
+
+    def stop(self, instance_id: str) -> None:
+        self.states[instance_id] = "gone"
+
+    def wait_ready(self, instance_id: str, timeout: float = 90.0) -> None:
+        return None
+
+    def stopped_at(self, instance_id: str) -> float | None:
+        return None
+
+    def instances(self) -> list[Any]:
+        return []
+
+    def run(self, instance_id: str, command: str, timeout: int) -> tuple[int, str]:
+        self.ran.append(command)
+        if command.startswith("stat -Lc %s -- "):
+            import shlex
+
+            path = shlex.split(command)[-1]
+            return (0, str(len(self.files[path]))) if path in self.files else (1, "")
+        return 0, f"ran {command}"
+
+    def run_python(self, instance_id: str, code: str) -> str:
+        return f"python {code}"
+
+    def screenshot(self, instance_id: str) -> bytes:
+        return b"\x89PNG screen"
+
+    def accessibility(self, instance_id: str) -> str:
+        return "<desktop/>"
+
+    def write(self, instance_id: str, path: str, data: bytes) -> None:
+        self.files[path] = data
+
+    def read(self, instance_id: str, path: str, *, max_bytes: int | None = None) -> bytes | None:
+        data = self.files.get(path)
+        return data[:max_bytes] if data is not None and max_bytes is not None else data
+
+
+async def test_desktop_sign_in_after_sign_out_everywhere(
+    tmp_octop_home: Path, upstream: Upstream
+) -> None:
+    async with octop_client(tmp_octop_home) as (client, _):
+        signed = await _sign_in(client, "13800000050")
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        assert (await client.post("/api/auth/logout-all", headers=auth)).status_code == 204
+        await _sign_in(client, "13800000050")
+
+        desktop = await client.post(
+            "/api/auth/lynxce/token-login", json={"access_token": _lynxce_jwt()}
+        )
+        assert desktop.status_code == 200
+        auth = {"Authorization": f"Bearer {desktop.json()['access_token']}"}
+        result = await client.put(
+            "/api/octop-bot/remote-bots/0123456789:writer", headers=auth, json={"name": "Writer"}
+        )
+        assert result.status_code == 200, result.text
+
+
+async def test_desktop_bots_get_cloud_computers_through_hidden_shadow_bots(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.cloud.computers import manager as computers
+
+    provider = _Computer()
+    monkeypatch.setattr(computers, "_manager", None)
+    monkeypatch.setattr(computers, "computer_driver", lambda: provider)
+    monkeypatch.setenv("OCTOP_BOT_COMPUTE_BILLING", "off")
+    token_login = "/api/auth/lynxce/token-login"
+    origin = "01JD3Q8Z2N6W4M5X7Y9A0B1C2D:K7Q2PZ"
+
+    async with octop_client(tmp_octop_home) as (client, srv):
+        # An account that never signed in here: the desktop asks the user to verify once.
+        first = await client.post(token_login, json={"access_token": _lynxce_jwt()})
+        assert first.status_code == 409
+        assert first.json()["error"]["code"] == "BOT_CLOUD_SESSION_REQUIRED"
+        bad = await client.post(token_login, json={"access_token": "forged"})
+        assert bad.status_code == 403
+        signed = await _sign_in(client, "13800000050")
+        sessions_before = upstream.counts["/api/auth/refresh"]
+        got = await client.post(token_login, json={"access_token": _lynxce_jwt()})
+        assert got.status_code == 200, got.text
+        assert got.json()["user"]["id"] == signed["user"]["id"] and got.json()["cloud"]
+        # Only read: the desktop's session is neither renewed nor taken.
+        assert upstream.counts["/api/auth/refresh"] == sessions_before
+        auth = {"Authorization": f"Bearer {got.json()['access_token']}"}
+
+        made = await client.put(
+            f"/api/octop-bot/remote-bots/{origin}", headers=auth, json={"name": "Writer"}
+        )
+        assert made.status_code == 200, made.text
+        shadow = made.json()["agent_id"]
+        assert made.json()["created"] is True
+        again = await client.put(
+            f"/api/octop-bot/remote-bots/{origin}", headers=auth, json={"name": "Writer 2"}
+        )
+        assert again.json() == {"agent_id": shadow, "origin": origin, "created": False}
+        assert (
+            await client.put(
+                "/api/octop-bot/remote-bots/no-colon", headers=auth, json={"name": "x"}
+            )
+        ).status_code == 422
+
+        full_auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        srv.services.agent_repo.create(
+            agent_id="regular-bot", user_id=signed["user"]["id"], name="Regular"
+        )
+        regular_run = "/api/octop-bot/computers/regular-bot/run"
+        assert (
+            await client.post(regular_run, headers=auth, json={"command": "echo hi"})
+        ).status_code == 404
+        assert (
+            await client.post(regular_run, headers=full_auth, json={"command": "echo hi"})
+        ).status_code == 200
+        for endpoint in ("/api/auth/me", "/api/octop-bot/wallet"):
+            assert (await client.get(endpoint, headers=auth)).status_code in (401, 403)
+        assert "X-Octop-Access-Token" not in made.headers
+        for method, endpoint in (
+            ("POST", f"/api/agents/{shadow}/start"),
+            ("GET", f"/api/agents/{shadow}"),
+            ("PATCH", f"/api/agents/{shadow}"),
+            ("GET", f"/api/agents/{shadow}/workspace/tree"),
+            ("GET", f"/api/agents/{shadow}/chat/welcome"),
+        ):
+            assert (
+                await client.request(
+                    method, endpoint, headers=full_auth, json={} if method == "PATCH" else None
+                )
+            ).status_code == 404
+
+        # The tenant cannot remove server-owned origin metadata by changing the config.
+        from octop.infra.cloud.bot_cloud import shadows as shadow_helpers
+
+        srv.services.agent_repo.update_config(shadow, config_json="{}")
+        assert (
+            shadow_helpers.find_shadow(srv.services, signed["user"]["id"], origin).agent_id
+            == shadow
+        )
+
+        # Never listed: web, phones, groups; and no Bot pages for it.
+        for listing in ("/api/agents", "/api/octop-bot/workspace", "/api/octop-bot/groups"):
+            seen = await client.get(listing, headers=full_auth)
+            assert seen.status_code == 200, (listing, seen.text)
+            assert shadow not in seen.text, listing
+        assert (
+            await client.get(f"/api/octop-bot/bots/{shadow}/upcoming", headers=full_auth)
+        ).status_code == 404
+        group = await client.post(
+            "/api/octop-bot/groups",
+            headers=full_auth,
+            json={"name": "Team", "member_ids": [shadow]},
+        )
+        assert group.status_code >= 400
+
+        # Its computer, driven from the desktop.
+        base = f"/api/octop-bot/computers/{shadow}"
+        assert (await client.get(base, headers=auth)).json()["state"] == "none"
+        ran = await client.post(base + "/run", headers=auth, json={"command": "echo hi"})
+        assert ran.json() == {
+            "exit_code": 0,
+            "output": "ran echo hi",
+            "taken_over": False,
+            "truncated": False,
+        }
+        py = await client.post(base + "/python", headers=auth, json={"code": "print(1)"})
+        assert py.json()["output"] == "python print(1)"
+        entries = srv.services.audit_repo.query(action="computer.run")
+        assert entries[0].target == shadow and "echo hi" in entries[0].payload
+        monkeypatch.setattr(provider, "run_python", lambda instance, code: "x" * (1024 * 1024 + 1))
+        large = await client.post(base + "/python", headers=auth, json={"code": "long"})
+        assert large.json()["truncated"] is True
+        assert len(large.json()["output"]) == 1024 * 1024
+        shot = await client.get(base + "/screenshot", headers=auth)
+        assert shot.headers["content-type"] == "image/png" and shot.content.startswith(b"\x89PNG")
+        assert (await client.get(base + "/accessibility", headers=auth)).json() == {
+            "xml": "<desktop/>"
+        }
+        put = await client.put(
+            base + "/files", params={"path": "notes/a.txt"}, headers=auth, content=b"hello"
+        )
+        assert put.json() == {"path": "/home/user/workspace/notes/a.txt", "size": 5}
+        read = await client.get(base + "/files", params={"path": "notes/a.txt"}, headers=auth)
+        assert read.content == b"hello"
+        missing = await client.get(base + "/files", params={"path": "/tmp/none"}, headers=auth)
+        assert missing.status_code == 404
+        monkeypatch.setattr("octop.api.routers.bot_computers.MAX_FILE_BYTES", 4)
+        too_large_upload = await client.put(
+            base + "/files", params={"path": "large"}, headers=auth, content=b"12345"
+        )
+        assert too_large_upload.status_code == 413
+        too_large_download = await client.get(
+            base + "/files", params={"path": "notes/a.txt"}, headers=auth
+        )
+        assert too_large_download.status_code == 413
+        outside = await client.get(base + "/files", params={"path": "/etc/passwd"}, headers=auth)
+        assert outside.status_code == 403
+        await client.post(base + "/takeover", headers=auth, json={"active": True})
+        held = await client.post(base + "/run", headers=auth, json={"command": "ls"})
+        assert held.json()["taken_over"] is True and "ls" not in provider.ran
+
+        # One account can only register so many desktop Bots.
+        from octop.infra.cloud.bot_cloud import shadows
+
+        monkeypatch.setattr(shadows, "MAX_SHADOWS", 1)
+        full = await client.put(
+            "/api/octop-bot/remote-bots/01JD3Q8Z2N6W4M5X7Y9A0B1C2D:OTHER",
+            headers=auth,
+            json={"name": "B"},
+        )
+        assert full.status_code == 429
+        assert full.json()["error"]["code"] == "BOT_REMOTE_BOT_LIMIT"
+        # Updating one it already has still works.
+        assert (
+            await client.put(
+                f"/api/octop-bot/remote-bots/{origin}", headers=auth, json={"name": "W"}
+            )
+        ).status_code == 200
+        monkeypatch.setattr(shadows, "MAX_SHADOWS", 50)
+
+        # Someone else's: invisible; their own desktop Bot of the same origin is theirs alone.
+        bob = await _sign_in(client, "13800000051")
+        bob_auth = {"Authorization": f"Bearer {bob['access_token']}"}
+        assert (
+            await client.post(base + "/run", headers=bob_auth, json={"command": "id"})
+        ).status_code == 404
+        theirs = await client.put(
+            f"/api/octop-bot/remote-bots/{origin}", headers=bob_auth, json={"name": "Writer"}
+        )
+        assert theirs.json()["agent_id"] != shadow
+
+        gone = await client.delete(f"/api/octop-bot/remote-bots/{origin}", headers=auth)
+        assert gone.status_code == 204
+        assert srv.services.agent_repo.get(shadow) is None
+        assert (await client.get(base, headers=auth)).status_code == 404
+        assert (
+            await client.delete(f"/api/octop-bot/remote-bots/{origin}", headers=auth)
+        ).status_code == 204
+
+
+async def test_desktop_token_login_limits_ip_and_account(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.api.routers import auth_lynxce
+
+    monkeypatch.setattr(auth_lynxce, "_token_login_ips", {})
+    monkeypatch.setattr(auth_lynxce, "_token_login_accounts", {})
+    async with octop_client(tmp_octop_home) as (client, _):
+        await _sign_in(client, "13800000050")
+        current_ip = ["ip-0"]
+        monkeypatch.setattr(auth_lynxce, "_client_ip", lambda request: current_ip[0])
+        for i in range(11):
+            current_ip[0] = f"ip-{i}"
+            response = await client.post(
+                "/api/auth/lynxce/token-login", json={"access_token": _lynxce_jwt()}
+            )
+            assert response.status_code == (200 if i < 10 else 429)
+        auth_lynxce._token_login_accounts.clear()
+        current_ip[0] = "fixed-ip"
+        for i in range(31):
+            auth_lynxce._token_login_accounts.clear()
+            response = await client.post(
+                "/api/auth/lynxce/token-login", json={"access_token": _lynxce_jwt()}
+            )
+            assert response.status_code == (200 if i < 30 else 429)
+
+
+async def test_token_login_prechecks_and_src_switch(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.metrics import METRICS
+
+    monkeypatch.setattr(auth_lynxce, "_token_login_ips", {})
+    monkeypatch.setattr(auth_lynxce, "_token_login_accounts", {})
+    monkeypatch.delenv("OCTOP_TOKEN_LOGIN_REQUIRE_SRC", raising=False)
+    async with octop_client(tmp_octop_home) as (client, _):
+        await _sign_in(client, "13800000050")
+        path = "/api/auth/lynxce/token-login"
+        profile_calls = upstream.counts["/api/user/profile"]
+        for token in ("sk-secret", "first.second"):
+            result = await client.post(path, json={"access_token": token})
+            assert result.status_code == 403 and result.json()["error"]["code"] == "AUTH_FAILED"
+        assert upstream.counts["/api/user/profile"] == profile_calls
+        before = METRICS.snapshot()["token_login_without_src_total"]
+        assert (await client.post(path, json={"access_token": _lynxce_jwt()})).status_code == 200
+        assert METRICS.snapshot()["token_login_without_src_total"] == before + 1
+        assert (
+            await client.post(path, json={"access_token": _lynxce_jwt(client="web")})
+        ).status_code == 200
+        monkeypatch.setenv("OCTOP_TOKEN_LOGIN_REQUIRE_SRC", "1")
+        assert (await client.post(path, json={"access_token": _lynxce_jwt()})).status_code == 403
+        assert (
+            await client.post(path, json={"access_token": _lynxce_jwt(src="octopbot")})
+        ).status_code == 200
+        assert METRICS.snapshot()["token_login_without_src_total"] == before + 2
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        _lynxce_jwt(typ="refresh"),
+        _lynxce_jwt(client="desktop"),
+        _lynxce_jwt(client="mobile"),
+        *[_lynxce_jwt(**{field: ""}) for field in ("appId", "appVer", "desktopVer", "mobileVer")],
+        "a.a.c",
+    ],
+)
+async def test_token_login_rejects_verified_non_web_claims(
+    token: str, tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(auth_lynxce, "_token_login_ips", {})
+    async with octop_client(tmp_octop_home) as (client, _):
+        before = upstream.counts["/api/user/profile"]
+        response = await client.post("/api/auth/lynxce/token-login", json={"access_token": token})
+        assert response.status_code == 403 and response.json()["error"]["code"] == "AUTH_FAILED"
+        assert upstream.counts["/api/user/profile"] == before + 1
+
+
+async def test_fifty_shadow_limit(tmp_octop_home: Path, upstream: Upstream) -> None:
+    async with octop_client(tmp_octop_home) as (client, _):
+        signed = await _sign_in(client, "13800000050")
+        auth = {"Authorization": f"Bearer {signed['access_token']}"}
+        for i in range(51):
+            response = await client.put(
+                f"/api/octop-bot/remote-bots/0123456789:bot{i}",
+                headers=auth,
+                json={"name": "Bot"},
+            )
+            assert response.status_code == (200 if i < 50 else 429)
+
+
+async def test_upload_stops_reading_at_limit_and_transfer_slots_are_per_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from octop.api.routers import bot_computers
+    from octop.infra.errors import OctopError
+
+    monkeypatch.setattr(bot_computers, "MAX_FILE_BYTES", 4)
+    monkeypatch.setattr(bot_computers, "_owned", lambda *args: object())
+    consumed: list[int] = []
+
+    class Request:
+        async def stream(self) -> Any:
+            for i, chunk in enumerate((b"123", b"45", b"never read")):
+                consumed.append(i)
+                yield chunk
+
+    with pytest.raises(OctopError) as exc:
+        await bot_computers.write_file(
+            "bot",
+            Request(),
+            path="file",
+            user=SimpleNamespace(id=1),
+            server=None,  # type: ignore[arg-type]
+        )
+    assert exc.value.status == 413 and consumed == [0, 1]
+    for counts in (bot_computers._transfer_counts, bot_computers._command_counts):
+        with bot_computers._slot(counts, 1), bot_computers._slot(counts, 1):
+            with pytest.raises(OctopError) as limited, bot_computers._slot(counts, 1):
+                pass
+            assert limited.value.status == 429
+            with bot_computers._slot(counts, 2):
+                pass
+
+
+def test_computer_and_remote_bot_routes_require_desktop_remote_user() -> None:
+    from types import SimpleNamespace
+
+    from fastapi.routing import APIRoute, APIWebSocketRoute
+
+    from octop.api.app import build_app
+    from octop.api.deps import current_user, desktop_remote_user
+    from octop.api.routers.bot_computers import desktop_remote_user as computer_user
+    from octop.api.routers.bot_computers import screen_ws
+
+    app = build_app(SimpleNamespace(services=None, app_runtime=None))  # type: ignore[arg-type]
+
+    def all_routes(routes: Any, prefix: str = "") -> Any:
+        for route in routes:
+            if hasattr(route, "original_router"):
+                yield from all_routes(
+                    route.original_router.routes, prefix + route.include_context.prefix
+                )
+            else:
+                yield prefix + route.path, route
+
+    routes = [
+        (path, route)
+        for path, route in all_routes(app.routes)
+        if path.startswith(("/api/octop-bot/computers/", "/api/octop-bot/remote-bots/"))
+    ]
+    assert routes
+    for path, route in routes:
+        if isinstance(route, APIWebSocketRoute):
+            # This browser WebSocket authenticates with a single-use screen ticket.
+            assert route.endpoint is screen_ws
+            continue
+        assert isinstance(route, APIRoute)
+        dependencies = {dependency.call for dependency in route.dependant.dependencies}
+        assert current_user not in dependencies, path
+        assert dependencies & {desktop_remote_user, computer_user}, path
+
+
+async def test_download_limits_read_when_file_grows(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from octop.api.routers import bot_computers
+    from octop.infra.errors import OctopError
+
+    class GrowingFile:
+        def run(self, *args: Any) -> tuple[int, str]:
+            return 0, "4"
+
+        def read(self, *args: Any, max_bytes: int) -> bytes:
+            assert max_bytes == 5
+            return b"12345"
+
+    monkeypatch.setattr(bot_computers, "MAX_FILE_BYTES", 4)
+    monkeypatch.setattr(bot_computers, "_owned", lambda *args: GrowingFile())
+    with pytest.raises(OctopError) as exc:
+        await bot_computers.read_file("bot", "/tmp/file", SimpleNamespace(id=1), object())
+    assert exc.value.status == 413
+
+
+@pytest.mark.parametrize("transport", ["path", "header"])
+async def test_signed_in_screen_renewal_keeps_its_original_deadline(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, transport: str
+) -> None:
+    import websockets
+
+    from octop.api import deps
+    from octop.api.routers import bot_computers
+    from octop.infra.agents.manager import AgentCreateSpec
+    from tests.support.http import ws_connect
+    from tests.unit.api.test_bot_computer_screen_ws import Manager
+    from tests.unit.api.test_bot_computer_screen_ws import Upstream as ScreenUpstream
+
+    manager = Manager()
+    starts: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        manager, "ensure_running", lambda a, u: starts.append((a, u)), raising=False
+    )
+    monkeypatch.setattr(manager, "read_clipboard", lambda a, u: "联调样例", raising=False)
+    monkeypatch.setattr(bot_computers, "computer_manager", lambda services: manager)
+    monkeypatch.setattr(websockets, "connect", lambda *a, **k: ScreenUpstream())
+    async with octop_client(tmp_octop_home) as (client, srv):
+        account = await _sign_in(client, "13800000050")
+        uid = account["user"]["id"]
+        bot = await srv.app_runtime.agent_registry.create(
+            AgentCreateSpec(user_id=uid, name="Screen QA"), defer_bootstrap=True
+        )
+        token = account["access_token"]
+        agent_id = bot.agent_id
+        path = f"/api/octop-bot/computers/{agent_id}/screen"
+        auth = {"Authorization": f"Bearer {token}"}
+        options = {"X-Octop-Screen-Transport": "header"} if transport == "header" else {}
+        opened = await client.post(path, headers={**auth, **options})
+        assert opened.status_code == 200
+        ticket = opened.json()
+        assert (ticket["session_transport"], ticket["session_expires_in"]) == (transport, 1800)
+        header = {"X-Octop-Screen-Session": ticket["session"]}
+        # Exercise the regular sliding renewal response with a shortened test threshold.
+        monkeypatch.setattr(deps, "_SLIDING_RENEW_REMAINING_FRACTION", 1.1)
+        await asyncio.sleep(1.01)
+        credential = await client.get("/api/auth/me", headers=auth)
+        assert credential.status_code == 200
+        next_token = credential.headers[deps.ACCESS_TOKEN_RESPONSE_HEADER]
+        assert next_token != token
+        renewed_auth = {"Authorization": f"Bearer {next_token}"}
+        if transport == "header":
+            clipboard = "/api/octop-bot/screen-sessions/clipboard"
+            renewal = {"headers": {**renewed_auth, **header}}
+        else:
+            clipboard = f"/api/octop-bot/screen-sessions/{ticket['session']}/clipboard"
+            header = {}
+            renewal = {"headers": renewed_auth, "json": {"session": ticket["session"]}}
+        registry = bot_computers._screen_sessions
+        deadline = registry.sessions[ticket["session"]].expires_at
+        manager.takeover = True
+        async with ws_connect(client._octop_app, ticket["ws_path"]):
+            renewed = await client.post(path + "/renew", **renewal)
+            assert renewed.status_code == 204
+            assert registry.sessions[ticket["session"]].expires_at == deadline
+            assert (await client.get(clipboard, headers=header)).json() == {"text": "联调样例"}
+        assert manager.handed_back
+        assert (await client.get(clipboard, headers=header)).status_code == 404
+        assert (await client.post(path + "/renew", **renewal)).status_code == 404
+        assert starts == [(agent_id, uid)]
+
+
+@pytest.mark.parametrize("opt_in", [False, True])
+async def test_scoped_desktop_screen_renewal_keeps_its_original_deadline(
+    tmp_octop_home: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, opt_in: bool
+) -> None:
+    import websockets
+
+    from octop.api.routers import bot_computers
+    from tests.support.http import ws_connect
+    from tests.unit.api.test_bot_computer_screen_ws import Manager
+    from tests.unit.api.test_bot_computer_screen_ws import Upstream as ScreenUpstream
+
+    manager = Manager()
+    starts: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        manager, "ensure_running", lambda a, u: starts.append((a, u)), raising=False
+    )
+    monkeypatch.setattr(manager, "read_clipboard", lambda a, u: "联调样例", raising=False)
+    monkeypatch.setattr(bot_computers, "computer_manager", lambda services: manager)
+    monkeypatch.setattr(websockets, "connect", lambda *a, **k: ScreenUpstream())
+    async with octop_client(tmp_octop_home) as (client, srv):
+        account = await _sign_in(client, "13800000050")
+        uid = account["user"]["id"]
+        login = await client.post(
+            "/api/auth/lynxce/token-login", json={"access_token": _lynxce_jwt()}
+        )
+        assert login.status_code == 200
+        token = login.json()["access_token"]
+        remote = await client.put(
+            "/api/octop-bot/remote-bots/0123456789:writer",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"name": "Writer"},
+        )
+        assert remote.status_code == 200
+        agent_id = remote.json()["agent_id"]
+        assert srv.services.agent_repo.get(agent_id).kind == "shadow"
+        path = f"/api/octop-bot/computers/{agent_id}/screen"
+        auth = {"Authorization": f"Bearer {token}"}
+        options = {"X-Octop-Screen-Transport": "header"} if opt_in else {}
+        opened = await client.post(path, headers={**auth, **options})
+        assert opened.status_code == 200
+        ticket = opened.json()
+        assert (ticket["session_transport"], ticket["session_expires_in"]) == ("header", 1800)
+        header = {"X-Octop-Screen-Session": ticket["session"]}
+        clipboard = "/api/octop-bot/screen-sessions/clipboard"
+        renewed_auth = auth
+        registry = bot_computers._screen_sessions
+        deadline = registry.sessions[ticket["session"]].expires_at
+        manager.takeover = True
+        async with ws_connect(client._octop_app, ticket["ws_path"]):
+            renewed = await client.post(path + "/renew", headers={**renewed_auth, **header})
+            assert renewed.status_code == 204
+            assert registry.sessions[ticket["session"]].expires_at == deadline
+            assert (await client.get(clipboard, headers=header)).json() == {"text": "联调样例"}
+        assert manager.handed_back
+        assert (await client.get(clipboard, headers=header)).status_code == 404
+        assert (
+            await client.post(path + "/renew", headers={**renewed_auth, **header})
+        ).status_code == 404
+        assert starts == [(agent_id, uid)]

@@ -14,6 +14,7 @@ TaskStatus = Literal["running", "done", "partial", "stopped"]
 CheckStatus = Literal["pending", "passed", "failed", "skipped"]
 
 MAX_CRITERIA = 8
+MAX_TASK_STEPS = 500
 # Defaults until the user sets their own; a deep task gets more room.
 DEFAULT_BUDGET: dict[str, tuple[int, int]] = {"standard": (60, 30), "deep": (150, 90)}
 # A running task nobody touched for this long is treated as abandoned by the next plan.
@@ -46,12 +47,19 @@ class Budget(BaseModel):
     minutes: int = Field(ge=1, le=600)
 
 
+class TaskStep(BaseModel):
+    content: str = Field(max_length=500)
+    status: Literal["pending", "in_progress", "completed"]
+    checkpoint: str | None = None
+
+
 class Task(BaseModel):
     id: str = Field(default_factory=new_ulid)
     goal: str = Field(max_length=200)
     tier: Tier = "standard"
     status: TaskStatus = "running"
     criteria: list[Criterion] = Field(default_factory=list, max_length=MAX_CRITERIA)
+    steps: list[TaskStep] = Field(default_factory=list, max_length=MAX_TASK_STEPS)
     assumptions: list[str] = Field(default_factory=list, max_length=10)
     budget: Budget
     silence_retry_used: bool = False

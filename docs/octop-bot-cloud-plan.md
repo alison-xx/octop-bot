@@ -385,7 +385,7 @@ P1 的实际做法与上文设计有几处不同，以本节为准：
 - 画面：OSWorld 桌面自带 x11vnc，监听沙箱里的 5900 端口，不设密码，但 AGS 只转发 5000、8080、9222 这几个端口。第一次打开画面时，云 Octop 把 `vnc_bridge.py`（只用标准库的 WebSocket 转 VNC 小程序）上传到 `/home/user/.octop/`，在 8080 启动，暂停恢复后进程还在。浏览器拿 noVNC 连云 Octop 的 `/api/octop-bot/computers/{agent_id}/screen/ws`，再由云 Octop 带上实例 `Token` 连 `wss://8080-<实例>.<region>.tencentags.com/websockify`。令牌只在服务端，浏览器只拿到 60 秒有效、一次性的票据（`POST …/screen` 签发）。
 - 接管：`POST …/takeover {active}`。接管期间 Bot 在这台电脑上的命令都会被拒，并提示它等用户交还；电脑不会因为空闲被暂停。有人在看画面时（每 30 秒报一次到），也不会因为空闲被暂停。关闭画面就自动交还。
 - 客户端：网页版在云电脑卡片里弹出画面，可以接管和交还；iOS、Android 打开同一个画面页面（`/octop-bot/screen/:agentId`）。
-- 中文输入和剪贴板：VNC 按键带不了中文，RFB 剪贴板也只支持 Latin-1，所以不走 VNC。接管后画面下方有输入框，用本机自己的输入法打字或粘贴，回车由云 Octop 把文字放进云电脑剪贴板（`xclip`），再用 XTest 按粘贴键（终端用 Ctrl+Shift+V）。镜像里没有 xdotool。「取回云电脑剪贴板」读出云电脑剪贴板里的文字，复制到本机剪贴板；浏览器不允许写剪贴板时，放进输入框并选中。打开画面时除了一次性票据，还会签发一个画面会话（`session`），接口是 `POST /api/octop-bot/screen-sessions/{session}/type` 和 `GET …/clipboard`，凭会话访问，不需要登录（手机的画面页没有登录态）；画面打开期间一直有效，关闭后 2 分钟失效，而且只在接管期间可用。
+- 中文输入和剪贴板：VNC 按键带不了中文，RFB 剪贴板也只支持 Latin-1，所以不走 VNC。接管后画面下方有输入框，用本机自己的输入法打字或粘贴，回车由云 Octop 把文字放进云电脑剪贴板（`xclip`），再用 XTest 按粘贴键（终端用 Ctrl+Shift+V）。镜像里没有 xdotool。「取回云电脑剪贴板」读出云电脑剪贴板里的文字，复制到本机剪贴板；浏览器不允许写剪贴板时，放进输入框并选中。打开画面时除了一次性票据，还会签发一个画面会话（`session`），接口是 `POST /api/octop-bot/screen-sessions/{session}/type` 和 `GET …/clipboard`，凭会话访问，不需要登录（手机的画面页没有登录态）；每次签发最长 30 分钟，关闭对应的画面连接时立即失效，只在接管期间可用。桌面客户端开画面时带 `X-Octop-Screen-Transport: header` 请求头，确认响应里的 `session_transport` 为 `header` 后，在固定地址 `POST /api/octop-bot/screen-sessions/type` 和 `GET /api/octop-bot/screen-sessions/clipboard` 使用 `X-Octop-Screen-Session` 请求头。服务端按已验证的桌面限定身份固定签发 header 会话。普通手机登录未指定传输方式时沿用 path。该凭据在对应 WebSocket 连接后启用。同一登录续验用已认证的 `POST /api/octop-bot/computers/{agent_id}/screen/renew`。header 模式在已连接的画面上使用 `X-Octop-Screen-Session`，旧手机保留 JSON 的 `session` 字段。续验保持原开屏期限，关屏即撤销。
 - Mac 快捷键：接管时 ⌘+按键在云电脑上按 Ctrl+按键处理；单按 ⌘ 不发送（noVNC 默认把 ⌘ 当 Alt，Ubuntu 单按 Super 又会打开概览）。有画面会话时，⌘V 把这台 Mac 剪贴板的内容输入到云电脑光标处（走上面的输入接口，中文也行），⌘C / ⌘X 在云电脑复制后把它的剪贴板取回这台 Mac。
 - 中继的约束：只读不只靠客户端设置。中继会解析浏览器发来的 RFB 消息，没接管时丢掉键盘、鼠标和剪贴板消息（KeyEvent、PointerEvent、ClientCutText），握手和画面请求照常转发；遇到认不出的消息就断开。关掉标签页、断网或页面崩溃导致中继断开时，自动交还给 Bot。看画面能让云电脑保持运行，但从打开画面或最后一次操作算起最多 30 分钟，忘在后台的标签页不会一直扣积分。
 - 部署限制：画面票据（ticket）和画面会话（session）都存在进程内存里，所以云 Octop 只能单 worker 运行（uvicorn 一个进程）。要多 worker 或多实例，得先把它们挪到共享存储（数据库或 Redis）。票据放在 WebSocket 地址的查询参数里，可能出现在访问日志中，所以只有 60 秒有效，而且用一次就作废。画面会话在路径里，画面关闭 2 分钟后失效，并且只在接管期间能输入和读剪贴板。
@@ -712,6 +712,37 @@ Bot 有三种方式用云电脑。能用命令和接口就不用点屏幕，这�
 - 点电脑图标就开：网页浮窗（桌面壳用的是同一套网页）点开时电脑没开，就当场调 `/screen` 创建或恢复，期间显示「正在启动电脑…」；起不来时在小药丸上说明原因，比如 `BOT_COMPUTER_BUSY`。`/screen` 是同步接口，CVM 冷启动加就绪等待最长约 300 秒，客户端这个请求的超时要设到 360 秒以上。iOS 和 Android 的等待状态由移动端做。
 
 **方案 B（单独排期）**：工作区完全以对象存储为准。Bot 的所有文件工具只读写存储，只有 `execute` 和 `cloud_computer` 开电脑；执行前后按变化的文件双向同步整个工作区，不只是交付物目录。要解决大目录（比如 node_modules）、二进制文件、两边同时改同一个文件的冲突，以及同步耗时。A 上线、看过实际用量以后再定。
+
+## 12.12 桌面 Bot 的云电脑：影子 Bot 的云端实现（2026-11-25）
+
+设计见 `docs/octop-bot-accounts.md` §7。下面是云端实际的接口和行为，桌面客户端按这个对接。
+
+**登录**：`POST /api/auth/lynxce/token-login`，body `{"access_token": "<本机灵策 access token>"}`。
+- 云端只拿它去灵策查是哪个账号（`GET /api/user/profile`），不续期、不保存，也不拿走本机的登录。
+- 成功时返回 `{access_token, token_type, expires_in, user, cloud: true}`；令牌仅可用于远程 Bot 和云电脑接口，有效期一小时，不自动续期。每个客户端 IP 每分钟最多 30 次，每个灵策账号每分钟最多 10 次，成功也计数。
+- 这个灵策账号在云端没有租户，或者租户在云端没有自己保存的灵策会话：返回 409 `BOT_CLOUD_SESSION_REQUIRED`。这时用 `/api/auth/lynxce/code-login` 或 `/login` 在 bot.lynxce.cn 登录一次，再调 token-login。
+- 灵策不认这个 token：返回 403 `AUTH_FAILED`。租户已停用：同样返回 403。
+- 只接受灵策确认过的 Web access JWT；API key、刷新令牌、桌面或移动客户端令牌及带设备版本字段的令牌返回 403。设置 `OCTOP_TOKEN_LOGIN_REQUIRE_SRC=1` 后还要求 `src` 为 `octopbot`；默认关闭，缺少 `src` 的请求计入 `token_login_without_src_total`，不记录令牌。
+
+**影子 Bot**：`PUT /api/octop-bot/remote-bots/{origin}`，body `{"name": "...", "avatar": "..."}`（avatar 可不填），返回 `{agent_id, origin, created}`。
+- `origin` 的格式是 `<安装 id>:<本机 agent_id>`，安装 id 为 10–40 位字母数字，agent_id 为 1–64 位 `[A-Za-z0-9_-]`；格式不对返回 422。
+- 每个账号最多 50 个影子 Bot，超过返回 429 `BOT_REMOTE_BOT_LIMIT`；更新已有的不受影响。
+- 同一个 origin 只建一个影子 Bot；再次调用会更新名字和头像，同时算作「在用」。
+- `DELETE /api/octop-bot/remote-bots/{origin}` 返回 204，不存在也是 204。影子 Bot 删掉后，它的云电脑在一分钟内被关机并结算。
+- 影子 Bot 是 `kind = "shadow"` 的 agents 记录：不启动 Agent，所有列表（`/api/agents`、`/api/octop-bot/workspace`、群组、手机接口）和计数都看不到它，`/api/octop-bot/bots/{id}/…` 返回 404，也不能加进群。
+- 30 天里桌面既没有 PUT 过它、它的电脑也没用过（电脑开着或正在用的除外），就删掉它；它的电脑随后被回收。
+
+**电脑**：现有的 `/api/octop-bot/computers/{agent_id}`（状态、一瞥、暂停、接管、画面）照常用影子 Bot 的 id。桌面窄令牌只能操作影子 Bot 的电脑，对普通 Bot 返回 404；普通登录令牌仍可操作本人 Bot 的电脑。新增的接口都会开电脑：
+- `POST …/run`：`{command, timeout(1–1800, 默认 120)}` → `{exit_code, output, taken_over}`。
+- `POST …/python`：`{code}` → `{output, taken_over}`。
+- `GET …/screenshot` → `image/png`。
+- `GET …/accessibility` → `{xml}`。
+- `GET …/files?path=` → 文件内容（`application/octet-stream`），不存在返回 404。
+- `PUT …/files?path=`，body 是文件的原始字节（最多 50 MB）→ `{path, size}`。
+- `path` 是 `/home/user` 或 `/tmp` 下的绝对路径，或者相对于 Bot 在电脑上的工作区 `/home/user/workspace`；超出这些目录返回 403。
+- 用户接管期间，`run` 和 `python` 不执行，返回 `taken_over: true`，`output` 里是给 Bot 看的说明。
+- 单个账号同时运行的云电脑最多两台（包含影子 Bot 与普通 Bot），超限返回 429 `BOT_COMPUTER_LIMIT`；文件上传和下载各有 50 MB 上限，每个账号最多两个并行文件传输；run 和 python 合计最多两个并行调用，输出最多 1 MB，截断时返回 `truncated: true`，每次调用写审计记录。
+- 云电脑名额满了返回 503 `BOT_COMPUTER_BUSY`；积分不足时照扣费规则报错。
 
 ## 14. 待你拍板
 

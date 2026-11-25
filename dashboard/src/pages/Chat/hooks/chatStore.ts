@@ -1,3 +1,4 @@
+import { clearPlacement, readPlacement } from "../placementDraft";
 import { currentBrowserBotId } from "../../../utils/browserProfile";
 /**
  * Module-level chat store that survives React component unmount/remount cycles.
@@ -3208,6 +3209,7 @@ async function sendTurnWebSocket(
   sessionMode?: string | null,
 ): Promise<boolean> {
   const botBrowser = currentBrowserBotId() === agentId;
+  const chosenPlacement = botBrowser ? readPlacement(agentId) : null;
   const state = getOrCreate(sessionId);
   const resolvedThreadId = (threadId || sessionId).trim();
 
@@ -3290,12 +3292,14 @@ async function sendTurnWebSocket(
       if (reasoningMode) payload.reasoning_mode = reasoningMode;
       if (reasoningEffort) payload.reasoning_effort = reasoningEffort;
       if (botBrowser) payload.bot_browser = true;
+      if (chosenPlacement) payload.computer_placement = chosenPlacement.value;
       if (conversationMode) payload.conversation_mode = conversationMode;
       if (sessionMode) payload.session_mode = sessionMode;
       const localDirectory = localDirectoryForTurn(agentId, threadId ?? null);
       if (localDirectory) payload.local_directory = localDirectory;
       if (hitlPolicy) payload.hitl_policy = hitlPolicy;
       ws.send(JSON.stringify(payload));
+      clearPlacement(chosenPlacement);
     };
 
     ws.onmessage = (event) => {
