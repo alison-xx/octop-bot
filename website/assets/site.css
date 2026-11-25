@@ -357,7 +357,7 @@ p {
   color: var(--ink);
   font-weight: 650;
 }
-/* Help menu: hover or focus opens it on desktop, a click toggles it on touch screens. */
+/* Help disclosure: one state for pointer and keyboard navigation. */
 .nav-more {
   position: relative;
 }
@@ -389,8 +389,6 @@ p {
   color: var(--ink);
   background: var(--line);
 }
-.nav-more:hover > button svg,
-.nav-more:focus-within > button svg,
 .nav-more.open > button svg {
   transform: rotate(180deg);
 }
@@ -415,8 +413,7 @@ p {
   transform: translateY(-4px);
   transition:
     opacity 0.15s,
-    transform 0.15s,
-    visibility 0.15s;
+    transform 0.15s;
 }
 .nav-menu::before {
   content: "";
@@ -424,8 +421,6 @@ p {
   inset: -8px 0 auto;
   height: 8px;
 }
-.nav-more:hover .nav-menu,
-.nav-more:focus-within .nav-menu,
 .nav-more.open .nav-menu {
   opacity: 1;
   visibility: visible;
@@ -1101,6 +1096,7 @@ a.card:hover,
   backdrop-filter: blur(18px);
 }
 .subnav .tabs {
+  justify-content: flex-start;
   overflow-x: auto;
   flex-wrap: nowrap;
   max-width: 100%;
@@ -2538,6 +2534,10 @@ dialog.modal.community .community-card img {
   .mobile-nav {
     position: fixed;
     inset: 68px 0 auto;
+    max-height: calc(100vh - 68px);
+    max-height: calc(100dvh - 68px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     z-index: 49;
     display: grid;
     gap: 4px;
@@ -2550,8 +2550,7 @@ dialog.modal.community .community-card img {
     visibility: hidden;
     transition:
       opacity 0.25s,
-      transform 0.3s var(--ease),
-      visibility 0.3s;
+      transform 0.3s var(--ease);
   }
   .mobile-nav.open {
     transform: none;
