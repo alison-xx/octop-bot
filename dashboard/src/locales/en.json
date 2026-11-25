@@ -9239,6 +9239,7 @@
     "download": "Download {{name}}"
   },
   "botCredits": {
+    "balanceIncreased": "Balance increased by {{added}} credits. Current balance: {{value}}.",
     "title": "Credits",
     "menu": "Credits",
     "menuHint": "Balance, top-up and usage",

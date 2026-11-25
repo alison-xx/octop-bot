@@ -548,6 +548,7 @@
     <string name="bot_preparing">Getting ready…</string>
     <string name="bot_preparing_chat">This Bot is getting ready…</string>
     <string name="bot_start_failed">Couldn\'t start</string>
+    <string name="checkout_balance_increased">Balance increased by %1$s credits. Current balance: %2$s.</string>
     <string name="signup_credit_notice">%1$s trial credits have been added for use in Octop.</string>
     <string name="signup_credit_expiry">Trial credit expiry: %1$s (UTC)</string>
     <string name="signup_credit_notice_until">%1$s trial credits added for use in Octop. Expires on %2$s (UTC).</string>
