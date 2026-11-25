@@ -647,6 +647,7 @@ function ChatPageInner() {
     reasoningEffort,
     handleReasoningChange,
     conversationMode,
+    threadModesReady,
     handleConversationModeChange,
     hitlPolicy,
     handleHitlPolicyChange,
@@ -737,7 +738,12 @@ function ChatPageInner() {
     decisionSaved: t("chatUsage.decisionSaved"),
   });
 
-  const { resetNavForAgentSwitch, markInitialNavDone } = useChatNavigation({
+  const {
+    resetNavForAgentSwitch,
+    markInitialNavDone,
+    threadMetadataFailed,
+    retryThreadMetadata,
+  } = useChatNavigation({
     routeAgentId,
     threadId,
     resolvedAgentId,
@@ -816,9 +822,7 @@ function ChatPageInner() {
   );
 
   const activeThreadReady =
-    !activeThreadId ||
-    (!!composerSession &&
-      conversationMode === (composerSession.conversationMode ?? "craft"));
+    !activeThreadId || (!!composerSession && threadModesReady);
   const { handleSend } = useChatSend({
     activeThreadReady,
     resolvedAgentId,
@@ -1752,18 +1756,25 @@ function ChatPageInner() {
               />
             )}
 
-            {historyError && (
+            {(historyError || threadMetadataFailed) && (
               <Alert
                 type="error"
                 showIcon
-                message={t("chat.historyLoadFailed")}
+                message={t(
+                  threadMetadataFailed
+                    ? "chat.threadSettingsLoadFailed"
+                    : "chat.historyLoadFailed",
+                )}
                 action={
                   <Button
                     size="small"
                     loading={
                       historyLoading || historyRefreshing || historyLoadingMore
                     }
-                    onClick={() => void retryHistory()}
+                    onClick={() => {
+                      if (threadMetadataFailed) retryThreadMetadata();
+                      if (historyError) void retryHistory();
+                    }}
                   >
                     {t("chat.historyRetry")}
                   </Button>

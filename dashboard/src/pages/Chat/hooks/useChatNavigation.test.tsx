@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
@@ -141,6 +141,45 @@ describe("useChatNavigation stale thread", () => {
       expect.anything(),
     );
   });
+
+  it.each(["manual", "online"])(
+    "recovers a failed metadata lookup via %s retry",
+    async (action) => {
+      const probe = vi
+        .fn()
+        .mockResolvedValueOnce("unknown")
+        .mockResolvedValue("found");
+      const { result } = renderHook(
+        () =>
+          useChatNavigation({
+            routeAgentId: "agent",
+            threadId: "old",
+            resolvedAgentId: "agent",
+            activeThreadId: "old",
+            sessions: [],
+            sessionsLoading: false,
+            prefillInputRef: { current: "" },
+            loadHistory: vi.fn(),
+            clearMessages: vi.fn(),
+            ensureThreadInList: probe,
+            fetchSessions: vi.fn(),
+            refreshAgents: vi.fn(),
+          }),
+        { wrapper },
+      );
+      await waitFor(() =>
+        expect(result.current.threadMetadataFailed).toBe(true),
+      );
+      expect(probe).toHaveBeenCalledTimes(1);
+      act(() => {
+        if (action === "manual") result.current.retryThreadMetadata();
+        else window.dispatchEvent(new Event("online"));
+      });
+      await waitFor(() => expect(probe).toHaveBeenCalledTimes(2));
+      expect(result.current.threadMetadataFailed).toBe(false);
+      expect(navigateMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not rewrite URL when probe finds the thread", async () => {
     const ensureThreadInList = vi.fn().mockResolvedValue("found");
