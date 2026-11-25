@@ -331,7 +331,7 @@ final class ServerBackend: ChatBackend {
             let date = (row["last_active"] as? String).flatMap(ISO8601.parse)
                 ?? (row["last_active"] as? Double).map { Date(timeIntervalSince1970: $0 > 1e12 ? $0 / 1000 : $0) }
             let title = (row["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? L("chat.untitled")
-            return ConversationSummary(id: id, title: title, updatedAt: date, botId: bot.id)
+            return ConversationSummary(id: id, title: title, updatedAt: date, botId: bot.id, owned: row["owned"] as? Bool, active: row["is_active"] as? Bool == true)
         }
         .sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
     }
@@ -520,7 +520,8 @@ final class ServerBackend: ChatBackend {
     // MARK: Chat over WebSocket
 
     enum Observation {
-        case status(Bool)
+        case status(active: Bool, turn: String?)
+        case user(ChatMessage)
         case delta(StreamEvent)
         case finished
     }
@@ -547,9 +548,14 @@ final class ServerBackend: ChatBackend {
                               frame["thread_id"] as? String == thread else { continue }
                         switch frame["type"] as? String {
                         case "turn_status":
-                            output.yield(.status(frame["active"] as? Bool == true))
+                            output.yield(.status(active: frame["active"] as? Bool == true, turn: frame["turn_id"] as? String))
                         case "turn.started", "turn.resumed":
-                            output.yield(.status(true))
+                            output.yield(.status(active: true, turn: frame["turn_id"] as? String))
+                        case "user":
+                            let id = frame["message_id"] as? String ?? UUID().uuidString
+                            let row = ChatMessage(id: id, role: .user, text: frame["content"] as? String ?? "",
+                                                  authorName: (frame["author"] as? [String: Any])?["display_name"] as? String)
+                            output.yield(.user(row))
                         case "turn.ended":
                             output.yield(.finished)
                             mapper = ServerFrameMapper(labels: toolLabels)

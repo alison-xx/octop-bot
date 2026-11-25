@@ -495,6 +495,27 @@ private final class FakeBackend: ChatBackend {
 
 @MainActor
 final class QueueTests: XCTestCase {
+    func testPersonalDefaultSkipsSharedAndUnknownOwnershipAndPrefersActivePersonalThread() {
+        func row(_ id: String, _ owned: Bool?, _ active: Bool) -> ConversationSummary {
+            ConversationSummary(id: id, title: "", updatedAt: nil, botId: nil, owned: owned, active: active)
+        }
+        let shared = row("shared", false, true), old = row("unknown", nil, true)
+        XCTAssertNil(ConversationSummary.personalDefault([shared, old]))
+        let recent = row("recent", true, false), active = row("active", true, true)
+        XCTAssertEqual(ConversationSummary.personalDefault([shared, recent, active])?.id, active.id)
+    }
+
+    func testUncommittedObservedRowsSurviveAHistoryReadAndDoNotDuplicateTheSavedUser() {
+        let previous = ChatMessage(id: "old", role: .assistant, text: "previous")
+        let user = ChatMessage(id: "u", role: .user, text: "question")
+        let partial = ChatMessage(id: "reply", role: .assistant, text: "prefix", status: .streaming)
+        let current = ChatSession.ObservedTurn(id: "turn", anchor: previous, rows: [user, partial])
+        XCTAssertEqual(current.merged([previous]).map(\.id), ["old", "u", "reply"])
+        XCTAssertEqual(current.merged([previous, user]).map(\.id), ["old", "u", "reply"])
+        XCTAssertTrue(current.committedTail([previous, user]).allSatisfy { $0.role != .assistant })
+        XCTAssertEqual(current.committedTail([previous, user, partial]).map(\.id), ["u", "reply"])
+    }
+
     func testHistoryPageOverlapPreservesOrderAndReplacesTheCurrentVersion() {
         let old: [[String: Any]] = [["id": "a"], ["history_seq": 2, "content": "partial"]]
         let new: [[String: Any]] = [["history_seq": 2, "content": "finished"], ["id": "b"]]

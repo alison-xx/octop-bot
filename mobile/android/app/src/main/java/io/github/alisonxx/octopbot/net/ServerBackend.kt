@@ -545,7 +545,8 @@ class ServerBackend(
     }
 
     sealed interface Observation {
-        data object Status : Observation
+        data class Status(val active: Boolean, val turn: String?) : Observation
+        data class User(val row: ChatMessage) : Observation
         data object Finished : Observation
         data class Delta(val event: StreamEvent) : Observation
     }
@@ -560,7 +561,10 @@ class ServerBackend(
                 val frame = Http.parse(raw).asObject() ?: continue
                 if (frame.str("thread_id") != thread) continue
                 when (frame.str("type")) {
-                    "turn.started", "turn.resumed", "turn_status" -> send(Observation.Status)
+                    "turn.started", "turn.resumed" -> send(Observation.Status(true, frame.str("turn_id")))
+                    "turn_status" -> send(Observation.Status(frame.bool("active") == true, frame.str("turn_id")))
+                    "user" -> send(Observation.User(ChatMessage(id = frame.str("message_id") ?: java.util.UUID.randomUUID().toString(),
+                        role = io.github.alisonxx.octopbot.model.MessageRole.User, text = frame.str("content").orEmpty())))
                     "turn.ended" -> {
                         send(Observation.Finished)
                         mapper = ServerProtocol.FrameMapper(toolLabels())

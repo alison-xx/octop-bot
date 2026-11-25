@@ -192,7 +192,7 @@ object ServerProtocol {
             val id = row.str("thread_id") ?: return@mapNotNull null
             if (row.bool("has_messages") == false) return@mapNotNull null
             val updated = Times.parseIso(row.str("last_active")) ?: row.double("last_active")?.let(Times::epochMillis)
-            ConversationSummary(id, row.str("title")?.trim().orEmpty(), updated, botId)
+            ConversationSummary(id, row.str("title")?.trim().orEmpty(), updated, botId, row.bool("owned"), row.bool("is_active") == true)
         }.sortedByDescending { it.updatedAt ?: 0L }
 
     /** `GET /api/i18n/tools` → tool name → label in the request's language. */

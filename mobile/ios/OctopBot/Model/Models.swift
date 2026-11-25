@@ -57,6 +57,12 @@ struct ConversationSummary: Identifiable, Hashable {
     var title: String
     var updatedAt: Date?
     var botId: String?
+    var owned: Bool? = nil
+    var active = false
+
+    static func personalDefault(_ rows: [Self]) -> Self? {
+        rows.first { $0.owned == true && $0.active } ?? rows.first { $0.owned == true }
+    }
 }
 
 enum MessageRole: String, Codable { case user, assistant, system }

@@ -29,6 +29,30 @@ final class ChatSession {
     private(set) var loadingOlder = false
     private var historyRevision = 0
     private var visited = false
+    /// Uncommitted rows on a subscribed turn survive a socket or foreground reconciliation.
+    struct ObservedTurn {
+        var id: String?
+        var anchor: ChatMessage?
+        var rows: [ChatMessage] = []
+        var ended = false
+
+        func committedTail(_ history: [ChatMessage]) -> ArraySlice<ChatMessage> {
+            guard let anchor else { return history[...] }
+            let position = history.lastIndex { $0.id == anchor.id }
+                ?? history.lastIndex { $0.role == anchor.role && $0.text == anchor.text }
+            guard let position else { return history[history.endIndex...] }
+            return history.suffix(from: position + 1)
+        }
+
+        func merged(_ history: [ChatMessage]) -> [ChatMessage] {
+            let tail = committedTail(history)
+            return history + rows.filter { row in
+                !tail.contains { $0.id == row.id || ($0.role == row.role && $0.text == row.text) }
+            }
+        }
+    }
+
+    private var observedTurn: ObservedTurn?
     private var currentRun: UUID?
     /// Called with the finished reply text (voice mode reads it aloud).
     var onReply: ((String) -> Void)?
@@ -63,6 +87,7 @@ final class ChatSession {
         historyRows = []
         older = nil
         isLoading = false
+        observedTurn = nil
         conversationId = nil
         messages = []
         pause = nil
@@ -83,7 +108,7 @@ final class ChatSession {
         guard revision == historyRevision, !isStreaming, !isLoading else { return }
         if let id = conversationId, let row = conversations.first(where: { $0.id == id }) {
             await open(row)
-        } else if first, conversationId == nil, messages.isEmpty, let row = conversations.first {
+        } else if first, conversationId == nil, messages.isEmpty, let row = app?.server == nil ? conversations.first : ConversationSummary.personalDefault(conversations) {
             await open(row)
         }
     }
@@ -94,6 +119,7 @@ final class ChatSession {
         historyRevision += 1
         let revision = historyRevision
         if conversationId != conversation.id {
+            observedTurn = nil
             historyRows = []
             older = nil
             messages = []
@@ -127,7 +153,7 @@ final class ChatSession {
                     else if older?.cursor == nil { older?.offset += max(0, historyRows.count - previousCount) }
                 }
                 // The selected thread may have a pending write, so restore its approval card too.
-                messages = server.historyMessages(historyRows, bot: bot)
+                installObservedHistory(server.historyMessages(historyRows, bot: bot))
                 pause = page.pause
             } else {
                 let loaded = try await backend.messages(in: conversation, bot: bot)
@@ -165,41 +191,75 @@ final class ChatSession {
             guard historyRevision == revision, !isStreaming else { return }
             historyRows = Self.joinHistory(older: page.rows, newer: historyRows)
             self.older = page.next
-            messages = server.historyMessages(historyRows, bot: bot)
+            installObservedHistory(server.historyMessages(historyRows, bot: bot))
         } catch {
             if historyRevision == revision { self.error = error.localizedDescription }
         }
     }
 
-    /// Subscribe without sending a user turn. Historical projections correct any tokens missed on reconnect.
+    private func installObservedHistory(_ history: [ChatMessage]) {
+        if let turn = observedTurn, turn.ended, turn.committedTail(history).contains(where: { $0.role == .assistant }) {
+            observedTurn = nil
+        }
+        messages = observedTurn?.merged(history) ?? history
+    }
+
+    /// Subscribe without sending a turn. Keep the uncommitted prefix until the durable reply appears.
     func observe(_ thread: String) async {
         guard let server = app?.server else { return }
-        var draft: String?
-        func reconcile() async {
-            guard !Task.isCancelled, !isStreaming, conversationId == thread else { return }
-            let row = ConversationSummary(id: thread, title: "", updatedAt: nil, botId: bot.id)
-            await open(row)
-            draft = nil
+        let row = ConversationSummary(id: thread, title: "", updatedAt: nil, botId: bot.id)
+        func start(_ id: String?) {
+            if let id, let prior = observedTurn?.id, prior != id {
+                observedTurn = nil
+                messages = server.historyMessages(historyRows, bot: bot)
+            }
+            if observedTurn == nil { observedTurn = ObservedTurn(id: id, anchor: messages.last) }
+            if let id { observedTurn?.id = id }
+            observedTurn?.ended = false
+        }
+        func finish() async {
+            observedTurn?.ended = true
+            for attempt in 0..<4 {
+                guard !Task.isCancelled, !isStreaming, conversationId == thread else { return }
+                await open(row)
+                guard observedTurn?.ended == true, attempt < 3 else { return }
+                try? await Task.sleep(for: .milliseconds(300))
+            }
         }
         while !Task.isCancelled, conversationId == thread, !isStreaming {
             do {
                 for try await event in server.observe(thread, bot: bot) {
                     guard !Task.isCancelled, !isStreaming, conversationId == thread else { return }
                     switch event {
-                    case .status, .finished:
-                        await reconcile()
-                    case .delta(let delta):
-                        if draft == nil {
-                            let row = ChatMessage(role: .assistant, text: "", status: .streaming)
-                            messages.append(row)
-                            draft = row.id
+                    case .status(let active, let turn):
+                        if active {
+                            if let turn, let prior = observedTurn?.id, prior != turn { await finish() }
+                            start(turn)
+                        } else { await finish() }
+                    case .finished:
+                        await finish()
+                    case .user(let user):
+                        start(nil)
+                        if !messages.contains(where: { $0.id == user.id }) {
+                            observedTurn?.rows.append(user)
+                            messages.append(user)
                         }
-                        if let draft { apply(delta, to: draft) }
+                    case .delta(let delta):
+                        start(nil)
+                        if observedTurn?.rows.last?.role != .assistant {
+                            let reply = ChatMessage(role: .assistant, text: "", status: .streaming)
+                            observedTurn?.rows.append(reply)
+                            messages.append(reply)
+                        }
+                        if let id = observedTurn?.rows.last?.id {
+                            apply(delta, to: id)
+                            if let updated = messages.last(where: { $0.id == id }), let index = observedTurn?.rows.indices.last {
+                                observedTurn?.rows[index] = updated
+                            }
+                        }
                     }
                 }
-            } catch {
-                guard !Task.isCancelled else { return }
-            }
+            } catch { if Task.isCancelled { return } }
             try? await Task.sleep(for: .seconds(2))
         }
     }
