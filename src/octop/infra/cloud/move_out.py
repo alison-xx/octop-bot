@@ -40,8 +40,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _INSTALL_KEY = "octop_bot:install_id"
-# Legacy group timeline text cap. Thread imports keep each original message.
-_MAX_TEXT = 100_000
 _MAX_THREADS_PER_BOT = 200
 
 
@@ -165,16 +163,6 @@ class _Cloud:
 def _source(services: SharedServices, kind: str, item: str) -> str:
     install = services.settings_repo.get_or_insert(_INSTALL_KEY, new_ulid())
     return f"{install}:{kind}:{item}"
-
-
-def _clip(value: Any) -> Any:
-    if isinstance(value, str):
-        return value if len(value) <= _MAX_TEXT else value[:_MAX_TEXT]
-    if isinstance(value, list):
-        return [_clip(item) for item in value]
-    if isinstance(value, dict):
-        return {key: _clip(item) for key, item in value.items()}
-    return value
 
 
 async def _thread_messages(
@@ -329,8 +317,16 @@ async def _send_all(
         admin = moved.get(group["admin_id"])
         if admin is not None:
             timeline = await asyncio.to_thread(repo.messages, group["group_id"], internal=True)
-            await cloud.post(
-                "/api/octop-bot/move-in/groups",
+            if len(timeline) > 20_000:
+                raise OctopError.localized(ErrorCode.BOT_MOVE_GROUP_LIMIT)
+            goal = goal_json(group["goal"])
+            if goal:
+                for stage in goal["stages"]:
+                    stage["assignee_id"] = moved.get(stage["assignee_id"])
+            await _send_history(
+                cloud,
+                "groups",
+                "group-parts",
                 {
                     "source": _source(services, "group", group["group_id"]),
                     "name": group["name"],
@@ -338,19 +334,20 @@ async def _send_all(
                     "member_ids": members,
                     "reply_mode": group["reply_mode"],
                     "memory": group["memory"] or "",
-                    "goal": goal_json(group["goal"]),
-                    "messages": [
-                        {
-                            "request_id": m["request_id"],
-                            "slot": m["slot"],
-                            "role": m["role"],
-                            "agent_id": moved.get(m["agent_id"]) if m["agent_id"] else None,
-                            "text": _clip(m["text"]),
-                            "created_at": m["created_at"],
-                        }
-                        for m in timeline
-                    ],
+                    "goal": goal,
                 },
+                [
+                    {
+                        "request_id": m["request_id"],
+                        "slot": m["slot"],
+                        "role": m["role"],
+                        "agent_id": moved.get(m["agent_id"]) if m["agent_id"] else None,
+                        "text": m["text"],
+                        "created_at": m["created_at"],
+                    }
+                    for m in timeline
+                ],
+                limit_error=ErrorCode.BOT_MOVE_GROUP_LIMIT,
             )
         status.done += 1
 

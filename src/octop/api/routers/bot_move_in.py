@@ -9,19 +9,22 @@ from fastapi import APIRouter, Depends, Request
 
 from octop.api.deps import current_user, get_server
 from octop.infra.cloud.move_in import (
+    GroupPartReceipt,
     Moved,
     MovedBot,
     MovedGroup,
+    MovedGroupPart,
     MovedNotes,
     MovedThread,
     MovedThreadPart,
     ThreadPartReceipt,
     charge_move_request,
     move_bot,
-    move_group,
+    move_group_part,
     move_notes,
     move_thread,
     move_thread_part,
+    receive_group,
 )
 from octop.infra.desktop import bot_cloud_move_in_enabled
 from octop.infra.errors import ErrorCode, OctopError
@@ -96,7 +99,18 @@ async def moved_thread_part(
 )
 async def moved_group(body: MovedGroup, user: Owner, server: Server) -> Moved:
     assert server.services is not None
-    return await asyncio.to_thread(move_group, server.services, user, body)
+    return await receive_group(server.services, user, body)
+
+
+@router.post(
+    "/group-parts",
+    summary="Resume a paged desktop Bot group import",
+    description="Only the signed-in owner’s eligible Bots can join. The group becomes visible "
+    "after the complete timeline, memory and goal have been saved.",
+)
+async def moved_group_part(body: MovedGroupPart, user: Owner, server: Server) -> GroupPartReceipt:
+    assert server.services is not None
+    return await move_group_part(server.services, user, body)
 
 
 @router.post(

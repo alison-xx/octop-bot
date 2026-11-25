@@ -34,6 +34,7 @@ from octop.infra.agents.threads.fork import write_checkpoint_messages
 from octop.infra.auth.lynxce_cloud import _finish
 from octop.infra.bot_groups.service import Goal, ReplyMode, create_group
 from octop.infra.cloud import move_wire
+from octop.infra.db.repos.bot_groups import ImportedTimeline
 from octop.infra.db.repos.thread_messages import ThreadMessageInput
 from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
@@ -142,7 +143,7 @@ class MovedGroupMessage(BaseModel):
     created_at: int = Field(ge=0)
 
 
-class MovedGroup(BaseModel):
+class GroupHeader(BaseModel):
     source: Source
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
     admin_id: str = Field(min_length=1, max_length=64)
@@ -150,7 +151,23 @@ class MovedGroup(BaseModel):
     reply_mode: ReplyMode = "admin_first"
     memory: str = Field(default="", max_length=200_000)
     goal: Goal | None = None
+
+
+class MovedGroup(GroupHeader):
     messages: list[MovedGroupMessage] = Field(default_factory=list, max_length=20_000)
+
+
+class MovedGroupPart(GroupHeader, move_wire.WirePart):
+    message_count: int = Field(ge=1, le=20_000)
+
+
+class GroupPartReceipt(ThreadPartReceipt):
+    id: str | None = Field(default=None, description="Cloud group ID after complete publication.")
+
+
+class PagedGroupMessage(MovedGroupMessage):
+    # Wire bytes and account quotas bound uploads. A stored assistant reply can exceed one page.
+    text: str
 
 
 class MovedNotes(BaseModel):
@@ -343,42 +360,122 @@ def _read_projection(projection: TextIO) -> Iterator[ThreadMessageInput]:
 def move_group(services: SharedServices, user: User, body: MovedGroup) -> Moved:
     key = _key(user.id, "group", body.source)
     known = services.settings_repo.get(key)
-    if known and services.repos.bot_group_repo.get(known, user.id) is not None:
-        return Moved(id=known)
+    if known and services.repos.bot_group_repo.get(known, user.id):
+        result = Moved(id=known)
+    else:
+        admin, members = _group_roster(services, user, body)
+        result = _publish_group(
+            services,
+            user,
+            body,
+            admin,
+            members,
+            ImportedTimeline(
+                key, body.memory, _group_goal(body, members), _group_messages(body, members)
+            ),
+        )
+    move_wire.discard_upload(services.settings_repo, key)
+    return result
 
-    # A same-name Bot joined on this server may be private, which keeps it out of groups.
+
+def _group_roster(services: SharedServices, user: User, body: GroupHeader) -> tuple[str, list[str]]:
     def joinable(agent_id: str) -> bool:
         row = services.agent_repo.get(agent_id)
         return row is not None and row.user_id == user.id and can_join_bot_group(row)
 
     chief_id = services.settings_repo.get(chief_key(user.id)) or ""
-    admin_id = body.admin_id if joinable(body.admin_id) else chief_id
+    admin = body.admin_id if joinable(body.admin_id) else chief_id
+    members = list(dict.fromkeys([admin, *(i for i in body.member_ids if joinable(i))]))
+    return admin, members
+
+
+def _group_messages(body: MovedGroup, members: list[str]) -> list[dict[str, Any]]:
+    return [
+        {**m.model_dump(), "agent_id": m.agent_id if m.agent_id in members else None}
+        for m in body.messages
+        if m.role == "user" or m.agent_id in members
+    ]
+
+
+def _group_goal(body: GroupHeader, members: list[str]) -> str | None:
+    if body.goal is None:
+        return None
+    goal = body.goal.model_copy(deep=True)
+    for stage in goal.stages:
+        if stage.assignee_id not in members:
+            stage.assignee_id = None
+    return goal.model_dump_json()
+
+
+def _publish_group(
+    services: SharedServices,
+    user: User,
+    body: GroupHeader,
+    admin: str,
+    members: list[str],
+    imported: ImportedTimeline,
+) -> Moved:
     group = create_group(
         services,
         user.id,
         name=body.name,
-        admin_id=admin_id,
-        member_ids=[i for i in body.member_ids if joinable(i)],
+        admin_id=admin,
+        member_ids=members,
         reply_mode=body.reply_mode,
+        imported=imported,
     )
-    repo = services.repos.bot_group_repo
-    if body.memory:
-        repo.set_memory(group.group_id, user.id, body.memory)
-    if body.goal is not None:
-        repo.set_goal(group.group_id, user.id, body.goal.model_dump_json(), None)
-    members = set(group.member_ids)
-    repo.import_messages(
-        group.group_id,
-        [
-            {**m.model_dump(), "agent_id": m.agent_id if m.agent_id in members else None}
-            for m in body.messages
-            if m.role == "user" or m.agent_id in members
-        ],
-    )
-    # The moved timeline counts as read, like it was on the computer it came from.
-    repo.mark_read(group.group_id, user.id)
-    services.settings_repo.set(key, group.group_id)
     return Moved(id=group.group_id)
+
+
+async def receive_group(services: SharedServices, user: User, body: MovedGroup) -> Moved:
+    async with AsyncFileLock(services.paths.root / f".move-groups-{user.id}.lock"):
+        return await _finish(asyncio.to_thread(move_group, services, user, body))
+
+
+async def move_group_part(
+    services: SharedServices, user: User, body: MovedGroupPart
+) -> GroupPartReceipt:
+    async with AsyncFileLock(services.paths.root / f".move-groups-{user.id}.lock"):
+        return await _finish(asyncio.to_thread(_stage_group_part, services, user, body))
+
+
+def _stage_group_part(
+    services: SharedServices, user: User, body: MovedGroupPart
+) -> GroupPartReceipt:
+    settings = services.settings_repo
+    key = _key(user.id, "group", body.source)
+    known = settings.get(key)
+    if known and services.repos.bot_group_repo.get(known, user.id):
+        move_wire.discard_upload(settings, key)
+        return GroupPartReceipt(next_offset=body.total, id=known)
+    offset, pages = move_wire.stage_page(settings, key, body)
+    if offset < body.total:
+        return GroupPartReceipt(next_offset=offset)
+    admin, members = _group_roster(services, user, body)
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as timeline:
+        try:
+            for batch in move_wire.read_batches(
+                settings, key + ":parts", pages, body.snapshot, body.message_count
+            ):
+                for raw in batch:
+                    msg = PagedGroupMessage.model_validate(raw)
+                    if msg.role != "user" and msg.agent_id not in members:
+                        continue
+                    if msg.agent_id not in members:
+                        msg.agent_id = None
+                    timeline.write(msg.model_dump_json() + "\n")
+        except move_wire.InvalidUpload:
+            move_wire.discard_upload(settings, key)
+            return GroupPartReceipt(next_offset=0)
+        except ValueError:
+            raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS, status=422) from None
+        timeline.seek(0)
+        imported = ImportedTimeline(
+            key, body.memory, _group_goal(body, members), (json.loads(line) for line in timeline)
+        )
+        group = _publish_group(services, user, body, admin, members, imported)
+    move_wire.discard_upload(settings, key)
+    return GroupPartReceipt(next_offset=offset, id=group.id)
 
 
 def move_notes(services: SharedServices, user: User, body: MovedNotes) -> None:

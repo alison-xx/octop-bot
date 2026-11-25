@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from octop.infra.agents.bot_workspace import can_join_bot_group
 from octop.infra.db.repos.agents import AgentRow
+from octop.infra.db.repos.bot_groups import ImportedTimeline
 from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -123,12 +124,15 @@ def create_group(
     admin_id: str,
     member_ids: list[str],
     reply_mode: ReplyMode = "admin_first",
+    imported: ImportedTimeline | None = None,
 ) -> Group:
     from octop.infra.agents.bot_limits import assert_group_capacity
 
     assert_group_capacity(services.repos.user_repo, services.repos.bot_group_repo, user_id)
     members = _roster(services, user_id, admin_id, member_ids)
-    group_id = services.repos.bot_group_repo.create(user_id, name, admin_id, members, reply_mode)
+    group_id = services.repos.bot_group_repo.create(
+        user_id, name, admin_id, members, reply_mode, imported=imported
+    )
     return Group.from_record(group_row(services, user_id, group_id))
 
 
