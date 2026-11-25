@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Observation
 
 /// The exact history append, kept on this device until Lynxce acknowledges it.
 struct PendingHistory: Codable {
@@ -80,6 +81,15 @@ struct PendingHistory: Codable {
 
 /// Each account and service has its own protected directory. Records contain no credentials.
 struct PendingHistoryStore {
+    @Observable
+    fileprivate final class Operations {
+        var writes: [UUID: (session: String, task: Task<Void, Error>)] = [:]
+        var deleting: Set<String> = []
+        var deleted: Set<String> = []
+    }
+
+    private static var operationsByDirectory: [URL: Operations] = [:]
+    private let operations: Operations
     private let directory: URL
     // If iOS temporarily denies disk writes, keep the reply across view and account changes.
     private static var memoryOnly: [URL: [UUID: PendingHistory]] = [:]
@@ -87,9 +97,13 @@ struct PendingHistoryStore {
         let scope = SHA256.hash(data: Data((origin.absoluteString + "\u{0}" + account).utf8))
         let key = scope.map { String(format: "%02x", $0) }.joined()
         directory = root.appendingPathComponent("PendingHistory").appendingPathComponent(key)
+        let shared = Self.operationsByDirectory[directory] ?? Operations()
+        Self.operationsByDirectory[directory] = shared
+        operations = shared
     }
 
     func remember(_ turn: PendingHistory) {
+        guard !operations.deleted.contains(turn.sessionID) else { return }
         do { try put(turn) }
         catch { Self.memoryOnly[directory, default: [:]][turn.id] = turn }
     }
@@ -114,7 +128,38 @@ struct PendingHistoryStore {
         let memory = (Self.memoryOnly[directory] ?? [:]).values.filter {
             $0.botID == bot && (session == nil || $0.sessionID == session)
         }
-        return (saved + memory).sorted { $0.startedAt < $1.startedAt }
+        return (saved + memory).filter { !operations.deleted.contains($0.sessionID) }.sorted { $0.startedAt < $1.startedAt }
+    }
+
+    func canRetry(_ turn: PendingHistory) -> Bool {
+        guard operations.writes[turn.id] == nil, !operations.deleting.contains(turn.sessionID),
+              !operations.deleted.contains(turn.sessionID) else { return false }
+        return Self.memoryOnly[directory]?[turn.id] != nil ||
+            FileManager.default.fileExists(atPath: directory.appendingPathComponent(turn.id.uuidString).path)
+    }
+
+    func write(_ turn: PendingHistory, append: @escaping @MainActor () async throws -> Void) async throws {
+        guard !operations.deleting.contains(turn.sessionID), !operations.deleted.contains(turn.sessionID) else {
+            throw CancellationError()
+        }
+        if let current = operations.writes[turn.id] { return try await current.task.value }
+        let task = Task {
+            try await append()
+            try remove(turn)
+        }
+        operations.writes[turn.id] = (turn.sessionID, task)
+        defer { operations.writes[turn.id] = nil }
+        try await task.value
+    }
+
+    func delete(bot: String, session: String, request: () async throws -> Void) async throws {
+        guard operations.deleting.insert(session).inserted else { throw CancellationError() }
+        defer { operations.deleting.remove(session) }
+        let active = operations.writes.values.filter { $0.session == session }
+        for write in active { _ = await write.task.result }
+        try await request()
+        operations.deleted.insert(session)
+        for turn in turns(bot: bot, session: session) { try remove(turn) }
     }
 
     func remove(_ turn: PendingHistory) throws {

@@ -295,8 +295,13 @@ final class LynxceBackend: ChatBackend {
 
     func deleteConversation(_ conversation: ConversationSummary, bot: BotProfile) async throws {
         let id = conversation.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? conversation.id
-        _ = try await call(.delete, "/api/user/web-chat-sessions/\(id)")
-        for turn in pending.turns(bot: bot.id, session: conversation.id) { try pending.remove(turn) }
+        chat.stop(conversation.id)
+        try await pending.delete(bot: bot.id, session: conversation.id) {
+            do { _ = try await call(.delete, "/api/user/web-chat-sessions/\(id)") }
+            catch let error as APIError where error.status == 404 && !pending.turns(bot: bot.id, session: conversation.id).isEmpty {
+                // The append never reached Lynxce. Only the device copy needs removal.
+            }
+        }
         sessionBots[conversation.id] = nil
     }
 
@@ -483,13 +488,15 @@ final class LynxceBackend: ChatBackend {
     }
 
     struct HistorySaveError: LocalizedError {
+        var receiptID: String?
         var generationStatus: MessageStatus = .done
+        var canRetry: @MainActor () -> Bool = { true }
         let retry: @MainActor () async throws -> Void
         var errorDescription: String? { L("chat.historySaveFailed") }
     }
 
     private func saveFailure(_ turn: PendingHistory) -> HistorySaveError {
-        HistorySaveError(generationStatus: turn.status) { [weak self] in
+        HistorySaveError(receiptID: turn.id.uuidString, generationStatus: turn.status, canRetry: { [pending] in pending.canRetry(turn) }) { [weak self] in
             guard let self else { throw CancellationError() }
             try await self.save(turn)
         }
@@ -498,8 +505,10 @@ final class LynxceBackend: ChatBackend {
     private func save(_ turn: PendingHistory) async throws {
         guard !signedOut else { throw CancellationError() }
         let id = turn.sessionID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? turn.sessionID
-        _ = try await call(.post, "/api/user/web-chat-sessions/\(id)/items", json: turn.body)
-        try pending.remove(turn)
+        try await pending.write(turn) { [self] in
+            guard !signedOut else { throw CancellationError() }
+            _ = try await call(.post, "/api/user/web-chat-sessions/\(id)/items", json: turn.body)
+        }
     }
 
     func stop(conversation: String, bot: BotProfile) async {

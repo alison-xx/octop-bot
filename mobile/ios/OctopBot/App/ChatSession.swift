@@ -26,7 +26,11 @@ final class ChatSession {
     /// Messages written while a reply was streaming; sent in order when it ends.
     private(set) var queued: [ChatMessage] = []
     private weak var historyBackend: ChatBackend?
-    private(set) var unsavedReplies: [String: LynxceBackend.HistorySaveError] = [:]
+    private var saveReceipts: [String: LynxceBackend.HistorySaveError] = [:]
+    var unsavedReplies: [String: LynxceBackend.HistorySaveError] {
+        guard let historyBackend, historyBackend === app?.backend else { return [:] }
+        return saveReceipts.filter { $0.value.canRetry() }
+    }
     private(set) var savingReplies: Set<String> = []
     private var currentRun: UUID?
     /// Called with the finished reply text (voice mode reads it aloud).
@@ -82,7 +86,7 @@ final class ChatSession {
             if conversationId == conversation.id, app?.backend === backend {
                 if let direct = backend as? LynxceBackend {
                     historyBackend = direct
-                    unsavedReplies = direct.pendingSaves(bot: bot.id, session: conversation.id)
+                    saveReceipts = direct.pendingSaves(bot: bot.id, session: conversation.id)
                 }
                 messages = loaded
                 pause = backend.openPause(in: conversation)
@@ -259,8 +263,13 @@ final class ChatSession {
             } catch let failure as LynxceBackend.HistorySaveError {
                 guard currentRun == run, app?.backend === backend else { return }
                 historyBackend = backend
-                unsavedReplies[replyId] = failure
-                update(replyId) { $0.status = failure.generationStatus }
+                let receiptID = failure.receiptID ?? replyId
+                saveReceipts[receiptID] = failure
+                update(replyId) {
+                    $0.id = receiptID
+                    $0.status = failure.generationStatus
+                    for index in $0.tools.indices { $0.tools[index].done = true }
+                }
             } catch let error as APIError where error.kind == .credits {
                 // Out of credits: the reply becomes a top-up card with "Continue" instead of an error.
                 update(replyId) {
@@ -328,7 +337,7 @@ final class ChatSession {
         defer { savingReplies.remove(id) }
         do {
             try await failure.retry()
-            guard historyBackend === app?.backend, unsavedReplies.removeValue(forKey: id) != nil else { return }
+            guard historyBackend === app?.backend, saveReceipts.removeValue(forKey: id) != nil else { return }
             await reloadConversations()
         } catch {
             // Leave the reply and its original payload available for the next save attempt.
@@ -346,7 +355,7 @@ final class ChatSession {
     }
 
     func cancel() {
-        unsavedReplies.removeAll()
+        saveReceipts.removeAll()
         queued = []
         currentRun = nil
         task?.cancel()

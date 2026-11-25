@@ -1520,3 +1520,64 @@ extension StreamTests {
         XCTAssertNotNil(restored.pendingSaves(bot: bot.id, session: conversation.id)[id])
     }
 }
+
+extension StreamTests {
+    func testStopAfterToolDeltaSavesPartialTextWithoutOpeningDevicePause() async throws {
+        var finishStream: CheckedContinuation<Void, Never>?
+        var callsToModel = 0
+        var saved = ""
+        let chat = CompletionChat(stream: { _, _, calls, emit in
+            callsToModel += 1
+            emit(.text("partial"))
+            calls.add(#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"read","function":{"name":"device_calendar_list","arguments":"{}"}}]}}]}"#)
+            await withCheckedContinuation { finishStream = $0 }
+        }, finished: { turn, _ in saved = turn.answer })
+        let turn = CompletionChat.Turn(body: [:], user: "question", startedAt: .now)
+        var events = chat.start(turn, sessionId: "one", announce: nil).makeAsyncIterator()
+        guard case .text? = try await events.next() else { return XCTFail("Missing partial text") }
+        chat.stop("one")
+        finishStream?.resume()
+        do {
+            while let event = try await events.next() {
+                if case .pause = event { XCTFail("Stopped turns must not open device tools") }
+            }
+        } catch is CancellationError {}
+        XCTAssertEqual(callsToModel, 1)
+        XCTAssertEqual(saved, "partial")
+    }
+
+    func testReopenedSaveAcknowledgementAndDeleteOrderAcrossBackendInstances() async throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = PendingHistoryStore(origin: LynxceBackend.origin, account: "A", root: root)
+        let reopened = PendingHistoryStore(origin: LynxceBackend.origin, account: "A", root: root)
+        let turn = PendingHistory(turn: .init(body: [:], user: "q", startedAt: .now, botID: "bot", answer: "a"),
+                                  sessionID: "thread")
+        store.remember(turn)
+        var release: CheckedContinuation<Void, Never>?
+        var order: [String] = []
+        let writing = Task {
+            try await store.write(turn) {
+                await withCheckedContinuation { release = $0 }
+                order.append("append")
+            }
+        }
+        while release == nil { await Task.yield() }
+        XCTAssertFalse(reopened.canRetry(turn))
+        let deleting = Task {
+            try await reopened.delete(bot: "bot", session: "thread") { order.append("delete") }
+        }
+        await Task.yield()
+        release?.resume()
+        try await writing.value
+        try await deleting.value
+        XCTAssertEqual(order, ["append", "delete"])
+        XCTAssertFalse(reopened.canRetry(turn))
+        store.remember(turn)
+        XCTAssertTrue(reopened.turns(bot: "bot", session: "thread").isEmpty)
+        do {
+            try await store.write(turn) { XCTFail("Late write recreated the deleted thread") }
+            XCTFail("Expected the obsolete write to be rejected")
+        } catch is CancellationError {}
+    }
+}

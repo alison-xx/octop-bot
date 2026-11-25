@@ -68,6 +68,7 @@ final class CompletionChat {
                 }
                 var streamError: Error?
                 do {
+                    try Task.checkCancellation()
                     while true {
                         var calls = ToolCallAccumulator()
                         var text = ""
@@ -83,6 +84,7 @@ final class CompletionChat {
                             }
                             continuation.yield(event)
                         }
+                        try Task.checkCancellation()
                         turn.body = body
                         let made = calls.calls
                         guard !made.isEmpty else { break }
