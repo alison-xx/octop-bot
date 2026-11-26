@@ -16,7 +16,10 @@ final class GroupRoom {
     private var quietPolls = 0
     private var poller: Task<Void, Never>?
 
-    init(group: GroupSummary, server: ServerBackend) {
+    private let maySend: () -> Bool
+
+    init(group: GroupSummary, server: ServerBackend, maySend: @escaping () -> Bool) {
+        self.maySend = maySend
         self.group = group
         self.server = server
     }
@@ -73,6 +76,7 @@ final class GroupRoom {
     }
 
     private func post(_ text: String, requestId: String) {
+        guard maySend() else { return }
         let localId = "local-" + requestId
         let mentions = Self.mentions(in: text, members: group.members)
         messages.removeAll { $0.id == localId }
@@ -84,6 +88,7 @@ final class GroupRoom {
             defer { inFlight -= 1 }
             do {
                 // Blocks until every reply is done; the poller shows progress meanwhile.
+                guard maySend() else { return }
                 try await server.postGroupMessage(group.id, text: text, mentions: mentions, requestId: requestId)
                 messages.removeAll { $0.id == localId }
             } catch {
@@ -139,7 +144,7 @@ struct GroupRoomView: View {
         .sheet(isPresented: $showInfo) { if let room { GroupInfoView(room: room) } }
         .task {
             guard let server = model.server else { return }
-            let room = GroupRoom(group: group, server: server)
+            let room = GroupRoom(group: group, server: server) { model.server === server && model.allowsAISharing }
             self.room = room
             room.start()
         }

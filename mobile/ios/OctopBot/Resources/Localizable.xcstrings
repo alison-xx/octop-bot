@@ -2,6 +2,198 @@
   "sourceLanguage": "en",
   "version": "1.0",
   "strings": {
+    "aiConsent.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI data sharing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "向 AI 服务发送数据"
+          }
+        }
+      }
+    },
+    "aiConsent.data": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To generate a reply, the service receives your message, relevant chat or group history, and any images or files you include. Results from device tools you enable can also become part of the conversation."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为了生成回复，服务会收到你的消息、相关的单聊或群聊上下文，以及你附上的图片或文件。你启用的设备工具返回的内容也可能进入对话。"
+          }
+        }
+      }
+    },
+    "aiConsent.recipient %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat recipient: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话接收方：%@"
+          }
+        }
+      }
+    },
+    "aiConsent.cloud": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lynxce Technologies operates the official cloud and stores cloud chats. For image and video requests, prompts and reference media may go to Duomi for GPT Image or UCloud for MiniMax video. Cloud speech may use Alibaba Cloud for transcription or synthesis."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "官方云由灵策智算运营并保存云端会话。生成图片或视频时，提示词和参考素材可能交给多米（GPT Image）或优刻得（MiniMax 视频）。云端语音识别或合成可能使用阿里云。"
+          }
+        }
+      }
+    },
+    "aiConsent.selfHosted": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This server’s administrator configures its downstream AI and speech providers. Check with the administrator before allowing this server to process private content."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台服务器的管理员配置下游模型和语音服务。发送私人内容前，请向管理员核实服务商。"
+          }
+        }
+      }
+    },
+    "aiConsent.voice": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When you use voice, recorded audio is used for transcription and reply text for read-aloud. System speech recognition may send audio to Apple. You can withdraw permission in Settings."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用语音时，录音用于转写，回复文字用于朗读。系统语音识别可能把录音发送给 Apple。你可以在设置中撤回授权。"
+          }
+        }
+      }
+    },
+    "aiConsent.allow": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow AI data sharing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同意向上述服务发送数据"
+          }
+        }
+      }
+    },
+    "aiConsent.decline": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not now"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂不同意"
+          }
+        }
+      }
+    },
+    "aiConsent.policy": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy Policy"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐私政策"
+          }
+        }
+      }
+    },
+    "aiConsent.revoke": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Withdraw AI sharing permission"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤回 AI 数据共享授权"
+          }
+        }
+      }
+    },
+    "aiConsent.refresh": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check recipient again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新获取接收方"
+          }
+        }
+      }
+    },
+    "aiConsent.noRecipient": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The app could not identify your model endpoint. Check the model in Settings before starting a conversation."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时无法确定模型接收方。请在设置中检查模型，再开始对话。"
+          }
+        }
+      }
+    },
     "history.reauthenticate": {
       "localizations": {
         "en": {

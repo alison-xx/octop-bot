@@ -109,6 +109,50 @@ final class AppModel {
         return backend == nil ? nil : PhoneModels.shared
     }
 
+    // Consent lasts for this sign-in and this recipient. Never restore an opt-in on upgrade.
+    struct AIRecipient: Equatable {
+        let destination: String
+        let official: Bool
+    }
+    private(set) var allowedAIRecipient: AIRecipient?
+    var aiRecipient: AIRecipient? {
+        guard let backend else { return nil }
+        if let server {
+            let official = server.isOfficialCloud
+            if official && serverKeys == nil { return nil }
+            var destination = server.host
+            if let keys = serverKeys, let id = keys.inUse {
+                guard let key = keys.keys.first(where: { $0.id == id }) else { return nil }
+                destination += " → " + key.displayName
+                if let host = URL(string: key.baseURL)?.host { destination += " (" + host + ")" }
+            } else if official {
+                destination += " → Tencent Cloud TokenHub"
+            }
+            return AIRecipient(destination: destination, official: official)
+        }
+        if usesPhoneBots, let endpoint = PhoneModels.shared.endpoint(), let host = endpoint.baseURL.host {
+            let source = PhoneModels.shared.current?.source ?? host
+            let recipient = source + " (" + host + ")"
+            return AIRecipient(destination: recipient, official: isLynxce)
+        }
+        if isDevice { return nil }
+        return AIRecipient(destination: isLynxce ? "Lynxce → Tencent Cloud TokenHub" : backend.accountName, official: isLynxce)
+    }
+    var allowsAISharing: Bool { allowedAIRecipient != nil && allowedAIRecipient == aiRecipient }
+
+    func allowAISharing(with recipient: AIRecipient) {
+        if aiRecipient == recipient { allowedAIRecipient = recipient }
+    }
+
+    func revokeAISharing() {
+        allowedAIRecipient = nil
+        Speaker.shared.stop()
+        for session in sessions.values {
+            session.stop()
+            session.cancel()
+        }
+    }
+
     /// The server account's own keys and the one in use, for the Settings row.
     var serverKeys: OwnKeyList?
 
@@ -279,6 +323,8 @@ final class AppModel {
             UserDefaults.standard.removeObject(forKey: "chat.previews")
             UserDefaults.standard.removeObject(forKey: "chat.unread")
         }
+        allowedAIRecipient = nil
+        serverKeys = nil
         self.backend = backend
         CreditStore.shared.start(
             account: { [weak self] in self?.creditAccount },
@@ -550,6 +596,7 @@ final class AppModel {
         for session in sessions.values { session.cancel() }
         sessions = [:]
         let leaving = backend
+        allowedAIRecipient = nil
         backend = nil
         isLoading = false
         bots = []

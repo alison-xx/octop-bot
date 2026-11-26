@@ -97,7 +97,9 @@ struct HomeView: View {
             )
         }
         .sheet(isPresented: $creatingGroup) { GroupCreator() }
-        .fullScreenCover(item: $voiceBot) { bot in VoiceModeView(chat: model.session(for: bot)) }
+        .fullScreenCover(item: $voiceBot) { bot in
+            consentGate(close: { voiceBot = nil }) { VoiceModeView(chat: model.session(for: bot)) }
+        }
     }
 
     private func directory(selection: Binding<Route?>?) -> some View {
@@ -214,6 +216,44 @@ struct HomeView: View {
 
     @ViewBuilder
     private func destination(_ route: Route) -> some View {
+        consentGate(close: {
+            selection = nil
+            if !path.isEmpty { path.removeLast() }
+        }) { chatDestination(route) }
+    }
+
+    @ViewBuilder
+    private func consentGate<Content: View>(close: @escaping () -> Void, @ViewBuilder content: () -> Content) -> some View {
+        if model.allowsAISharing {
+            content()
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("aiConsent.title").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                    if let recipient = model.aiRecipient {
+                        Text("aiConsent.data")
+                        Text(verbatim: L("aiConsent.recipient %@", recipient.destination)).bold()
+                        if recipient.official { Text("aiConsent.cloud") }
+                        if model.server != nil && !recipient.official { Text("aiConsent.selfHosted") }
+                        Text("aiConsent.voice")
+                        Link("aiConsent.policy", destination: URL(string: "https://octop-bot.lynxce.cn/privacy.html")!)
+                        Button("aiConsent.allow") { model.allowAISharing(with: recipient) }
+                            .buttonStyle(.borderedProminent).accessibilityIdentifier("allowAISharing")
+                    } else {
+                        Text("aiConsent.noRecipient")
+                        if model.server != nil {
+                            Button("aiConsent.refresh") { Task { await model.refreshServerKeys() } }
+                        }
+                    }
+                    Button("aiConsent.decline", action: close).buttonStyle(.bordered)
+                }
+                .padding(24).frame(maxWidth: 560, alignment: .leading)
+            }.frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func chatDestination(_ route: Route) -> some View {
         switch route {
         case .bot(let id):
             if let bot = model.bots.first(where: { $0.id == id }) {

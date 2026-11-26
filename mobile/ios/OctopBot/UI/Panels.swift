@@ -399,6 +399,13 @@ struct SettingsView: View {
                     Text("settings.clearCache.footer")
                 }
 
+                Section("aiConsent.title") {
+                    Link("aiConsent.policy", destination: URL(string: "https://octop-bot.lynxce.cn/privacy.html")!)
+                    if model.allowsAISharing {
+                        Button("aiConsent.revoke") { model.revokeAISharing() }
+                    }
+                }
+
                 Section("settings.account") {
                     LabeledContent { Text(model.accountName) } label: {
                         row("settings.signedInAs", "person", .blue)
