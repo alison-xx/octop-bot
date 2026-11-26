@@ -3,6 +3,12 @@
 Both native apps (`ios/`, `android/`) speak to one of two backends. This file is the contract they
 implement; keep it in sync with the backend when routes change.
 
+Server-connected desktop, web, iOS and Android clients read the same history endpoint. Their tests
+use `mobile/fixtures/server-chat-history.json`. The release rehearsal replaces the example with the
+responses from both server slots and the expected transcript from its controlled chat stream. Keep
+changes to existing fields compatible with installed clients. New optional fields should work with
+older servers and with clients that ignore them.
+
 ## A. Lynxce account (default)
 
 Origin `https://api.lynxce.cn`. Every request sends `X-Lynxce-Client: web` (Lynxce's multi-session

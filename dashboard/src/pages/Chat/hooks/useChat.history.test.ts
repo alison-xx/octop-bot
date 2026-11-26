@@ -5,7 +5,8 @@ import {
   type OctopThreadHistory,
 } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
-import { useChat } from "./useChat";
+import fixture from "../../../../../mobile/fixtures/server-chat-history.json";
+import { convertHistoryMessages, useChat } from "./useChat";
 import {
   clearInflightTail,
   flushInflightTail,
@@ -34,6 +35,17 @@ async function flushHistoryRequest() {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
+
+it("renders the shared server chat history in the desktop and web dashboard", () => {
+  expect(fixture.pages.length).toBeGreaterThan(0);
+  expect(fixture.expected.length).toBeGreaterThan(0);
+  for (const page of fixture.pages) {
+    const actual = convertHistoryMessages(page.messages).map(
+      ({ role, content }) => ({ role, text: content }),
+    );
+    expect(actual).toEqual(fixture.expected);
+  }
+});
 
 describe("history failures", () => {
   it("keeps a loaded conversation and its cursor when refreshing fails", async () => {
