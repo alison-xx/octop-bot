@@ -289,6 +289,8 @@
     "sendFailed": "验证码发送失败，请稍后重试。"
   },
   "botOnboarding": {
+    "signingIntoCloud": "正在登录云端账号…",
+    "openingCloud": "正在打开云端工作区…",
     "chiefName": "Chief",
     "desktopBody": "Chief 是你的八爪鱼助手，可以帮你组建 Bot 团队、分工协作。连接一个聊天模型就能开始，不需要注册本机账号。",
     "webBody": "用灵策智算账号登录即可开始，首次登录的账号会成为这台 Octop Bot 的主人。没有账号会自动注册。",

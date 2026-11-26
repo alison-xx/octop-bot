@@ -289,6 +289,8 @@
     "sendFailed": "Could not send the code. Please try again."
   },
   "botOnboarding": {
+    "signingIntoCloud": "Signing in to your cloud account…",
+    "openingCloud": "Opening your cloud workspace…",
     "chiefName": "Chief",
     "desktopBody": "Chief is your octopus assistant. It builds a Bot team and splits up the work. Connect a chat model to start — no local account needed.",
     "webBody": "Sign in with your Lynxce account to start. The first account to sign in becomes the owner of this Octop Bot. New accounts are created for you.",
