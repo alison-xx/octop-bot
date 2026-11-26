@@ -101,6 +101,24 @@ def _goal_edit(
     return text[: block.start()].strip() or proposed.title, proposed
 
 
+def _stage_acceptance(
+    text: str, saved: str, index: int, delivery: dict[str, Any], admin_id: str
+) -> tuple[str, Goal] | None:
+    lines = text.rstrip().splitlines()
+    if not lines or lines[-1].strip() != f"[ACCEPT {delivery['message_id']}]":
+        return None
+    goal = Goal.model_validate_json(saved)
+    if goal.status != "active" or index >= len(goal.stages):
+        return None
+    stage = goal.stages[index]
+    if stage.status == "done" or (stage.assignee_id or admin_id) != delivery["agent_id"]:
+        return None
+    stage.status, stage.evidence = "done", delivery["message_id"]
+    if all(item.status == "done" for item in goal.stages):
+        goal.status = "done"
+    return "\n".join(lines[:-1]).strip() or stage.title, goal
+
+
 def room_request(prompt: str) -> str | None:
     """What the user said in the room, from the prompt a member received for it."""
     for part in reversed(prompt.split("\n\n")):
@@ -243,7 +261,7 @@ class RoomTurn:
             prompt.append(
                 tr("bot_rooms.may_pass" if may_pass else "bot_rooms.must_answer", self.user.locale)
             )
-            if agent_id == group.admin_id:
+            if agent_id == group.admin_id and not (wrap and stage_index is not None):
                 prompt.append(
                     tr(
                         "bot_rooms.admin",
@@ -269,6 +287,7 @@ class RoomTurn:
             if self.attachment_paths:
                 prompt.append(tr("bot_rooms.attachments", self.user.locale))
             prompt.append(json.dumps(context, ensure_ascii=False))
+            delivery = None
             if wrap:
                 prompt.append(tr("bot_rooms.wrap", self.user.locale))
                 if stage_index is not None:
@@ -437,6 +456,13 @@ class RoomTurn:
                     role, reply = "error", tr("bot_rooms.pass_fallback", self.user.locale)
             if agent_id == group.admin_id and role == "assistant" and (stage_index is None or wrap):
                 safe_text, proposed = _goal_edit(reply, room, group, history)
+                review = None
+                if wrap and stage_index is not None and delivery is not None and room["goal"]:
+                    review = _stage_acceptance(
+                        reply, room["goal"], stage_index, delivery, group.admin_id
+                    )
+                    if review:
+                        safe_text, proposed = review
                 if proposed is not None and await asyncio.to_thread(
                     self.repo.set_goal,
                     group.group_id,
@@ -445,6 +471,8 @@ class RoomTurn:
                     room["goal"],
                 ):
                     reply = safe_text
+                elif review:
+                    reply = safe_text + "\n\n" + tr("bot_rooms.goal_not_saved", self.user.locale)
                 elif block := _GOAL_BLOCK.search(reply):
                     reply = (
                         reply[: block.start()].strip()
@@ -516,6 +544,14 @@ class RoomTurn:
                 ((idx, s) for idx, s in enumerate(goal.stages) if s.status != "done"), None
             )
             if current is None:
+                goal.status = "done"
+                await asyncio.to_thread(
+                    self.repo.set_goal,
+                    self.group.group_id,
+                    self.user.id,
+                    goal.model_dump_json(),
+                    row["goal"],
+                )
                 return
             idx, stage = current
             actor = stage.assignee_id or self.group.admin_id
@@ -577,27 +613,35 @@ async def send_message(
     if paths and not await asyncio.to_thread(repo.has_turn, group_id, request_id):
         await asyncio.to_thread(require_artifacts, services, user.id, group_id, paths)
     activate = None
+    command = text.strip().casefold().rstrip("。.!！")
+    resume = command in {"继续执行目标", "resume goal"}
     if (
         owner_commands
         and not explicit
         and not paths
-        and text.strip().casefold().rstrip("。.!！")
-        in {
-            "激活",
-            "激活目标",
-            "确认激活",
-            "开始执行",
-            "activate",
-            "activate goal",
-            "start the plan",
-        }
+        and (
+            resume
+            or command
+            in {
+                "激活",
+                "激活目标",
+                "确认激活",
+                "开始执行",
+                "activate",
+                "activate goal",
+                "start the plan",
+            }
+        )
         and row["goal"]
     ):
         goal = Goal.model_validate_json(row["goal"])
         previous_run = await asyncio.to_thread(repo.was_goal_run, group_id, request_id)
         if previous_run is not None:
             goal_run = previous_run
-        elif goal.status == "draft" and goal.criteria.strip() and goal.stages:
+        elif resume and goal.status == "active":
+            activate = (user.id, row["goal"], row["goal"])
+            goal_run = True
+        elif not resume and goal.status == "draft" and goal.criteria.strip() and goal.stages:
             # The saved draft is the plan the owner approved. A generated status
             # block cannot approve a plan or substitute different assignments.
             goal.status = "active"
@@ -614,7 +658,14 @@ async def send_message(
         inputs.append(paths)
     input_json = json.dumps(inputs, ensure_ascii=False)
     state = await asyncio.to_thread(
-        repo.claim, group_id, request_id, input_json, text, token, activate=activate
+        repo.claim,
+        group_id,
+        request_id,
+        input_json,
+        text,
+        token,
+        activate=activate,
+        goal_run=goal_run,
     )
     if state == "conflict":
         raise OctopError.localized(ErrorCode.THREAD_TURN_ACTIVE)

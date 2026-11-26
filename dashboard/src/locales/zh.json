@@ -153,6 +153,8 @@
     "sending": "正在等待群成员回复…",
     "unconfirmed": "尚未确认是否送达",
     "activateCommand": "激活目标",
+    "resumeCommand": "继续执行目标",
+    "resumeGoal": "继续派工",
     "activateGoal": "激活并派工",
     "goalProgress": "已验收 {{done}}/{{total}}",
     "retrySend": "重新发送",
@@ -570,6 +572,9 @@
     "failed": "设置保存失败。"
   },
   "octopBot": {
+    "waitingForInput": "等待你回答或确认",
+    "planProgress": "计划已完成 {{done}}/{{total}} 项",
+    "workingElapsed": "已用 {{seconds}} 秒",
     "ask": {
       "somethingElse": "其他想法",
       "skip": "跳过",

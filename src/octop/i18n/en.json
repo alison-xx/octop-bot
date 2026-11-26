@@ -19,7 +19,7 @@
     "im_restricted": "This channel limits who may run tools. Ask the channel owner to send this request to the Bot group.",
     "interrupted": "This member's turn was interrupted before its result was saved. Review the member conversation before assigning the work again.",
     "activation": "I confirmed the Goal “{title}”. Start the approved stages.",
-    "stage_review": "Review stage {stage} using the member's delivery message {message_id}. On acceptance, preserve the saved goal, criteria, stages and owners in the final octop-goal block, mark this stage done and cite that ID in its evidence. If the delivery is insufficient, explain what is missing.",
+    "stage_review": "Review stage {stage} against its acceptance criteria using delivery {message_id}. Explain your decision. If the delivery satisfies the criteria, end with a separate line [ACCEPT {message_id}] to record the evidence and dispatch the next stage. Otherwise explain what the member needs to revise.",
     "goal_not_saved": "This goal update was not applied. Open the group goal to see the saved stages and reviews.",
     "no_activatable_goal": "Only a draft with stages and acceptance criteria can be activated. Check the group goal for its current status.",
     "stage": "Carry out this approved stage: {title}. Return a deliverable or evidence that the administrator can verify.",

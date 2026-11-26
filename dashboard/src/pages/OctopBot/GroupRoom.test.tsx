@@ -98,40 +98,46 @@ describe("Octop Bot group timeline", () => {
     room("live-before-history");
     expect(await screen.findByText("First streamed sentence")).toBeVisible();
   });
-  it("activates the saved plan from the group without consuming the next chat draft", async () => {
-    vi.mocked(octopBotApi.goal).mockResolvedValue({
-      title: "Website",
-      criteria: "A working home page",
-      status: "draft",
-      stages: [
-        {
-          title: "Build the home page",
-          assignee_id: "writer",
-          status: "pending",
-          evidence: "",
-        },
-      ],
-    });
-    vi.mocked(octopBotApi.send).mockResolvedValue([]);
-    render(group("website", "Website team"));
-    const start = await screen.findByRole("button", {
-      name: "botGroupChat.activateGoal",
-    });
-    fireEvent.change(screen.getByRole("textbox"), {
-      target: { value: "A later message" },
-    });
-    fireEvent.click(start);
-    await waitFor(() =>
-      expect(octopBotApi.send).toHaveBeenCalledWith(
-        "website",
-        "botGroupChat.activateCommand",
-        [],
-        expect.any(String),
-        [],
-      ),
-    );
-    expect(screen.getByRole("textbox")).toHaveValue("A later message");
-  });
+  it.each([
+    ["draft", "activateGoal", "activateCommand"],
+    ["active", "resumeGoal", "resumeCommand"],
+  ] as const)(
+    "dispatches a %s plan without consuming the next chat draft",
+    async (status, action, command) => {
+      vi.mocked(octopBotApi.goal).mockResolvedValue({
+        title: "Website",
+        criteria: "A working home page",
+        status,
+        stages: [
+          {
+            title: "Build the home page",
+            assignee_id: "writer",
+            status: "pending",
+            evidence: "",
+          },
+        ],
+      });
+      vi.mocked(octopBotApi.send).mockResolvedValue([]);
+      render(group("website", "Website team"));
+      const start = await screen.findByRole("button", {
+        name: "botGroupChat." + action,
+      });
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "A later message" },
+      });
+      fireEvent.click(start);
+      await waitFor(() =>
+        expect(octopBotApi.send).toHaveBeenCalledWith(
+          "website",
+          "botGroupChat." + command,
+          [],
+          expect.any(String),
+          [],
+        ),
+      );
+      expect(screen.getByRole("textbox")).toHaveValue("A later message");
+    },
+  );
   it("sends a group upload without a text caption", async () => {
     const path = "inbound/upload1/report.txt";
     vi.mocked(octopBotApi.upload).mockResolvedValue({
