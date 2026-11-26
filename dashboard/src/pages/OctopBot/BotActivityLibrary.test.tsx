@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   botProfileApi,
@@ -209,3 +209,58 @@ describe("Bot profile library", () => {
     expect(fileIcon({ name: "blob.bin", mime: null }).displayName).toBe("File");
   });
 });
+
+describe.each(["activity", "library"] as const)(
+  "profile %s recovery",
+  (tab) => {
+    const activate = () => {
+      render(<BotActivityLibrary agentId="writer" canToggle />);
+      if (tab === "library")
+        fireEvent.click(screen.getByText("botProfile.library"));
+    };
+    const request =
+      tab === "activity"
+        ? vi.mocked(botProfileApi.upcoming)
+        : vi.mocked(botProfileApi.library);
+    const data = {
+      jobs: [job(1)],
+      timezone: "UTC",
+      files: [file("report.pdf", "today")],
+    };
+    it("recovers after an unexpected successful response", async () => {
+      request
+        .mockResolvedValueOnce("<html></html>" as never)
+        .mockResolvedValueOnce(data);
+      activate();
+      fireEvent.click(
+        await screen.findByRole("button", { name: "common.retry" }),
+      );
+      expect(
+        await screen.findByText(tab === "activity" ? "Task 1" : "report.pdf"),
+      ).toBeVisible();
+    });
+    it("aborts a stalled request and allows another attempt", async () => {
+      vi.useFakeTimers();
+      try {
+        request
+          .mockReturnValueOnce(new Promise(() => {}))
+          .mockResolvedValueOnce(data);
+        activate();
+        const signal = request.mock.lastCall?.[1];
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(15000);
+        });
+        expect(signal?.aborted).toBe(true);
+        expect(screen.getByText("botProfile.loadTimeout")).toBeVisible();
+        await act(async () => {
+          fireEvent.click(screen.getByRole("button", { name: "common.retry" }));
+        });
+        expect(
+          screen.getByText(tab === "activity" ? "Task 1" : "report.pdf"),
+        ).toBeVisible();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  },
+);
