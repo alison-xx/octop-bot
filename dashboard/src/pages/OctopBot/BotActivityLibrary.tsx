@@ -46,6 +46,56 @@ export function fileIcon(file: Pick<LibraryFile, "name" | "mime">) {
   return hit ? hit[1] : File;
 }
 
+async function loadJobs(agentId: string, signal: AbortSignal) {
+  return (await botProfileApi.upcoming(agentId, signal))?.jobs;
+}
+
+async function loadFiles(agentId: string, signal: AbortSignal) {
+  return (await botProfileApi.library(agentId, signal))?.files;
+}
+
+function useProfileList<T>(
+  agentId: string,
+  load: (agentId: string, signal: AbortSignal) => Promise<T[]>,
+  failureKey: string,
+) {
+  const { t } = useTranslation();
+  const [rows, setRows] = useState<T[] | null>(null);
+  const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    const fallback = t(failureKey);
+    setError("");
+    const timer = window.setTimeout(() => {
+      controller.abort();
+      setError(t("botProfile.loadTimeout"));
+    }, 15000);
+    load(agentId, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        if (Array.isArray(result)) setRows(result);
+        else setError(fallback);
+      })
+      .catch((e) => {
+        if (!controller.signal.aborted)
+          setError(apiErrorMessage(e, fallback, t));
+      })
+      .finally(() => window.clearTimeout(timer));
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [agentId, load, failureKey, revision, t]);
+  return {
+    rows,
+    setRows,
+    error,
+    setError,
+    retry: () => setRevision((n) => n + 1),
+  };
+}
+
 function Upcoming({
   agentId,
   canToggle,
@@ -54,26 +104,15 @@ function Upcoming({
   canToggle: boolean;
 }) {
   const { t } = useTranslation();
-  const [jobs, setJobs] = useState<UpcomingJob[] | null>(null);
-  const [error, setError] = useState("");
+  const {
+    rows: jobs,
+    setRows: setJobs,
+    error,
+    setError,
+    retry,
+  } = useProfileList(agentId, loadJobs, "cronJobs.loadFailed");
   const [all, setAll] = useState(false);
   const [changing, setChanging] = useState<string | null>(null);
-  const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    let live = true;
-    setError("");
-    botProfileApi
-      .upcoming(agentId)
-      .then((body) => {
-        if (live) setJobs(body.jobs);
-      })
-      .catch((e) => {
-        if (live) setError(apiErrorMessage(e, t("cronJobs.loadFailed"), t));
-      });
-    return () => {
-      live = false;
-    };
-  }, [agentId, revision, t]);
   const toggle = async (job: UpcomingJob, enabled: boolean) => {
     setChanging(job.id);
     setError("");
@@ -88,7 +127,7 @@ function Upcoming({
       setError(apiErrorMessage(e, t("cronJobs.operationFailed"), t));
     } finally {
       setChanging(null);
-      setRevision((n) => n + 1);
+      retry();
     }
   };
   const remove = async (job: UpcomingJob) => {
@@ -111,6 +150,11 @@ function Upcoming({
       {error && (
         <p className={styles.error} role="alert">
           {error}
+          {jobs === null && (
+            <Button size="small" onClick={retry}>
+              {t("common.retry")}
+            </Button>
+          )}
         </p>
       )}
       {jobs?.length === 0 ? (
@@ -178,22 +222,12 @@ function Upcoming({
 
 function Library({ agentId }: { agentId: string }) {
   const { t } = useTranslation();
-  const [files, setFiles] = useState<LibraryFile[] | null>(null);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let live = true;
-    botProfileApi
-      .library(agentId)
-      .then((body) => {
-        if (live) setFiles(body.files);
-      })
-      .catch((e) => {
-        if (live) setError(apiErrorMessage(e, t("octopBot.failed"), t));
-      });
-    return () => {
-      live = false;
-    };
-  }, [agentId, t]);
+  const {
+    rows: files,
+    error,
+    setError,
+    retry,
+  } = useProfileList(agentId, loadFiles, "octopBot.failed");
   const open = async (file: LibraryFile) => {
     setError("");
     try {
@@ -211,6 +245,11 @@ function Library({ agentId }: { agentId: string }) {
       {error && (
         <p className={styles.error} role="alert">
           {error}
+          {files === null && (
+            <Button size="small" onClick={retry}>
+              {t("common.retry")}
+            </Button>
+          )}
         </p>
       )}
       {files?.length === 0 && (

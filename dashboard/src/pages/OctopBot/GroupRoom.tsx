@@ -906,25 +906,31 @@ function GroupRoomView({
                     })}
               </small>
             </button>
-            {goal.status === "draft" &&
-              goal.criteria.trim() &&
-              goal.stages.length > 0 && (
-                <Button
-                  size="small"
-                  disabled={Boolean(sending || uploading)}
-                  onClick={() =>
-                    void deliver({
-                      id: newRoomRequestId(),
-                      text: t("botGroupChat.activateCommand"),
-                      mentions: [],
-                      paths: [],
-                      fromComposer: false,
-                    })
-                  }
-                >
-                  {t("botGroupChat.activateGoal")}
-                </Button>
-              )}
+            {goal.criteria.trim() && goal.stages.length > 0 && (
+              <Button
+                size="small"
+                disabled={Boolean(sending || uploading || drafts.length)}
+                onClick={() =>
+                  void deliver({
+                    id: newRoomRequestId(),
+                    text: t(
+                      goal.status === "draft"
+                        ? "botGroupChat.activateCommand"
+                        : "botGroupChat.resumeCommand",
+                    ),
+                    mentions: [],
+                    paths: [],
+                    fromComposer: false,
+                  })
+                }
+              >
+                {t(
+                  goal.status === "draft"
+                    ? "botGroupChat.activateGoal"
+                    : "botGroupChat.resumeGoal",
+                )}
+              </Button>
+            )}
           </div>
         )}
         {guide}

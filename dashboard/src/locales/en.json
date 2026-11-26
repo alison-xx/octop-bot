@@ -153,6 +153,8 @@
     "sending": "Waiting for the group to reply…",
     "unconfirmed": "Delivery has not been confirmed.",
     "activateCommand": "Activate goal",
+    "resumeCommand": "Resume goal",
+    "resumeGoal": "Continue assignments",
     "activateGoal": "Activate and assign",
     "goalProgress": "{{done}}/{{total}} accepted",
     "retrySend": "Resend",
@@ -289,6 +291,8 @@
     "sendFailed": "Could not send the code. Please try again."
   },
   "botOnboarding": {
+    "signingIntoCloud": "Signing in to your cloud account…",
+    "openingCloud": "Opening your cloud workspace…",
     "chiefName": "Chief",
     "desktopBody": "Chief is your octopus assistant. It builds a Bot team and splits up the work. Connect a chat model to start — no local account needed.",
     "webBody": "Sign in with your Lynxce account to start. The first account to sign in becomes the owner of this Octop Bot. New accounts are created for you.",
@@ -570,6 +574,9 @@
     "failed": "Could not save this setting."
   },
   "octopBot": {
+    "waitingForInput": "Waiting for your response",
+    "planProgress": "Plan: {{done}}/{{total}} complete",
+    "workingElapsed": "{{seconds}}s elapsed",
     "ask": {
       "somethingElse": "Something else",
       "skip": "Skip",
@@ -2341,6 +2348,7 @@
     "start_timeout": "This expert took too long to start (storage backend I/O). Try again, or switch it to a local workspace backend."
   },
   "stream_errors": {
+    "ambiguous_edit": "The text matches multiple locations. The file was left intact. The edit needs surrounding context to identify the intended section.",
     "stream_stall": "The model stopped sending content while the connection stayed open. Click Retry, or try again later with another model. If this happens often, check the provider status or ask an admin to review stream timeout settings.",
     "rate_limit": "The model provider rate-limited this request. Wait a moment and retry, or switch to another model.",
     "auth": "Model authentication failed. Check that the API key under Admin → Model Management is correct and still valid.",
@@ -9262,6 +9270,7 @@
     }
   },
   "botProfile": {
+    "loadTimeout": "Loading timed out. Please try again.",
     "activity": "Activity",
     "library": "Library",
     "upcoming": "Upcoming",

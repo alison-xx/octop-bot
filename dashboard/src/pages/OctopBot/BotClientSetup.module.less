@@ -551,3 +551,26 @@
     font-weight: 600;
   }
 }
+
+.cloudTransition {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: var(--fn-bg-elevated);
+  color: var(--fn-text-primary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cloudTransition :global(.octop-spin-dot),
+  .cloudTransition :global(.octop-spin-dot-item) {
+    animation: none;
+  }
+}
+
+.cloudTransition ~ .welcome {
+  visibility: hidden;
+}

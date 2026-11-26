@@ -440,6 +440,59 @@ async def test_confirmed_goal_advances_only_after_admin_accepts_member_evidence(
 
 
 @pytest.mark.asyncio
+async def test_continue_partial_goal_reviews_only_the_outstanding_stage(room):
+    from octop.infra.bot_groups.service import get_goal
+
+    services, user, group = room
+    goal = Goal.model_validate(
+        {
+            "title": "Ship",
+            "criteria": "Evidence",
+            "status": "active",
+            "stages": [
+                {"title": "First", "assignee_id": "a", "status": "done", "evidence": "prior"},
+                {"title": "Second", "assignee_id": "b"},
+            ],
+        }
+    )
+    set_goal(services, user.id, group.group_id, goal)
+    calls = []
+
+    async def processor(msg):
+        calls.append(msg.tenant_id)
+        if msg.tenant_id == "c":
+            delivery = list_messages(services, user.id, group.group_id)[-1]
+            text = f"Verified.\n[ACCEPT {delivery.message_id}]"
+        else:
+            with pytest.raises(OctopError):
+                await resume("duplicate")
+            text = "Delivered."
+        yield {"type": "token", "content": text}
+
+    async def resume(request_id):
+        await send_message(
+            services,
+            gateway(services, processor),
+            user,
+            group.group_id,
+            text="继续执行目标",
+            mention_ids=[],
+            request_id=request_id,
+            owner_commands=True,
+        )
+
+    await resume("resume")
+    await resume("resume")
+    saved = get_goal(services, user.id, group.group_id)
+    assert calls == ["b", "c"]
+    assert saved.status == "done"
+    assert saved.stages[0].evidence == "prior"
+    assert (
+        saved.stages[1].evidence == list_messages(services, user.id, group.group_id)[1].message_id
+    )
+
+
+@pytest.mark.asyncio
 async def test_scoped_hitl_keeps_agent_until_approved_and_routes_cancellation(room, monkeypatch):
     from octop.infra.agents import manager as manager_module
     from octop.infra.agents.manager import AgentManager

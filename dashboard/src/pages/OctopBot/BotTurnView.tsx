@@ -21,6 +21,7 @@ import {
   toAnswerOnlyMessage,
 } from "../Chat/utils/messageContent";
 import { messageSpeakerId } from "../Chat/utils/messageGrouping";
+import { repairedFileEdit } from "./repairedFileEdit";
 import { isResumableHitl } from "../Chat/utils/pendingHitl";
 import {
   collectMessageToolMedia,
@@ -261,12 +262,30 @@ export default function BotTurnView({
     return lead(message);
   };
 
-  const items = remaining.map((message) => (
-    <Fragment key={message.id}>
-      {(message.hitlData || message.toolData) && lead(message)}
-      {block(message)}
-    </Fragment>
-  ));
+  const items = remaining.map((message, index) => {
+    const edit = message.toolData;
+    if (
+      edit?.name === "edit_file" &&
+      message.status === "error" &&
+      classifyChatStreamError(
+        message.errorInfo?.message || String(edit.output ?? ""),
+      ) === "stream_errors.ambiguous_edit"
+    ) {
+      if (
+        remaining
+          .slice(index + 1)
+          .some((next) => repairedFileEdit(message, next))
+      )
+        return null;
+      return <Fragment key={message.id}>{bubble(message)}</Fragment>;
+    }
+    return (
+      <Fragment key={message.id}>
+        {(message.hitlData || message.toolData) && lead(message)}
+        {block(message)}
+      </Fragment>
+    );
+  });
 
   if (
     !remaining.some(

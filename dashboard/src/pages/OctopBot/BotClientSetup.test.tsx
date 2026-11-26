@@ -224,10 +224,14 @@ describe("standalone onboarding", () => {
       local_account: true,
     });
     vi.mocked(renewDesktopSession).mockResolvedValue(null);
-    desktopShell.workspaceLogin.mockResolvedValue({
-      status: 200,
-      data: { access_token: "hosted-token" },
-    });
+    let authenticated!: () => void;
+    desktopShell.workspaceLogin.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          authenticated = () =>
+            resolve({ status: 200, data: { access_token: "hosted-token" } });
+        }),
+    );
     openSetup();
     await userEvent.click(
       await screen.findByRole("button", { name: "lynxceSignIn.usePassword" }),
@@ -245,9 +249,29 @@ describe("standalone onboarding", () => {
       password: "lynxce-pass",
       locale: "zh",
     });
+    expect(screen.getByText("botOnboarding.signingIntoCloud")).toBeVisible();
+    authenticated();
+    expect(await screen.findByText("botOnboarding.openingCloud")).toBeVisible();
     expect(desktopShell.useLynxceCloud).toHaveBeenCalledWith("hosted-token");
     expect(wizardApi.createAdmin).not.toHaveBeenCalled();
     expect(getAuthToken()).toBe("");
+  });
+
+  it("returns to the sign-in form when switching to the cloud fails", async () => {
+    desktopShell.workspaceLogin.mockResolvedValueOnce({
+      status: 200,
+      data: { access_token: "hosted-token" },
+    });
+    desktopShell.useLynxceCloud.mockResolvedValueOnce(false);
+    openSetup();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /wechat/i }),
+    );
+    expect(
+      await screen.findByText("botOnboarding.loginUnavailable"),
+    ).toBeVisible();
+    expect(screen.queryByText("botOnboarding.openingCloud")).toBeNull();
+    expect(screen.getByRole("button", { name: /wechat/i })).toBeEnabled();
   });
 
   it("signs the web owner in with a Lynxce account without any local account or setup password", async () => {

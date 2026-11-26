@@ -6,7 +6,7 @@
   runs a command or drives the screen without a running task is sent back once.
 - Records the independent review of a deep task (a ``task`` sub-agent call whose description
   starts with "Review:"), which ``task_finish`` waits for.
-- Counts the steps of the running task: a note at 80% of its step or time budget, and once
+- Counts the steps of the running task: a note at 80% of its time budget, and once
   the budget is spent, work tools are refused until the model finishes or asks the user.
 - The same tool failing the same way three times gets a note to stop retrying it.
 """
@@ -275,22 +275,14 @@ class TaskWatch:
 
     def spent(self, task: Task, now: float) -> tuple[str, str] | None:
         """(what, limit) when a budget is used up, else None."""
-        if task.steps_used >= task.budget.steps:
-            return "step", f"{task.budget.steps} steps"
-        if now - task.started_at >= task.budget.minutes * 60:
+        if task.budget_exhausted(now):
             return "time", f"{task.budget.minutes} minutes"
         return None
 
     def near(self, task: Task, now: float) -> str | None:
         if task.id in self.warned:
             return None
-        steps = task.steps_used
         minutes = (now - task.started_at) / 60
-        if steps >= WARN_AT * task.budget.steps:
-            self.warned.add(task.id)
-            return BUDGET_NEAR.format(
-                used=f"{steps} steps", what="step", limit=f"{task.budget.steps} steps"
-            )
         if minutes >= WARN_AT * task.budget.minutes:
             self.warned.add(task.id)
             return BUDGET_NEAR.format(
@@ -468,6 +460,17 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         self._note_review(request, task, result)
         notes: list[str] = []
         error = _error_text(result)
+        if (
+            error is not None
+            and request.tool_call.get("name") == "edit_file"
+            and "times in file. Use replace_all=True" in _result_text(result)
+        ):
+            notes.append(
+                "The edit was not applied. Continue this task: read the target file around the "
+                "matches, identify the intended section from the requested change, then retry "
+                "edit_file with a unique old_string and preserve the surrounding text in new_string. "
+                "Use replace_all only if every occurrence should change. Verify the edited section."
+            )
         key = _call_key(request)
         if error is not None or key in task.failed_calls:
             thread = str(_configurable().get("thread_id") or "")

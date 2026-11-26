@@ -25,12 +25,13 @@ export interface LibraryFile {
 const bot = (id: string) => "/octop-bot/bots/" + encodeURIComponent(id);
 
 export const botProfileApi = {
-  upcoming: (agentId: string) =>
+  upcoming: (agentId: string, signal?: AbortSignal) =>
     request<{ timezone: string; jobs: UpcomingJob[] }>(
       bot(agentId) + "/upcoming",
+      { signal },
     ),
-  library: (agentId: string) =>
-    request<{ files: LibraryFile[] }>(bot(agentId) + "/library"),
+  library: (agentId: string, signal?: AbortSignal) =>
+    request<{ files: LibraryFile[] }>(bot(agentId) + "/library", { signal }),
   download: (agentId: string, path: string) =>
     requestBlob(
       "/agents/" +

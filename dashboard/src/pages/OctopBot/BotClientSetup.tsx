@@ -33,7 +33,7 @@ import ThirdPartySignIn from "./ThirdPartySignIn";
 import styles from "./index.module.less";
 import intro from "./BotClientSetup.module.less";
 
-type Busy = "lynxce" | "local" | "admin";
+type Busy = "switchingCloud" | "lynxce" | "local" | "admin";
 
 /** One silent device-session renewal per page load, so a refusing server cannot loop. */
 let desktopRenewTried = false;
@@ -284,21 +284,25 @@ export default function BotClientSetup() {
     setError("");
     try {
       const result = await cloudRequest(method, body);
-      if (result.cancelled) return;
+      if (result.cancelled) {
+        setBusy(null);
+        return;
+      }
       if (result.bind_token) {
+        setBusy(null);
         setWechatBind(result.bind_token);
         return;
       }
-      if (
-        !result.access_token ||
-        !(await bridge?.useLynxceCloud?.(result.access_token))
-      )
+      if (!result.access_token)
         throw new Error(t("botOnboarding.loginUnavailable"));
+      setBusy("switchingCloud");
+      if (!(await bridge?.useLynxceCloud?.(result.access_token)))
+        throw new Error(t("botOnboarding.loginUnavailable"));
+      // The shell acknowledges the switch before the new window takes over.
     } catch (e) {
+      setBusy(null);
       setError(apiErrorMessage(e, t("octopBot.failed"), t));
       return e;
-    } finally {
-      setBusy(null);
     }
   }
 
@@ -454,6 +458,18 @@ export default function BotClientSetup() {
 
   return (
     <main className={intro.window} data-bot-onboarding>
+      {desktop && (busy === "lynxce" || busy === "switchingCloud") && (
+        <div className={intro.cloudTransition} role="status" aria-live="polite">
+          <Spin size="large" />
+          <strong>
+            {t(
+              busy === "switchingCloud"
+                ? "botOnboarding.openingCloud"
+                : "botOnboarding.signingIntoCloud",
+            )}
+          </strong>
+        </div>
+      )}
       <header className={intro.brand}>
         <BotCharacter
           look={{ ...octopCharacter, source: "character" }}

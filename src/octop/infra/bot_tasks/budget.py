@@ -1,4 +1,4 @@
-"""Increase a task's step and time limits only after the user accepts the new totals."""
+"""Increase a task's time limit only after the user accepts the new totals."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from octop.infra.utils.locale import resolve_user_locale
 def task_budget_tool(
     store: TaskStore, rules: ApprovalRules, users: Any, agent: str, owner: int
 ) -> StructuredTool:
-    def extend(task_id: str, steps: int, minutes: int) -> str:
+    def extend(task_id: str, minutes: int) -> str:
         config = get_config().get("configurable") or {}
         if config.get("octop_scheduled_turn"):
             return "This scheduled task reached its limit. Finish with the verified results."
@@ -29,22 +29,20 @@ def task_budget_tool(
         if not task or task.id != task_id:
             return "The task is no longer running."
         try:
-            proposed = Budget(steps=steps, minutes=minutes)
+            proposed = Budget(minutes=minutes)
         except ValidationError:
-            return "Use total limits of 1–500 steps and 1–600 minutes."
+            return "Use a total time limit of 1–600 minutes."
         old = task.budget
         if old == proposed:
             return snapshot(task)
-        if not task.budget_exhausted(time.time()) or steps < old.steps or minutes < old.minutes:
-            return "Only exhausted budgets can be extended; keep or increase both limits."
-        if task.steps_used >= steps or time.time() - task.started_at >= minutes * 60:
+        if not task.budget_exhausted(time.time()) or minutes < old.minutes:
+            return "Only exhausted budgets can be extended; increase the time limit."
+        if time.time() - task.started_at >= minutes * 60:
             return "The requested totals have already been used."
         detail = tr(
             "octop_bot.approval.budget_detail",
             resolve_user_locale(user_repo=users, user_id=owner),
-            old_steps=old.steps,
             old_minutes=old.minutes,
-            steps=steps,
             minutes=minutes,
         )
         allowed, note = ask(
@@ -72,5 +70,5 @@ def task_budget_tool(
     return StructuredTool.from_function(
         func=extend,
         name="task_extend_budget",
-        description="Ask the user once to increase an exhausted task's total steps and minutes. Supply its task_id and both new totals. If the user declines, finish with the verified results.",
+        description="Ask the user once to increase an exhausted task's time limit. Supply its task_id and new total minutes. If the user declines, finish with the verified results.",
     )

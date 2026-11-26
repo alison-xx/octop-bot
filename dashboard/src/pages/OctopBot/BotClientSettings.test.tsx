@@ -45,6 +45,7 @@ vi.mock("./BotCharacter", () => ({
   BotCharacter: () => null,
   octopCharacter: {},
 }));
+vi.mock("../Admin/Users", () => ({ default: () => <h2>Local users</h2> }));
 vi.mock("../Settings/Models", () => ({ default: () => <h2>Catalog</h2> }));
 vi.mock("../Settings/Models/components", () => ({
   CustomProviderModal: ({
@@ -127,6 +128,7 @@ function openSettings(from?: string) {
     >
       <Routes>
         <Route path="/octop-bot/settings" element={<BotClientSettings />} />
+        <Route path="/admin/users" element={<BotClientSettings />} />
         <Route path="*" element={<Chat />} />
       </Routes>
     </MemoryRouter>,
@@ -168,6 +170,32 @@ beforeEach(() => {
 });
 
 describe("settings navigation", () => {
+  it("opens upstream management from local settings", async () => {
+    mocks.edition = "desktop";
+    mocks.web = false;
+    openSettings();
+    for (const key of ["nav.adminStorage", "nav.security", "nav.adminAdvanced"])
+      expect(screen.getByRole("button", { name: key })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "nav.adminUsers" }));
+    expect(
+      await screen.findByRole("heading", { name: "Local users" }),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["desktop", "user"],
+    ["cloud", "admin"],
+  ])(
+    "hides user management for %s %s without local administration",
+    (edition, role) => {
+      mocks.edition = edition;
+      mocks.role = role;
+      openSettings();
+      expect(
+        screen.queryByRole("button", { name: "nav.adminUsers" }),
+      ).toBeNull();
+    },
+  );
   it("groups navigation and shows only the selected section", () => {
     openSettings();
     const nav = screen.getByRole("navigation", {

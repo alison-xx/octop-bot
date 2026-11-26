@@ -43,7 +43,7 @@ def test_private_task_checkpoints_survive_reopening(tmp_path: Path, chat_type: s
             Task(
                 goal="核对练习表",
                 tier="deep",
-                budget=Budget(steps=60, minutes=30),
+                budget=Budget(minutes=30),
                 criteria=[Criterion(text="两行样例")],
             ),
         )
