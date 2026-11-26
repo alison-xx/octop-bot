@@ -9265,6 +9265,7 @@
     }
   },
   "botProfile": {
+    "loadTimeout": "Loading timed out. Please try again.",
     "activity": "Activity",
     "library": "Library",
     "upcoming": "Upcoming",
