@@ -94,6 +94,8 @@ module.exports = {
     );
   },
   nsis: {
+    installerIcon: "bot-icon.ico",
+    uninstallerIcon: "bot-icon.ico",
     artifactName: "Octop-Bot-Setup-${version}-${arch}.${ext}",
     oneClick: false,
     perMachine: false,

@@ -692,6 +692,7 @@
     "groupFiles": "群文件",
     "attach": "添加附件 {{name}}",
     "attachmentLimit": "每条消息最多可添加 16 个附件。",
+    "memoryScope": "本地记忆保存在本机工作区。云端记忆归当前云端账号，在其他设备登录同一账号即可使用。",
     "teamMemory": "团队记忆",
     "privacyHelp": "隐私 Bot 使用隔离工作区。可为尚未共享、未加入任何群聊的普通专家开启。主 Bot 和本地 CLI Agent 无法开启。",
     "privacy": "隐私 Bot",

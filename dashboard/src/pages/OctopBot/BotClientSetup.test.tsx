@@ -54,6 +54,7 @@ function openSetup(path = "/setup") {
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/login/local" element={<h1>Verify local</h1>} />
+        <Route path="/setup/local" element={<h1>Local setup wizard</h1>} />
         <Route path="/setup" element={<BotClientSetup />} />
         <Route path="/login/workspaces" element={<BotClientSetup />} />
         <Route path="/octop-bot/settings" element={<Source />} />
@@ -185,38 +186,13 @@ describe("standalone onboarding", () => {
     expect(wizardApi.createAdmin).not.toHaveBeenCalled();
   });
 
-  it("creates the account in place of a separate start step and resumes after account and finish failures", async () => {
-    vi.mocked(wizardApi.createAdmin).mockRejectedValueOnce(
-      new Error("Account unavailable"),
+  it("opens the local creation wizard on a fresh desktop before creating an account", async () => {
+    openSetup("/login/workspaces");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "botOnboarding.useLocal" }),
     );
-    vi.mocked(wizardApi.finish).mockRejectedValueOnce(
-      new Error("Finish unavailable"),
-    );
-    openSetup();
-    const later = await screen.findByRole("button", {
-      name: "botOnboarding.useLocal",
-    });
-    expect(
-      screen.queryByRole("button", { name: /botClient.begin/ }),
-    ).not.toBeInTheDocument();
-    fireEvent.click(later);
-    await screen.findByText("Account unavailable");
-    fireEvent.click(later);
-    await screen.findByText("Finish unavailable");
-    fireEvent.click(later);
-    expect(
-      // A fresh local owner chooses its models before meeting the team.
-      await screen.findByRole("heading", { name: "Settings" }),
-    ).toBeInTheDocument();
-    expect(wizardApi.applyDatabase).toHaveBeenCalledTimes(1);
-    expect(wizardApi.createAdmin).toHaveBeenCalledTimes(2);
-    expect(wizardApi.createAdmin).toHaveBeenLastCalledWith(
-      { username: "local", display_name: null, locale: "zh" },
-      "wizard-session",
-    );
-    expect(wizardApi.finish).toHaveBeenCalledTimes(2);
-    expect(wizardApi.begin).toHaveBeenCalledTimes(1);
-    expect(getAuthToken()).toBe("issued-session");
+    expect(await screen.findByText("Local setup wizard")).toBeInTheDocument();
+    expect(wizardApi.createAdmin).not.toHaveBeenCalled();
   });
 
   it("can finish adding the requested local desktop account alongside an existing account", async () => {

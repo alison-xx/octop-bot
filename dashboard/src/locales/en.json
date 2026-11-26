@@ -692,6 +692,7 @@
     "groupFiles": "Group files",
     "attach": "Attach {{name}}",
     "attachmentLimit": "Attach up to 16 files per message.",
+    "memoryScope": "Local notes stay in this workspace. Cloud notes are available when you sign in to the same cloud account on another device.",
     "teamMemory": "Team memory",
     "privacyHelp": "A private bot has an isolated workspace. Only a non-shared expert outside all groups can be made private. Main bots and CLI agents cannot be made private.",
     "privacy": "Private bot",

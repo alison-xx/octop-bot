@@ -5,6 +5,7 @@ import type { ChatMessage } from "../Chat/hooks/useChat";
 import { useEmbeddedChat } from "../Chat/ChatRouteContext";
 import { useToolDisplayNames } from "../Chat/hooks/toolDisplayNames";
 import { collectWriteTodosFromMessages } from "../../utils/parseWriteTodos";
+import { isMediaTool } from "./MediaTaskStatus";
 import styles from "./botConversation.module.less";
 
 /**
@@ -26,6 +27,15 @@ export default function BotWorkingLine({
     let start = messages.length;
     while (start > 0 && messages[start - 1].role !== "user") start -= 1;
     const turn = messages.slice(start);
+    if (
+      turn.some(
+        (m) =>
+          isMediaTool(m.toolData?.name) &&
+          !m.toolData?.output &&
+          m.status !== "error",
+      )
+    )
+      return null;
     const step = collectWriteTodosFromMessages(turn).find(
       (item) => item.status === "in_progress",
     );
@@ -44,6 +54,7 @@ export default function BotWorkingLine({
       });
     return t("octopBot.thinking");
   }, [messages, t, toolName]);
+  if (!title) return null;
   return (
     <div className={styles.working} role="status" aria-live="polite">
       <span className={styles.workingAvatar} aria-hidden>

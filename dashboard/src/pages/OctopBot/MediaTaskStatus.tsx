@@ -75,6 +75,7 @@ export default function MediaTaskStatus({
   return (
     <section
       className={styles.mediaTask}
+      aria-busy={active}
       aria-label={t(video ? "mediaTask.video" : "mediaTask.image", { count })}
     >
       <Icon size={18} aria-hidden />

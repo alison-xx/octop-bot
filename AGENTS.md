@@ -405,7 +405,20 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 4. **Verify** — backend/ship bar: `make all` (`format-all` + `lint` + `typecheck` + `test`). After `dashboard/` changes, also run `cd dashboard && npx tsc -b` (and `npm run lint` when appropriate). After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. Treat Windows CI as part of the bar: follow [§7 Cross-platform tests](#7-key-patterns).
 5. **Wrap up** — remove orphan symbols introduced in this change; do not commit or push unless asked.
 
+### Windows packaging for Octop Bot
+
+Alex builds the Windows installer on a separate computer. For Windows fixes, verify the code,
+push the requested branch when authorized, and hand off its branch name and commit SHA.
+Only run a Windows packaging workflow when Alex explicitly requests a build for that task.
+Keep checks that require the resulting installer open until the Windows build is verified.
+
 ### Branching & release
+
+All agents working in the public `alison-xx/octop-bot` repository follow this workflow.
+
+- Before editing, fetch the base you intend to use and check the current branch, worktree status, and PR base. Leave another task's checkout and staged changes intact. Use a separate worktree when needed.
+- Create ordinary feature, bug-fix, test, and documentation branches from the latest `origin/develop`. Set the PR base to `develop` explicitly. Reserve `main` for release and urgent hotfix PRs as described below.
+- When cleaning up a temporary branch, verify its tip is included in the intended base and check for open PRs, active worktrees, CI, and release work that still use it. Keep unpublished changes and active prerelease branches. Review squash merges or equivalent patches separately before deletion.
 
 For the hosted Octop Bot website and cloud web app, follow the [production release guide](https://github.com/alison-xx/octop-bot-production#readme) in the private production repository. Land shared client and backend fixes here, then prepare the corresponding hosted changes there. A push to its `main` starts production verification. The branch and tag workflow below applies to the open-source distribution.
 
