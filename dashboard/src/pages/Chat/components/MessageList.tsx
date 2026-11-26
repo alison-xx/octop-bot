@@ -968,7 +968,11 @@ export default function MessageList(props: MessageListProps) {
     () => (
       <>
         {showGenerating && isBotClient() ? (
-          <BotWorkingLine messages={messages} agentId={agentId} />
+          <BotWorkingLine
+            messages={messages}
+            agentId={agentId}
+            startedAt={thinkingStartedAt}
+          />
         ) : null}
         {showGenerating && !isBotClient() && (
           <div className={styles.generatingSlot}>

@@ -334,11 +334,21 @@ class BotGroupRepo:
         text: str,
         token: str,
         *,
+        goal_run: bool = False,
         activate: tuple[int, str, str] | None = None,
     ) -> str:
         ts = now_ts()
         deadline = ts + self.LEASE_SECONDS
         with self._db.transaction() as conn:
+            if goal_run:
+                # Serialize dispatch across clients, including activation from the goal editor.
+                conn.execute("UPDATE bot_groups SET goal=goal WHERE group_id=?", (group_id,))
+                others = conn.execute(
+                    "SELECT input_json FROM bot_group_turns WHERE group_id=? AND request_id<>? AND finished=0",
+                    (group_id, request_id),
+                ).fetchall()
+                if any(json.loads(other["input_json"])[2:3] == [True] for other in others):
+                    return "conflict"
             created = conn.execute(
                 "INSERT INTO bot_group_turns(group_id,request_id,input_json,lease_token,lease_until)"
                 " VALUES(?,?,?,?,?) ON CONFLICT(group_id,request_id) DO NOTHING",

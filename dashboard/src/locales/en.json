@@ -153,6 +153,8 @@
     "sending": "Waiting for the group to reply…",
     "unconfirmed": "Delivery has not been confirmed.",
     "activateCommand": "Activate goal",
+    "resumeCommand": "Resume goal",
+    "resumeGoal": "Continue assignments",
     "activateGoal": "Activate and assign",
     "goalProgress": "{{done}}/{{total}} accepted",
     "retrySend": "Resend",
@@ -572,6 +574,9 @@
     "failed": "Could not save this setting."
   },
   "octopBot": {
+    "waitingForInput": "Waiting for your response",
+    "planProgress": "Plan: {{done}}/{{total}} complete",
+    "workingElapsed": "{{seconds}}s elapsed",
     "ask": {
       "somethingElse": "Something else",
       "skip": "Skip",
