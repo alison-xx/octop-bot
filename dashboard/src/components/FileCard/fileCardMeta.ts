@@ -111,7 +111,7 @@ export function formatFileSize(bytes: number): string {
   return `${rounded} ${units[unit]}`;
 }
 
-export type FilePreviewKind = "image" | "pdf" | "csv" | "text";
+export type FilePreviewKind = "image" | "pdf" | "csv" | "text" | "html";
 
 const TEXT_EXTENSIONS = ["txt", "md", "markdown", "log", "json", "yaml", "yml"];
 
@@ -125,6 +125,7 @@ export function filePreviewKind(
   if (kind === "image" && ext !== "heic") return "image";
   if (kind === "pdf") return "pdf";
   if (ext === "csv" || ext === "tsv") return "csv";
+  if (ext === "html" || ext === "htm") return "html";
   if (TEXT_EXTENSIONS.includes(ext)) return "text";
   return null;
 }
@@ -134,6 +135,7 @@ export const PREVIEW_MAX_BYTES: Record<FilePreviewKind, number> = {
   image: 15 * 1024 * 1024,
   pdf: 20 * 1024 * 1024,
   csv: 1024 * 1024,
+  html: 1024 * 1024,
   text: 1024 * 1024,
 };
 

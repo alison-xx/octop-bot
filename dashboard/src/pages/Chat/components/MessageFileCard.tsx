@@ -114,7 +114,7 @@ export function MessageFileCard({
       name={label}
       mime={mediaType}
       size={size}
-      previewUrl={rich ? url : undefined}
+      previewUrl={rich || /\.html?$/i.test(label) ? url : undefined}
       thumbnailUrl={rich ? thumbnailUrl : undefined}
       onOpen={previewable ? openPreview : undefined}
       onDownload={() => void handleDownload()}

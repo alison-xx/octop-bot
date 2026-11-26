@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import BotHtmlView from "../../plugins/toolRenderers/builtin/BotHtmlView";
 import { loadAttachmentBlob } from "./attachmentData";
 import { csvExcerpt, type FilePreviewKind } from "./fileCardMeta";
 import styles from "./FileCard.module.less";
@@ -12,6 +13,7 @@ type Loaded =
   | { kind: "image"; src: string }
   | { kind: "pdf"; blob: Blob }
   | { kind: "csv"; rows: string[][] }
+  | { kind: "html"; html: string }
   | { kind: "text"; lines: string[] };
 
 function readText(blob: Blob): Promise<string> {
@@ -54,13 +56,14 @@ export default function FilePreview({
         } else if (kind === "pdf") {
           setLoaded({ kind, blob });
         } else {
-          const text = (await readText(blob.slice(0, 64 * 1024))).replace(
-            /^\uFEFF/,
-            "",
-          );
+          const text = (
+            await readText(kind === "html" ? blob : blob.slice(0, 64 * 1024))
+          ).replace(/^\uFEFF/, "");
           if (!live) return;
           if (!text.trim()) return onUnavailable();
-          if (kind === "csv") {
+          if (kind === "html") {
+            setLoaded({ kind, html: text });
+          } else if (kind === "csv") {
             const tsv = name.toLowerCase().endsWith(".tsv");
             setLoaded({ kind, rows: csvExcerpt(text, tsv ? "\t" : ",") });
           } else {
@@ -89,6 +92,13 @@ export default function FilePreview({
         alt={name}
         onError={onUnavailable}
       />
+    );
+
+  if (loaded.kind === "html")
+    return (
+      <div className={styles.previewHtml}>
+        <BotHtmlView html={loaded.html} title={name} thumbnail />
+      </div>
     );
 
   if (loaded.kind === "pdf")

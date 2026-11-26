@@ -104,6 +104,41 @@ describe("MessageFileCard", () => {
     expect(await screen.findByText("300 B")).toBeInTheDocument();
   });
 
+  it("previews the actual HTML attachment and opens its workspace path for interaction", async () => {
+    const path = "generated/company/index.html";
+    const html =
+      "<!doctype html><html><head><style>h1{color:red}</style></head><body>" +
+      " ".repeat(70000) +
+      "<h1>Company services</h1><script>window.test=true</script></body></html>";
+    requestHead.mockResolvedValue(headers(html.length));
+    requestBlob.mockResolvedValue(new Blob([html], { type: "text/html" }));
+    const openFilePreview = vi.fn();
+    render(
+      <ChatFilePreviewProvider
+        openFilePreview={openFilePreview}
+        openKnowledgeCitation={vi.fn()}
+      >
+        <MessageFileCard
+          url={url(path)}
+          filename="index.html"
+          agentId={AGENT}
+        />
+      </ChatFilePreviewProvider>,
+    );
+    const frame = await waitFor(() => {
+      const iframe = document.querySelector("iframe");
+      expect(iframe).not.toBeNull();
+      return iframe!;
+    });
+    expect(frame.srcdoc).toContain("Company services");
+    expect(frame.srcdoc).not.toContain("window.test");
+    expect(frame.getAttribute("sandbox")).toBe("");
+    fireEvent.click(
+      screen.getByRole("button", { name: "chat.fileCardOpen:index.html" }),
+    );
+    expect(openFilePreview).toHaveBeenCalledWith(path, AGENT);
+  });
+
   it("renders a small image as the card itself in rich mode", async () => {
     requestHead.mockResolvedValue(headers(40_000));
     requestBlob.mockResolvedValue(new Blob(["png"], { type: "image/png" }));

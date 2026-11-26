@@ -5,9 +5,11 @@ import styles from "./BotViewRenderer.module.less";
 export default function BotHtmlView({
   html,
   title,
+  thumbnail = false,
 }: {
   html: string;
   title: string;
+  thumbnail?: boolean;
 }) {
   const srcDoc = useMemo(() => {
     const template = document.createElement("template");
@@ -52,6 +54,7 @@ export default function BotHtmlView({
     <iframe
       className={styles.frame}
       title={title}
+      tabIndex={thumbnail ? -1 : undefined}
       sandbox=""
       referrerPolicy="no-referrer"
       srcDoc={srcDoc}
