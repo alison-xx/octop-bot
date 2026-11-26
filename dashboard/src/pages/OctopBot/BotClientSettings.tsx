@@ -27,12 +27,15 @@ import type { ResolvedModel } from "../../api/types";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import ThemeSwitcher from "../../components/ThemeSwitcher";
 import { getDesktopBridge, isBotWebClient } from "../../utils/desktopBridge";
+import { buildNavSections } from "../../layouts/sidebarNav";
+import { routeConfigs } from "../../routes";
 import { userCan } from "../../utils/permissions";
 import {
   BOT_HOME,
   BOT_CAPABILITIES,
   BOT_GUIDE,
   BOT_SETTINGS,
+  LOCAL_ADMIN_PATHS,
   botClientDestination,
 } from "../../utils/botClientRoute";
 import { ownModelKeysApi } from "../../api/modules/ownModelKeys";
@@ -127,7 +130,8 @@ export default function BotClientSettings() {
   const web = isBotWebClient();
   const account = useLynxceStatus(!web);
   const credits = useLynxceCredits();
-  const cloudEdition = useBotServerInfo()?.edition === "cloud";
+  const edition = useBotServerInfo()?.edition;
+  const cloudEdition = edition === "cloud";
   const cloudAccount = useLynxceAccount();
   const displayName =
     cloudAccount?.display_name ||
@@ -135,6 +139,18 @@ export default function BotClientSettings() {
     botAccountName(user, t("botClient.account.lynxceUser"));
   const { recharge, opening } = useRecharge();
   const lynxceSignedIn = web || Boolean(cloudAccount);
+  const adminItems =
+    !lynxceSignedIn && (edition === "desktop" || edition === "server")
+      ? buildNavSections(user)
+          .find((group) => group.id === "admin")
+          ?.items.filter((item) => LOCAL_ADMIN_PATHS.includes(item.path)) ?? []
+      : [];
+  const activeAdmin = adminItems.find(
+    (item) => item.path === location.pathname,
+  );
+  const adminRoute =
+    activeAdmin &&
+    routeConfigs.find((route) => route.path === activeAdmin.path);
   const [ownKeys, setOwnKeys] = useState<OwnKeyList | null>(null);
   const [localOpen, setLocalOpen] = useState(false);
   const [switchError, setSwitchError] = useState("");
@@ -188,8 +204,12 @@ export default function BotClientSettings() {
     <button
       key={value}
       type="button"
-      aria-current={tab === value ? "page" : undefined}
-      onClick={() => setTab(value)}
+      aria-current={!activeAdmin && tab === value ? "page" : undefined}
+      onClick={() => {
+        if (location.pathname !== BOT_SETTINGS)
+          navigate(BOT_SETTINGS, { state: { ...location.state, tab: value } });
+        setTab(value);
+      }}
     >
       <Icon size={16} />
       {t(label)}
@@ -254,6 +274,19 @@ export default function BotClientSettings() {
           >
             <h2>{t("botClient.settingsGroups.account")}</h2>
             {navItem("account", "botClient.nav.account", UserRound)}
+            {adminItems.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                aria-current={
+                  activeAdmin?.key === item.key ? "page" : undefined
+                }
+                onClick={() => navigate(item.path, { state: location.state })}
+              >
+                {item.icon}
+                {t(item.labelKey)}
+              </button>
+            ))}
           </div>
           <div
             className={settings.navGroup}
@@ -296,7 +329,9 @@ export default function BotClientSettings() {
           </div>
         </nav>
         <div className={settings.content}>
-          {tab === "general" ? (
+          {adminRoute ? (
+            adminRoute.element
+          ) : tab === "general" ? (
             <div className={settings.page}>
               <h2>{t("botClient.nav.lookAndLanguage")}</h2>
               <p className={settings.description}>

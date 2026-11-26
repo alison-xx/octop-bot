@@ -23,6 +23,7 @@ import {
   BOT_GUIDE,
   BOT_MARKET,
   BOT_SETTINGS,
+  LOCAL_ADMIN_PATHS,
   botClientDestination,
 } from "../../utils/botClientRoute";
 import { getDesktopBridge, isBotWebClient } from "../../utils/desktopBridge";
@@ -199,6 +200,10 @@ export default function BotClientRoutes() {
             />
             <Route path="/octop-bot/groups/:groupId" element={<Workspace />} />
             <Route path={BOT_SETTINGS} element={<Settings />} />
+            {!isBotWebClient() &&
+              LOCAL_ADMIN_PATHS.map((path) => (
+                <Route key={path} path={path} element={<Settings />} />
+              ))}
             <Route
               path={BOT_MARKET + "/:slug?/:action?"}
               element={<Market />}

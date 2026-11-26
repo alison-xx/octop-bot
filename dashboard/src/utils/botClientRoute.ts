@@ -1,6 +1,12 @@
 import { isBotClient } from "./desktopBridge";
 
 export const BOT_HOME = "/octop-bot";
+export const LOCAL_ADMIN_PATHS = [
+  "/admin/users",
+  "/admin/backend",
+  "/admin/security",
+  "/admin/advanced",
+];
 export const BOT_SETTINGS = BOT_HOME + "/settings";
 export const BOT_CLOUD = BOT_HOME + "/cloud";
 export const BOT_GUIDE = BOT_HOME + "/guide";
