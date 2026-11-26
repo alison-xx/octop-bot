@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 
 vi.mock("../../../api/modules/env", () => ({
   envsApi: {
@@ -35,10 +35,9 @@ describe("<SearchConfigPage />", () => {
     api.listEnvs.mockResolvedValue(envResp([]));
 
     render(<SearchConfigPage />);
-    await waitFor(() => expect(api.listEnvs).toHaveBeenCalled());
 
     expect(
-      screen.getByText("advancedSettings.search.desc"),
+      await screen.findByText("advancedSettings.search.desc"),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "搜索引擎" }),
@@ -50,18 +49,18 @@ describe("<SearchConfigPage />", () => {
     api.listEnvs.mockResolvedValue(envResp(["TAVILY_API_KEY"]));
 
     render(<SearchConfigPage />);
-    await waitFor(() => expect(api.listEnvs).toHaveBeenCalled());
 
-    expect(screen.getByText("当前搜索源：Tavily")).toBeInTheDocument();
+    expect(await screen.findByText("当前搜索源：Tavily")).toBeInTheDocument();
   });
 
   it("shows DeepSeek Search when its API key is configured", async () => {
     api.listEnvs.mockResolvedValue(envResp(["DEEPSEEK_API_KEY"]));
 
     render(<SearchConfigPage />);
-    await waitFor(() => expect(api.listEnvs).toHaveBeenCalled());
 
-    expect(screen.getByText("当前搜索源：DeepSeek Search")).toBeInTheDocument();
+    expect(
+      await screen.findByText("当前搜索源：DeepSeek Search"),
+    ).toBeInTheDocument();
     expect(screen.getByText("DeepSeek Search")).toBeInTheDocument();
   });
 });
