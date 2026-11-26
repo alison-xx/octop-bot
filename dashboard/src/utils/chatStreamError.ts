@@ -15,6 +15,7 @@ const _STREAM_ERROR_KEYS = [
   "stream_errors.invalid_request",
   "stream_errors.model_call_failed",
   "stream_errors.path_outside_root",
+  "stream_errors.ambiguous_edit",
 ] as const;
 
 export type StreamErrorKey = (typeof _STREAM_ERROR_KEYS)[number];
@@ -172,6 +173,13 @@ export function classifyChatStreamError(
   const raw = normalizeMessage(message);
   const msg = unwrapModelRetryMessage(message);
   if (!msg && !raw) return null;
+  if (
+    /^String ['"][\s\S]*['"] appears \d+ times in file\. Use replace_all=True/i.test(
+      raw,
+    )
+  ) {
+    return "stream_errors.ambiguous_edit";
+  }
   const lower = msg.toLowerCase();
   const compact = lower.replace(/[_\s]/g, "");
 
