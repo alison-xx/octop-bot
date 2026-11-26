@@ -116,6 +116,9 @@ def show_view(
 ) -> str:
     """Display metrics, tables, charts, forms, static HTML or an interactive calculator in Octop Bot chat.
 
+    To preview a generated website, send the actual HTML file with send_file_to_user. Its
+    attachment opens in the workspace HTML viewer with inline CSS and scripts. Do not replace
+    the file with a preview description or a shortened recreation in this static view.
     Form questions collect actual answers from the user before the turn continues.
     """
     data = view.model_dump(mode="json", by_alias=True, exclude_none=True)
