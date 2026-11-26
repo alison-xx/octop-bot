@@ -7,6 +7,7 @@ run-now invoking the cron manager and updating last_status.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -159,9 +160,15 @@ async def test_run_now_records_last_status(env: Any) -> None:
     r = await c.post(f"/api/agents/{aid}/cron/{cid}/run-now", headers=alice_auth)
     assert r.status_code == 204
 
-    r = await c.get(f"/api/agents/{aid}/cron/{cid}", headers=alice_auth)
-    assert r.status_code == 200
-    body = r.json()
+    # The HTTP route schedules the job and returns before its status is committed.
+    async with asyncio.timeout(10):
+        while True:
+            r = await c.get(f"/api/agents/{aid}/cron/{cid}", headers=alice_auth)
+            assert r.status_code == 200
+            body = r.json()
+            if body["last_status"] is not None:
+                break
+            await asyncio.sleep(0.05)
     # CronJob.run() writes a status string ("ok" / "error" / etc.) — assert
     # the row was touched, regardless of which terminal status it lands on.
     assert body["last_status"] is not None
