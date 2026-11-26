@@ -126,6 +126,7 @@ export const IPC_CHANNELS = {
   /** Quit and start again (a new Screen Recording grant only applies after a restart). */
   botRelaunch: "octop:bot:relaunch",
   /** After moving to the Octop Bot cloud: switch there, signed in with this cloud token. */
+  botWorkspaceLogin: "octop:bot:workspace-login",
   botUseCloud: "octop:bot:use-cloud",
   orbPointer: "octop:orb:pointer",
   /** Linux square caption buttons. No-op on the other platforms. */

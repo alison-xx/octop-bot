@@ -59,6 +59,7 @@ import {
   savePendingCloudSignIn,
   takePendingCloudSignIn,
 } from "./server/cloud-sign-in";
+import { workspaceLogin } from "./server/workspace-login";
 import { readLoginShellEnv, resolveOctopHome } from "./supervisor/shell-env";
 import { reserveRandomPort } from "./supervisor/random-port";
 import {
@@ -779,6 +780,12 @@ function registerIpcHandlers(): void {
   });
   ipcMain.on(IPC_CHANNELS.botRelaunch, () => {
     if (botOnly) restartApp();
+  });
+  ipcMain.handle(IPC_CHANNELS.botWorkspaceLogin, (event, method: string, body: Record<string, string>) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || !botOnly || remoteOrigin || !dashboardOrigin || event.senderFrame !== win.webContents.mainFrame || !event.senderFrame.url.startsWith(dashboardOrigin + "/"))
+      throw new Error("Unavailable outside the local Bot window");
+    return workspaceLogin(win, method, body);
   });
   ipcMain.handle(IPC_CHANNELS.botUseCloud, (_event, accessToken: unknown): boolean => {
     // Only this computer's own page moves the app; a cloud page has no preload.

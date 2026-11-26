@@ -316,9 +316,12 @@
     const root = el("div"); root.append(el("h1", title)); content.replaceChildren(root); Promise.resolve(render(root)).catch((e) => { if (id === renderId) fail(root, e); });
   }
   async function init() {
-    await auth.ready;
     const hasCode = /^#(?:code|ticket)=/.test(location.hash);
-    if (hasCode) { let redeemed = false; try { redeemed = await auth.redeemHash("account"); } catch (_) { history.replaceState(null, "", location.pathname + location.search); } if (auth.config.oneTimeCodeEnabled && !redeemed) auth.logout(); }
+    if (hasCode && !(await auth.redeemHash("account"))) {
+      location.replace("/login.html?next=" + encodeURIComponent("/account.html"));
+      return;
+    }
+    await auth.ready;
     if (!auth.config.loginEnabled) { notice.textContent = tr("个人中心即将开放"); return; }
     if (!auth.requireLogin('/account.html' + location.hash)) return;
     notice.hidden = true; shell.hidden = false; window.addEventListener("hashchange", route);

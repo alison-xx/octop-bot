@@ -1,4 +1,3 @@
-import { LynxceAccountAvatar } from "../../components/LynxceAccountAvatar";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Input, Spin } from "antd";
 import { ArrowRight, ChevronRight, LockKeyhole } from "lucide-react";
@@ -9,7 +8,7 @@ import {
   invalidateAuthStatusCache,
   type AuthStatus,
 } from "../../api/modules/auth";
-import { botCloudApi } from "../../api/modules/botCloud";
+import { ApiResponseError } from "../../api/responseError";
 import {
   desktopLocalAutoLoginHeld,
   isLocalDesktopUser,
@@ -42,9 +41,8 @@ let desktopRenewTried = false;
 /**
  * Octop Bot start page: first run and sign-in for both Bot builds.
  *
- * Desktop: two ways in and no setup steps. "Lynxce" signs in to a Lynxce account (credits,
- * cloud computers) on top of the local owner; "local" uses this computer without signing in.
- * Both create the local owner silently on first run. Web: the Lynxce account is the only way in.
+ * Hosted sign-in uses the cloud account directly. Only local mode creates or renews
+ * the owner of this computer’s workspace.
  */
 export default function BotClientSetup() {
   const { t, i18n } = useTranslation();
@@ -57,15 +55,12 @@ export default function BotClientSetup() {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [verified, setVerified] = useState(false);
+  const [verifyLocalSetup, setVerifyLocalSetup] = useState(false);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<Busy | null>(null);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
-  const [wechatBind, setWechatBind] = useState<{
-    flowId: string;
-    nickname: string | null;
-    avatar: string | null;
-  } | null>(null);
+  const [wechatBind, setWechatBind] = useState("");
   const [wechatPhone, setWechatPhone] = useState("");
   const [wechatCode, setWechatCode] = useState("");
   const [wechatWait, setWechatWait] = useState(0);
@@ -124,7 +119,8 @@ export default function BotClientSetup() {
         setStatus(s);
       })
       .catch((e) => {
-        if (mounted) setError(apiErrorMessage(e, t("octopBot.failed"), t));
+        if (mounted && !desktop)
+          setError(apiErrorMessage(e, t("octopBot.failed"), t));
       });
     return () => {
       mounted = false;
@@ -200,7 +196,6 @@ export default function BotClientSetup() {
     wizardSession.clearAll();
   };
 
-  const firstRun = !!status && (status.setup_required || addLocalAccount);
   // Set once the local owner is signed in here, so a retry or a second step never recreates it.
   const localReady = useRef(false);
 
@@ -215,19 +210,30 @@ export default function BotClientSetup() {
     releaseDesktopLocalAutoLogin();
     const issued = await renewDesktopSession();
     if (!issued?.access_token || !isLocalDesktopUser(issued.access_token)) {
-      throw new Error(t("botOnboarding.localFailed"));
+      navigate("/login/local", { replace: true });
+      return false;
     }
     setAuthToken(issued.access_token, true);
     localReady.current = true;
   };
 
   const enterWithoutSignIn = async () => {
-    if (!status || busy) return;
+    if (busy) return;
     setBusy("local");
     setError("");
     try {
-      const fresh = firstRun;
-      await enterLocal(status);
+      const current = status ?? (await authApi.getAuthStatus());
+      if (
+        current.wizard_password_required &&
+        !verified &&
+        !wizardSession.loadSetupJwt()
+      ) {
+        setStatus(current);
+        setVerifyLocalSetup(true);
+        return;
+      }
+      const fresh = current.setup_required || !current.local_account;
+      if ((await enterLocal(current)) === false) return;
       // A fresh install picks its models first (local or its own API keys), then meets the team.
       navigate(fresh ? BOT_SETTINGS : BOT_HOME, {
         replace: true,
@@ -240,30 +246,55 @@ export default function BotClientSetup() {
     }
   };
 
-  /** Desktop: the Lynxce account rides on the local owner (wallet, models, cloud computers). */
-  // Both sign-ins resolve with the error when they failed (shown here, inspected by the form).
-  const signInDesktopLynxce = async (
-    attempt: () => Promise<unknown>,
-  ): Promise<unknown> => {
-    if (!status || busy) return;
+  const bridge = getDesktopBridge();
+  type CloudMethod = Parameters<
+    NonNullable<NonNullable<typeof bridge>["workspaceLogin"]>
+  >[0];
+  async function cloudRequest(
+    method: CloudMethod,
+    body: Record<string, string>,
+  ) {
+    if (!bridge?.workspaceLogin)
+      throw new Error(t("botOnboarding.loginUnavailable"));
+    const { status: httpStatus, data } = await bridge.workspaceLogin(method, {
+      ...body,
+      locale,
+    });
+    if (httpStatus !== 200)
+      throw new ApiResponseError(httpStatus, data?.error ?? null, null);
+    return data;
+  }
+  async function sendCloudCode(target: string) {
+    const { channel } = await cloudRequest("sendCode", { target });
+    if (!channel) throw new Error(t("octopBot.failed"));
+    return channel;
+  }
+  async function signInDesktopLynxce(
+    method: CloudMethod,
+    body: Record<string, string> = {},
+  ) {
+    if (busy) return;
     setBusy("lynxce");
     setError("");
     try {
-      const fresh = firstRun;
-      await enterLocal(status);
-      if ((await attempt()) === false) return;
-      window.dispatchEvent(new Event("octop-bot-account-changed"));
-      navigate(fresh ? BOT_SETTINGS : BOT_HOME, {
-        replace: true,
-        state: fresh ? { source: "lynxce", from: BOT_GUIDE } : undefined,
-      });
+      const result = await cloudRequest(method, body);
+      if (result.cancelled) return;
+      if (result.bind_token) {
+        setWechatBind(result.bind_token);
+        return;
+      }
+      if (
+        !result.access_token ||
+        !(await bridge?.useLynxceCloud?.(result.access_token))
+      )
+        throw new Error(t("botOnboarding.loginUnavailable"));
     } catch (e) {
       setError(apiErrorMessage(e, t("octopBot.failed"), t));
       return e;
     } finally {
       setBusy(null);
     }
-  };
+  }
 
   const signInWithLynxce = async (
     attempt: () => Promise<{ access_token: string }>,
@@ -313,33 +344,6 @@ export default function BotClientSetup() {
     !verified &&
     !wizardSession.loadSetupJwt();
 
-  const workbuddyLogin = getDesktopBridge()?.workbuddyLogin;
-  const wechatLogin = getDesktopBridge()?.wechatLogin;
-  const startWechat = () => {
-    if (!wechatLogin) return;
-    void signInDesktopLynxce(async () => {
-      const flow = await botCloudApi.wechatStart();
-      const result = await wechatLogin(flow.qr_url, flow.redirect_uri);
-      if (!result.ok) {
-        if (result.reason === "cancelled") return false;
-        throw new Error(t("botCloud.wechatFailed"));
-      }
-      const outcome = await botCloudApi.wechatFinish(
-        flow.flow_id,
-        result.code,
-        result.state,
-      );
-      if ("need_bind_phone" in outcome) {
-        setWechatBind({
-          flowId: flow.flow_id,
-          nickname: outcome.nickname,
-          avatar: outcome.avatar_url,
-        });
-        return false;
-      }
-      return outcome;
-    });
-  };
   const lynxceHead = (
     <div className={intro.cardHead}>
       <img src={lynxceLogo} alt="" />
@@ -362,18 +366,16 @@ export default function BotClientSetup() {
             </>
           }
           passwordHint={t("botOnboarding.lynxceHint")}
-          sendCode={async (target) => {
-            // Lynxce account calls go through the local owner's session.
-            if (status) await enterLocal(status);
-            return (await botCloudApi.sendCode(target, locale)).channel;
-          }}
+          sendCode={sendCloudCode}
           onCode={(target, code, password) =>
-            signInDesktopLynxce(() =>
-              botCloudApi.codeLogin(target, code, password),
-            )
+            signInDesktopLynxce("code", {
+              target,
+              code,
+              ...(password ? { password } : {}),
+            })
           }
-          onPassword={(account, secret) =>
-            signInDesktopLynxce(() => botCloudApi.login(account, secret))
+          onPassword={(account, password) =>
+            signInDesktopLynxce("password", { account, password })
           }
           onError={(e) => setError(apiErrorMessage(e, t("octopBot.failed"), t))}
           onClearError={() => setError("")}
@@ -381,26 +383,11 @@ export default function BotClientSetup() {
         <ThirdPartySignIn
           disabled={!!busy}
           onWechat={
-            import.meta.env.VITE_OCTOP_BOT_WECHAT_LOGIN === "1" && wechatLogin
-              ? () => void startWechat()
-              : undefined
+            bridge?.workspaceLogin && (() => void signInDesktopLynxce("wechat"))
           }
           onWorkbuddy={
-            workbuddyLogin &&
-            (() =>
-              void signInDesktopLynxce(async () => {
-                const result = await workbuddyLogin();
-                if (!result.ok) {
-                  throw new Error(
-                    t(
-                      result.reason === "denied"
-                        ? "botCloud.workbuddyDenied"
-                        : "botCloud.workbuddyFailed",
-                    ),
-                  );
-                }
-                return botCloudApi.loginWorkbuddy(result.code);
-              }))
+            bridge?.workspaceLogin &&
+            (() => void signInDesktopLynxce("workbuddy"))
           }
         />
       </section>
@@ -476,7 +463,10 @@ export default function BotClientSetup() {
             <button
               type="button"
               onClick={() => {
-                setWechatBind(null);
+                setWechatBind("");
+                setWechatCode("");
+                setWechatPhone("");
+                setWechatWait(0);
                 setError("");
               }}
             >
@@ -500,28 +490,19 @@ export default function BotClientSetup() {
             )}
           </p>
           {error && <Alert type="error" message={error} showIcon />}
-          {status ? (
+          {desktop || status ? (
             wechatBind ? (
               <form
                 className={intro.wechatBind}
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void signInDesktopLynxce(() =>
-                    botCloudApi.wechatBind(
-                      wechatBind.flowId,
-                      wechatPhone,
-                      wechatCode,
-                    ),
-                  );
+                  void signInDesktopLynxce("bind", {
+                    bind_token: wechatBind,
+                    phone: wechatPhone,
+                    code: wechatCode,
+                  });
                 }}
               >
-                <div>
-                  <LynxceAccountAvatar
-                    name={wechatBind.nickname || t("botCloud.wechatUser")}
-                    url={wechatBind.avatar}
-                  />{" "}
-                  {wechatBind.nickname || t("botCloud.wechatUser")}
-                </div>
                 <Input
                   aria-label={t("botCloud.wechatPhone")}
                   size="large"
@@ -545,8 +526,7 @@ export default function BotClientSetup() {
                       type="link"
                       disabled={!!busy || wechatWait > 0 || !wechatPhone.trim()}
                       onClick={() => {
-                        void botCloudApi
-                          .sendCode(wechatPhone, locale)
+                        void sendCloudCode(wechatPhone)
                           .then(() => setWechatWait(60))
                           .catch((e) =>
                             setError(
@@ -572,6 +552,10 @@ export default function BotClientSetup() {
                   {t("botCloud.wechatSubmit")}
                 </Button>
               </form>
+            ) : desktop &&
+              !status?.lynxce_login &&
+              !(needsWizardPassword && verifyLocalSetup) ? (
+              desktopStart
             ) : needsWizardPassword ? (
               <PasswordStep
                 onVerified={() => {
@@ -579,10 +563,8 @@ export default function BotClientSetup() {
                   setError("");
                 }}
               />
-            ) : status.lynxce_login ? (
+            ) : status?.lynxce_login ? (
               webForms
-            ) : desktop ? (
-              desktopStart
             ) : (
               <form
                 className={styles.introActions}

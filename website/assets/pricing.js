@@ -462,6 +462,8 @@
   }
 
   /* ---------- views: plans or packs ---------- */
+  const fromClient = /^#(?:code|ticket)=/.test(location.hash);
+  let verifyingAccount = fromClient;
   const VIEW_HASH = { plans: "", packs: "#credits", enterprise: "#enterprise" };
   let currentView = null;
   function showView(view, animate = true) {
@@ -498,7 +500,7 @@
       const membership = checkout.dataset.checkout === "member";
       const auth = window.OctopAuth;
       const open = membership ? pricing?.membershipOpen : pricing?.packsOpen;
-      if (!open || !auth.config.checkoutEnabled || checkout.disabled || checkout.classList.contains("disabled")) return;
+      if (verifyingAccount || !open || !auth.config.checkoutEnabled || checkout.disabled || checkout.classList.contains("disabled")) return;
       if (!auth.requireLogin(membership ? "/pricing.html" : "/pricing.html#credits")) return;
       checkoutBody(auth, membership).then((body) => auth.api("/api/billing/recharge/checkout-link", { method: "POST", body })).then((data) => {
         const url = new URL(data.url);
@@ -513,7 +515,10 @@
      price, from its octop_bot catalog) or amountYuan (custom amount, 10–5000), never both.
      Each is sent only once its switch is on; without them the cashier asks for the amount. */
   async function checkoutBody(auth, membership) {
-    const body = { site: "octopbot", returnUrl: "https://octop-bot.lynxce.cn/pay/result.html" };
+    const result = new URL("https://octop-bot.lynxce.cn/pay/result.html");
+    const from = auth.from(new URLSearchParams(location.search).get("from"));
+    if (from) result.searchParams.set("from", from);
+    const body = { site: "octopbot", returnUrl: result.href };
     if (membership) return body;
     const cfg = auth.config;
     const custom = Number(customAmount);
@@ -571,11 +576,19 @@
   const selectedView = $("#price-tabs :checked").value;
   const linkedView = Object.keys(VIEW_HASH).find((name) => VIEW_HASH[name] === location.hash);
   showView(selectedView === "plans" && linkedView ? linkedView : selectedView, false);
-  window.OctopAuth.ready.then(async () => {
-    await window.OctopAuth.redeemHash("recharge");
+  (async () => {
+    if (fromClient) {
+      if (!(await window.OctopAuth.redeemHash("recharge"))) {
+        location.replace("/login.html?next=" + encodeURIComponent("/pricing.html#credits"));
+        return;
+      }
+      showView("packs", false);
+      verifyingAccount = false;
+    }
+    await window.OctopAuth.ready;
     if (pricing && window.OctopAuth.config.checkoutEnabled) renderPlans();
     renderPacks();
-  });
+  })();
 
   const getJson = (url, timeoutMs = 8000) => {
     const ctrl = new AbortController();

@@ -68,6 +68,28 @@ async def balance(
     return await wallet.balance(services, user.id, source)
 
 
+class WebsiteCodeRequest(BaseModel):
+    scope: Literal["account", "recharge"]
+    expected_account_id: str = Field(
+        min_length=1, max_length=256, description="Lynxce account displayed by this client."
+    )
+
+
+class WebsiteCode(BaseModel):
+    code: str = Field(
+        description="Single-use code for the selected website page, valid for 60 seconds."
+    )
+
+
+@router.post("/website-code", summary="Sign in to the official account or recharge page")
+async def website_code(
+    body: WebsiteCodeRequest, response: Response, user: Owner, services: AccountServices
+) -> WebsiteCode:
+    response.headers["Cache-Control"] = "private, no-store"
+    code = await lynxce_cloud.website_code(services, user.id, body.scope, body.expected_account_id)
+    return WebsiteCode(code=code)
+
+
 @router.post("/recharge", summary="Open a short-lived Lynxce checkout for the displayed account")
 async def recharge(
     body: CheckoutRequest, response: Response, user: Owner, services: AccountServices

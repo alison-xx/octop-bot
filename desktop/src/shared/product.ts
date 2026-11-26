@@ -12,6 +12,6 @@ export function isBotProduct(argv: readonly string[], appName: string, packageIn
 /** Absolute document paths supported by the dedicated shell, including login redirects. */
 export function botDocumentPath(path: string): boolean {
   return path === BOT_HOME_PATH || path.startsWith(BOT_HOME_PATH + "/") ||
-    path === "/login" || path === "/login/oidc/complete" || path === "/setup" ||
+    path === "/login" || path === "/login/local" || path === "/login/oidc/complete" || path === "/setup" ||
     /^\/chat(?:\/[^/]+){0,2}\/?$/.test(path) || /^\/share\/[^/]+\/?$/.test(path);
 }

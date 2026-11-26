@@ -1280,8 +1280,10 @@
     const id = ++generation;
     if (changed) { profile = null; quota = null; }
     render();
-    if (!auth.session()) return;
-    const results = await Promise.allSettled([auth.api("/api/user/profile", { cache: "no-store" }), auth.api("/api/user/quota")]);
+    const session = auth.session();
+    if (!session) return;
+    const profileRequest = session.scope === "recharge" ? null : auth.api("/api/user/profile", { cache: "no-store" });
+    const results = await Promise.allSettled([profileRequest, auth.api("/api/user/quota")]);
     // Reading the session can synchronously notify us of a newer sign-in.
     if (!auth.session() || id !== generation) return;
     if (results[0].status === "fulfilled") profile = results[0].value;

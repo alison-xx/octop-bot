@@ -13,7 +13,11 @@ import { useNativeWindowChrome } from "./hooks/useNativeWindowChrome";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { routerBasename } from "./utils/publicUrl";
 import { useTranslation } from "react-i18next";
-import { isBotClient, isBotWebClient } from "./utils/desktopBridge";
+import {
+  isBotClient,
+  isBotOnlyDesktop,
+  isBotWebClient,
+} from "./utils/desktopBridge";
 import BotClientRoutes, {
   BotClientSetupRoute,
 } from "./pages/OctopBot/BotClientRoutes";
@@ -163,6 +167,9 @@ function ThemedApp() {
                 )
               }
             />
+            {isBotOnlyDesktop() && (
+              <Route path="/login/local" element={<LoginPage />} />
+            )}
             <Route path="/login/oidc/complete" element={<OidcComplete />} />
             {/* Phones open a Bot's cloud computer here with a one-time ticket. */}
             <Route

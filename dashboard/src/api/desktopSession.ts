@@ -88,11 +88,12 @@ let registeredSubject: string | null = null;
  */
 export async function registerDeviceSession(
   accessToken: string,
+  reauthenticate = false,
 ): Promise<void> {
   const session = bridge();
   if (!session || !accessToken || !isLocalDesktopUser(accessToken)) return;
   const subject = subjectOf(accessToken) ?? accessToken;
-  if (registeredSubject === subject) return;
+  if (!reauthenticate && registeredSubject === subject) return;
   try {
     if (await session.register(accessToken)) {
       registeredSubject = subject;

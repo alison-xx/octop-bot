@@ -12,12 +12,13 @@
   let saved = sharedSession();
   let restrictedSession = null;
   try { restrictedSession = storedSession(sessionStorage.getItem("ob-limited-auth")); } catch (_) {}
-  let limited = Boolean(restrictedSession);
-  let current = restrictedSession || storedSession(saved);
+  const incomingCode = ["/account.html", "/pricing.html"].includes(location.pathname) && /^#(?:code|ticket)=/.test(location.hash);
+  let limited = incomingCode || Boolean(restrictedSession);
+  let current = incomingCode ? null : restrictedSession || storedSession(saved);
   let sessionEpoch = 0;
   let refreshFlight = null;
   const auth = { config: defaults };
-  const snapshot = () => current ? { token: current.token, user: current.user || null } : null;
+  const snapshot = () => current ? { token: current.token, user: current.user || null, scope: current.scope } : null;
   const notify = (changed) => listeners.forEach(fn => fn(snapshot(), changed));
   function syncStored() {
     if (limited) return;
@@ -44,12 +45,12 @@
   };
   auth.from = (value) => ["desktop", "web", "android"].includes(value) ? value : null;
   auth.session = () => { syncStored(); return snapshot(); };
-  function storeSession(data, restricted, loginId, changed) {
+  function storeSession(data, scope, loginId, changed) {
     const token = data.accessToken || data.token;
     if (!token) throw Object.assign(new Error("Missing access token"), { code: "invalid_session" });
-    current = { token, refreshToken: data.refreshToken || null, user: data.user || null, loginId };
-    limited = restricted;
-    if (restricted) {
+    current = { token, refreshToken: data.refreshToken || null, user: data.user || null, scope: scope || undefined, loginId };
+    limited = Boolean(scope);
+    if (limited) {
       sessionStorage.setItem("ob-limited-auth", JSON.stringify(current));
     } else {
       sessionStorage.removeItem("ob-limited-auth");
@@ -59,10 +60,11 @@
     if (changed) sessionEpoch++;
     notify(changed);
   }
-  auth.setSession = (data, restricted = false) => storeSession(data, restricted, crypto.randomUUID(), true);
+  auth.setSession = (data, scope = null) => storeSession(data, scope, crypto.randomUUID(), true);
   auth.logout = () => {
-    current = null; limited = false; saved = null; sessionEpoch++;
-    localStorage.removeItem("ob-auth"); sessionStorage.removeItem("ob-limited-auth"); notify(true);
+    if (!limited) localStorage.removeItem("ob-auth");
+    current = null; limited = false; saved = sharedSession(); sessionEpoch++;
+    sessionStorage.removeItem("ob-limited-auth"); notify(true);
   };
   auth.onChange = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
   auth.requireLogin = (next) => { if (auth.session()) return true; location.href = "/login.html?next=" + encodeURIComponent(auth.safePath(next)); return false; };
@@ -114,13 +116,14 @@
   // scope is the landing page's purpose: "account" (account.html) or "recharge" (pricing.html).
   auth.redeemHash = async (scope) => {
     if (scope !== "account" && scope !== "recharge") return false;
-    await auth.ready;
-    const match = location.hash.match(/^#(?:ticket|code)=([^&]+)$/);
+    const match = location.hash.match(/^#(?:ticket|code)=(.*)$/);
     if (!match) return false;
-    const code = decodeURIComponent(match[1]);
     history.replaceState(null, "", location.pathname + location.search);
+    const code = match[1];
+    if (!/^[A-Za-z0-9_-]{43}$/.test(code)) return false;
+    await auth.ready;
     if (!auth.config.oneTimeCodeEnabled) return false;
-    try { const data = await request("/api/auth/login-codes/redeem", { method: "POST", auth: false, body: { code, scope } }); auth.setSession(data, true); return true; } catch (_) { return false; }
+    try { const data = await request("/api/auth/login-codes/redeem", { method: "POST", auth: false, body: { code, scope } }); auth.setSession(data, scope); return true; } catch (_) { return false; }
   };
   window.OctopAuth = auth;
 })();

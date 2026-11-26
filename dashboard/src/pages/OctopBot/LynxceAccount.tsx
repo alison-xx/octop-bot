@@ -14,7 +14,7 @@ import WalletBalance from "./WalletBalance";
 import LynxceRegistration from "./LynxceRegistration";
 import styles from "./BotClientSettings.module.less";
 import ModelSelect from "./ModelSelect";
-import { signOutBotClient } from "./AccountMenu";
+import { openLynxceSignIn } from "./AccountMenu";
 import { CreditsAmount, useRecharge } from "./CreditsWidgets";
 import { useLynxceCredits } from "./useLynxceCredits";
 
@@ -309,7 +309,7 @@ export default function LynxceAccount({
           <p>{t("botClient.account.signInHint")}</p>
           <Button
             type="primary"
-            onClick={() => void signOutBotClient(owner, navigate)}
+            onClick={() => void openLynxceSignIn(owner, navigate)}
           >
             {t("botClient.account.signIn")}
           </Button>

@@ -31,13 +31,25 @@ import { botCloudApi } from "../../api/modules/botCloud";
 import lynxceLogo from "../../assets/providers/lynxce.png";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
 import styles from "./accountMenu.module.less";
-import { CreditsAmount } from "./CreditsWidgets";
-import { accountCenterUrl, OCTOP_BOT_SITE } from "./botWebsite";
+import { CreditsAmount, useRecharge } from "./CreditsWidgets";
+import { openAccountWebsite } from "./botWebsite";
+import { apiErrorMessage } from "../../utils/apiError";
 import {
   formatCredits,
   resetCredits,
   useLynxceCredits,
 } from "./useLynxceCredits";
+
+/** Opening the cloud sign-in screen must not invalidate the paired local owner. */
+export function openLynxceSignIn(
+  username: string | undefined,
+  navigate: NavigateFunction,
+) {
+  if (!isBotOnlyDesktop() || username !== "local")
+    return signOutBotClient(username, navigate);
+  holdDesktopLocalAutoLogin();
+  navigate("/login", { replace: true });
+}
 
 export async function signOutBotClient(
   username: string | undefined,
@@ -115,6 +127,24 @@ export default function AccountMenu({
   );
   const from = { state: { from: location.pathname } };
   const credits = useLynxceCredits();
+  const modelRecharge = useRecharge();
+  const openWebsite = async (scope: "account" | "recharge") => {
+    setOpen(false);
+    if (scope === "recharge" && credits.wallet?.source === "model") {
+      await modelRecharge.recharge();
+      return;
+    }
+    const id = lynxceAccount || credits.wallet?.account_id;
+    if (!id) {
+      message.error(t("apiErrors.BOT_CLOUD_ACCOUNT_REQUIRED"));
+      return;
+    }
+    try {
+      await openAccountWebsite(scope, id);
+    } catch (error) {
+      message.error(apiErrorMessage(error, t("octopBot.failed"), t));
+    }
+  };
   const billed = credits.status !== "none" && credits.status !== "idle";
   const entry = (label: string, hint: string) => (
     <span className={styles.entry}>
@@ -149,10 +179,7 @@ export default function AccountMenu({
             key: "credits",
             icon: <Coins size={16} />,
             label: entry(t("botCredits.menu"), t("botCredits.menuHint")),
-            onClick: () =>
-              navigate(BOT_SETTINGS, {
-                state: { from: location.pathname, tab: "account" },
-              }),
+            onClick: () => void openWebsite("recharge"),
           },
         ]
       : []),
@@ -167,8 +194,7 @@ export default function AccountMenu({
               t("botClient.menu.accountCenterHint"),
             ),
             extra: <ExternalLink size={13} aria-hidden="true" />,
-            onClick: () =>
-              void window.open(accountCenterUrl(), "_blank", "noopener"),
+            onClick: () => void openWebsite("account"),
           },
         ]
       : []),
@@ -192,7 +218,7 @@ export default function AccountMenu({
                   return;
                 }
               }
-              await signOutBotClient(user?.username, navigate);
+              await openLynxceSignIn(user?.username, navigate);
             },
           },
         ]),
@@ -238,13 +264,7 @@ export default function AccountMenu({
       )}
       {credits.wallet && (
         <div className={styles.cardActions}>
-          <Button
-            type="primary"
-            href={`${OCTOP_BOT_SITE}/pricing.html`}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => setOpen(false)}
-          >
+          <Button type="primary" onClick={() => void openWebsite("recharge")}>
             {t("botCredits.recharge")}
           </Button>
           <Button
@@ -279,7 +299,7 @@ export default function AccountMenu({
         type="primary"
         onClick={() => {
           setOpen(false);
-          void signOutBotClient(user?.username, navigate);
+          void openLynxceSignIn(user?.username, navigate);
         }}
       >
         {t("botClient.menu.lynxceSignIn")}

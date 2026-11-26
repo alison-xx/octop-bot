@@ -55,6 +55,7 @@ import { type PublicCaptchaConfig } from "./captchaAdapters";
 import {
   desktopLocalAutoLoginHeld,
   isLocalDesktopUser,
+  registerDeviceSession,
   releaseDesktopLocalAutoLogin,
   renewDesktopSession,
 } from "../../api/desktopSession";
@@ -127,7 +128,8 @@ export default function LoginPage() {
   const { isDark } = useTheme();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [username, setUsername] = useState("");
+  const recoveringLocal = window.location.pathname === "/login/local";
+  const [username, setUsername] = useState(recoveringLocal ? "local" : "");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -166,7 +168,7 @@ export default function LoginPage() {
   // try a refresh before showing a form nobody can fill in. Runs once per page
   // load, so a server that keeps refusing cannot bounce us in a loop.
   useEffect(() => {
-    if (desktopAutoLoginTried) return;
+    if (recoveringLocal || desktopAutoLoginTried) return;
     desktopAutoLoginTried = true;
     // Logout of the local account sets this so the form stays up for other
     // accounts. The flag dies with the window; the next launch can enter again.
@@ -186,7 +188,7 @@ export default function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [navigate, recoveringLocal]);
 
   useEffect(() => {
     let cancelled = false;
@@ -302,13 +304,14 @@ export default function LoginPage() {
     async (accessToken: string, locale: string | null | undefined) => {
       conditionalAbortRef.current?.abort();
       setAuthToken(accessToken, remember);
+      if (recoveringLocal) await registerDeviceSession(accessToken, true);
       setMfaChallenge(null);
       setMfaCode("");
       const applied = await applyUserLocale(locale);
       void refreshServerLabels(applied);
       navigate(loginDestination(), { replace: true });
     },
-    [navigate, remember],
+    [navigate, remember, recoveringLocal],
   );
 
   // Conditional UI: passkeys appear in the username autofill when available.
@@ -755,9 +758,10 @@ export default function LoginPage() {
             textAlign: "center",
           }}
         >
-          {t("login.title")}
+          {t(recoveringLocal ? "botOnboarding.recoverLocal" : "login.title")}
         </h2>
 
+        {recoveringLocal && <p>{t("botOnboarding.recoverLocalHint")}</p>}
         <Input
           prefix={
             <User size={16} style={{ color: "var(--fn-text-quaternary)" }} />
@@ -943,7 +947,15 @@ export default function LoginPage() {
           </div>
         )}
 
-        {showCreateLocal && (
+        {recoveringLocal && (
+          <Button
+            type="link"
+            onClick={() => navigate("/login", { replace: true })}
+          >
+            {t("botOnboarding.backToCloud")}
+          </Button>
+        )}
+        {showCreateLocal && !recoveringLocal && (
           <Button
             size="large"
             block

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authApi, type AuthStatus } from "../../api/modules/auth";
-import { botCloudApi } from "../../api/modules/botCloud";
+
 import { renewDesktopSession } from "../../api/desktopSession";
 import { getAuthToken } from "../../api/request";
 import { wizardApi, wizardSession } from "../Setup/wizardClient";
@@ -19,17 +19,16 @@ vi.mock("./BotCharacter", () => ({
 }));
 const desktopShell = vi.hoisted(() => ({
   on: true,
-  wechat: undefined as
-    | undefined
-    | (() => Promise<{ ok: true; code: string; state: string }>),
+  hold: false,
+  workspaceLogin: vi.fn(),
+  useLynxceCloud: vi.fn(),
 }));
 vi.mock("../../utils/desktopBridge", () => ({
   isDesktopShell: () => desktopShell.on,
-  getDesktopBridge: () =>
-    desktopShell.wechat ? { wechatLogin: desktopShell.wechat } : undefined,
+  getDesktopBridge: () => (desktopShell.on ? desktopShell : undefined),
 }));
 vi.mock("../../api/desktopSession", () => ({
-  desktopLocalAutoLoginHeld: () => false,
+  desktopLocalAutoLoginHeld: () => desktopShell.hold,
   // A token for the desktop "local" account: {"uname":"local"}.
   isLocalDesktopUser: (token: string) => token.startsWith("local"),
   releaseDesktopLocalAutoLogin: vi.fn(),
@@ -54,6 +53,7 @@ function openSetup(path = "/setup") {
   render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
+        <Route path="/login/local" element={<h1>Verify local</h1>} />
         <Route path="/setup" element={<BotClientSetup />} />
         <Route path="/octop-bot/settings" element={<Source />} />
         <Route path="/octop-bot/guide" element={<h1>Team guide</h1>} />
@@ -66,7 +66,9 @@ function openSetup(path = "/setup") {
 beforeEach(() => {
   vi.clearAllMocks();
   desktopShell.on = true;
-  desktopShell.wechat = undefined;
+  desktopShell.hold = false;
+  desktopShell.workspaceLogin.mockReset();
+  desktopShell.useLynxceCloud.mockResolvedValue(true);
   vi.unstubAllEnvs();
   vi.spyOn(authApi, "getAuthStatus").mockResolvedValue(fresh);
   vi.spyOn(wizardApi, "applyDatabase").mockResolvedValue({
@@ -94,20 +96,10 @@ afterEach(() => {
 });
 
 describe("standalone onboarding", () => {
-  it("offers WeChat only with the flag and bridge, then shows phone binding for a new account", async () => {
-    vi.stubEnv("VITE_OCTOP_BOT_WECHAT_LOGIN", "1");
-    desktopShell.wechat = vi
-      .fn()
-      .mockResolvedValue({ ok: true, code: "test-code", state: "test-state" });
-    vi.spyOn(botCloudApi, "wechatStart").mockResolvedValue({
-      flow_id: "test-flow",
-      qr_url: "https://open.weixin.qq.com/",
-      redirect_uri: "https://example.test/callback",
-    });
-    vi.spyOn(botCloudApi, "wechatFinish").mockResolvedValue({
-      need_bind_phone: true,
-      nickname: "Test User",
-      avatar_url: null,
+  it("starts hosted WeChat sign-in and offers phone binding without a local owner", async () => {
+    desktopShell.workspaceLogin.mockResolvedValue({
+      status: 200,
+      data: { bind_token: "test-bind" },
     });
     openSetup();
     await userEvent.click(
@@ -116,20 +108,26 @@ describe("standalone onboarding", () => {
     expect(
       await screen.findByRole("heading", { name: "botCloud.wechatBindTitle" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Test User")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "botCloud.wechatSubmit" }),
-    ).toBeInTheDocument();
+    expect(desktopShell.workspaceLogin).toHaveBeenCalledWith("wechat", {
+      locale: "zh",
+    });
+    expect(wizardApi.createAdmin).not.toHaveBeenCalled();
   });
 
-  it("hides WeChat when the build flag is off", async () => {
-    vi.stubEnv("VITE_OCTOP_BOT_WECHAT_LOGIN", "0");
-    desktopShell.wechat = vi.fn();
+  it("opens local verification when the existing device is signed out", async () => {
+    desktopShell.hold = true;
+    vi.mocked(authApi.getAuthStatus).mockResolvedValue({
+      ...fresh,
+      setup_required: false,
+      local_account: true,
+    });
+    vi.mocked(renewDesktopSession).mockResolvedValue(null);
     openSetup();
-    await screen.findByRole("button", { name: "botOnboarding.useLocal" });
-    expect(
-      screen.queryByRole("button", { name: "botStart.wechatSignIn" }),
-    ).toBeNull();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "botOnboarding.useLocal" }),
+    );
+    expect(await screen.findByText("Verify local")).toBeInTheDocument();
+    expect(desktopShell.workspaceLogin).not.toHaveBeenCalled();
   });
 
   it("signs a returning desktop user straight back in to this computer", async () => {
@@ -229,11 +227,16 @@ describe("standalone onboarding", () => {
     );
   });
 
-  it("signs in to Lynxce on first launch, after creating the local owner silently", async () => {
-    const login = vi.spyOn(botCloudApi, "login").mockResolvedValue({
-      connected: true,
-      account_id: "13800000000",
-      display_name: "Alice",
+  it("enters the hosted workspace with a cloud token even if the local device is revoked", async () => {
+    vi.mocked(authApi.getAuthStatus).mockResolvedValue({
+      ...fresh,
+      setup_required: false,
+      local_account: true,
+    });
+    vi.mocked(renewDesktopSession).mockResolvedValue(null);
+    desktopShell.workspaceLogin.mockResolvedValue({
+      status: 200,
+      data: { access_token: "hosted-token" },
     });
     openSetup();
     await userEvent.click(
@@ -247,22 +250,18 @@ describe("standalone onboarding", () => {
       screen.getByLabelText("lynxceSignIn.password"),
       "lynxce-pass{Enter}",
     );
-    expect(
-      await screen.findByRole("heading", { name: "Settings lynxce" }),
-    ).toBeInTheDocument();
-    expect(login).toHaveBeenCalledWith("13800000000", "lynxce-pass");
-    // The local owner comes first, without a password, and only once.
-    expect(wizardApi.createAdmin).toHaveBeenCalledTimes(1);
-    expect(wizardApi.createAdmin).toHaveBeenCalledWith(
-      { username: "local", display_name: null, locale: "zh" },
-      "wizard-session",
-    );
-    expect(login.mock.invocationCallOrder[0]).toBeGreaterThan(
-      vi.mocked(wizardApi.finish).mock.invocationCallOrder[0],
-    );
+    expect(desktopShell.workspaceLogin).toHaveBeenCalledWith("password", {
+      account: "13800000000",
+      password: "lynxce-pass",
+      locale: "zh",
+    });
+    expect(desktopShell.useLynxceCloud).toHaveBeenCalledWith("hosted-token");
+    expect(wizardApi.createAdmin).not.toHaveBeenCalled();
+    expect(getAuthToken()).toBe("");
   });
 
   it("signs the web owner in with a Lynxce account without any local account or setup password", async () => {
+    desktopShell.on = false;
     vi.mocked(authApi.getAuthStatus).mockResolvedValue({
       ...fresh,
       lynxce_login: true,
