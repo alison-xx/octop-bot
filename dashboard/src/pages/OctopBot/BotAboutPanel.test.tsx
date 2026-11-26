@@ -39,6 +39,10 @@ describe("Settings → About", () => {
     const openServerPicker = vi.fn();
     bridge.current = { openServerPicker };
     renderAbout();
+    expect(screen.getByRole("link", { name: "botAbout.site" })).toHaveAttribute(
+      "href",
+      "https://octop-bot.lynxce.cn",
+    );
     expect(screen.getByText("botAbout.serverLocal")).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: "botAbout.switchServer" }),
