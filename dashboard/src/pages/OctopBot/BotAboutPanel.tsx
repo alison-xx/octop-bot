@@ -5,9 +5,8 @@ import { getDesktopBridge } from "../../utils/desktopBridge";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
 import BotUpdatePanel from "./BotUpdatePanel";
 import { useBotServerInfo } from "./useBotServerInfo";
+import { OCTOP_BOT_SITE } from "./botWebsite";
 import settings from "./BotClientSettings.module.less";
-
-const SITE = "https://ai.lynxce.cn";
 
 /** Settings → About & updates: version, the desktop updater, which server, and links. */
 export default function BotAboutPanel() {
@@ -80,7 +79,7 @@ export default function BotAboutPanel() {
         </>
       )}
       <nav className={settings.links} aria-label={t("botAbout.links")}>
-        <a href={SITE} target="_blank" rel="noopener noreferrer">
+        <a href={OCTOP_BOT_SITE} target="_blank" rel="noopener noreferrer">
           {t("botAbout.site")}
         </a>
       </nav>
