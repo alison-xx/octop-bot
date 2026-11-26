@@ -62,6 +62,13 @@ function ThreadHistory({
   const navigate = useNavigate();
   const [rows, setRows] = useState<OctopThread[]>([]);
   const [limit, setLimit] = useState(30);
+  const [hasMore, setHasMore] = useState(false);
+  const loaded = useRef<{
+    agentId: string;
+    limit: number;
+    rows: OctopThread[];
+    nextId?: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -71,11 +78,47 @@ function ThreadHistory({
     listPending.current = true;
     setLoading(true);
     setError("");
-    void octopThreadsApi
-      .list(agentId, limit + 1, { includeBotGroups: true })
-      .then((result) => {
-        if (current) setRows(result);
-      })
+    const previous = loaded.current;
+    const append =
+      previous?.agentId === agentId && previous.limit + 30 === limit;
+    const offset = append ? previous.limit : 0;
+    const size = limit - offset;
+    const fetchPage = async () => {
+      let result = await octopThreadsApi.list(agentId, size + 1, {
+        includeBotGroups: true,
+        ...(offset ? { offset } : {}),
+      });
+      if (!current) return;
+      let pageSize = size;
+      let prefix = append ? previous.rows : [];
+      const loadedIds = new Set(prefix.map((row) => row.thread_id));
+      if (
+        append &&
+        (result[0]?.thread_id !== previous.nextId ||
+          result.some((row) => loadedIds.has(row.thread_id)))
+      ) {
+        // Re-read the visible prefix if the order changed or the server ignored offset.
+        result = await octopThreadsApi.list(agentId, limit + 1, {
+          includeBotGroups: true,
+        });
+        if (!current) return;
+        prefix = [];
+        pageSize = limit;
+      }
+      const combined = [...prefix, ...result.slice(0, pageSize)];
+      const next = Array.from(
+        new Map(combined.map((row) => [row.thread_id, row])).values(),
+      );
+      loaded.current = {
+        agentId,
+        limit,
+        rows: next,
+        nextId: result[pageSize]?.thread_id,
+      };
+      setRows(next);
+      setHasMore(result.length > pageSize);
+    };
+    void fetchPage()
       .catch((e) => {
         if (current) setError(apiErrorMessage(e, t("octopBot.failed"), t));
       })
@@ -124,7 +167,7 @@ function ThreadHistory({
       <List
         loading={loading && rows.length === 0}
         rowKey="thread_id"
-        dataSource={rows.slice(0, limit)}
+        dataSource={rows}
         renderItem={(row) => (
           <List.Item>
             <Button
@@ -146,7 +189,7 @@ function ThreadHistory({
           </List.Item>
         )}
       />
-      {rows.length > limit && (
+      {hasMore && (
         <Button
           loading={loading}
           onClick={() => setLimit((value) => value + 30)}
