@@ -102,9 +102,8 @@ export default function BotDetailsPanel({
   const [saved, setSaved] = useState(false);
   const [retry, setRetry] = useState(0);
   const botOnly = isBotOnlyDesktop();
-  const { status } = useLynxceStatus(botOnly);
-  const personalModel =
-    agent?.kind !== "managed" && status?.connected && status.selected_model;
+  const { workspaceModel } = useLynxceStatus(botOnly);
+  const personalModel = agent?.kind !== "managed" && workspaceModel;
   const canConfigure =
     botOnly || userCan(user, "providers") || userCan(user, "ollama_models");
   useEffect(() => {
@@ -156,7 +155,6 @@ export default function BotDetailsPanel({
     navigate(BOT_SETTINGS, {
       state: {
         from: location.pathname,
-        source: personalModel ? "lynxce" : undefined,
       },
     });
   const canManageSchedules =
@@ -284,7 +282,6 @@ export default function BotDetailsPanel({
             <button type="button" className={styles.row} onClick={goToSettings}>
               <span className={styles.modelRow}>
                 <ModelName id={personalModel} />
-                <small>{t("botClient.lynxce.source")}</small>
               </span>
               <ChevronRight size={14} />
             </button>

@@ -82,6 +82,12 @@ export function mergeMessages(
   return added.length ? [...previous, ...added] : previous;
 }
 
+function newRoomRequestId() {
+  return Array.from(crypto.getRandomValues(new Uint32Array(4)), (word) =>
+    word.toString(16).padStart(8, "0"),
+  ).join("");
+}
+
 function GroupRoomView({
   group,
   bots,
@@ -90,6 +96,7 @@ function GroupRoomView({
   onOpenSettings,
   onNewGroup,
   onMember,
+  onTimeline,
   onPreview,
   guide,
   onSent,
@@ -101,6 +108,7 @@ function GroupRoomView({
   onOpenSettings?: () => void;
   onNewGroup?: () => void;
   onMember?: (id: string) => void;
+  onTimeline?: (id: string, rows: GroupMessage[]) => void;
   onPreview?: (key: string, text: string) => void;
   /** Onboarding guide shown above the composer. */
   guide?: React.ReactNode;
@@ -155,79 +163,147 @@ function GroupRoomView({
   useEffect(() => {
     let disposed = false;
     active.current = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let loading = false;
     let quietPolls = 0;
     let busy = false;
-    const schedule = () => {
-      clearTimeout(timer);
-      timer = undefined;
-      // A hidden tab stops polling; becoming visible refreshes at once.
-      if (disposed || document.visibilityState === "hidden") return;
-      const live = busy || Boolean(composer.read().sending);
-      timer = setTimeout(load, groupPollDelay(live, quietPolls));
-    };
-    const load = async () => {
-      if (loading || disposed) return;
-      loading = true;
-      clearTimeout(timer);
-      try {
-        const [newRows, newGoal, newDrafts] = await Promise.all([
-          octopBotApi.messages(group.group_id, cursor.current),
-          octopBotApi.goal(group.group_id),
-          octopBotApi.drafts(group.group_id),
-        ]);
-        if (disposed) return;
-        if (newRows.length)
-          cursor.current = newRows[newRows.length - 1].message_id;
-        busy = newDrafts.length > 0;
-        quietPolls = busy || newRows.length ? 0 : quietPolls + 1;
-        setHistoryError("");
-        setRows((prev) => mergeMessages(prev, newRows));
-        setGoal(newGoal);
-        setDrafts(newDrafts);
-        setReady(true);
-      } catch (e) {
-        if (!disposed) {
-          setHistoryError(describeError(e));
-          setReady(true);
+    const live = () => busy || Boolean(composer.read().sending);
+    const normalDelay = () => groupPollDelay(live(), quietPolls);
+    const errors = new Map<string, string>();
+    const poll = (
+      name: string,
+      read: () => Promise<void>,
+      delay = normalDelay,
+    ) => {
+      let timer: ReturnType<typeof setTimeout>;
+      let loading = false;
+      const schedule = () => {
+        clearTimeout(timer);
+        if (!loading && !disposed && document.visibilityState !== "hidden")
+          timer = setTimeout(load, delay());
+      };
+      const load = async () => {
+        if (loading || disposed) return;
+        clearTimeout(timer);
+        loading = true;
+        try {
+          await read();
+          errors.delete(name);
+        } catch (e) {
+          errors.set(name, describeError(e));
+        } finally {
+          loading = false;
+          if (!disposed) {
+            setHistoryError(Array.from(errors.values())[0] ?? "");
+            if (name === "messages") setReady(true);
+            schedule();
+          }
         }
-      } finally {
-        loading = false;
-      }
-      schedule();
+      };
+      void load();
+      return { load, schedule, stop: () => clearTimeout(timer) };
     };
+    const timeline = poll("messages", async () => {
+      const newRows = await octopBotApi.messages(
+        group.group_id,
+        cursor.current,
+      );
+      if (disposed) return;
+      if (newRows.length)
+        cursor.current = newRows[newRows.length - 1].message_id;
+      quietPolls = live() || newRows.length ? 0 : quietPolls + 1;
+      setRows((prev) => mergeMessages(prev, newRows));
+    });
+    const goalPoll = poll("goal", async () => {
+      const value = await octopBotApi.goal(group.group_id);
+      if (!disposed) setGoal(value);
+    });
+    const draftPoll = poll(
+      "drafts",
+      async () => {
+        const value = await octopBotApi.drafts(group.group_id);
+        if (disposed) return;
+        const wasBusy = busy;
+        busy = value.length > 0;
+        if (busy && !wasBusy) timeline.schedule();
+        if (wasBusy && !busy) void timeline.load();
+        setDrafts(value);
+      },
+      () => (live() ? 500 : normalDelay()),
+    );
+    const polls = [timeline, goalPoll, draftPoll];
     const onVisibility = () => {
-      if (document.visibilityState === "visible") void load();
-      else clearTimeout(timer);
+      for (const p of polls) {
+        if (document.visibilityState === "visible") void p.load();
+        else p.stop();
+      }
     };
-    // A send starts a turn: switch to the fast cadence straight away.
     let sending = composer.read().sending;
-    const onComposer = () => {
+    const unsubscribe = composer.subscribe(() => {
       const next = composer.read().sending;
       if (next && next !== sending) {
         quietPolls = 0;
-        if (!loading) void load();
+        void timeline.load();
+        void draftPoll.load();
       }
       sending = next;
-    };
+    });
     document.addEventListener("visibilitychange", onVisibility);
-    const unsubscribe = composer.subscribe(onComposer);
-    void load();
     return () => {
       disposed = true;
       active.current = false;
-      clearTimeout(timer);
+      polls.forEach((p) => p.stop());
       document.removeEventListener("visibilitychange", onVisibility);
       unsubscribe();
     };
   }, [group.group_id, describeError, reload, composer]);
+  // The POST waits for the members to finish. Its connection can disappear
+  // after the server has already committed the user's message.
+  useEffect(() => {
+    const state = composer.read();
+    if (!state.outbox.length) return;
+    const received = new Set(
+      rows.filter((row) => row.role === "user").map((row) => row.request_id),
+    );
+    const confirmed = state.outbox.filter(
+      (item) => item.id !== state.sending && received.has(item.id),
+    );
+    if (!confirmed.length) return;
+    const restored = confirmed.some(
+      (item) =>
+        item.fromComposer &&
+        !!item.error &&
+        item.text === state.text &&
+        JSON.stringify(item.paths) === JSON.stringify(state.attachments),
+    );
+    composer.patch({
+      outbox: state.outbox.filter((item) => !confirmed.includes(item)),
+      ...(restored ? { text: "", attachments: [] } : {}),
+    });
+    if (confirmed.some((item) => item.fromComposer)) onSent?.();
+  }, [composer, rows, outbox, onSent]);
+  useEffect(() => {
+    if (ready && (rows.length || !historyError))
+      onTimeline?.(group.group_id, rows);
+  }, [group.group_id, ready, rows, historyError, onTimeline]);
   useEffect(() => {
     const added = rows.length - previousCount.current;
     previousCount.current = rows.length;
     if (follow.current && list.current)
       list.current.scrollTop = list.current.scrollHeight;
     else if (added > 0) setNewMessages((n) => n + added);
+  }, [rows, drafts]);
+  useEffect(() => {
+    const timeline = list.current;
+    if (!timeline || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (follow.current && list.current)
+        list.current.scrollTop = list.current.scrollHeight;
+    });
+    for (const item of timeline.querySelectorAll(
+      "article[data-streaming], article:last-child",
+    )) {
+      observer.observe(item);
+    }
+    return () => observer.disconnect();
   }, [rows, drafts]);
   const jumpToLatest = () => {
     follow.current = true;
@@ -265,7 +341,7 @@ function GroupRoomView({
     });
     jumpToLatest();
     try {
-      await octopBotApi.send(
+      const completed = await octopBotApi.send(
         group.group_id,
         request.text,
         request.mentions,
@@ -277,17 +353,29 @@ function GroupRoomView({
         outbox: composer.read().outbox.filter((it) => it.id !== request.id),
       });
       if (request.fromComposer) onSent?.();
-      if (active.current) setReload((value) => value + 1);
+      if (active.current) {
+        setRows((prev) => mergeMessages(prev, completed));
+        setReload((value) => value + 1);
+      }
     } catch (e) {
       const current = composer.read();
       const restore = sameDraft && !current.text && !current.attachments.length;
       composer.patch({
         sending: null,
         outbox: current.outbox.map((it) =>
-          it.id === request.id ? { ...it, error: describeError(e) } : it,
+          it.id === request.id
+            ? {
+                ...it,
+                error:
+                  e instanceof TypeError
+                    ? t("botGroupChat.unconfirmed")
+                    : describeError(e),
+              }
+            : it,
         ),
         ...(restore ? { text: request.text, attachments: request.paths } : {}),
       });
+      if (active.current) setReload((value) => value + 1);
     }
   };
   const send = () => {
@@ -311,9 +399,7 @@ function GroupRoomView({
       .filter((line) => !line.trimStart().startsWith(">"))
       .join("\n");
     return deliver({
-      id: Array.from(crypto.getRandomValues(new Uint32Array(4)), (word) =>
-        word.toString(16).padStart(8, "0"),
-      ).join(""),
+      id: newRoomRequestId(),
       text: message,
       paths: state.attachments,
       mentions: resolveMentions(addressedText, members),
@@ -522,6 +608,8 @@ function GroupRoomView({
         <div className={groupStyles.timelineArea}>
           <div
             className={standalone ? directory.timeline : styles.timeline}
+            role="region"
+            aria-label={group.name}
             ref={list}
             onScroll={(e) => {
               const el = e.currentTarget;
@@ -586,7 +674,9 @@ function GroupRoomView({
                     newMessages > 0 &&
                     index === rows.length - newMessages && (
                       <div className={conversation.date}>
-                        {t("botGroupChat.newMessages", { count: newMessages })}
+                        {t("botGroupChat.newMessages", {
+                          count: newMessages,
+                        })}
                       </div>
                     )}
                   <article
@@ -735,6 +825,7 @@ function GroupRoomView({
                     key={draft.request_id + ":" + draft.agent_id}
                     className={standalone ? directory.message : styles.message}
                     data-role="assistant"
+                    data-streaming=""
                     style={
                       standalone && speaker
                         ? colorStyle(appearanceOf(speaker).color)
@@ -774,7 +865,11 @@ function GroupRoomView({
                             : directory.transparent
                         }
                       >
-                        <LazyMarkdown content={draft.text} isStreaming />
+                        {draft.text.trim() ? (
+                          <LazyMarkdown content={draft.text} isStreaming />
+                        ) : (
+                          <Spin size="small" />
+                        )}
                       </div>
                     </div>
                   </article>
@@ -794,6 +889,42 @@ function GroupRoomView({
             </Button>
           )}
         </div>
+        {standalone && goal && goal.status !== "done" && (
+          <div className={groupStyles.goalBar}>
+            <button type="button" onClick={() => setGoalOpen(true)}>
+              <Flag size={15} aria-hidden />
+              <span>{goal.title}</span>
+              <small>
+                {goal.status === "draft"
+                  ? t("octopBot.draft")
+                  : t("botGroupChat.goalProgress", {
+                      done: goal.stages.filter((s) => s.status === "done")
+                        .length,
+                      total: goal.stages.length,
+                    })}
+              </small>
+            </button>
+            {goal.status === "draft" &&
+              goal.criteria.trim() &&
+              goal.stages.length > 0 && (
+                <Button
+                  size="small"
+                  disabled={Boolean(sending || uploading)}
+                  onClick={() =>
+                    void deliver({
+                      id: newRoomRequestId(),
+                      text: t("botGroupChat.activateCommand"),
+                      mentions: [],
+                      paths: [],
+                      fromComposer: false,
+                    })
+                  }
+                >
+                  {t("botGroupChat.activateGoal")}
+                </Button>
+              )}
+          </div>
+        )}
         {guide}
         <div
           className={[

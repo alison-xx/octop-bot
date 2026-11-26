@@ -9,6 +9,9 @@ const api = vi.hoisted(() => ({
   change: vi.fn(),
   account: vi.fn(),
   bridge: null as null | object,
+  toolListener: null as
+    | null
+    | ((event: { kind: string; toolName: string }) => void),
   streamListener: null as null | ((event: { kind: string }) => void),
 }));
 vi.mock("../../../api/modules/botOnboarding", () => ({
@@ -21,6 +24,12 @@ vi.mock("../../../utils/desktopBridge", () => ({
   getDesktopBridge: () => api.bridge,
 }));
 vi.mock("../../Chat/hooks/chatStore", () => ({
+  onToolEvent: (listener: NonNullable<typeof api.toolListener>) => {
+    api.toolListener = listener;
+    return () => {
+      api.toolListener = null;
+    };
+  },
   onStreamEvent: (listener: (event: { kind: string }) => void) => {
     api.streamListener = listener;
     return () => {
@@ -89,6 +98,32 @@ describe("useOnboarding", () => {
     act(() => api.streamListener?.({ kind: "streamEnd" }));
     await waitFor(() => expect(result.current.state?.step).toBe("team_ready"));
     expect(api.streamListener).toBeNull();
+  });
+
+  it("shows the committed team before Chief finishes its reply", async () => {
+    api.read.mockResolvedValue(state({ status: "active", step: "ask" }));
+    const { result } = renderHook(() => useOnboarding(true, 7));
+    await waitFor(() => expect(api.toolListener).not.toBeNull());
+    api.read.mockResolvedValue(state({ status: "active", step: "team_ready" }));
+    act(
+      () =>
+        api.toolListener?.({
+          kind: "toolDone",
+          toolName: "octop_bot_create_team",
+        }),
+    );
+    await waitFor(() => expect(result.current.state?.step).toBe("team_ready"));
+    expect(api.toolListener).toBeNull();
+  });
+
+  it("finds a completed team when the socket misses the creation event", async () => {
+    api.read.mockResolvedValue(state({ status: "active", step: "ask" }));
+    const { result } = renderHook(() => useOnboarding(true, 7));
+    await waitFor(() => expect(result.current.state?.step).toBe("ask"));
+    api.read.mockResolvedValue(state({ status: "active", step: "team_ready" }));
+    await waitFor(() => expect(result.current.state?.step).toBe("team_ready"), {
+      timeout: 4500,
+    });
   });
 
   it("hides the guide when skipping fails to reach the server", async () => {

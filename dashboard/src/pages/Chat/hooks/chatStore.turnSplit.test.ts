@@ -1,3 +1,4 @@
+import { deriveMessageContent } from "../utils/messageContent";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   appendUserMessage,
@@ -9,6 +10,7 @@ import {
   setMessages,
   setSessionTeamRoom,
   sharedTurnBlocksSender,
+  subscribe,
 } from "./chatStore";
 
 const SESSION = "turn-split";
@@ -255,4 +257,48 @@ it("blocks another user while a shared team member is still speaking", async () 
   ).toEqual(["member", "next"]);
   removeSession(session);
   await sent;
+});
+
+it("paints growing answer snapshots after reasoning before the server finishes", async () => {
+  Socket.instances = [];
+  vi.stubGlobal("WebSocket", Socket);
+  const sent = sendTurn(
+    SESSION,
+    "question",
+    "agent",
+    "",
+    undefined,
+    undefined,
+    null,
+    SESSION,
+  );
+  await Promise.resolve();
+  const socket = Socket.instances[0];
+  const paints: string[] = [];
+  const unsubscribe = subscribe(SESSION, () => {
+    const last = getSnapshot(SESSION).messages.at(-1);
+    if (last?.role === "assistant")
+      paints.push(deriveMessageContent(last).textContent);
+  });
+  try {
+    socket.frame({ type: "turn.started", turn_id: "live" });
+    socket.frame({ type: "reasoning", content: "think", turn_id: "live" });
+    socket.frame({ type: "token", content: "First", turn_id: "live" });
+    await vi.waitFor(() => expect(paints).toContain("First"));
+    socket.frame({
+      type: "token",
+      content: "First and second",
+      turn_id: "live",
+    });
+    await vi.waitFor(() => expect(paints).toContain("First and second"));
+    socket.frame({ type: "token", content: " and third", turn_id: "live" });
+    await vi.waitFor(() =>
+      expect(paints).toContain("First and second and third"),
+    );
+  } finally {
+    unsubscribe();
+    socket.frame({ type: "turn.ended", turn_id: "live" });
+    socket.frame({ type: "done" });
+    await sent;
+  }
 });

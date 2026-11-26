@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -15,6 +16,7 @@ import {
 } from "../../api/modules/octopBot";
 import OctopBotPage from "./index";
 import { octopAgentsApi } from "../../api/modules/octopAgents";
+import { ingestHarnessChunk } from "../Chat/hooks/chatStore";
 
 const fixture = vi.hoisted(() => ({ mobile: false }));
 vi.mock("react-i18next", () => {
@@ -37,11 +39,6 @@ vi.mock("../../hooks/useIsMobile", () => ({
   useIsMobile: () => fixture.mobile,
 }));
 vi.mock("./useBotMotion", () => ({ useBotMotion: () => "idle" }));
-vi.mock("../Chat/hooks/chatStore", () => ({
-  onStreamEvent: () => () => {},
-  subscribe: () => () => {},
-  getSnapshot: () => ({ messages: [] }),
-}));
 vi.mock("./BotCharacter", () => ({
   BotCharacter: () => null,
   GroupCharacter: () => null,
@@ -162,12 +159,16 @@ function Location() {
 function CloudRoute() {
   return <output>{useLocation().state?.from}</output>;
 }
-function openDirectory() {
+function openDirectory(path?: string) {
   return render(
     <ConfigProvider theme={{ token: { motion: false } }}>
-      <MemoryRouter initialEntries={["/octop-bot/bots/chief"]}>
+      <MemoryRouter initialEntries={[path ?? "/octop-bot/bots/chief"]}>
+        {path && <Location />}
         <Routes>
-          <Route path="/octop-bot/bots/:agentId" element={<OctopBotPage />} />
+          <Route
+            path="/octop-bot/bots/:agentId/:threadId?"
+            element={<OctopBotPage />}
+          />
           <Route path="/octop-bot/groups/:groupId" element={<OctopBotPage />} />
           <Route path="/octop-bot/cloud" element={<CloudRoute />} />
         </Routes>
@@ -208,6 +209,116 @@ const layoutChanged = (code = "BOT_LAYOUT_CHANGED") =>
   );
 
 describe("directory sections", () => {
+  it("opens the member's existing Octop thread for the current room", async () => {
+    vi.spyOn(octopBotApi, "messages").mockResolvedValue([
+      {
+        role: "assistant",
+        agent_id: "editor",
+        thread_id: "editor-team-thread",
+        text: "Campaign plan",
+        message_id: "m1",
+        request_id: "r1",
+        created_at: 1,
+      },
+    ]);
+    openDirectory("/octop-bot/groups/team");
+    fireEvent.click(await screen.findByText("Editor", { exact: true }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "/octop-bot/bots/editor/editor-team-thread",
+      ),
+    );
+    expect(octopBotApi.messages).toHaveBeenCalledWith("team");
+  });
+  it("shows confirmed team members and groups at tool completion without leaving Chief's thread", async () => {
+    const thread = "chief-building-team";
+    const path = "/octop-bot/bots/chief/" + thread;
+    server.sections[0].collapsed = true;
+    openDirectory(path);
+    await screen.findByRole("button", { name: /Drafts 1/ });
+    const workspace = vi.mocked(octopBotApi.workspace);
+    const stale = structuredClone(server);
+    let finishOld!: (value: BotWorkspace) => void;
+    workspace.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishOld = resolve;
+        }),
+    );
+    fireEvent(document, new Event("visibilitychange"));
+    const before = workspace.mock.calls.length;
+    const tool = (id: string) =>
+      ingestHarnessChunk(
+        thread,
+        {
+          type: "tool_call_chunk",
+          name: "octop_bot_create_team",
+          id,
+          args: "{}",
+        },
+        "chief",
+      );
+    const receipt = (id: string, output: object) =>
+      ingestHarnessChunk(
+        thread,
+        {
+          type: "tool_result",
+          messages: [{ tool_call_id: id, content: JSON.stringify(output) }],
+        },
+        "chief",
+      );
+    act(() => tool("partial"));
+    expect(workspace).toHaveBeenCalledTimes(before);
+    server.bots.push({
+      agent_id: "analyst",
+      name: "Analyst",
+      is_main: false,
+      is_private: false,
+    });
+    act(() =>
+      receipt("partial", { bot_ids: ["analyst"], error: "AGENT_NAME_TAKEN" }),
+    );
+    await screen.findByRole("button", { name: "Analyst" });
+    expect(screen.queryByRole("button", { name: "Launch group" })).toBeNull();
+    server.groups.push({
+      ...server.groups[0],
+      group_id: "launch",
+      name: "Launch group",
+    });
+    server.sections.push({
+      name: "Launch team",
+      items: ["bot:analyst", "group:launch"],
+    });
+    server.revision++;
+    act(() => {
+      tool("team");
+      receipt("team", {
+        group_id: "launch",
+        bot_ids: ["analyst"],
+        section: "Launch team",
+      });
+    });
+    const teamHeader = await screen.findByRole("button", {
+      name: /Launch team 2/,
+    });
+    const ungroupedMember = screen.getByRole("button", { name: "Editor" });
+    expect(
+      teamHeader.compareDocumentPosition(ungroupedMember) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const directory = section("Launch team");
+    expect(directory.getByRole("button", { name: "Analyst" })).toBeVisible();
+    expect(
+      directory.getByRole("button", { name: "Launch group" }),
+    ).toBeVisible();
+    await act(async () => finishOld(stale));
+    expect(screen.getByRole("button", { name: /Launch team 2/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Drafts 1/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent(path);
+  });
   it("confirms deletion of a private Bot, handles errors and opens its protected folder", async () => {
     const remove = vi
       .spyOn(octopAgentsApi, "remove")

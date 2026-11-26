@@ -140,19 +140,17 @@ async def import_template(
             async with semaphore:
                 await workspace.aupload_many([item])
 
+        starters = template.starters
+        prompts = [
+            {"title": {"zh": zh, "en": en}, "prompt": {"zh": zh, "en": en}}
+            for zh, en in zip(starters.zh, starters.en, strict=True)
+        ]
         async with asyncio.TaskGroup() as group:
             for item in files:
                 group.create_task(upload(item))
-        starters = template.starters
-        await apply_workspace_quick_prompts(
-            workspace,
-            [
-                {"title": {"zh": zh, "en": en}, "prompt": {"zh": zh, "en": en}}
-                for zh, en in zip(starters.zh, starters.en, strict=True)
-            ],
-        )
-        if portrait_bytes:
-            await write_workspace_avatar(workspace, portrait_bytes)
+            group.create_task(apply_workspace_quick_prompts(workspace, prompts))
+            if portrait_bytes:
+                group.create_task(write_workspace_avatar(workspace, portrait_bytes))
         # The template is the onboarding: without the marker the harness drops the
         # system prompt and memory and runs the generic first-run interview instead.
         marker = workspace.resolve_path(None, default=BOOTSTRAPPED_MARKER)

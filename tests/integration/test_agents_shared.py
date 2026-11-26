@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from octop.infra.gateway.threads import ThreadRegistry
@@ -92,7 +94,8 @@ async def test_peer_cannot_patch_shared_agent(env) -> None:
     assert response.status_code == 403
 
 
-async def test_peer_cannot_mutate_shared_agent_workspace_or_skills(env) -> None:
+@pytest.fixture
+async def running_shared_agent(env):
     client, owner_auth, peer_auth, agent_id = await _shared_agent(env)
     response = await client.patch(
         f"/api/agents/{agent_id}",
@@ -100,6 +103,18 @@ async def test_peer_cannot_mutate_shared_agent_workspace_or_skills(env) -> None:
         json={"is_shared": True},
     )
     assert response.status_code == 200, response.text
+    # Creating an expert returns before its background runtime has started.
+    async with asyncio.timeout(30):
+        while response.json()["state"] == "starting":
+            await asyncio.sleep(0.05)
+            response = await client.get(f"/api/agents/{agent_id}", headers=owner_auth)
+            assert response.status_code == 200, response.text
+    assert response.json()["state"] == "running", response.text
+    return client, owner_auth, peer_auth, agent_id
+
+
+async def test_peer_cannot_mutate_shared_agent_workspace_or_skills(running_shared_agent) -> None:
+    client, _, peer_auth, agent_id = running_shared_agent
 
     response = await client.put(
         f"/api/agents/{agent_id}/workspace/file",
@@ -145,14 +160,8 @@ async def test_peer_cannot_mutate_shared_agent_workspace_or_skills(env) -> None:
     assert response.status_code == 200, response.text
 
 
-async def test_peer_can_read_shared_agent_inbound_attachment(env) -> None:
-    client, owner_auth, peer_auth, agent_id = await _shared_agent(env)
-    response = await client.patch(
-        f"/api/agents/{agent_id}",
-        headers=owner_auth,
-        json={"is_shared": True},
-    )
-    assert response.status_code == 200, response.text
+async def test_peer_can_read_shared_agent_inbound_attachment(running_shared_agent) -> None:
+    client, owner_auth, peer_auth, agent_id = running_shared_agent
 
     response = await client.put(
         f"/api/agents/{agent_id}/workspace/file",

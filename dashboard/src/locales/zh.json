@@ -152,6 +152,9 @@
     "folderDrop": "群聊仅支持上传文件。请选择文件夹内的文件后重试。",
     "sending": "正在等待群成员回复…",
     "unconfirmed": "尚未确认是否送达",
+    "activateCommand": "激活目标",
+    "activateGoal": "激活并派工",
+    "goalProgress": "已验收 {{done}}/{{total}}",
     "retrySend": "重新发送",
     "retryMember": "请这位成员重试"
   },
@@ -268,6 +271,7 @@
     }
   },
   "botWebLogin": {
+    "unreachable": "暂不可用",
     "notReady": "待开通",
     "checking": "检查中",
     "title": "登录 Octop Bot",

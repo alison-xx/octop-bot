@@ -174,6 +174,52 @@ async def test_chief_gets_the_onboarding_briefing_only_while_asking(env_with_pro
     assert "octop_bot_create_team" not in briefing()
 
 
+async def test_create_team_reuses_owned_members_in_one_call(env_admin_alice):
+    client, server, admin, alice = env_admin_alice
+    chief = await _bot_owner(client, server, admin)
+    foreign = await _bot_owner(client, server, alice)
+    tools, config = _chief(server, chief)
+    team_tool = tools["octop_bot_create_team"]
+    assert team_tool.tool_call_schema.model_json_schema()["properties"]["bots"]["maxItems"] == 3
+    existing = await tools["octop_bot_create"].ainvoke(
+        {"name": "运营主管", "instructions": "统筹运营", "section": "管理层"}, config=config
+    )
+    roster = await tools["octop_bot_roster"].ainvoke({}, config=config)
+    members = {b["agent_id"]: b for b in roster["bots"]}
+    assert foreign not in members
+    assert members[existing]["section"] == "管理层" and members[existing]["can_join_group"]
+    with pytest.raises(OctopError) as error:
+        await team_tool.ainvoke({**TEAM, "existing_bot_ids": [foreign]}, config=config)
+    assert error.value.code.value == "TEAM_MEMBER_INVALID"
+    assert len((await client.get(WORKSPACE, headers=admin)).json()["bots"]) == 2
+
+    team = await team_tool.ainvoke(
+        {**TEAM, "admin": existing, "existing_bot_ids": [existing, existing]}, config=config
+    )
+    assert team["admin_id"] == existing and existing not in team["bot_ids"]
+    assert team["member_ids"] == [existing, *team["bot_ids"]]
+    workspace = (await client.get(WORKSPACE, headers=admin)).json()
+    assert workspace["groups"][0]["member_ids"] == team["member_ids"]
+    sections = {s["name"]: s["items"] for s in workspace["sections"]}
+    assert sections["管理层"] == [f"bot:{existing}"]
+    assert set(sections[team["section"]]) == {
+        f"group:{team['group_id']}",
+        *(f"bot:{i}" for i in team["bot_ids"]),
+    }
+
+    reused = await team_tool.ainvoke(
+        {
+            **TEAM,
+            "team_name": "协作群",
+            "bots": [],
+            "admin": existing,
+            "existing_bot_ids": [existing],
+        },
+        config=config,
+    )
+    assert reused["bot_ids"] == [] and reused["member_ids"] == [existing]
+
+
 async def test_create_team_validates_and_keeps_what_it_made(env_with_provider):
     client, server, auth = env_with_provider
     chief = await _bot_owner(client, server, auth)

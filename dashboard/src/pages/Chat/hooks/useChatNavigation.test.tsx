@@ -228,9 +228,10 @@ describe("useChatNavigation stale thread", () => {
       fetchSessions: vi.fn().mockResolvedValue([recent]),
       refreshAgents: vi.fn().mockResolvedValue(undefined),
     };
-    const render = (id: string) =>
+    const useThreadNavigation = (id: string) =>
       useChatNavigation({ ...options, threadId: id, activeThreadId: id });
-    const open = () => renderHook(render, { initialProps: "older", wrapper });
+    const open = () =>
+      renderHook(useThreadNavigation, { initialProps: "older", wrapper });
     const initial = open();
     await waitFor(() => expect(ensureThreadInList).toHaveBeenCalledTimes(1));
     initial.unmount();

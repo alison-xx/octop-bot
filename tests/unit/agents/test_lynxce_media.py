@@ -319,3 +319,20 @@ def test_chat_model_calls_carry_the_bot_id() -> None:
             "X-Lynxce-Bot-Id": "0W9CAX",
         }
         assert model.provider(None).headers == {"X-Lynxce-App": "octopbot"}
+
+
+def test_cloud_group_uses_direct_answers_unless_reasoning_is_explicit() -> None:
+    from octop.infra.agents.providers.lynxce import CloudAccountModel
+
+    model = CloudAccountModel(1, "conn", "tencent/auto")
+    group = {"source": "octop_bot_group/octop-bot"}
+    key = "octop_reasoning_overrides"
+    assert model.request(group)["configurable"][key] == {
+        "extra_body": {"thinking": {"type": "disabled"}}
+    }
+    explicit = {"extra_body": {"thinking": {"type": "enabled"}}}
+    assert (
+        model.request({**group, "configurable": {key: explicit}})["configurable"][key] == explicit
+    )
+    assert key not in model.request({"source": "dashboard/octop-ws"})["configurable"]
+    assert key not in CloudAccountModel(1, "conn", "other").request(group)["configurable"]

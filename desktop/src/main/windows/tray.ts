@@ -36,7 +36,9 @@ export function trayIconCandidates(input: TrayIconCandidates): string[] {
   }
   if (input.platform !== "win32") return [];
   const bundled = join(input.resourcesDir, "icon.ico");
-  const candidates = input.botOnly ? [join(input.resourcesDir, "bot-icon.ico"), bundled] : [bundled];
+  const candidates = input.botOnly
+    ? [join(input.resourcesDir, "bot-tray.ico"), join(input.resourcesDir, "bot-icon.ico"), join(input.resourcesDir, "bot-icon.png")]
+    : [bundled];
   return input.isPackaged ? [...candidates, input.execPath] : candidates;
 }
 

@@ -1089,7 +1089,7 @@ class AgentManager:
                 await self._seed_expert_template(row, spec.template_name)
             if workspace_initializer is not None:
                 try:
-                    workspace = self._backend_workspace_for_row(row)
+                    workspace = await asyncio.to_thread(self._backend_workspace_for_row, row)
                     await workspace_initializer(row, workspace)
                     row = self._repos.agent_repo.get(agent_id)
                     assert row is not None
@@ -2556,6 +2556,10 @@ class AgentManager:
                 finally:
                     await close_event_stream(chunk_stream)
             self._apply_pending_bootstrap_graph_refresh(agent_id)
+
+    def running_room_agent(self, agent_id: str, thread_id: str) -> HarnessAgent | None:
+        """The harness using this room's workspace while its turn is running."""
+        return self._room_agents.get((agent_id, thread_id))
 
     def cancel_stream(self, agent_id: str, thread_id: str) -> None:
         """Signal octop-harness to stop the active stream for *(agent_id, thread_id)*."""
@@ -4296,7 +4300,9 @@ class AgentManager:
             try:
                 from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
 
-                cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
+                cfg, metadata, tags, user_display = await asyncio.to_thread(
+                    self._agent_runtime_bundle, row
+                )
                 # Team hosts already have AGENTS/SOUL/MEMORY from seed_team_template.
                 if bootstrap_model:
                     # This handle serves workspace/lifecycle requests; only authenticated
@@ -4399,14 +4405,18 @@ class AgentManager:
 
         # Patch config when bootstrap finishes, but defer graph recompile until
         # the in-flight turn has fully drained (sync _init_graph mid-stream segfaults).
-        if not team_host and not agent.is_bootstrapped():
-            agent_id = row.agent_id
+        if team_host:
+            return
+        agent_id = row.agent_id
+        if await asyncio.to_thread(agent.is_bootstrapped):
+            self._bootstrap_known[agent_id] = True
+            return
 
-            def _on_bootstrap_complete() -> None:
-                self._bootstrap_known[agent_id] = True
-                self._mark_bootstrap_graph_refresh_pending(agent_id, agent)
+        def _on_bootstrap_complete() -> None:
+            self._bootstrap_known[agent_id] = True
+            self._mark_bootstrap_graph_refresh_pending(agent_id, agent)
 
-            agent.on_bootstrap_complete = _on_bootstrap_complete
+        agent.on_bootstrap_complete = _on_bootstrap_complete
 
     def _mark_bootstrap_graph_refresh_pending(self, agent_id: str, agent: HarnessAgent) -> None:
         """Record DB-backed config updates; graph rebuild runs on the next turn."""
@@ -4700,7 +4710,9 @@ class AgentManager:
             if self._harness_manager.shared_factory is None:
                 return
             try:
-                cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
+                cfg, metadata, tags, user_display = await asyncio.to_thread(
+                    self._agent_runtime_bundle, row
+                )
                 entry = await self._harness_manager.arebuild_agent(
                     agent_id,
                     cfg,

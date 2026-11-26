@@ -35,6 +35,7 @@ import {
   type BotLayout,
   type BotSection,
   type BotWorkspace,
+  type GroupMessage,
   type WorkspaceBot,
 } from "../../api/modules/octopBot";
 import { octopThreadsApi } from "../../api/modules/octopThreads";
@@ -58,7 +59,13 @@ import AppearanceModal, {
 } from "./AppearancePicker";
 import { ExpertCreateDrawer } from "../Chat/components/ChatNavDrawers";
 import BotQuickCreate from "./BotQuickCreate";
-import { getSnapshot, onStreamEvent, subscribe } from "../Chat/hooks/chatStore";
+import {
+  getSnapshot,
+  invalidateHistory,
+  onStreamEvent,
+  onToolEvent,
+  subscribe,
+} from "../Chat/hooks/chatStore";
 import ManagedDrawer from "../Experts/components/ManagedDrawer";
 import BotChat from "./BotChat";
 import { GroupForm, canInviteBot, type GroupSeed } from "./GroupForms";
@@ -97,6 +104,16 @@ import styles from "./index.module.less";
 import offlineArt from "../../assets/bot/offline.webp";
 
 type Item = DirectoryEntry;
+const directoryTools = new Set([
+  "octop_bot_create_team",
+  "octop_bot_create",
+  "octop_bot_create_group",
+  "octop_bot_sections",
+  "octop_bot_update",
+  "octop_bot_update_group",
+  "octop_bot_set_photo",
+  "octop_bot_delete",
+]);
 const urlFor = (item: Item) =>
   item.bot
     ? BOT_HOME + "/bots/" + encodeURIComponent(item.bot.agent_id)
@@ -208,6 +225,13 @@ export default function OctopBotPage() {
   const layoutBusy = useRef(false);
   const [layoutSaving, setLayoutSaving] = useState(false);
   const contactRequest = useRef(0);
+  const roomHistory = useRef<{ id: string; rows: GroupMessage[] }>();
+  const rememberRoomHistory = useCallback(
+    (id: string, rows: GroupMessage[]) => {
+      roomHistory.current = { id, rows };
+    },
+    [],
+  );
   const version = useRef(0);
   const mounted = useRef(true);
   const refresh = useCallback(async () => {
@@ -238,6 +262,12 @@ export default function OctopBotPage() {
     const unsub = onStreamEvent((event) => {
       if (event.kind === "streamEnd") void refresh();
     });
+    const unsubTools = onToolEvent((event) => {
+      // A partially failed team can still leave real Bots. Read the directory
+      // as soon as the tool finishes, before Chief's next model call.
+      if (event.kind === "toolDone" && directoryTools.has(event.toolName))
+        void refresh();
+    });
     const focus = () => {
       if (document.visibilityState === "visible") void refresh();
     };
@@ -245,28 +275,31 @@ export default function OctopBotPage() {
     return () => {
       mounted.current = false;
       unsub();
+      unsubTools();
       document.removeEventListener("visibilitychange", focus);
     };
   }, [refresh]);
   const hasPreparingBot = workspace?.bots.some((bot) => bot.preparing) ?? false;
   useEffect(() => {
     if (!hasPreparingBot) return;
-    const timer = window.setInterval(() => {
-      void refresh();
-      void refreshAgents({ silent: true, force: true });
+    // A slow directory request must be allowed to finish before the next
+    // refresh supersedes its response.
+    let polling = false;
+    const timer = window.setInterval(async () => {
+      if (polling) return;
+      polling = true;
+      try {
+        await Promise.all([
+          refresh(),
+          refreshAgents({ silent: true, force: true }),
+        ]);
+      } finally {
+        polling = false;
+      }
     }, 1500);
     return () => window.clearInterval(timer);
   }, [hasPreparingBot, refresh, refreshAgents]);
 
-  const workspaceRef = useRef(workspace);
-  workspaceRef.current = workspace;
-  const activityNameOf = useCallback((kind: "bot" | "group", id: string) => {
-    const ws = workspaceRef.current;
-    if (!ws) return null;
-    return kind === "bot"
-      ? ws.bots.find((b) => b.agent_id === id)?.name ?? null
-      : ws.groups.find((g) => g.group_id === id)?.name ?? null;
-  }, []);
   const openFromNotice = useCallback(
     (target: string) => {
       const [kind, id] = [
@@ -291,7 +324,7 @@ export default function OctopBotPage() {
       : agentId
       ? "bot:" + agentId
       : null,
-    nameOf: activityNameOf,
+    workspace,
     onOpen: openFromNotice,
   });
   const refreshActivity = botActivity.refresh;
@@ -316,6 +349,10 @@ export default function OctopBotPage() {
         prev.includes(openedKey) ? prev : [...prev, openedKey],
       );
   }, [openedKey]);
+  const readyGroupId = guideTeam?.group_id;
+  useEffect(() => {
+    if (readyGroupId) void refresh();
+  }, [readyGroupId, refresh]);
   const prefilledGroup = useRef<string>();
   useEffect(() => {
     if (!guideTeam || !user || groupId !== guideTeam.group_id) return;
@@ -342,7 +379,10 @@ export default function OctopBotPage() {
   );
   const askChief = useCallback(
     (text: string) =>
-      navigate(location.pathname, { replace: true, state: { autoSend: text } }),
+      navigate(location.pathname, {
+        replace: true,
+        state: { autoSend: text, onboardingTeam: true },
+      }),
     [navigate, location.pathname],
   );
   const skipOnboarding = useCallback(() => {
@@ -725,6 +765,31 @@ export default function OctopBotPage() {
       (item.group && item.group.group_id === groupId)
     )
       return;
+    if (item.bot && selectedGroup?.member_ids.includes(item.bot.agent_id)) {
+      const id = selectedGroup.group_id;
+      const openMember = (rows: GroupMessage[]) => {
+        if (!mounted.current || request !== contactRequest.current) return;
+        const reply = rows
+          .slice()
+          .reverse()
+          .find((row) => row.agent_id === item.bot!.agent_id && row.thread_id);
+        if (reply?.thread_id) invalidateHistory(reply.thread_id);
+        jump(
+          urlFor(item) +
+            (reply?.thread_id ? "/" + encodeURIComponent(reply.thread_id) : ""),
+        );
+      };
+      if (roomHistory.current?.id === id) openMember(roomHistory.current.rows);
+      else
+        void octopBotApi
+          .messages(id)
+          .then(openMember)
+          .catch((e) => {
+            if (mounted.current && request === contactRequest.current)
+              setError(apiErrorMessage(e, t("octopBot.failed"), t));
+          });
+      return;
+    }
     if (item.bot && agentId === item.bot.agent_id && !threadId) {
       void octopThreadsApi
         .list(agentId)
@@ -957,6 +1022,16 @@ export default function OctopBotPage() {
         )}
       </section>
     );
+  const namedSections = sections.map((s, index) =>
+    renderSection(
+      s.name,
+      s.items.flatMap((key) => {
+        const item = byKey.get(key);
+        return item && key !== chiefKey ? [item] : [];
+      }),
+      { section: s, index },
+    ),
+  );
   const layoutAlert = layoutError && dialog !== "section" && (
     <Alert
       type="error"
@@ -1149,6 +1224,7 @@ export default function OctopBotPage() {
                   it.group && !pinned.includes(it.key) && !assigned.has(it.key),
               ),
             )}
+            {namedSections}
             {renderSection(
               t("botDirectory.people"),
               all.filter(
@@ -1200,17 +1276,8 @@ export default function OctopBotPage() {
               t("octopBot.groups"),
               all.filter((it) => it.group && !assigned.has(it.key)),
             )}
+            {namedSections}
           </>
-        )}
-        {sections.map((s, index) =>
-          renderSection(
-            s.name,
-            s.items.flatMap((key) => {
-              const item = byKey.get(key);
-              return item && key !== chiefKey ? [item] : [];
-            }),
-            { section: s, index },
-          ),
         )}
         {standalone && !compactDirectory && (
           <MoreUnreads watch={botActivity.unread} />
@@ -1388,9 +1455,11 @@ export default function OctopBotPage() {
               onOpenList={listButton}
               onOpenSettings={() => setDialog("editGroup")}
               onNewGroup={() => startGroupWithMembers(selectedGroup)}
-              onMember={(id) =>
-                jump(BOT_HOME + "/bots/" + encodeURIComponent(id))
-              }
+              onTimeline={rememberRoomHistory}
+              onMember={(id) => {
+                const item = byKey.get("bot:" + id);
+                if (item) pickContact(item);
+              }}
               onPreview={rememberPreview}
               {...(guideTeam?.group_id === selectedGroup.group_id && {
                 guide: (

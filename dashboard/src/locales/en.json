@@ -152,6 +152,9 @@
     "folderDrop": "Only files can be attached. Select the files inside the folder and try again.",
     "sending": "Waiting for the group to reply…",
     "unconfirmed": "Delivery has not been confirmed.",
+    "activateCommand": "Activate goal",
+    "activateGoal": "Activate and assign",
+    "goalProgress": "{{done}}/{{total}} accepted",
     "retrySend": "Resend",
     "retryMember": "Ask this member again"
   },
@@ -268,6 +271,7 @@
     }
   },
   "botWebLogin": {
+    "unreachable": "Unavailable",
     "notReady": "Unavailable",
     "checking": "Checking",
     "title": "Sign in to Octop Bot",

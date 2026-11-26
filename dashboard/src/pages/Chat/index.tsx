@@ -668,10 +668,7 @@ function ChatPageInner() {
     !activeThreadId || (!!composerSession && composerSession.owned !== false),
   );
 
-  const personalModel =
-    focused && !isManagedChat && account.status?.connected
-      ? account.status.selected_model
-      : null;
+  const personalModel = !isManagedChat ? account.workspaceModel : null;
   const selectedModel = personalModel ? null : sharedSelection;
   const defaultModel = personalModel
     ? null
@@ -963,10 +960,22 @@ function ChatPageInner() {
     if (!autoSend || !canAutoSend) return;
     autoSentFor.current = location.key;
     navigate(location.pathname, { replace: true, state: {} });
-    wrappedHandleSend(autoSend);
+    // Building the initial roster is a tool call. Keep explicit reasoning preferences.
+    const directTeamSetup =
+      location.state?.onboardingTeam === true &&
+      reasoningMode === "auto" &&
+      !reasoningEffort;
+    wrappedHandleSend(
+      autoSend,
+      undefined,
+      directTeamSetup ? { reasoningMode: "disabled" } : undefined,
+    );
   }, [
     autoSend,
     canAutoSend,
+    location.state,
+    reasoningMode,
+    reasoningEffort,
     wrappedHandleSend,
     navigate,
     location.key,
@@ -2208,7 +2217,7 @@ function ChatPageInner() {
                       name: personalModel,
                       onOpen: () =>
                         navigate(BOT_SETTINGS, {
-                          state: { source: "lynxce", from: location.pathname },
+                          state: { from: location.pathname },
                         }),
                     }
                   : undefined

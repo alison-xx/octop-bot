@@ -48,6 +48,62 @@ def gateway(services, processor):
 
 
 @pytest.mark.asyncio
+async def test_room_reasoning_progress_precedes_text_and_is_not_archived(room):
+    services, user, group = room
+    repo = services.repos.bot_group_repo
+    seen = []
+
+    async def run(msg):
+        yield {"type": "reasoning", "content": "internal reasoning"}
+        seen.extend(repo.drafts(group.group_id, user.id))
+        yield {"type": "token", "content": "**"}
+        assert repo.drafts(group.group_id, user.id)[0]["text"] == _text("thinking", user)
+        yield {"type": "token", "content": "Campaign idea**"}
+        seen.extend(repo.drafts(group.group_id, user.id))
+
+    result = await send_message(
+        services,
+        gateway(services, run),
+        user,
+        group.group_id,
+        text="Plan an event",
+        mention_ids=[],
+        request_id="progress",
+    )
+    assert [r["text"] for r in seen] == [_text("thinking", user), "**Campaign idea**"]
+    assert result[-1].text == "**Campaign idea**"
+
+
+@pytest.mark.asyncio
+async def test_proposed_goal_mentions_wait_for_activation(room):
+    services, user, group = room
+    goal = Goal(title="Launch", criteria="Publish the plan", stages=[])
+
+    async def run(msg):
+        assert msg.tenant_id == group.admin_id
+        yield {
+            "type": "token",
+            "content": "After approval @Editor prepares copy.\n```octop-goal\n"
+            + goal.model_dump_json()
+            + "\n```",
+        }
+
+    rows = await send_message(
+        services,
+        gateway(services, run),
+        user,
+        group.group_id,
+        text="Plan an event",
+        mention_ids=[],
+        request_id="proposal",
+    )
+    assert [(row.role, row.agent_id) for row in rows] == [
+        ("user", None),
+        ("assistant", group.admin_id),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_mentions_start_in_parallel_and_replay_without_repeat(room):
     services, user, group = room
     arrived = set()
@@ -311,7 +367,8 @@ def test_room_artifacts_stay_in_authorized_room_and_member_memory_is_off(room):
 
 
 @pytest.mark.asyncio
-async def test_confirmed_goal_advances_only_after_admin_accepts_member_evidence(room):
+@pytest.mark.parametrize("from_chat", [True, False])
+async def test_confirmed_goal_advances_only_after_admin_accepts_member_evidence(room, from_chat):
     from octop.infra.bot_groups.service import get_goal
     from octop.infra.bot_groups.turns import run_confirmed_goal
 
@@ -324,7 +381,7 @@ async def test_confirmed_goal_advances_only_after_admin_accepts_member_evidence(
                 {"title": "First", "assignee_id": "a"},
                 {"title": "Second", "assignee_id": "b"},
             ],
-            "status": "active",
+            "status": "draft" if from_chat else "active",
         }
     )
     set_goal(services, user.id, group.group_id, goal)
@@ -352,7 +409,22 @@ async def test_confirmed_goal_advances_only_after_admin_accepts_member_evidence(
         }
 
     runtime = gateway(services, processor)
-    await run_confirmed_goal(services, runtime, user, group.group_id, goal)
+
+    async def activate():
+        if from_chat:
+            return await send_message(
+                services,
+                runtime,
+                user,
+                group.group_id,
+                text="激活",
+                mention_ids=[],
+                request_id="owner-activation",
+                owner_commands=True,
+            )
+        return await run_confirmed_goal(services, runtime, user, group.group_id, goal)
+
+    await activate()
     assert calls == ["a", "c", "b", "c"]
     history = list_messages(services, user.id, group.group_id)
     assert [(m.stage_number, m.is_wrap_up) for m in history if m.role == "assistant"] == [
@@ -363,7 +435,7 @@ async def test_confirmed_goal_advances_only_after_admin_accepts_member_evidence(
     ]
     assert get_goal(services, user.id, group.group_id).status == "done"
     assert not services.repos.bot_group_repo.drafts(group.group_id, user.id)
-    await run_confirmed_goal(services, runtime, user, group.group_id, goal)
+    await activate()
     assert len(calls) == 4
 
 
@@ -416,7 +488,7 @@ async def test_scoped_hitl_keeps_agent_until_approved_and_routes_cancellation(ro
 
 @pytest.mark.asyncio
 async def test_member_group_thread_is_named_listed_on_request_and_shows_the_room_request(room):
-    from octop.infra.bot_groups.turns import room_request, show_room_requests
+    from octop.infra.bot_groups.turns import room_request, show_room_history
 
     services, user, group = room
     prompts = []
@@ -452,9 +524,18 @@ async def test_member_group_thread_is_named_listed_on_request_and_shows_the_room
         {"role": "user", "content": [{"type": "text", "text": prompts[0]}]},
         {"role": "assistant", "content": [{"type": "text", "text": "done"}]},
     ]
-    show_room_requests(messages)
+    show_room_history(messages, services.repos.bot_group_repo, thread_id)
     assert messages[0]["content"] == [{"type": "text", "text": "@Editor 写提纲"}]
     assert messages[1]["content"] == [{"type": "text", "text": "done"}]
+
+    goal_block = '\n```octop-goal\n{"title":"test","criteria":"","stages":[]}\n```'
+    for raw, expected in [
+        ("done" + goal_block, "done"),
+        ("unpublished" + goal_block, "unpublished" + goal_block),
+    ]:
+        messages = [{"role": "assistant", "content": [{"type": "text", "text": raw}]}]
+        show_room_history(messages, services.repos.bot_group_repo, thread_id)
+        assert messages[0]["content"] == [{"type": "text", "text": expected}]
 
 
 def _turns(calls):

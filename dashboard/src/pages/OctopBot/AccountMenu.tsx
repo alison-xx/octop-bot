@@ -31,8 +31,8 @@ import { botCloudApi } from "../../api/modules/botCloud";
 import lynxceLogo from "../../assets/providers/lynxce.png";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
 import styles from "./accountMenu.module.less";
-import { CreditsAmount, useRecharge } from "./CreditsWidgets";
-import { accountCenterUrl } from "./botWebsite";
+import { CreditsAmount } from "./CreditsWidgets";
+import { accountCenterUrl, OCTOP_BOT_SITE } from "./botWebsite";
 import {
   formatCredits,
   resetCredits,
@@ -105,7 +105,6 @@ export default function AccountMenu({
   const desktop = isBotOnlyDesktop();
   const lynxce = desktop ? Boolean(lynxceName) : true;
   const [open, setOpen] = useState(false);
-  const { recharge, opening } = useRecharge();
   const name =
     lynxceName ||
     (desktop
@@ -241,11 +240,10 @@ export default function AccountMenu({
         <div className={styles.cardActions}>
           <Button
             type="primary"
-            loading={opening}
-            onClick={() => {
-              setOpen(false);
-              void recharge();
-            }}
+            href={`${OCTOP_BOT_SITE}/pricing.html`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setOpen(false)}
           >
             {t("botCredits.recharge")}
           </Button>

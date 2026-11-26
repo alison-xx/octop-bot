@@ -43,6 +43,7 @@ module.exports = {
   extraResources: [
     { from: join(staging, "portable"), to: "sidecar", filter: ["**/*", "!**/__pycache__/**", "!**/*.pyc"] },
     ...(process.platform === "darwin" ? [] : [{ from: join(staging, "bot-icon.ico"), to: "bot-icon.ico" }]),
+    ...(process.platform === "win32" ? [{ from: join(__dirname, "resources/bot-tray.ico"), to: "bot-tray.ico" }] : []),
     { from: join(staging, "bot-icon.png"), to: "bot-icon.png" },
   ],
   win: {

@@ -81,6 +81,14 @@ describe("workspace model routing", () => {
         personal ? undefined : "studio/queued",
       );
       expect(sendMessage.mock.calls[1][9]?.skills).toEqual(["proofread"]);
+      act(() => {
+        result.current.handleSend("build my team", undefined, {
+          reasoningMode: "disabled",
+        });
+        result.current.handleSend("my next question");
+      });
+      expect(sendMessage.mock.calls[2][10]).toBe("disabled");
+      expect(sendMessage.mock.calls[3][10]).toBe("auto");
     },
   );
 });

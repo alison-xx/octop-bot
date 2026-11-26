@@ -163,13 +163,19 @@ async def delete_workspace_avatar(workspace: WorkspaceAvatarIO, *, keep: str | N
 
 
 async def _delete_avatar_files(workspace: WorkspaceAvatarIO, *, keep: str | None) -> None:
-    for relpath in _ALL_AVATAR_RELPATHS:
-        if relpath == keep:
-            continue
-        try:
+    async def remove(relpath: str) -> None:
+        with suppress(OSError, FileNotFoundError):
             await workspace.adelete(relpath)
-        except (OSError, FileNotFoundError):
-            continue
+
+    # Each old format is a different key in an object store. Keep the upload lock
+    # until every delete finishes, without a round trip per key in sequence.
+    results = await asyncio.gather(
+        *(remove(relpath) for relpath in _ALL_AVATAR_RELPATHS if relpath != keep),
+        return_exceptions=True,
+    )
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
 
 
 async def copy_workspace_avatar_to_dir(workspace: WorkspaceAvatarIO, dest: Path) -> str | None:

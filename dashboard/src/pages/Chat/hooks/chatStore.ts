@@ -1839,53 +1839,32 @@ function appendToTextBubble(
   state: SessionStreamState,
   idx: number,
   content: string,
-  forceStatus?: "done" | "streaming",
+  status: "done" | "streaming",
+  snapshot = false,
 ): void {
   const target = state.messages[idx];
-  if (!target) return;
-  const prev = target.content || "";
-  if (prev && (content === prev || content.startsWith(prev))) {
-    if (content === prev && !forceStatus) return;
-    state.messages = [
-      ...state.messages.slice(0, idx),
-      {
-        ...target,
-        content,
-        status: forceStatus ?? target.status,
-      },
-      ...state.messages.slice(idx + 1),
-    ];
-    return;
-  }
-  const nextContent = prev + content;
-  const nextStatus =
-    forceStatus ?? (target.status === "done" ? "streaming" : target.status);
-  if (target.contentBlocks && target.contentBlocks.length > 0) {
-    const blocks = [...target.contentBlocks];
-    const lastBlock = blocks[blocks.length - 1];
-    if (lastBlock.type === "text") {
-      blocks[blocks.length - 1] = {
-        ...lastBlock,
-        content: lastBlock.content + content,
-      };
-    } else {
-      blocks.push({ type: "text", content });
-    }
-    state.messages = [
-      ...state.messages.slice(0, idx),
-      {
-        ...target,
-        content: nextContent,
-        contentBlocks: blocks,
-        status: nextStatus,
-      },
-      ...state.messages.slice(idx + 1),
-    ];
-    return;
+  const previous = target.content || "";
+  // LangGraph can replay a complete AIMessage after incremental tokens.
+  const next =
+    snapshot || content.startsWith(previous) ? content : previous + content;
+  if (next === previous && status === target.status) return;
+  let blocks = target.contentBlocks;
+  if (blocks?.length && next !== previous) {
+    // The Bot renders these blocks in preference to the flat text. Update both
+    // on cumulative frames as well as ordinary deltas.
+    const grows = next.startsWith(previous);
+    blocks = grows
+      ? [...blocks]
+      : blocks.filter((block) => block.type !== "text");
+    const delta = grows ? next.slice(previous.length) : next;
+    const last = blocks.at(-1);
+    if (last?.type === "text")
+      blocks[blocks.length - 1] = { ...last, content: last.content + delta };
+    else blocks.push({ type: "text", content: delta });
   }
   state.messages = [
     ...state.messages.slice(0, idx),
-    { ...target, content: nextContent, status: nextStatus },
+    { ...target, content: next, contentBlocks: blocks, status },
     ...state.messages.slice(idx + 1),
   ];
 }
@@ -1944,7 +1923,7 @@ function appendStreamingToken(
         state,
         wrapIdx,
         content,
-        snapshot ? "done" : undefined,
+        snapshot ? "done" : "streaming",
       );
       return;
     }
@@ -2018,14 +1997,7 @@ function appendStreamingToken(
         ? content
         : prev
       : content;
-    const snapStatus = keepLive ? "streaming" : "done";
-    if (next !== prev || target.status !== snapStatus) {
-      state.messages = [
-        ...state.messages.slice(0, idx),
-        { ...target, content: next, status: snapStatus },
-        ...state.messages.slice(idx + 1),
-      ];
-    }
+    appendToTextBubble(state, idx, next, keepLive ? "streaming" : "done", true);
     return;
   }
   if (snapshot) {
@@ -2075,51 +2047,7 @@ function appendStreamingToken(
     return;
   }
   if (target) {
-    const prev = target.content || "";
-    // LangGraph may re-emit the completed AIMessage after incremental tokens.
-    if (prev && (content === prev || content.startsWith(prev))) {
-      if (content === prev && target.status === "streaming") return;
-      state.messages = [
-        ...state.messages.slice(0, idx),
-        {
-          ...target,
-          content,
-          status: target.status === "done" ? "streaming" : target.status,
-        },
-        ...state.messages.slice(idx + 1),
-      ];
-      return;
-    }
-    const nextContent = prev + content;
-    const nextStatus = target.status === "done" ? "streaming" : target.status;
-    if (target.contentBlocks && target.contentBlocks.length > 0) {
-      const blocks = [...target.contentBlocks];
-      const lastBlock = blocks[blocks.length - 1];
-      if (lastBlock.type === "text") {
-        blocks[blocks.length - 1] = {
-          ...lastBlock,
-          content: lastBlock.content + content,
-        };
-      } else {
-        blocks.push({ type: "text", content });
-      }
-      state.messages = [
-        ...state.messages.slice(0, idx),
-        {
-          ...target,
-          content: nextContent,
-          contentBlocks: blocks,
-          status: nextStatus,
-        },
-        ...state.messages.slice(idx + 1),
-      ];
-      return;
-    }
-    state.messages = [
-      ...state.messages.slice(0, idx),
-      { ...target, content: nextContent, status: nextStatus },
-      ...state.messages.slice(idx + 1),
-    ];
+    appendToTextBubble(state, idx, content, "streaming");
     return;
   }
   sealPriorStreamingAssistants(state, speaker);
@@ -2182,7 +2110,11 @@ function appendStreamingReasoning(
   }
   if (last && turnId && !last.turnId) last.turnId = turnId;
   if (last && last.role === "assistant" && !last.toolData) {
-    const blocks = last.contentBlocks ? [...last.contentBlocks] : [];
+    const blocks: NonNullable<ChatMessage["contentBlocks"]> = last.contentBlocks
+      ? [...last.contentBlocks]
+      : last.content
+      ? [{ type: "text", content: last.content }]
+      : [];
     if (blocks.length > 0 && blocks[blocks.length - 1].type === "thinking") {
       const tail = blocks[blocks.length - 1];
       blocks[blocks.length - 1] = { ...tail, content: tail.content + content };

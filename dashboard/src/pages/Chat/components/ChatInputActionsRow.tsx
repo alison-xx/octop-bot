@@ -1601,8 +1601,10 @@ export default function ChatInputActionsRow({
               type="button"
               className={botStyles.model}
               onClick={workspaceModel.onOpen}
-              title={t("botClient.lynxce.source") + " · " + workspaceModel.name}
-              aria-label={t("botClient.lynxce.manage")}
+              title={workspaceModel.name}
+              aria-label={
+                t("botClient.profile.model") + " · " + workspaceModel.name
+              }
             >
               <ModelName id={workspaceModel.name} size={14} />
               <ChevronDown size={12} />

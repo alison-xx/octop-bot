@@ -44,6 +44,18 @@ class BotGroupRepo:
             ).fetchone()
         return dict(row) if row else None
 
+    def published_reply(
+        self, thread_id: str, raw: str, visible: str, timestamp_ms: int
+    ) -> str | None:
+        """Resolve a member checkpoint's Goal-bearing answer to its published room text."""
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT text FROM bot_group_messages WHERE thread_id=? AND role='assistant' "
+                "AND text IN (?,?) ORDER BY abs(created_at-?),id DESC LIMIT 1",
+                (thread_id, raw, visible, timestamp_ms // 1000),
+            ).fetchone()
+        return str(row["text"]) if row else None
+
     def create(
         self,
         user_id: int,
@@ -303,7 +315,27 @@ class BotGroupRepo:
                 is not None
             )
 
-    def claim(self, group_id: str, request_id: str, input_json: str, text: str, token: str) -> str:
+    def was_goal_run(self, group_id: str, request_id: str) -> bool | None:
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT input_json FROM bot_group_turns WHERE group_id=? AND request_id=?",
+                (group_id, request_id),
+            ).fetchone()
+        if row is None:
+            return None
+        inputs = json.loads(row["input_json"])
+        return len(inputs) > 2 and inputs[2] is True
+
+    def claim(
+        self,
+        group_id: str,
+        request_id: str,
+        input_json: str,
+        text: str,
+        token: str,
+        *,
+        activate: tuple[int, str, str] | None = None,
+    ) -> str:
         ts = now_ts()
         deadline = ts + self.LEASE_SECONDS
         with self._db.transaction() as conn:
@@ -313,6 +345,17 @@ class BotGroupRepo:
                 (group_id, request_id, input_json, token, deadline),
             ).rowcount
             if created:
+                if activate is not None:
+                    owner, draft, approved = activate
+                    if not conn.execute(
+                        "UPDATE bot_groups SET goal=? WHERE group_id=? AND user_id=? AND goal=?",
+                        (approved, group_id, owner, draft),
+                    ).rowcount:
+                        conn.execute(
+                            "DELETE FROM bot_group_turns WHERE group_id=? AND request_id=?",
+                            (group_id, request_id),
+                        )
+                        return "conflict"
                 conn.execute(
                     "INSERT INTO bot_group_messages(message_id,group_id,request_id,slot,role,text,"
                     "created_at) VALUES(?,?,?,'user','user',?,?)",

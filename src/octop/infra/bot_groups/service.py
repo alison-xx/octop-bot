@@ -16,6 +16,7 @@ from octop.infra.errors import ErrorCode, OctopError
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 ReplyMode = Literal["admin_first", "all_members"]
 GoalStatus = Literal["draft", "active", "done"]
+MAX_GROUP_MEMBERS = 64
 
 
 class Group(BaseModel):
@@ -110,7 +111,7 @@ def _roster(
     services: SharedServices, user_id: int, admin_id: str, member_ids: list[str]
 ) -> list[str]:
     members = list(dict.fromkeys([admin_id, *member_ids]))
-    if len(members) > 64:
+    if len(members) > MAX_GROUP_MEMBERS:
         raise OctopError.localized(ErrorCode.TEAM_MEMBER_INVALID)
     eligible_members(services, user_id, members)
     return members

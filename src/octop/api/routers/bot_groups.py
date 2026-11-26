@@ -215,7 +215,9 @@ async def post(
     server: OctopServer = Depends(get_server),
 ) -> list[Message]:
     assert server.app_runtime is not None
-    return await send_message(services, server.app_runtime, user, group_id, **body.model_dump())
+    return await send_message(
+        services, server.app_runtime, user, group_id, owner_commands=True, **body.model_dump()
+    )
 
 
 @router.get("/{group_id}/goal", summary="Read the group Goal and evidence")

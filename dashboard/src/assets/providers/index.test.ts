@@ -4,16 +4,15 @@ import iflytekIcon from "./iflytek.svg";
 import magpieIcon from "./magpie.svg";
 import lynxceIcon from "./lynxce.png";
 import deepseekIcon from "./deepseek.png";
-import genericIcon from "./custom-provider.svg";
 import { getProviderLogo } from "./index";
 
 describe("getProviderLogo", () => {
-  it("uses the generic service icon on Bot screens and retains the regular provider catalog", () => {
+  it("shows the DeepSeek whale in Bot settings and the provider catalog", () => {
     const url = window.location.href;
     try {
       window.history.replaceState({}, "", "/octop-bot/settings");
-      expect(getProviderLogo("deepseek")).toBe(genericIcon);
-      expect(getProviderLogo("deepseek-chat")).toBe(genericIcon);
+      expect(getProviderLogo("deepseek")).toBe(deepseekIcon);
+      expect(getProviderLogo("deepseek-chat")).toBe(deepseekIcon);
       window.history.replaceState({}, "", "/settings");
       expect(getProviderLogo("deepseek")).toBe(deepseekIcon);
     } finally {

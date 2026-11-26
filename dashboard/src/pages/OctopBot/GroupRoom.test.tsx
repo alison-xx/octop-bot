@@ -39,10 +39,11 @@ vi.mock("../../api/modules/octopBot", () => ({
   },
 }));
 
-function group(id = "room") {
+function group(id = "room", title?: string) {
   return (
     <MemoryRouter>
       <GroupRoom
+        title={title}
         group={{
           group_id: id,
           name: "Editorial",
@@ -86,6 +87,50 @@ describe("Octop Bot group timeline", () => {
     vi.mocked(octopBotApi.messages).mockResolvedValue([sample]);
     vi.mocked(octopBotApi.goal).mockResolvedValue(null);
     vi.mocked(octopBotApi.drafts).mockResolvedValue([]);
+  });
+  it("shows live text while the Goal and timeline requests are still pending", async () => {
+    const pending = deferred<never>();
+    vi.mocked(octopBotApi.messages).mockReturnValue(pending.promise);
+    vi.mocked(octopBotApi.goal).mockReturnValue(pending.promise);
+    vi.mocked(octopBotApi.drafts).mockResolvedValue([
+      { agent_id: "writer", request_id: "r1", text: "First streamed sentence" },
+    ]);
+    room("live-before-history");
+    expect(await screen.findByText("First streamed sentence")).toBeVisible();
+  });
+  it("activates the saved plan from the group without consuming the next chat draft", async () => {
+    vi.mocked(octopBotApi.goal).mockResolvedValue({
+      title: "Website",
+      criteria: "A working home page",
+      status: "draft",
+      stages: [
+        {
+          title: "Build the home page",
+          assignee_id: "writer",
+          status: "pending",
+          evidence: "",
+        },
+      ],
+    });
+    vi.mocked(octopBotApi.send).mockResolvedValue([]);
+    render(group("website", "Website team"));
+    const start = await screen.findByRole("button", {
+      name: "botGroupChat.activateGoal",
+    });
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "A later message" },
+    });
+    fireEvent.click(start);
+    await waitFor(() =>
+      expect(octopBotApi.send).toHaveBeenCalledWith(
+        "website",
+        "botGroupChat.activateCommand",
+        [],
+        expect.any(String),
+        [],
+      ),
+    );
+    expect(screen.getByRole("textbox")).toHaveValue("A later message");
   });
   it("sends a group upload without a text caption", async () => {
     const path = "inbound/upload1/report.txt";
@@ -136,6 +181,53 @@ describe("Octop Bot group timeline", () => {
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
     expect(screen.getAllByText("Working draft")).toHaveLength(1);
   });
+  it.each(["", "My next draft"])(
+    "reconciles a lost send response with group history and preserves draft %j",
+    async (nextDraft) => {
+      const history = deferred<GroupMessage[]>();
+      let requestId = "";
+      vi.mocked(octopBotApi.send).mockImplementation(
+        async (_id, _text, _to, id) => {
+          requestId = id;
+          throw new TypeError("Failed to fetch");
+        },
+      );
+      vi.mocked(octopBotApi.messages).mockImplementation(async () =>
+        requestId ? history.promise : [sample],
+      );
+      room("lost-response-" + nextDraft);
+      await screen.findByText("Working draft");
+      const input = screen.getByRole("textbox");
+      fireEvent.change(input, { target: { value: "@Writer hello" } });
+      fireEvent.click(screen.getByRole("button", { name: "octopBot.send" }));
+      await screen.findByRole("button", { name: "botGroupChat.retrySend" });
+      expect(input).toHaveValue("@Writer hello");
+      if (nextDraft) fireEvent.change(input, { target: { value: nextDraft } });
+      await act(async () =>
+        history.resolve([
+          {
+            ...sample,
+            message_id: "u",
+            role: "user",
+            text: "@Writer hello",
+            request_id: requestId,
+          },
+          {
+            ...sample,
+            message_id: "a",
+            text: "Already received",
+            request_id: requestId,
+          },
+        ]),
+      );
+      await screen.findByText("Already received");
+      expect(
+        screen.queryByRole("button", { name: "botGroupChat.retrySend" }),
+      ).toBeNull();
+      expect(input).toHaveValue(nextDraft);
+      expect(octopBotApi.send).toHaveBeenCalledOnce();
+    },
+  );
   it("keeps text and an in-flight attachment with their group while switching", async () => {
     const pending = deferred<{ name: string; path: string; is_dir: boolean }>();
     vi.mocked(octopBotApi.upload).mockReturnValue(pending.promise);
@@ -305,7 +397,7 @@ describe("Octop Bot group timeline", () => {
         ]);
       const view = room("scroll");
       await act(async () => {});
-      const timeline = view.container.querySelector("article")!.parentElement!;
+      const timeline = view.getByRole("region", { name: "Editorial" });
       Object.defineProperties(timeline, {
         scrollHeight: { value: 900, configurable: true },
         clientHeight: { value: 300, configurable: true },

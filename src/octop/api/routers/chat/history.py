@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 from pathlib import Path
@@ -31,7 +32,7 @@ from octop.infra.agents.threads.artifact import thread_artifacts_payload
 from octop.infra.agents.threads.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
 from octop.infra.agents.threads.fork import fork_dashboard_thread
 from octop.infra.agents.workspace.dir import agent_facing_workspace_dir_from_config
-from octop.infra.bot_groups.turns import show_room_requests
+from octop.infra.bot_groups.turns import show_room_history
 from octop.infra.bot_tasks.store import TaskStore
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
@@ -554,7 +555,9 @@ async def get_thread_history(
     effective_uid = as_user if as_user is not None else user.id
     _attach_message_authors(server, messages, owner_user_id=row.user_id)
     if getattr(row, "channel_type", None) == ThreadRegistry.CHANNEL_BOT_GROUP:
-        show_room_requests(messages)
+        await asyncio.to_thread(
+            show_room_history, messages, server.services.repos.bot_group_repo, thread_id
+        )
     hitl_pending = pending_hitl_payload(
         server.app_runtime.gateway.processor.hitl_coordinator.store,
         thread_id=thread_id,
