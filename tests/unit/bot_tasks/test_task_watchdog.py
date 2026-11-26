@@ -80,6 +80,38 @@ def test_legacy_task_past_step_limit_can_finish_writing_and_deliver(
     assert store.running("thr1").deliverables[-1].name == page.name
 
 
+def test_duplicate_edit_recovers_by_narrowing_the_target(monkeypatch, tmp_path):
+    from deepagents.backends.filesystem import FilesystemBackend
+
+    middleware, _store, _task = _setup(monkeypatch)
+    file = tmp_path / "index.html"
+    file.write_text("first: <b>38%</b>\nsecond: <b>38%</b>")
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=True)
+    request = _call("edit_file")
+    request.tool_call["args"] = {
+        "file_path": "/index.html",
+        "old_string": "<b>38%</b>",
+        "new_string": "<b>39%</b>",
+    }
+
+    def edit(call):
+        result = backend.edit(**call.tool_call["args"])
+        return ToolMessage(
+            content=result.error or "Edited",
+            status="error" if result.error else "success",
+            tool_call_id="c1",
+        )
+
+    result = middleware.wrap_tool_call(request, edit)
+    assert result.status == "error" and "read the target file" in result.content
+    assert file.read_text().count("<b>38%</b>") == 2
+    request.tool_call["args"].update(
+        old_string="second: <b>38%</b>", new_string="second: <b>39%</b>"
+    )
+    assert middleware.wrap_tool_call(request, edit).status == "success"
+    assert file.read_text() == "first: <b>38%</b>\nsecond: <b>39%</b>"
+
+
 def test_the_same_failure_three_times_gets_a_note(monkeypatch: pytest.MonkeyPatch) -> None:
     middleware, store, _task = _setup(monkeypatch)
     results = [str(middleware.wrap_tool_call(_call(), _fail).content) for _ in range(3)]

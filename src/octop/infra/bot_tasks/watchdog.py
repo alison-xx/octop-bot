@@ -460,6 +460,17 @@ class BotTaskMiddleware(AgentMiddleware[Any, Any]):
         self._note_review(request, task, result)
         notes: list[str] = []
         error = _error_text(result)
+        if (
+            error is not None
+            and request.tool_call.get("name") == "edit_file"
+            and "times in file. Use replace_all=True" in _result_text(result)
+        ):
+            notes.append(
+                "The edit was not applied. Continue this task: read the target file around the "
+                "matches, identify the intended section from the requested change, then retry "
+                "edit_file with a unique old_string and preserve the surrounding text in new_string. "
+                "Use replace_all only if every occurrence should change. Verify the edited section."
+            )
         key = _call_key(request)
         if error is not None or key in task.failed_calls:
             thread = str(_configurable().get("thread_id") or "")
