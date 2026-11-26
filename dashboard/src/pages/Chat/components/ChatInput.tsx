@@ -322,7 +322,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       handleDragLeave,
       handleDragOver,
       handleDrop,
-    } = useChatAttachments(agentId);
+    } = useChatAttachments(agentId, threadId);
 
     // Expose an imperative handle so the parent can push a new prefill without
     // triggering a prop change that would cause a re-render cascade.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import tempfile
 
@@ -37,7 +38,8 @@ def test_sanitize_inbound_filename_keeps_cjk() -> None:
 
 def test_timestamped_name_and_display_roundtrip() -> None:
     stored = build_timestamped_inbound_name("地球介绍.pptx", now=1783510288)
-    assert stored == "1783510288_地球介绍.pptx"
+    assert re.fullmatch(r"1783510288\d{25}_地球介绍\.pptx", stored)
+    assert display_name_from_stored("1783510288_地球介绍.pptx") == "地球介绍.pptx"
     assert display_name_from_stored(stored) == "地球介绍.pptx"
 
 
@@ -58,21 +60,28 @@ async def test_write_inbound_uses_timestamp_prefix_keeps_chinese() -> None:
 
 
 @pytest.mark.asyncio
-async def test_write_inbound_collision_adds_suffix() -> None:
-    with tempfile.TemporaryDirectory() as ws_dir:
-        workspace = _workspace(ws_dir)
-        first = await write_inbound(
-            workspace,
-            b"a",
-            filename="note.txt",
-            media_type="text/plain",
-        )
-        twin_name = first.path.rsplit("/", 1)[-1]
-        from octop.infra.gateway.media.inbound_store import _unique_inbound_path
+async def test_concurrent_archives_keep_names_and_separate_bytes(tmp_path, monkeypatch) -> None:
+    workspace = _workspace(str(tmp_path))
 
-        path = await _unique_inbound_path(workspace, twin_name)
-        assert path.endswith("-2.txt")
-        assert path.startswith("inbound/")
+    async def unexpected_probe(path):
+        pytest.fail(f"upload probed {path} before writing")
+
+    monkeypatch.setattr(workspace, "aexists", unexpected_probe)
+    name = "压缩包" * 29 + ".ZIP"
+    files = await asyncio.gather(
+        *(
+            write_inbound(
+                workspace, payload, filename=name, media_type="application/x-zip-compressed"
+            )
+            for payload in (b"first", b"second")
+        )
+    )
+    assert files[0].path != files[1].path
+    assert files[0].filename.endswith(".ZIP")
+    assert await asyncio.gather(*(read_inbound_bytes(workspace, f.path) for f in files)) == [
+        b"first",
+        b"second",
+    ]
 
 
 @pytest.mark.asyncio

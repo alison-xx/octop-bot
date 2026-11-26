@@ -6,6 +6,7 @@ import { getApiUrl } from "../../../api/config";
 import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
 import {
   needsAuthBlobFetch,
+  workspacePathFromAccessUrl,
   type ToolMediaItem,
   type ToolFileItem,
 } from "../../../utils/toolMediaBlocks";
@@ -131,7 +132,10 @@ export function ToolMediaStrip({
     // A generated video also arrives as a pushed file attachment, under another URL.
     const seen = new Set<string>();
     const cards = [...images, ...videos, ...files].filter((file) => {
-      const key = file.filename || file.url;
+      const path = workspacePathFromAccessUrl(file.url);
+      const agent = file.url.match(/^\/api\/agents\/([^/]+)\//)?.[1];
+      const key =
+        agent && path ? agent + "/" + path.replace(/^\/+/, "") : file.url;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -146,6 +150,7 @@ export function ToolMediaStrip({
               filename={file.filename}
               thumbnailUrl={file.thumbnailUrl}
               mediaType={file.mimeType}
+              size={file.size}
               agentId={agentId}
               rich
             />

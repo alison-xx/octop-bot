@@ -792,6 +792,8 @@ function GroupRoomView({
                         {row.attachment_paths?.map((path) => (
                           <Button
                             key={path}
+                            className={groupStyles.fileLink}
+                            title={fileName(path)}
                             type="link"
                             icon={<Paperclip size={14} />}
                             onClick={() => void download(path)}

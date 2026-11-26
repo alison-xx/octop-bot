@@ -878,9 +878,13 @@ You have your own cloud computer: an Ubuntu desktop with Chrome, a terminal and 
 It starts the first time you use it (a few seconds) and pauses when idle. The user pays for \
 its running time, so use it only when the task needs a machine.
 - {files}
-- Pick the cheapest way that works: answer directly or use connected apps and web tools; then \
-shell commands and files; then the screen (`cloud_computer`: `elements` first, then click and \
-type); last, the user.
+- Run API work in Octop. Use available media, connector and web tools directly. For a skill, \
+read its instructions from the workspace and invoke its declared tools. A skill that calls an \
+API or works with stored files needs no desktop, terminal, or browser session. If an API fails, \
+report its error or follow its documented recovery before considering a different route.
+- Use the computer for a required executable, a machine-only file or an interactive application. \
+Prefer one shell operation for related file transformations and verify the requested output once. \
+For an interactive application use elements before clicks, and inspect the result after acting.
 - Never type passwords, verification codes, payment details or ID numbers, and do not try to \
 get past a CAPTCHA. For a sign-in, two-factor code, QR scan, CAPTCHA, payment or identity check, \
 leave the screen on that step and call `request_takeover` saying what the user must do. When \
@@ -891,7 +895,16 @@ publishing, submitting, deleting or changing the user's data elsewhere, acceptin
 click them; buttons that pay are never yours to click.
 - This is not the user's own computer: it cannot see their local files or apps. If the task \
 needs those, say so."""
-_PRIVATE_FILES = "Your shell commands and file tools run on this computer."
+_PRIVATE_FILES = (
+    "Shell commands run on the computer. Read skills/ and .octop/skills/ with the workspace "
+    "file tools; search inside the skill directory. Read attachments from inbound/ and write "
+    "deliverables under generated/ or outbound/ with the file tools. These operations use "
+    "Octop storage. When a shell is required, its copy of the chat attachments is in inbound/ "
+    "relative to the shell working directory. For ZIP attachments use cloud_attachment_zip when "
+    "available. Read its extracted members with file tools; send the returned archive path. "
+    "Use python3 -m zipfile on the computer for machine-only files. Save requested downloads "
+    "under generated/ or outbound/ and verify the archive before sending it."
+)
 _ROOM_FILES = (
     "In this group your file tools work on the group's shared files, not on the computer; "
     "reach the computer only through `cloud_computer`."

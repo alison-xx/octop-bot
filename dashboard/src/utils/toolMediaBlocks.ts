@@ -9,6 +9,7 @@ import {
 } from "./workspaceIoPath";
 
 export type ToolMediaItem = {
+  size?: number;
   url: string;
   filename?: string;
   kind: "image" | "video";
@@ -209,6 +210,7 @@ export function agentIdFromWorkspacePath(path: string): string | null {
 }
 
 export type ToolFileItem = {
+  size?: number;
   url: string;
   filename?: string;
   thumbnailUrl?: string;
@@ -559,6 +561,7 @@ function mediaBlocksFromParsed(parsed: unknown): Record<string, unknown>[] {
         return [
           {
             type: kind,
+            size: media.sizeBytes,
             path,
             filename: path.split("/").filter(Boolean).pop(),
             media_type:
@@ -618,6 +621,12 @@ export function parseStructuredToolOutput(
         typeof typedBlock.filename === "string"
           ? typedBlock.filename
           : undefined;
+      const size =
+        typeof typedBlock.size === "number" &&
+        Number.isSafeInteger(typedBlock.size) &&
+        typedBlock.size >= 0
+          ? typedBlock.size
+          : undefined;
       const workspacePath =
         typeof typedBlock.path === "string"
           ? typedBlock.path
@@ -660,7 +669,13 @@ export function parseStructuredToolOutput(
           mimeType,
         });
         if (resolved) {
-          images.push({ url: resolved, filename, kind: "image", mimeType });
+          images.push({
+            url: resolved,
+            filename,
+            kind: "image",
+            mimeType,
+            size,
+          });
         }
         continue;
       }
@@ -672,7 +687,13 @@ export function parseStructuredToolOutput(
           mimeType,
         });
         if (resolved) {
-          videos.push({ url: resolved, filename, kind: "video", mimeType });
+          videos.push({
+            url: resolved,
+            filename,
+            kind: "video",
+            mimeType,
+            size,
+          });
         }
         continue;
       }
@@ -883,11 +904,12 @@ export function collectToolMediaFromToolData(
 
   for (const att of attachments || []) {
     if (!att.url) continue;
-    if (att.kind === "image") {
-      images.push({
+    if (att.kind === "image" || att.kind === "video") {
+      const items = att.kind === "image" ? images : videos;
+      items.push({
         url: agentId ? normalizeStoredMediaUrl(agentId, att.url) : att.url,
         filename: att.filename,
-        kind: "image",
+        kind: att.kind,
         mimeType: att.mediaType,
       });
       continue;

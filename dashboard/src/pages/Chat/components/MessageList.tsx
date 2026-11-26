@@ -213,7 +213,7 @@ function renderGroupBody(
           messages={group.messages}
           agentId={ctx.agentId}
           tasks={ctx.botTasks}
-          live={Boolean(ctx.isStreaming)}
+          live={afterLatestUser && Boolean(ctx.isStreaming)}
           onRegenerate={ctx.onRegenerate}
           onDisableStreamUsage={ctx.onDisableStreamUsage}
           onForkAssistantMessage={ctx.onForkAssistantMessage}

@@ -905,17 +905,11 @@ async def test_export_workspace_skill_zip(env: Any) -> None:
 
 
 async def test_copy_workspace_skill_between_agents(env: Any) -> None:
+    from tests.support.auth import create_agent
+
     c, srv, auth, dest_id = env
-    source = await c.post(
-        "/api/agents/from-expert/default",
-        headers=auth,
-        json={"name": "copy-api-src"},
-    )
-    assert source.status_code == 201, source.text
-    src_id = source.json()["agent_id"]
-    src_ws = srv.app_runtime.agent_registry.workspace_for_agent(src_id)
-    if src_ws is None:
-        pytest.skip("workspace not available before bootstrap")
+    src_id = await create_agent(c, auth, name="copy-api-src")
+    src_ws = srv.app_runtime.agent_registry.get_agent(src_id).workspace
     await src_ws.aupload_many(
         [
             ("skills/pack-demo/SKILL.md", b"---\nname: pack-demo\n---\n# Pack\n"),

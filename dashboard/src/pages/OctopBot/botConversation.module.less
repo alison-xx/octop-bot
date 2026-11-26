@@ -535,3 +535,50 @@
     max-width: 82px;
   }
 }
+
+.mediaTask {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  box-sizing: border-box;
+  width: min(100%, 340px);
+  padding: 10px 13px;
+  margin-block: 3px;
+  border: 1px solid var(--bot-line, var(--fn-border));
+  border-radius: 12px;
+  color: var(--bot-ink, var(--fn-text-primary));
+}
+.mediaTask > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.mediaTaskBody {
+  min-width: 0;
+  flex: 1;
+  font-size: 14px;
+}
+.mediaTaskMeta,
+.mediaTaskProgress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.mediaTaskMeta,
+.mediaTaskProgress,
+.mediaTaskBody small {
+  font-size: 12px;
+  color: var(--bot-muted, var(--fn-text-secondary));
+  font-variant-numeric: tabular-nums;
+}
+.mediaTaskBody small {
+  display: block;
+  margin-top: 3px;
+}
+.mediaTaskProgress progress {
+  flex: 1;
+  min-width: 40px;
+  height: 6px;
+  accent-color: var(--bot-accent, currentColor);
+}

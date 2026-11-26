@@ -5344,6 +5344,12 @@ class AgentManager:
             if archive:
                 task_kit.append(archive.read_tool(tasks))
             anywhere = [*computer_tools, *task_kit] if tenant else computer_tools
+            if tenant and not row.is_shared:
+                from octop.infra.cloud.attachment_zip import cloud_attachment_zip_tool
+                from octop.infra.cloud.bot_cloud.files import FileStoreConfig
+
+                if FileStoreConfig.from_env() is not None:
+                    anywhere.append(cloud_attachment_zip_tool(ws))
             if not tenant:
                 workspace_tools.extend(task_kit)
             if not tenant and not computer_tools and not row.is_shared and row.kind == "expert":
@@ -5392,9 +5398,8 @@ class AgentManager:
         # The image and video providers the operator configured are theirs; a cloud tenant
         # would bill them. Without them, a Lynxce credential (the tenant's own key, the desktop
         # app's Lynxce account, or the server's Lynxce API key) makes images and videos.
-        operator_media = (
-            None if self._cloud_tenant(row.user_id) else self._media_generation.harness_config()
-        )
+        cloud_tenant = self._cloud_tenant(row.user_id)
+        operator_media = None if cloud_tenant else self._media_generation.harness_config()
         if operator_media is None:
             from octop.infra.agents.providers.lynxce import media_auth, media_source
             from octop.infra.agents.providers.lynxce_media import (
@@ -5408,8 +5413,14 @@ class AgentManager:
                 agent_middleware.append(
                     LynxceMediaTools(
                         lynxce_media_tools(
-                            ws, lambda: media_auth(account_services, owner), bot_id=row.agent_id
-                        )
+                            ws,
+                            lambda: media_auth(account_services, owner),
+                            bot_id=row.agent_id,
+                            cloud_tenant=cloud_tenant,
+                        ),
+                        locale=resolve_user_locale(
+                            user_repo=self._repos.user_repo, user_id=owner or 0
+                        ),
                     )
                 )
         # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.

@@ -45,6 +45,7 @@ class ComputerIO:
     """A computer that just started or resumed, for a wake callback (which runs under the
     computer's lock, so it must use these and never the manager's own methods)."""
 
+    instance_id: str
     write: Callable[[str, bytes], None]
     read: Callable[[str], bytes | None]
     run: Callable[[str], tuple[int, str]]
@@ -689,6 +690,7 @@ class ComputerManager:
                 try:
                     waker(
                         ComputerIO(
+                            instance_id=instance,
                             write=lambda path, data: self._driver.write(instance, path, data),
                             read=lambda path: self._driver.read(instance, path),
                             run=lambda command: self._driver.run(

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { uploadFile } from "../../../api/modules/upload";
@@ -22,12 +28,23 @@ import {
 } from "../utils/droppedFiles";
 import { useServerUploadLimit } from "../../../hooks/useServerUploadLimit";
 
-export function useChatAttachments(agentId: string | null | undefined) {
+export function useChatAttachments(
+  agentId: string | null | undefined,
+  threadId?: string | null,
+) {
   const { t } = useTranslation();
   const { maxUploadBytes, maxUploadMb } = useServerUploadLimit();
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const current = useRef({ batches: 0 });
+  useLayoutEffect(() => {
+    current.current = { batches: 0 };
+    setUploading(false);
+    return () => {
+      current.current = { batches: 0 };
+    };
+  }, [agentId, threadId]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -67,38 +84,50 @@ export function useChatAttachments(agentId: string | null | undefined) {
         return;
       }
 
+      const scope = current.current;
+      scope.batches++;
       setUploading(true);
-      try {
-        const results = await Promise.all(
-          fileArr.map(async (file) => {
-            const res = await uploadFile(agentId, file);
+      const results: ChatAttachment[] = [];
+      const errors: string[] = [];
+      const pending = fileArr.entries();
+      async function uploadNext(owner: string) {
+        for (const [index, file] of pending) {
+          if (current.current !== scope) return;
+          try {
+            const res = await uploadFile(owner, file);
             const workspacePath = res.path || res.workspace_path;
-            const previewUrl =
-              res.access_url ||
-              res.url ||
-              (workspacePath
-                ? agentAttachmentAccessUrl(
-                    agentId,
-                    workspacePath,
-                    res.media_type,
-                  )
-                : "");
-            return {
-              url: previewUrl,
+            results[index] = {
+              url:
+                res.access_url ||
+                res.url ||
+                agentAttachmentAccessUrl(owner, workspacePath, res.media_type),
               filename: res.filename,
               mediaType: res.media_type,
+              size: file.size,
               workspacePath,
               kind: inferAttachmentKind(file, res.media_type),
-            } satisfies ChatAttachment;
-          }),
+            };
+          } catch (err) {
+            errors.push(
+              file.name +
+                " — " +
+                apiErrorMessage(err, t("upload.failed", "Upload failed"), t),
+            );
+          }
+        }
+      }
+      try {
+        await Promise.all(
+          Array.from({ length: Math.min(3, fileArr.length) }, () =>
+            uploadNext(agentId),
+          ),
         );
-        setAttachments((prev) => [...prev, ...results]);
-      } catch (err: unknown) {
-        antMessage.error(
-          apiErrorMessage(err, t("upload.failed", "Upload failed"), t),
-        );
+        if (current.current !== scope) return;
+        setAttachments((prev) => [...prev, ...results.filter(Boolean)]);
+        if (errors.length) antMessage.error(errors.join("\n"));
       } finally {
-        setUploading(false);
+        scope.batches--;
+        if (current.current === scope) setUploading(scope.batches > 0);
       }
     },
     [agentId, maxUploadBytes, maxUploadMb, t],
@@ -182,6 +211,7 @@ export function useChatAttachments(agentId: string | null | undefined) {
 
   const handleDrop = useCallback(
     (e: DragEvent) => {
+      const scope = current.current;
       const snapshot = snapshotDroppedEntries(e.dataTransfer);
       if (!snapshot.hadFileItems) return;
       e.preventDefault();
@@ -195,6 +225,7 @@ export function useChatAttachments(agentId: string | null | undefined) {
           antMessage.error(t("upload.failed", "Upload failed"));
           return;
         }
+        if (current.current !== scope) return;
         if (collected.truncated) {
           antMessage.warning(
             t(
@@ -216,6 +247,7 @@ export function useChatAttachments(agentId: string | null | undefined) {
 
   useEffect(() => {
     const onDesktopDrop = (event: Event) => {
+      const scope = current.current;
       const detail = (event as CustomEvent<DesktopFileDropDetail>).detail;
       setDragOver(false);
       void (async () => {
@@ -230,6 +262,7 @@ export function useChatAttachments(agentId: string | null | undefined) {
         }
         try {
           const files = await filesFromDesktopDrop(detail);
+          if (current.current !== scope) return;
           if (files.length === 0) {
             antMessage.warning(t("upload.emptyDrop", "No files to upload"));
             return;

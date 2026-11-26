@@ -126,7 +126,8 @@ export function nextMode(
   if (!status || status.state !== "running") return pinned ? "pill" : "hidden";
   if (status.busy) {
     if (current === "expanded" || current === "window") return current;
-    return pillOnly ? "pill" : "window";
+    // Background activity can belong to another chat. Only an explicit open starts a live view.
+    return pinned && !pillOnly ? "window" : "pill";
   }
   if (current === "expanded") return current;
   if (current === "window") {
@@ -290,7 +291,7 @@ export default function CloudComputerFloat({
 
   // Window title and the pill's thumbnail; a glance never wakes the computer.
   useEffect(() => {
-    if (mode === "hidden") {
+    if (mode === "hidden" || (mode === "pill" && !pinned)) {
       setGlance(null);
       return;
     }
@@ -308,7 +309,7 @@ export default function CloudComputerFloat({
       current = false;
       window.clearInterval(timer);
     };
-  }, [botId, mode]);
+  }, [botId, mode, pinned]);
 
   // The live screen is connected only while it is visible (window or expanded). Tickets are
   // single-use, so moving between the window and the big view takes a fresh one.
