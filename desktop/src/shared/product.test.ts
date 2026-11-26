@@ -12,7 +12,7 @@ test("select Bot from its development flag or native package identity", () => {
 
 test("Bot document navigation admits its workspace, login, setup and legacy thread links", () => {
   for (const path of ["/octop-bot", "/octop-bot/groups/group", "/octop-bot/settings", "/octop-bot/capabilities/connectors", "/chat",
-    "/chat/bot/thread", "/login", "/login/oidc/complete", "/setup", "/share/example-token"]) {
+    "/chat/bot/thread", "/login", "/login/oidc/complete", "/setup", "/setup/local", "/share/example-token"]) {
     assert.equal(botDocumentPath(path), true, path);
   }
   for (const path of ["/", "/admin", "/octop-bot-fake", "/chat-admin", "/login/profile", "/share", "/share/a/b"]) {

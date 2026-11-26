@@ -92,6 +92,13 @@ export default function SetupPage() {
 
         const savedStep = wizardSession.loadStep();
         const draft = wizardSession.loadDraft();
+        if (
+          localAccount &&
+          draft.adminUsername &&
+          wizardSession.loadSetupJwt()
+        ) {
+          setAdminCreds({ username: draft.adminUsername, password: null });
+        }
         if (draft.provider) {
           setProviderDraft(draft.provider);
         }

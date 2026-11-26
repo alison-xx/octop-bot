@@ -1583,21 +1583,21 @@ async function boot(): Promise<void> {
   }
 
   if (process.platform === "win32") {
-    if (botOnly && !app.isPackaged) {
+    if (botOnly) {
       // Explorer otherwise groups the development windows under electron.exe.
-      const appId = "com.tencent.octop.bot.dev";
+      const appId = app.isPackaged ? "com.tencent.octop.bot" : "com.tencent.octop.bot.dev";
       const launcher = join(app.getAppPath(), "scripts", "run-dev.ps1");
       app.setAppUserModelId(appId);
       app.on("browser-window-created", (_event, win) => {
         win.setAppDetails({
           appId,
           appIconPath: join(resourcesRoot(), "bot-icon.ico"),
-          relaunchCommand: `powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "${launcher}" -Bot -NoBuild`,
+          relaunchCommand: app.isPackaged ? `"${process.execPath}"` : `powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "${launcher}" -Bot -NoBuild`,
           relaunchDisplayName: productName,
         });
       });
     } else {
-      app.setAppUserModelId(botOnly ? "com.tencent.octop.bot" : WINDOWS_APP_USER_MODEL_ID);
+      app.setAppUserModelId(WINDOWS_APP_USER_MODEL_ID);
     }
   }
   // Packaged builds only: a dev run must not take the scheme from the installed app.
@@ -1610,7 +1610,12 @@ async function boot(): Promise<void> {
     if (iconPath && !app.isPackaged) app.dock?.setIcon(iconPath);
   }
   if (botOnly) {
-    serverChoice = new ServerChoiceStore(defaultServerChoicePath(app.getPath("userData")));
+    const choicePath = defaultServerChoicePath(app.getPath("userData"));
+    serverChoice = new ServerChoiceStore(choicePath);
+    if (!existsSync(choicePath)) {
+      showWorkspaceLogin ||= !pendingDeepPath;
+      serverChoice.select(null);
+    }
     serverPicker = new ServerPicker({
       store: serverChoice,
       restart: restartApp,

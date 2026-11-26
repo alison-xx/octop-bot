@@ -14,6 +14,21 @@ from octop.infra.db.repos.thread_messages import ThreadMessageInput
 from octop.infra.errors import OctopError
 
 
+async def test_team_memory_follows_authenticated_owner_across_sessions(env_admin_alice):
+    client, _server, admin, alice = env_admin_alice
+    route = "/api/octop-bot/memory"
+    for auth, note in [(admin, "Use concise replies"), (alice, "Reply in Chinese")]:
+        response = await client.put(route, headers=auth, json={"text": note})
+        response.raise_for_status()
+    from tests.support.auth import auth_header
+
+    second_session = await auth_header(client, username="alice")
+    for auth, note in [(second_session, "Reply in Chinese"), (admin, "Use concise replies")]:
+        response = await client.get(route, headers=auth)
+        response.raise_for_status()
+        assert response.json()["text"] == note
+
+
 async def test_privacy_changes_keep_the_selected_cloud_computer(env_with_agent):
     client, server, auth, bot = env_with_agent
     repo = server.services.agent_repo

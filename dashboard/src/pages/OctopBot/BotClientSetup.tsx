@@ -225,6 +225,10 @@ export default function BotClientSetup() {
     setError("");
     try {
       const current = status ?? (await authApi.getAuthStatus());
+      if (desktop && current.setup_required) {
+        navigate("/setup/local?localAccount=1");
+        return;
+      }
       if (
         current.wizard_password_required &&
         !verified &&

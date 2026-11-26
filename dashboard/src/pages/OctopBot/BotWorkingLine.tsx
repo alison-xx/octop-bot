@@ -10,6 +10,7 @@ import {
   collectWriteTodosFromMessages,
   countCompletedTodos,
 } from "../../utils/parseWriteTodos";
+import { isMediaTool } from "./MediaTaskStatus";
 import styles from "./botConversation.module.less";
 
 /**
@@ -35,6 +36,15 @@ export default function BotWorkingLine({
     let start = messages.length;
     while (start > 0 && messages[start - 1].role !== "user") start -= 1;
     const turn = messages.slice(start);
+    if (
+      turn.some(
+        (m) =>
+          isMediaTool(m.toolData?.name) &&
+          !m.toolData?.output &&
+          m.status !== "error",
+      )
+    )
+      return null;
     if (
       hasPendingHitl(turn) ||
       (turn.length && isPausedAskTool(turn[turn.length - 1]))
@@ -77,6 +87,7 @@ export default function BotWorkingLine({
     }
     return parts.join(" · ");
   }, [messages, t, toolName]);
+  if (!title) return null;
   return (
     <div className={styles.working}>
       <span className={styles.workingAvatar} aria-hidden>
