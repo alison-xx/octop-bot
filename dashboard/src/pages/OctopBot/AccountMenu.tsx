@@ -32,7 +32,8 @@ import lynxceLogo from "../../assets/providers/lynxce.png";
 import { BotCharacter, octopCharacter } from "./BotCharacter";
 import styles from "./accountMenu.module.less";
 import { CreditsAmount, useRecharge } from "./CreditsWidgets";
-import { openAccountWebsite } from "./botWebsite";
+import { OCTOP_BOT_SITE, openAccountWebsite } from "./botWebsite";
+import { useBotServerInfo } from "./useBotServerInfo";
 import { apiErrorMessage } from "../../utils/apiError";
 import {
   formatCredits,
@@ -127,6 +128,7 @@ export default function AccountMenu({
   );
   const from = { state: { from: location.pathname } };
   const credits = useLynxceCredits();
+  const serverInfo = useBotServerInfo();
   const modelRecharge = useRecharge();
   const openWebsite = async (scope: "account" | "recharge") => {
     setOpen(false);
@@ -136,6 +138,18 @@ export default function AccountMenu({
     }
     const id = lynxceAccount || credits.wallet?.account_id;
     if (!id) {
+      if (
+        scope === "account" &&
+        !desktop &&
+        (serverInfo?.edition === "web" || serverInfo?.edition === "server")
+      ) {
+        window.open(
+          OCTOP_BOT_SITE + "/account.html",
+          "_blank",
+          "noopener,noreferrer",
+        );
+        return;
+      }
       message.error(t("apiErrors.BOT_CLOUD_ACCOUNT_REQUIRED"));
       return;
     }

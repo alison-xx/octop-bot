@@ -3,6 +3,8 @@ import { MemoryRouter } from "react-router-dom";
 import { expect, it, vi } from "vitest";
 import { lynxceWalletApi } from "../../api/modules/lynxceWallet";
 import AccountMenu from "./AccountMenu";
+import * as serverInfo from "./useBotServerInfo";
+import * as credits from "./useLynxceCredits";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
@@ -107,5 +109,52 @@ it("opens the account page in the desktop system browser after the ticket is iss
     popup.mockRestore();
     issue.mockRestore();
     agent.mockRestore();
+  }
+});
+
+it("opens the website sign-in from a self-hosted workspace without a cloud wallet", async () => {
+  const popup = vi.spyOn(window, "open").mockReturnValue(null);
+  const edition = vi.spyOn(serverInfo, "useBotServerInfo").mockReturnValue({
+    edition: "web",
+    product: "octop-bot",
+    version: "test",
+    setup_required: false,
+    sign_in: ["password"],
+    capabilities: {
+      wallet: false,
+      cloud_computer: false,
+      media_generation: false,
+      file_store: "local",
+    },
+  });
+  const balance = vi
+    .spyOn(credits, "useLynxceCredits")
+    .mockReturnValue({ status: "none", wallet: null });
+  const issue = vi.spyOn(lynxceWalletApi, "websiteCode");
+  try {
+    render(
+      <MemoryRouter>
+        <AccountMenu />
+      </MemoryRouter>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /botClient.menu.settings/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", {
+        name: /botClient.menu.accountCenter/,
+      }),
+    );
+    expect(popup).toHaveBeenCalledWith(
+      "https://octop-bot.lynxce.cn/account.html",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(issue).not.toHaveBeenCalled();
+  } finally {
+    issue.mockRestore();
+    balance.mockRestore();
+    edition.mockRestore();
+    popup.mockRestore();
   }
 });
