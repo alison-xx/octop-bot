@@ -173,6 +173,8 @@ Agent 循环、IM 协议、记忆和浏览器控制分别来自 [octop-harness](
 
 ## 从源码运行
 
+维护者发布 Octop Bot 官网和云端网页版时，请使用[私有生产仓库的统一发布流程](https://github.com/alison-xx/octop-bot-production#readme)（需要仓库访问权限）。
+
 准备 Git、[uv](https://docs.astral.sh/uv/)、Node.js 24 和 pnpm 12.15.0，在 Windows PowerShell 中运行：
 
 ```powershell

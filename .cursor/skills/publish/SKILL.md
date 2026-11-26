@@ -4,13 +4,15 @@ description: >-
   Publish the Octop Python package: cut a release branch from develop, bump
   version, update CHANGELOG, open a PR to main; after merge, Actions tag on
   main (PyPI / Docker Hub + GHCR) and sync main into develop. Use when the user asks
-  to publish, release, bump version, cut a release, or run /publish.
+  to publish the Python package, bump its version, or run /publish for that package.
 disable-model-invocation: true
 ---
 
 # Publish
 
 自动化 Octop Python 包的完整发布流程。
+
+官网或云端网页版上线请走[生产仓库发布说明](https://github.com/alison-xx/octop-bot-production#readme)。该流程由私有仓库的 `main` 触发。
 
 **开始时宣告：** "正在使用 publish 技能发布版本 {VERSION}。"
 

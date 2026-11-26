@@ -407,6 +407,8 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 
 ### Branching & release
 
+For the hosted Octop Bot website and cloud web app, follow the [production release guide](https://github.com/alison-xx/octop-bot-production#readme) in the private production repository. Land shared client and backend fixes here, then prepare the corresponding hosted changes there. A push to its `main` starts production verification. The branch and tag workflow below applies to the open-source distribution.
+
 ```
 feature/* ──PR──► develop ──► release/x.y.z ──PR──► main ──tag v*──► publish
 hotfix/* ──PR──► main (+ tag) and ──PR──► develop
