@@ -130,6 +130,19 @@ export interface OctopDesktopBridge {
   /** Quit and start the app again. Absent on older shells. */
   relaunch?: () => void;
   /** Restart on the Octop Bot cloud, signed in with this token. Absent on older shells. */
+  workspaceLogin?: (
+    method: "password" | "sendCode" | "code" | "bind" | "wechat" | "workbuddy",
+    body: Record<string, string>,
+  ) => Promise<{
+    status: number;
+    data: {
+      access_token?: string;
+      bind_token?: string;
+      cancelled?: boolean;
+      channel?: "phone" | "email";
+      error?: { code: string; message: string };
+    };
+  }>;
   useLynxceCloud?: (accessToken: string) => Promise<boolean>;
   session?: DesktopSessionBridge;
   /**

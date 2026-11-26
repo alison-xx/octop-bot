@@ -633,11 +633,37 @@ async def _refresh(services: SharedServices, user_id: int, grant: _Grant) -> _Gr
     return updated
 
 
+_WEBSITE_CODE_PATH = "/api/auth/login-codes"
+_WEBSITE_CODE_BODIES = {
+    "account": {"scope": "account", "site": SIGNUP_SITE, "targetPath": "/account.html"},
+    "recharge": {"scope": "recharge", "site": SIGNUP_SITE},
+}
+
+
+async def website_code(
+    services: SharedServices, user_id: int, scope: Literal["account", "recharge"], account_id: str
+) -> str:
+    data = await request_cloud(
+        services,
+        user_id,
+        "POST",
+        _WEBSITE_CODE_PATH,
+        json=_WEBSITE_CODE_BODIES[scope],
+        expected_account_id=account_id,
+    )
+    code = data.get("code") if isinstance(data, dict) else None
+    if not isinstance(code, str) or not re.fullmatch(r"[A-Za-z0-9_-]{43}", code):
+        raise OctopError.localized(ErrorCode.NETWORK_ERROR)
+    return code
+
+
 def _allowed(method: str, path: str, params: Mapping[str, str | int]) -> bool:
     # Web history identifiers support a literal or URL-encoded colon (e.g. cowork:uuid).
     path = path.replace("%3A", ":").replace("%3a", ":")
     if method == "POST":
-        return not params and (path == CHECKOUT_PATH or _WRITES.fullmatch(path) is not None)
+        return not params and (
+            path in (CHECKOUT_PATH, _WEBSITE_CODE_PATH) or _WRITES.fullmatch(path) is not None
+        )
     if method != "GET":
         return False
     if path in _READS:
@@ -679,6 +705,10 @@ async def request_cloud(
         or not _allowed(method, path, params or {})
         or (method == "GET" and json is not None)
         or (path == CHECKOUT_PATH and (json not in _CHECKOUT_BODIES or not expected_account_id))
+        or (
+            path == _WEBSITE_CODE_PATH
+            and (not expected_account_id or json not in _WEBSITE_CODE_BODIES.values())
+        )
         or (path.endswith("/actions") and not _allowed_action(json or {}))
     ):
         raise OctopError.localized(ErrorCode.FORBIDDEN)

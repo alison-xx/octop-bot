@@ -36,8 +36,15 @@
   color: #fff;
   -webkit-app-region: drag;
 }
-:global(html[data-octop-desktop-chrome="mac"]) .brand {
-  padding-inline-start: 74px;
+:global(html[data-octop-desktop-chrome="mac"]) .window {
+  // Keep the scrollable login screen below the native buttons, including in narrow windows.
+  top: min(
+    var(--window-controls-inset-start),
+    var(--window-chrome-top-band, 28px)
+  );
+  &::before {
+    position: fixed;
+  }
 }
 .welcome {
   display: contents;

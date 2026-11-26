@@ -44,6 +44,7 @@ import { findConfiguredProvider } from "../Settings/Models/presetUtils";
 import {
   botAccountName,
   LANGUAGES,
+  openLynxceSignIn,
   signOutBotClient,
   useLanguage,
 } from "./AccountMenu";
@@ -465,7 +466,7 @@ export default function BotClientSettings() {
                     <Button
                       type="primary"
                       onClick={() =>
-                        void signOutBotClient(user?.username, navigate)
+                        void openLynxceSignIn(user?.username, navigate)
                       }
                     >
                       {t("botClient.menu.lynxceSignIn")}
@@ -529,7 +530,7 @@ export default function BotClientSettings() {
                       size="large"
                       block
                       onClick={() =>
-                        void signOutBotClient(user?.username, navigate)
+                        void openLynxceSignIn(user?.username, navigate)
                       }
                     >
                       {t("botClient.account.signIn")}

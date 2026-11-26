@@ -61,6 +61,7 @@ async def test_cloud_checkout_only_mints_for_displayed_wallet(
     client, _, admin, alice = env_admin_alice
     minted: list[str] = []
     returns: list[str] = []
+    website_requests: list[tuple[str, dict[str, str]]] = []
 
     def upstream(req: httpx.Request) -> httpx.Response:
         assert str(req.url).startswith("https://api.lynxce.cn/") and not req.url.query
@@ -72,6 +73,9 @@ async def test_cloud_checkout_only_mints_for_displayed_wallet(
                 "refreshToken": "refresh-" + name,
                 "user": {"id": name},
             }
+        elif req.url.path == "/api/auth/login-codes":
+            website_requests.append((account, json.loads(req.content)))
+            data = {"code": "x" * 43}
         elif req.url.path == "/api/user/quota":
             data = {"creditsRemaining": -1.25, "effectiveCreditsRemaining": 0}
         elif req.url.path == "/api/user/personal-api-keys":  # desktop sign-in's chat key
@@ -96,6 +100,23 @@ async def test_cloud_checkout_only_mints_for_displayed_wallet(
                 CLOUD, headers=owner, json={"account": account, "password": "test-only"}
             )
         ).raise_for_status()
+    website = API + "/website-code"
+    for scope in ("account", "recharge"):
+        body = {"scope": scope, "expected_account_id": "first"}
+        response = await client.post(website, headers=admin, json=body)
+        assert response.json() == {"code": "x" * 43}
+        assert response.headers["cache-control"] == "private, no-store"
+        assert (await client.post(website, headers=alice, json=body)).is_error
+        assert (await client.post(website, json=body)).status_code == 401
+    assert (
+        await client.post(
+            website, headers=admin, json={"scope": "server", "expected_account_id": "first"}
+        )
+    ).status_code == 422
+    assert website_requests == [
+        ("first", {"scope": "account", "site": "octop-bot", "targetPath": "/account.html"}),
+        ("first", {"scope": "recharge", "site": "octop-bot"}),
+    ]
     wallet = await client.get(API, params={"source": "cloud"}, headers=admin)
     assert wallet.json() == {
         "source": "cloud",

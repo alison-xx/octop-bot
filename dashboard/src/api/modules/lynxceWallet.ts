@@ -21,6 +21,12 @@ function checkoutOrigin() {
 }
 
 export const lynxceWalletApi = {
+  websiteCode: (scope: "account" | "recharge", expectedAccountId: string) =>
+    request<{ code: string }>(path + "/website-code", {
+      method: "POST",
+      cache: "no-store",
+      body: JSON.stringify({ scope, expected_account_id: expectedAccountId }),
+    }),
   balance: (source: WalletSource, signal?: AbortSignal) =>
     request<LynxceWallet>(path + "?source=" + source, {
       signal,

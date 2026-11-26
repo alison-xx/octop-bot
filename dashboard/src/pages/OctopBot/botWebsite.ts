@@ -1,16 +1,31 @@
-/** The Octop Bot website, where plans, orders and invoices are managed. */
+import { lynxceWalletApi } from "../../api/modules/lynxceWallet";
+
 export const OCTOP_BOT_SITE = "https://octop-bot.lynxce.cn";
 
-/** Lynxce's own account centre, used until the website's account page ships. */
-const LYNXCE_ACCOUNT_CENTER = "https://admin.lynxce.cn";
-
-/**
- * Where "Account center" goes. The website's account page is switched on at
- * build time (VITE_OCTOP_BOT_WEBSITE_ACCOUNT=1) once it is live; the person
- * signs in there themselves until one-time sign-in codes are available.
- */
-export function accountCenterUrl(): string {
-  return import.meta.env.VITE_OCTOP_BOT_WEBSITE_ACCOUNT === "1"
-    ? `${OCTOP_BOT_SITE}/account.html`
-    : LYNXCE_ACCOUNT_CENTER;
+export async function openAccountWebsite(
+  scope: "account" | "recharge",
+  accountId: string,
+) {
+  // In Electron the shell opens external URLs in the system browser. A normal
+  // browser must reserve its tab during the click, before requesting the code.
+  const desktop = /Electron\//.test(navigator.userAgent);
+  const tab = desktop ? null : window.open("about:blank", "_blank");
+  if (tab) tab.opener = null;
+  try {
+    const { code } = await lynxceWalletApi.websiteCode(scope, accountId);
+    if (!/^[A-Za-z0-9_-]{43}$/.test(code))
+      throw new Error("Invalid website code");
+    const url = new URL(
+      scope === "account" ? "/account.html" : "/pricing.html",
+      OCTOP_BOT_SITE,
+    );
+    url.searchParams.set("from", desktop ? "desktop" : "web");
+    url.hash = (scope === "account" ? "code=" : "ticket=") + code;
+    if (tab) tab.location.replace(url.href);
+    else if (desktop) window.open(url.href, "_blank", "noopener,noreferrer");
+    else window.location.assign(url.href);
+  } catch (error) {
+    tab?.close();
+    throw error;
+  }
 }

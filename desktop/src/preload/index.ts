@@ -111,6 +111,9 @@ const bridge = {
     if (botOnly) ipcRenderer.send(IPC_CHANNELS.botRelaunch);
   },
   /** Restart on the Octop Bot cloud, signed in with ``accessToken`` (from the local move). */
+  workspaceLogin(method: string, body: Record<string, string>) {
+    return ipcRenderer.invoke(IPC_CHANNELS.botWorkspaceLogin, method, body);
+  },
   useLynxceCloud(accessToken: string): Promise<boolean> {
     if (!botOnly) return Promise.resolve(false);
     return ipcRenderer.invoke(IPC_CHANNELS.botUseCloud, accessToken);
