@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -99,7 +100,7 @@ def _suspend_proactive_care_loops(
 
 @pytest.fixture(autouse=True)
 def _isolated_user_home(
-    tmp_path_factory: pytest.TempPathFactory,
+    _homes_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Path:
     """Per-test HOME outside the test's ``tmp_path``.
@@ -108,7 +109,7 @@ def _isolated_user_home(
     colliding with tests that create ``tmp_path / \"home\"`` themselves.
     Required for xdist so workers never share ``~/.octop`` / CLI state.
     """
-    home = tmp_path_factory.mktemp("user-home")
+    home = Path(tempfile.mkdtemp(dir=_homes_dir))
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
     for key in (
@@ -119,6 +120,12 @@ def _isolated_user_home(
     ):
         monkeypatch.delenv(key, raising=False)
     return home
+
+
+@pytest.fixture(scope="session")
+def _homes_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    # Keep per-test homes out of pytest's numbered directory scans.
+    return tmp_path_factory.mktemp("homes")
 
 
 @pytest.fixture

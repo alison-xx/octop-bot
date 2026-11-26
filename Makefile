@@ -224,7 +224,8 @@ typecheck:
 .PHONY: test
 test:
 	@echo "[test] pytest (not live, -n $(PYTEST_JOBS))..."
-	$(RUN) pytest -n $(PYTEST_JOBS) -m "not live"
+	# Keep slow integration cases from queuing behind one worker in large batches.
+	$(RUN) pytest -n $(PYTEST_JOBS) --maxschedchunk=8 -m "not live"
 
 .PHONY: test-fast
 test-fast:

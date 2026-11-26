@@ -9,10 +9,12 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+from argon2 import PasswordHasher
 
 from octop.api.app import build_app
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
+from octop.infra.users import password
 from tests.support.app import octop_client
 from tests.support.auth import (
     auth_header,
@@ -31,6 +33,14 @@ __all__ = [
     "bootstrap_admin",
     "patch_harness",
 ]
+
+
+@pytest.fixture(autouse=True)
+def _fast_password_hashes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise real Argon2 hash/verify at low cost for disposable test accounts."""
+    monkeypatch.setattr(
+        password, "_HASHER", PasswordHasher(time_cost=1, memory_cost=64, parallelism=1)
+    )
 
 
 @pytest.fixture(autouse=True)
