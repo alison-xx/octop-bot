@@ -160,9 +160,11 @@ const packageInfo: unknown = app.isPackaged
   : undefined;
 const botOnly = isBotProduct(app.isPackaged ? [] : process.argv, app.getName(), packageInfo);
 const productName = botOnly ? BOT_PRODUCT_NAME : "Octop";
+const chooseWorkspaceFlag = "--octop-choose-workspace";
 const entryPath = botOnly ? BOT_HOME_PATH : "/";
 // A Bot client path from an octop-bot:// link that arrived before a window could open it.
 let pendingDeepPath: string | null = botOnly ? deepLinkPathFromArgv(process.argv) : null;
+let showWorkspaceLogin = botOnly && process.argv.includes(chooseWorkspaceFlag);
 if (botOnly) {
   app.setName(productName);
   if (!app.commandLine.hasSwitch("user-data-dir")) {
@@ -1101,6 +1103,11 @@ function raiseHiddenWindows(windows: readonly BrowserWindow[]): void {
 }
 
 function takeEntryPath(): string {
+  if (showWorkspaceLogin) {
+    showWorkspaceLogin = false;
+    pendingDeepPath = null;
+    return "/login/workspaces";
+  }
   const path = pendingDeepPath ?? entryPath;
   pendingDeepPath = null;
   return path;
@@ -1391,8 +1398,10 @@ function serverMenuItems(): MenuItemConstructorOptions[] {
 }
 
 /** Quit and start again, so the next launch picks up the chosen server. */
-function restartApp(): void {
-  app.relaunch();
+function restartApp(chooseWorkspace = false): void {
+  const args = process.argv.slice(1).filter((arg) => arg !== chooseWorkspaceFlag);
+  if (chooseWorkspace) args.push(chooseWorkspaceFlag);
+  app.relaunch({ args });
   app.quit();
 }
 
@@ -1406,11 +1415,36 @@ function openRemoteWindow(origin: string): BrowserWindow {
     onNavigate: openExternal,
     onLoadFailed: (description) => void showRemoteFailure(win, origin, description),
   });
-  if (signIn) {
-    // The cloud sign-in handed over by the move: stored by the cloud page, then forgotten here.
-    win.webContents.once("did-finish-load", () => {
-      if (win.isDestroyed() || new URL(win.webContents.getURL()).origin !== origin) return;
-      void win.webContents.executeJavaScript(cloudSignInScript(signIn)).catch(() => undefined);
+  if (origin === cloudOrigin()) {
+    let installingSession = Boolean(signIn);
+    const contents = win.webContents;
+    const returnIfSignedOut = async () => {
+      if (installingSession || quitting || contents.isDestroyed()) return;
+      const url = contents.getURL();
+      if (!url) return;
+      const landing = new URL(url);
+      if (landing.origin !== origin || ![BOT_HOME_PATH, "/login"].includes(landing.pathname)) return;
+      // Only ask whether a session exists. The cloud page has no preload or shell privileges.
+      const signedOut = await contents.executeJavaScript(
+        '!localStorage.getItem("auth_token") && !sessionStorage.getItem("auth_token")',
+      ).catch(() => false);
+      if (signedOut && !quitting && !contents.isDestroyed() && contents.getURL() === url && serverChoice?.load().current === origin) {
+        serverChoice.select(null);
+        restartApp(true);
+      }
+    };
+    contents.on("did-navigate-in-page", (_event, _url, mainFrame) => {
+      if (mainFrame) void returnIfSignedOut();
+    });
+    contents.on("did-finish-load", () => {
+      if (installingSession && signIn && new URL(contents.getURL()).origin === origin) {
+        void contents.executeJavaScript(cloudSignInScript(signIn)).finally(() => {
+          installingSession = false;
+          void returnIfSignedOut();
+        }).catch(() => undefined);
+      } else {
+        void returnIfSignedOut();
+      }
     });
   }
   if (pendingDeepPath) {

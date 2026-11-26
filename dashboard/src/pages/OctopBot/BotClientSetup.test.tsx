@@ -55,6 +55,7 @@ function openSetup(path = "/setup") {
       <Routes>
         <Route path="/login/local" element={<h1>Verify local</h1>} />
         <Route path="/setup" element={<BotClientSetup />} />
+        <Route path="/login/workspaces" element={<BotClientSetup />} />
         <Route path="/octop-bot/settings" element={<Source />} />
         <Route path="/octop-bot/guide" element={<h1>Team guide</h1>} />
         <Route path="/octop-bot" element={<h1>Chat</h1>} />
@@ -128,6 +129,19 @@ describe("standalone onboarding", () => {
     );
     expect(await screen.findByText("Verify local")).toBeInTheDocument();
     expect(desktopShell.workspaceLogin).not.toHaveBeenCalled();
+  });
+
+  it("stays on the workspace chooser after signing out from the cloud", async () => {
+    vi.mocked(authApi.getAuthStatus).mockResolvedValue({
+      ...fresh,
+      setup_required: false,
+      local_account: true,
+    });
+    openSetup("/login/workspaces");
+    expect(
+      await screen.findByRole("button", { name: "botOnboarding.useLocal" }),
+    ).toBeInTheDocument();
+    expect(renewDesktopSession).not.toHaveBeenCalled();
   });
 
   it("signs a returning desktop user straight back in to this computer", async () => {

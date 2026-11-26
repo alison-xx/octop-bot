@@ -168,6 +168,12 @@ function ThemedApp() {
               }
             />
             {isBotOnlyDesktop() && (
+              <Route
+                path="/login/workspaces"
+                element={<BotClientSetupRoute />}
+              />
+            )}
+            {isBotOnlyDesktop() && (
               <Route path="/login/local" element={<LoginPage />} />
             )}
             <Route path="/login/oidc/complete" element={<OidcComplete />} />

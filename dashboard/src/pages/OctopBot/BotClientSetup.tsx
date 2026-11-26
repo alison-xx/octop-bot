@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Input, Spin } from "antd";
 import { ArrowRight, ChevronRight, LockKeyhole } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   authApi,
@@ -47,6 +47,7 @@ let desktopRenewTried = false;
 export default function BotClientSetup() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const workspaceChooser = useLocation().pathname === "/login/workspaces";
   const [search] = useSearchParams();
   const desktop = isDesktopShell();
   const [addLocalAccount, setAddLocalAccount] = useState(
@@ -85,6 +86,7 @@ export default function BotClientSetup() {
           // Signed out, or the device credential is gone: this page is the way back in.
           if (
             s.local_account &&
+            !workspaceChooser &&
             !desktopLocalAutoLoginHeld() &&
             !desktopRenewTried
           ) {
@@ -127,7 +129,7 @@ export default function BotClientSetup() {
     };
     // addLocalAccount is derived here on desktop; reading it once per load is enough.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [desktop, navigate, retry, t]);
+  }, [desktop, navigate, retry, t, workspaceChooser]);
   useEffect(() => {
     if (status) headingRef.current?.focus();
   }, [status]);
