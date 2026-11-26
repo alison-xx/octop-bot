@@ -8,23 +8,26 @@ import math
 import os
 import re
 import time
-from collections.abc import Awaitable, Callable, Coroutine, Mapping
-from contextlib import suppress
+from collections.abc import Awaitable, Callable, Mapping
+from contextlib import AbstractAsyncContextManager, suppress
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Literal
 from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
-from filelock import AsyncFileLock
 from pydantic import BaseModel
 
 from octop.infra.auth import lynxce_compute
+from octop.infra.auth.grant_lock import grant_lock
 from octop.infra.cloud.computers import DiskBalanceInsufficient
 from octop.infra.crypto.fernet import decrypt_json, encrypt_json
 from octop.infra.db.services import RepoBundle, SharedServices
 from octop.infra.desktop import bot_cloud_enabled, bot_desktop_enabled
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.async_tasks import finish
+
+_finish = finish
 
 logger = logging.getLogger(__name__)
 
@@ -125,12 +128,18 @@ def _load(services: SharedServices, user_id: int) -> _Grant | None:
     return _Grant(**decrypt_json(repo, key + ".fernet", blob)) if blob else None
 
 
-def _save(services: SharedServices, user_id: int, grant: _Grant) -> None:
+def _save(
+    services: SharedServices, user_id: int, grant: _Grant, *, expected: bytes | None = None
+) -> None:
     repo = services.secret_repo
     key = _key(user_id)
     stored = asdict(grant)
     stored.pop("login_fields")
-    repo.put(key, encrypt_json(repo, key + ".fernet", stored))
+    sealed = encrypt_json(repo, key + ".fernet", stored)
+    if expected is None:
+        repo.put(key, sealed)
+    elif not repo.replace_if_current(key, expected, sealed):
+        raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
     # The local owner can be removed during an upstream login/refresh. Its deletion
     # transaction clears existing keys; also clear a write that arrived afterwards.
     if services.user_repo.get(user_id) is None:
@@ -202,24 +211,14 @@ async def cloud_account(services: SharedServices, user_id: int) -> CloudAccountS
         return updated.status()
 
 
-def _lock(services: SharedServices, user_id: int) -> AsyncFileLock:
-    return AsyncFileLock(services.paths.root / f".lynxce-cloud-{user_id}.lock")
+def _lock(services: SharedServices, user_id: int) -> AbstractAsyncContextManager[Any]:
+    return grant_lock(services, user_id, "cloud")
 
 
 def _client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
         timeout=httpx.Timeout(45, connect=10), follow_redirects=False, trust_env=False
     )
-
-
-async def _finish[T](operation: Coroutine[Any, Any, T]) -> T:
-    """Do not release the account lock while a cancelled request's grant write is still running."""
-    task = asyncio.create_task(operation)
-    try:
-        return await asyncio.shield(task)
-    except asyncio.CancelledError:
-        await task
-        raise
 
 
 class _UpstreamFailure(Exception):
@@ -608,6 +607,14 @@ async def logout_cloud(
 
 
 async def _refresh(services: SharedServices, user_id: int, grant: _Grant) -> _Grant:
+    repo = services.secret_repo
+    key = _key(user_id)
+    original = await asyncio.to_thread(repo.get, key)
+    if original is None:
+        raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
+    stored = await asyncio.to_thread(decrypt_json, repo, key + ".fernet", original)
+    if stored["binding"] != grant.binding or stored["refresh_token"] != grant.refresh_token:
+        raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED)
     try:
         data = await _send("POST", "/api/auth/refresh", json={"refreshToken": grant.refresh_token})
         access = _token(data, "accessToken")
@@ -618,7 +625,7 @@ async def _refresh(services: SharedServices, user_id: int, grant: _Grant) -> _Gr
             raise _UpstreamFailure(403)
     except _UpstreamFailure as exc:
         if exc.status in {401, 403}:
-            await asyncio.to_thread(services.secret_repo.delete, _key(user_id))
+            await asyncio.to_thread(repo.replace_if_current, key, original, None)
             raise OctopError.localized(ErrorCode.BOT_CLOUD_ACCOUNT_REQUIRED) from None
         raise _rejected(exc.status) from None
     refresh = _token(data, "refreshToken") if "refreshToken" in data else grant.refresh_token
@@ -629,7 +636,7 @@ async def _refresh(services: SharedServices, user_id: int, grant: _Grant) -> _Gr
         avatar_url=_avatar(profile),
         profile_checked_at=time.time(),
     )
-    await asyncio.to_thread(_save, services, user_id, updated)
+    await asyncio.to_thread(_save, services, user_id, updated, expected=original)
     return updated
 
 
@@ -897,7 +904,7 @@ async def forget_account_grants(services: SharedServices, user_id: int) -> None:
     """Withdraw both grants under the same tenant lock that protects rotating credentials."""
 
     def forget() -> None:
-        forget_session(services, user_id)
+        services.secret_repo.delete(_key(user_id))
         lynxce_compute.forget(services, user_id)
 
     async with _lock(services, user_id):
@@ -913,7 +920,7 @@ async def _refresh_compute(
         "/api/auth/login-codes/refresh", {"refreshToken": grant.refresh_token}
     )
     updated = lynxce_compute.from_response(data, grant.account_id, previous=grant)
-    await asyncio.to_thread(lynxce_compute.save, services, user_id, updated)
+    await asyncio.to_thread(lynxce_compute.save, services, user_id, updated, previous=grant)
     return updated
 
 
@@ -992,7 +999,7 @@ async def tenant_call(
         except _UpstreamFailure as exc:
             if exc.status != 401:
                 raise _operation_rejected(method, path, exc) from None
-            grant = await _refresh(services, user_id, grant)
+            grant = await _finish(_refresh(services, user_id, grant))
             try:
                 return await _send(
                     method, path, bearer=grant.access_token, json=json, headers=extra
@@ -1035,5 +1042,13 @@ async def revoke_model_key(services: SharedServices, user_id: int, key_id: str) 
     await tenant_call(services, user_id, "DELETE", f"/api/user/personal-api-keys/{key_id}")
 
 
-def forget_session(services: SharedServices, user_id: int) -> None:
-    services.secret_repo.delete(_key(user_id))
+async def forget_session(
+    services: SharedServices, user_id: int, *, expected_binding: str | None = None
+) -> None:
+    """A failed sign-in may only remove the binding it installed."""
+    async with _lock(services, user_id):
+        if expected_binding is not None:
+            current = await asyncio.to_thread(_load, services, user_id)
+            if current is None or current.binding != expected_binding:
+                return
+        await _finish(asyncio.to_thread(services.secret_repo.delete, _key(user_id)))

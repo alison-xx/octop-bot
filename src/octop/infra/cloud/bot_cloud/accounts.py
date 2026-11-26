@@ -18,14 +18,15 @@ import hashlib
 import logging
 import os
 import secrets
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
-from filelock import AsyncFileLock
-
 from octop.infra.auth import lynxce_cloud
+from octop.infra.auth.grant_lock import grant_lock
 from octop.infra.crypto.fernet import decrypt_json, encrypt_json
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.async_tasks import finish
 
 if TYPE_CHECKING:
     from octop.infra.db.services import SharedServices
@@ -114,12 +115,24 @@ def _save_model_key(services: SharedServices, user_id: int, key: ModelKey) -> No
 def key_name(services: SharedServices, user_id: int) -> str:
     """``Octop Bot 云端 · <tag>``: the tag is fixed for this server and local user."""
     path = services.paths.root / INSTANCE_FILE
-    try:
-        with path.open("x", encoding="utf-8") as fh:
-            fh.write(secrets.token_hex(16))
-    except FileExistsError:
-        pass
-    instance = path.read_text(encoding="utf-8").strip()
+
+    def installation_id() -> bytes:
+        try:
+            return path.read_text(encoding="utf-8").strip().encode()
+        except FileNotFoundError:
+            return secrets.token_hex(16).encode()
+
+    if services.db.dialect == "postgresql":
+        instance = services.secret_repo.get_or_create(
+            "lynxce.cloud.key_instance", installation_id
+        ).decode()
+    else:
+        try:
+            with path.open("x", encoding="utf-8") as fh:
+                fh.write(secrets.token_hex(16))
+        except FileExistsError:
+            pass
+        instance = path.read_text(encoding="utf-8").strip()
     tag = hashlib.sha256(f"{instance}:{user_id}".encode()).hexdigest()[:6]
     return f"{KEY_NAME} · {tag}"
 
@@ -145,9 +158,9 @@ def _key_request(name: str) -> dict[str, Any]:
     }
 
 
-def _key_lock(services: SharedServices, user_id: int) -> AsyncFileLock:
+def _key_lock(services: SharedServices, user_id: int) -> AbstractAsyncContextManager[Any]:
     # Not lynxce_cloud._lock: minting the key takes that one (tenant_call), and it does not nest.
-    return AsyncFileLock(services.paths.root / f".lynxce-cloud-key-{user_id}.lock")
+    return grant_lock(services, user_id, "cloud-key")
 
 
 async def ensure_model_key(
@@ -164,8 +177,8 @@ async def ensure_model_key(
         if existing is not None:
             if not verify or not await lynxce_cloud.model_key_rejected(existing.secret):
                 return await _lift_caps(services, user_id, existing)
-            await asyncio.to_thread(forget_model_key, services, user_id)
-        return await _mint_model_key(services, user_id, existing)
+            await finish(asyncio.to_thread(forget_model_key, services, user_id))
+        return await finish(_mint_model_key(services, user_id, existing))
 
 
 async def _lift_caps(services: SharedServices, user_id: int, key: ModelKey) -> ModelKey:
@@ -188,7 +201,7 @@ async def _lift_caps(services: SharedServices, user_id: int, key: ModelKey) -> M
         logger.warning("Could not lift the credit caps of the Lynxce key of user %s", user_id)
         return key
     lifted = replace(key, uncapped=True)
-    await asyncio.to_thread(_save_model_key, services, user_id, lifted)
+    await finish(asyncio.to_thread(_save_model_key, services, user_id, lifted))
     return lifted
 
 
@@ -253,7 +266,7 @@ async def revoke_model_key(services: SharedServices, user_id: int) -> None:
         if key is None:
             return
         await _revoke(services, user_id, key.key_id)
-        await asyncio.to_thread(forget_model_key, services, user_id)
+        await finish(asyncio.to_thread(forget_model_key, services, user_id))
 
 
 async def ensure_media_scopes(services: SharedServices, user_id: int) -> None:
@@ -278,11 +291,13 @@ async def ensure_media_scopes(services: SharedServices, user_id: int) -> None:
         except Exception:  # noqa: BLE001 - see the docstring
             logger.warning("Could not add media scopes to the Lynxce key of user %s", user_id)
             return
-        await asyncio.to_thread(
-            _save_model_key,
-            services,
-            user_id,
-            replace(key, scopes=KEY_SCOPES),
+        await finish(
+            asyncio.to_thread(
+                _save_model_key,
+                services,
+                user_id,
+                replace(key, scopes=KEY_SCOPES),
+            )
         )
 
 
@@ -362,7 +377,7 @@ async def provision(
         await ensure_media_scopes(services, user.id)
     except Exception:
         # The sign-in fails, so its session must not stay open, here or upstream.
-        await asyncio.to_thread(lynxce_cloud.forget_session, services, user.id)
+        await lynxce_cloud.forget_session(services, user.id, expected_binding=session.binding)
         await lynxce_cloud.discard_session(session)
         raise
     return user
