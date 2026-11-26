@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrajectoryEvent } from "../../../api/modules/trajectory";
 
@@ -202,17 +208,20 @@ describe("TrajectoryInspector", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
 
-    await waitFor(() => {
-      expect(eventMock).toHaveBeenCalledWith("A1", "T1", "ctx-1");
-      const preview = screen.getByTestId("trajectory-preview");
-      expect(preview).toHaveTextContent("Prefer BackendWorkspace paths");
-      // Rendered markdown — not the raw ## / ** markers.
-      expect(preview.querySelector("h2")).toHaveTextContent("Rules");
-      expect(preview.querySelector("strong")).toHaveTextContent(
-        "BackendWorkspace",
-      );
-      expect(preview).not.toHaveTextContent("summary: meta");
-    });
+    const preview = screen.getByTestId("trajectory-preview");
+    // The fallback also contains the Markdown source. Wait for the real renderer.
+    const heading = await within(preview).findByRole(
+      "heading",
+      { level: 2, name: "Rules" },
+      { timeout: 5000 },
+    );
+    expect(eventMock).toHaveBeenCalledWith("A1", "T1", "ctx-1");
+    expect(heading).toHaveTextContent("Rules");
+    expect(preview).toHaveTextContent("Prefer BackendWorkspace paths");
+    expect(preview.querySelector("strong")).toHaveTextContent(
+      "BackendWorkspace",
+    );
+    expect(preview).not.toHaveTextContent("summary: meta");
   });
 
   it("labels the middle tab Result for tool events", () => {

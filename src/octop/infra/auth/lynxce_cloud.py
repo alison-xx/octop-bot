@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Literal
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -156,9 +157,19 @@ def cloud_status(services: SharedServices, user_id: int) -> CloudAccountStatus:
 
 def _avatar(profile: dict[str, Any]) -> str:
     value = profile.get("avatarUrl")
-    if isinstance(value, str) and value.startswith("https://") and len(value) <= 2048:
-        return value
-    return ""
+    if not isinstance(value, str):
+        return ""
+    value = value.strip()
+    if not value or len(value) > 2048 or "\\" in value:
+        return ""
+    # Older WeChat profiles can contain HTTP or protocol-relative portrait URLs.
+    try:
+        url = urlsplit(value)
+        if url.scheme not in {"", "http", "https"} or not url.hostname or url.username is not None:
+            return ""
+        return url._replace(scheme="https").geturl()
+    except ValueError:
+        return ""
 
 
 async def cloud_account(services: SharedServices, user_id: int) -> CloudAccountStatus:
@@ -998,11 +1009,13 @@ async def model_key_rejected(secret: str) -> bool:
     gateway or any other reply keeps the key too.
     """
     try:
-        async with _client() as client:
+        # This is only a revocation probe. A slow catalog must not consume the
+        # normal model request's startup budget. The gateway validates the key on chat.
+        async with asyncio.timeout(2), _client() as client:
             response = await client.get(
                 _ORIGIN + "/api/v1/models", headers={"Authorization": f"Bearer {secret}"}
             )
-    except httpx.HTTPError:
+    except (TimeoutError, httpx.HTTPError):
         return False
     return response.status_code == 401
 

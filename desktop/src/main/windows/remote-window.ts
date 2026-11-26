@@ -1,6 +1,7 @@
 import { BrowserWindow, session } from "electron";
 
 import { BOT_HOME_PATH, BOT_PRODUCT_NAME } from "../../shared/product";
+import { concealWindowsMenuBar } from "./chrome";
 import { installDashboardGuards } from "./main-window";
 import { allowRemotePermission } from "./remote-permissions";
 import { DEFAULT_WINDOW_SIZE, minimumWindowSize } from "./size";
@@ -48,7 +49,10 @@ export function createRemoteWindow(options: {
     // -3 is an aborted load (a redirect or a newer navigation), not a failure.
     if (isMainFrame && code !== -3) options.onLoadFailed(description);
   });
-  win.once("ready-to-show", () => win.show());
+  win.once("ready-to-show", () => {
+    concealWindowsMenuBar(win);
+    win.show();
+  });
   void win.loadURL(options.origin + BOT_HOME_PATH);
   return win;
 }

@@ -284,7 +284,16 @@ const Markdown = memo(function Markdown({
   );
   const { remarkPlugins: mathRemark, rehypePlugins: mathRehype } =
     useMathPlugins(renderContent);
-  const remarkPlugins = useMemo(() => [remarkGfm, ...mathRemark], [mathRemark]);
+  const remarkPlugins = useMemo(
+    () => [
+      [remarkGfm, { singleTilde: false }] as [
+        typeof remarkGfm,
+        { singleTilde: boolean },
+      ],
+      ...mathRemark,
+    ],
+    [mathRemark],
+  );
   const rehypePlugins = useMemo(() => [...mathRehype], [mathRehype]);
 
   return (

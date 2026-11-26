@@ -31,6 +31,7 @@ from octop.infra.users.identity import User
 from octop.infra.utils.ulid import new_ulid
 
 if TYPE_CHECKING:
+    from octop.infra.db.repos.bot_groups import BotGroupRepo
     from octop.infra.server import AppRuntime
 
 _GOAL_BLOCK = re.compile(r"(?:^|\n)```octop-goal\s*\n(.*?)\n```\s*$", re.DOTALL)
@@ -114,25 +115,38 @@ def room_request(prompt: str) -> str | None:
     return None
 
 
-def show_room_requests(messages: list[dict[str, Any]]) -> None:
-    """Show the room request in place of the long prompt in a member's group work thread."""
+def show_room_history(messages: list[dict[str, Any]], repo: BotGroupRepo, thread_id: str) -> None:
+    """Present the user's request and the answer actually published to the room."""
     for message in messages:
-        if message.get("role") != "user" or not isinstance(message.get("content"), list):
+        if not isinstance(message.get("content"), list):
             continue
         text = "".join(
             str(block.get("text") or "")
             for block in message["content"]
             if isinstance(block, dict) and block.get("type") == "text"
         )
-        request = room_request(text)
-        if request is not None:
+        visible = None
+        if message.get("role") == "user":
+            visible = room_request(text)
+        elif message.get("role") == "assistant" and (block := _GOAL_BLOCK.search(text)):
+            try:
+                goal = Goal.model_validate_json(block[1])
+            except ValidationError:
+                continue
+            visible = repo.published_reply(
+                thread_id,
+                text.strip(),
+                text[: block.start()].strip() or goal.title,
+                message.get("timestamp") or 0,
+            )
+        if visible is not None and visible != text:
             message["content"] = [
                 *(
                     b
                     for b in message["content"]
                     if not (isinstance(b, dict) and b.get("type") == "text")
                 ),
-                {"type": "text", "text": request},
+                {"type": "text", "text": visible},
             ]
 
 
@@ -215,6 +229,7 @@ class RoomTurn:
                 }
                 for m in history
                 if m["role"] != "error"
+                and not (m["role"] == "user" and m["request_id"] == self.request_id)
             ]
             prompt = [
                 tr(
@@ -233,9 +248,13 @@ class RoomTurn:
                     tr(
                         "bot_rooms.admin",
                         self.user.locale,
-                        schema=json.dumps(Goal.model_json_schema(), ensure_ascii=False),
+                        schema=json.dumps(
+                            Goal.model_json_schema(), ensure_ascii=False, separators=(",", ":")
+                        ),
                     )
                 )
+            if agent_id == group.admin_id and not room["goal"] and not wrap and not assignment:
+                prompt.append(tr("bot_rooms.first_answer", self.user.locale))
             context = {
                 "team_memory": await asyncio.to_thread(
                     self.services.settings_repo.get, f"octop_bot:memory:{self.user.id}"
@@ -252,6 +271,26 @@ class RoomTurn:
             prompt.append(json.dumps(context, ensure_ascii=False))
             if wrap:
                 prompt.append(tr("bot_rooms.wrap", self.user.locale))
+                if stage_index is not None:
+                    delivery = next(
+                        (
+                            m
+                            for m in reversed(history)
+                            if m["request_id"] == self.request_id
+                            and m["slot"].startswith(f"stage-{stage_index}:reply:")
+                            and m["role"] == "assistant"
+                        ),
+                        None,
+                    )
+                    if delivery:
+                        prompt.append(
+                            tr(
+                                "bot_rooms.stage_review",
+                                self.user.locale,
+                                stage=stage_index + 1,
+                                message_id=delivery["message_id"],
+                            )
+                        )
             elif assignment:
                 prompt.append(tr("bot_rooms.stage", self.user.locale, title=assignment))
             registry = self.runtime.gateway.thread_registry
@@ -295,12 +334,22 @@ class RoomTurn:
                 pieces: list[str] = []
                 role = "assistant"
                 flushed_at = 0.0
+                started = time.monotonic()
+                last_draft = ""
+                phase = ""
                 async for chunk in self.runtime.gateway.processor.iter_turn_chunks(inbound(text)):
                     kind = chunk.get("type")
                     if kind in {"token", "delta"}:
                         pieces.append(str(chunk.get("content") or chunk.get("text") or ""))
-                        if time.monotonic() - flushed_at >= 0.5:
+                        if not last_draft or time.monotonic() - flushed_at >= 0.5:
                             draft = "".join(pieces).split("```octop-goal", 1)[0]
+                            if (
+                                not draft.strip()
+                                or draft == last_draft
+                                or (not last_draft and re.fullmatch(r"[\s*_`#>~-]+", draft))
+                            ):
+                                flushed_at = time.monotonic()
+                                continue
                             await asyncio.to_thread(
                                 self.repo.draft,
                                 group.group_id,
@@ -311,6 +360,34 @@ class RoomTurn:
                                 draft,
                             )
                             flushed_at = time.monotonic()
+                            if not last_draft:
+                                logging.getLogger(__name__).info(
+                                    "Group reply first draft thread=%s request=%s elapsed_ms=%d",
+                                    thread_id,
+                                    self.request_id,
+                                    (flushed_at - started) * 1000,
+                                )
+                            last_draft = draft
+                    elif (
+                        not last_draft
+                        and kind in {"reasoning", "tool_call_chunk"}
+                        and kind != phase
+                    ):
+                        phase = kind
+                        await asyncio.to_thread(
+                            self.repo.draft,
+                            group.group_id,
+                            self.request_id,
+                            self.token,
+                            slot,
+                            agent_id,
+                            tr(
+                                "bot_rooms.thinking"
+                                if kind == "reasoning"
+                                else "bot_rooms.using_tool",
+                                self.user.locale,
+                            ),
+                        )
                     elif kind == "hitl_required":
                         pieces.append("\n" + tr("bot_rooms.approval", self.user.locale))
                     elif kind == "error":
@@ -321,6 +398,12 @@ class RoomTurn:
                                 or tr("errors.INTERNAL_ERROR", self.user.locale)
                             )
                         )
+                logging.getLogger(__name__).info(
+                    "Group reply finished thread=%s request=%s elapsed_ms=%d",
+                    thread_id,
+                    self.request_id,
+                    (time.monotonic() - started) * 1000,
+                )
                 reply = "".join(pieces).strip()
                 if role == "assistant" and _is_pass(reply):
                     return "pass", reply
@@ -352,7 +435,7 @@ class RoomTurn:
                 role, reply = await stream(tr("bot_rooms.pass_retry", self.user.locale))
                 if role == "pass":
                     role, reply = "error", tr("bot_rooms.pass_fallback", self.user.locale)
-            if agent_id == group.admin_id and role == "assistant":
+            if agent_id == group.admin_id and role == "assistant" and (stage_index is None or wrap):
                 safe_text, proposed = _goal_edit(reply, room, group, history)
                 if proposed is not None and await asyncio.to_thread(
                     self.repo.set_goal,
@@ -362,6 +445,12 @@ class RoomTurn:
                     room["goal"],
                 ):
                     reply = safe_text
+                elif block := _GOAL_BLOCK.search(reply):
+                    reply = (
+                        reply[: block.start()].strip()
+                        + "\n\n"
+                        + tr("bot_rooms.goal_not_saved", self.user.locale)
+                    ).strip()
         except Exception as exc:
             role, reply = "error", format_stream_error(exc, self.user.locale)
         await asyncio.to_thread(
@@ -400,6 +489,14 @@ class RoomTurn:
                     key for reply in replies for key in mentions(reply, names) if key not in visited
                 )
             )
+            if targets:
+                room = await asyncio.to_thread(
+                    group_row, self.services, self.user.id, group.group_id
+                )
+                if room["goal"] and Goal.model_validate_json(room["goal"]).status == "draft":
+                    # The first round already honored user mentions. Names in a proposed
+                    # plan are future assignments until the user activates that plan.
+                    break
             delegated |= bool(targets)
         if delegated and group.admin_id in visited:
             await self.speak(group.admin_id, names, wrap=True)
@@ -464,10 +561,12 @@ async def send_message(
     request_id: str,
     goal_run: bool = False,
     attachment_paths: list[str] | None = None,
+    owner_commands: bool = False,
 ) -> list[Message]:
     from octop.infra.bot_groups.workspace import require_artifacts
 
-    group = Group.from_record(await asyncio.to_thread(group_row, services, user.id, group_id))
+    row = await asyncio.to_thread(group_row, services, user.id, group_id)
+    group = Group.from_record(row)
     explicit = list(dict.fromkeys(mention_ids))
     if any(key not in group.member_ids for key in explicit):
         raise OctopError.localized(ErrorCode.TEAM_MEMBER_INVALID)
@@ -477,12 +576,46 @@ async def send_message(
         raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS)
     if paths and not await asyncio.to_thread(repo.has_turn, group_id, request_id):
         await asyncio.to_thread(require_artifacts, services, user.id, group_id, paths)
+    activate = None
+    if (
+        owner_commands
+        and not explicit
+        and not paths
+        and text.strip().casefold().rstrip("。.!！")
+        in {
+            "激活",
+            "激活目标",
+            "确认激活",
+            "开始执行",
+            "activate",
+            "activate goal",
+            "start the plan",
+        }
+        and row["goal"]
+    ):
+        goal = Goal.model_validate_json(row["goal"])
+        previous_run = await asyncio.to_thread(repo.was_goal_run, group_id, request_id)
+        if previous_run is not None:
+            goal_run = previous_run
+        elif goal.status == "draft" and goal.criteria.strip() and goal.stages:
+            # The saved draft is the plan the owner approved. A generated status
+            # block cannot approve a plan or substitute different assignments.
+            goal.status = "active"
+            activate = (user.id, row["goal"], goal.model_dump_json())
+            goal_run = True
+        else:
+            raise OctopError.localized(
+                ErrorCode.SLASH_BAD_ARGS,
+                details={"reason": tr("bot_rooms.no_activatable_goal", user.locale)},
+            )
     token = new_ulid()
     inputs: list[Any] = [text, explicit, goal_run]
     if paths:
         inputs.append(paths)
     input_json = json.dumps(inputs, ensure_ascii=False)
-    state = await asyncio.to_thread(repo.claim, group_id, request_id, input_json, text, token)
+    state = await asyncio.to_thread(
+        repo.claim, group_id, request_id, input_json, text, token, activate=activate
+    )
     if state == "conflict":
         raise OctopError.localized(ErrorCode.THREAD_TURN_ACTIVE)
     if state in {"busy", "finished"}:

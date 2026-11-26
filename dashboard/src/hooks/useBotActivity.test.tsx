@@ -1,9 +1,16 @@
 import type { ReactNode } from "react";
 import { App } from "antd";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BotActivitySnapshot } from "@/api/modules/botActivity";
+import type { BotWorkspace, WorkspaceBot } from "@/api/modules/octopBot";
 
 const read = vi.fn<() => Promise<BotActivitySnapshot>>();
 const markRead = vi.fn(() => Promise.resolve());
@@ -32,13 +39,46 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <App>{children}</App>
 );
 
+const writer: WorkspaceBot = {
+  agent_id: "writer",
+  name: "Writer",
+  is_main: false,
+  is_private: false,
+  state: "running",
+  preparing: false,
+  last_error: null,
+  icon_url: "/writer.png",
+  avatar: { source: "photo", shape: "orb", color: "blue" },
+};
+const workspace: Pick<BotWorkspace, "bots" | "groups"> = {
+  bots: [
+    {
+      ...writer,
+      agent_id: "a",
+      name: "Chief",
+      icon_url: "/chief.png",
+      is_main: true,
+    },
+    writer,
+  ],
+  groups: [
+    {
+      group_id: "g",
+      name: "Studio",
+      admin_id: "a",
+      member_ids: ["a", "writer"],
+      reply_mode: "all_members",
+    },
+  ],
+};
+
 function render(openTarget: string) {
   return renderHook(
     () =>
       useBotActivity({
         enabled: true,
         openTarget,
-        nameOf: () => "Bot",
+        workspace,
         onOpen: () => undefined,
       }),
     { wrapper },
@@ -57,6 +97,42 @@ describe("useBotActivity", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it("shows each sender's sidebar portrait and falls back to their character or the group", async () => {
+    read.mockResolvedValueOnce(snapshot(100));
+    const { result } = render("bot:other");
+    await waitFor(() => expect(result.current.recent["bot:a"]).toBe(100));
+    const incoming = snapshot(200, 1);
+    incoming.groups[0].last_message = {
+      message_id: "1",
+      role: "assistant",
+      agent_id: "writer",
+      text: "Here it is",
+      created_at: 200,
+    };
+    read.mockResolvedValueOnce(incoming);
+    act(() => result.current.refresh());
+    const direct = await screen.findByRole("button", { name: /Chief/ });
+    expect(direct.querySelector('[data-bot-avatar="a"] img')).toHaveAttribute(
+      "src",
+      "/chief.png",
+    );
+    const group = await screen.findByRole("button", {
+      name: /Studio.*Writer: Here it is/,
+    });
+    const portrait = group.querySelector('[data-bot-avatar="writer"] img')!;
+    expect(portrait).toHaveAttribute("src", "/writer.png");
+    fireEvent.error(portrait);
+    expect(
+      group.querySelector('[data-bot-avatar="writer"][data-shape="orb"] svg'),
+    ).toBeInTheDocument();
+    read.mockResolvedValueOnce(snapshot(200, 2));
+    act(() => result.current.refresh());
+    await waitFor(() =>
+      expect(
+        group.querySelector('[data-group-avatar] [data-bot-avatar="a"]'),
+      ).toBeInTheDocument(),
+    );
+  });
   it("counts replies in the open chat while the window is in the background", async () => {
     read.mockResolvedValueOnce(snapshot(100));
     const { result } = render("bot:a");

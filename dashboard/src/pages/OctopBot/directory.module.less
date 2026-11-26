@@ -107,6 +107,20 @@
   letter-spacing: -0.025em;
   font-weight: 650;
 }
+:global(html:not([data-octop-desktop-chrome="mac"]))
+  .directory:not([data-collapsed])
+  .navHeader {
+  gap: 3px;
+  padding-inline: 0;
+  > strong {
+    min-width: max-content;
+  }
+  > button {
+    flex: none;
+    width: clamp(26px, 2.4vw, 34px);
+    padding-inline: 0;
+  }
+}
 .directoryToggle {
   flex: none;
   display: grid;
@@ -572,13 +586,15 @@
   );
   font-weight: 600;
 }
-.message[data-wrap-up] .bubble {
-  border-inline-start: 3px solid var(--bot-accent);
-  background: linear-gradient(
-    115deg,
-    color-mix(in srgb, var(--bot-selection) 52%, var(--bot-card)),
-    var(--bot-card)
-  );
+.message[data-role="assistant"] {
+  margin-block: 20px 28px;
+  .messageBody {
+    flex: 1;
+    max-width: min(calc(100% - 39px), 760px);
+  }
+  header {
+    margin: 0 0 7px;
+  }
 }
 :global(html[data-theme="dark"]) .message header strong {
   color: var(--bot-dark, var(--bot-ink));

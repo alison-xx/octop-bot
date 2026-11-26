@@ -193,16 +193,17 @@
 ```
 octop_bot_create_team(
   team_name: str,                 # 群名，也是侧栏分组名
-  bots: list[{name, role, instructions, avatar?}],   # 2–3 个
-  admin: str,                     # bots 里某个 name，当群管理员
+  bots: list[{name, role, instructions, avatar?}],   # 本次新建 0–3 个；引导建议 2–3 个
+  admin: str,                     # 新 Bot 的名字或本次加入的已有 Bot ID
   first_task: str = "",           # 建议用户在群里发的第一句，引导会拿来预填
   reply_mode: "admin_first" | "all_members" = "admin_first",
-) -> {group_id, bot_ids, section, section_error?}
+  existing_bot_ids: list[str] = [], # 复用本人已有的成员，保留他们当前的侧栏位置
+) -> {group_id, admin_id, bot_ids, member_ids, section?, section_error?}
 ```
 
 限制（安全评审后，总管 11-25 定）：一次最多 3 个 Bot，和免费档的 3 个协同 Bot、1 个群一致；名字和团队名 ≤40 字，分工 ≤200 字，角色指令 ≤8000 字，first_task ≤500 字，超长返回 `SLASH_BAD_ARGS`；同一对话里同名团队 10 分钟内只建一次，重试返回第一次的结果；非本人或非 Chief 的回合调用返回 `FORBIDDEN`。云端租户（bot.lynxce.cn）每个账号最多 50 个 Bot、20 个群（`BOT_COUNT_LIMIT`、`BOT_GROUP_COUNT_LIMIT`，在 `registry.create` 和 `create_group` 两处检查），本机 Bot 不设上限。
 
-内部依次复用现有的 `registry.create(defer_bootstrap=True)`、`set_character / bot_appearance`、`create_group`、`section_action`，所有权检查沿用 `require_owner()`。中途某个 Bot 建失败就停下，返回已经建好的 ID 和错误码，不回滚，总管可以用已有 ID 补建群。上限 6 个，引导模式提示词要求 2–3 个。
+工具先校验已有成员的所有权与入群资格，再依次调用 `registry.create(defer_bootstrap=True)`、`set_character / bot_appearance`、`create_group`、`section_action`。中途创建失败时，`bot_ids` 返回已经建好的 ID，总管可以复用这些 ID 补建群。成功时 `member_ids` 返回群中实际的完整成员列表，`section` 返回新 Bot 和群所在的侧栏分组。
 
 ### 6.2 每轮附加的引导提示
 

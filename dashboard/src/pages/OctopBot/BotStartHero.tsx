@@ -86,6 +86,18 @@ export function CrewTicker() {
   );
 }
 
+export function LoginMascot({ className }: { className: string }) {
+  return (
+    <picture className={className}>
+      <source
+        media="(prefers-reduced-motion: no-preference)"
+        srcSet={`${import.meta.env.BASE_URL}octop-mascot-peek.webp`}
+      />
+      <img src={octopMascot} alt="" draggable={false} />
+    </picture>
+  );
+}
+
 /** Left stage of the start and sign-in pages: Chief, what Octop Bot does, the team at work. */
 export default function BotStartHero() {
   const { t } = useTranslation();
@@ -96,13 +108,7 @@ export default function BotStartHero() {
   ] as const;
   return (
     <aside className={intro.identity}>
-      <picture className={intro.chief}>
-        <source
-          media="(prefers-reduced-motion: no-preference)"
-          srcSet={`${import.meta.env.BASE_URL}octop-mascot-peek.webp`}
-        />
-        <img src={octopMascot} alt="" draggable={false} />
-      </picture>
+      <LoginMascot className={intro.chief} />
       <p className={intro.heroTitle}>{t("botStart.heroTitle")}</p>
       <p className={intro.heroSub}>{t("botStart.heroSub")}</p>
       <ul className={intro.features}>

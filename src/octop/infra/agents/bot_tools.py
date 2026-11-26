@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from langchain_core.tools import StructuredTool
 from langgraph.config import get_config
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, GetPydanticSchema
 
 from octop.infra.agents.bot_appearance import Character, bot_appearance, set_character
 from octop.infra.agents.bot_sections import SectionAction, SectionName, read_layout, section_action
-from octop.infra.agents.bot_workspace import chief_key, is_private_bot, list_bot_cards
+from octop.infra.agents.bot_workspace import can_join_bot_group, chief_key, is_private_bot
 from octop.infra.errors import ErrorCode, OctopError
 
 if TYPE_CHECKING:
@@ -45,6 +45,18 @@ class TeamBot(BaseModel):
     avatar: Character | None = None
 
 
+# Advertise the cap to the model while preserving SLASH_BAD_ARGS for older callers.
+NewTeamBots = Annotated[
+    list[TeamBot],
+    GetPydanticSchema(
+        get_pydantic_json_schema=lambda schema, handler: {
+            **handler(schema),
+            "maxItems": TEAM_MAX_BOTS,
+        }
+    ),
+]
+
+
 def chief_tools(
     registry: AgentManager, services: SharedServices, chief_id: str, owner: int
 ) -> list[StructuredTool]:
@@ -67,10 +79,21 @@ def chief_tools(
         memberships = {
             item: s.name for s in sections for item in s.items if item != f"bot:{chief_id}"
         }
-        bots = list_bot_cards(services, owner, chief_id, include_private=False)
         groups = list_groups(services, owner)
         return {
-            "bots": [{**b, "section": memberships.get(f"bot:{b['agent_id']}")} for b in bots],
+            "bots": [
+                {
+                    "agent_id": row.agent_id,
+                    "name": row.name,
+                    "description": row.description,
+                    "section": memberships.get(f"bot:{row.agent_id}"),
+                    "can_join_group": can_join_bot_group(row),
+                    "is_main": row.agent_id == chief_id,
+                    "enabled": bool(row.enabled),
+                }
+                for row in services.agent_repo.list_by_user(owner)
+                if row.kind != "team" and not is_private_bot(row)
+            ],
             "groups": [
                 {**g.model_dump(), "section": memberships.get(f"group:{g.group_id}")}
                 for g in groups
@@ -249,29 +272,39 @@ def chief_tools(
 
     async def octop_bot_create_team(
         team_name: str,
-        bots: list[TeamBot],
+        bots: NewTeamBots,
         admin: str,
         first_task: str = "",
         reply_mode: Literal["admin_first", "all_members"] = "admin_first",
+        existing_bot_ids: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Create a whole team in one call: new bots, a group chat and a sidebar section.
-
-        team_name names both the group chat and the sidebar section. admin is the name of one
-        of the new bots; it answers first in the group. first_task is one message the owner can
-        post in the group to start. If a bot or the group fails, the result lists the bot_ids
-        already created and the error code; reuse those IDs instead of creating them again.
+        """Create the group and its sidebar section in one call. Supply 0–3 NEW bots (name, role,
+        concise instructions) plus existing_bot_ids from the owner's roster. Set admin to a new bot's
+        name or an included existing bot ID. The group needs at least one member. Only new bots and
+        the group are filed in the section; existing bots keep their folders. first_task is an
+        optional starter message. Success returns the saved member_ids, admin_id, group_id and
+        section; a filing failure returns section_error. bot_ids lists only the newly created bots,
+        including those retained on partial failure. Reuse their IDs on retry.
         """
+        from octop.infra.bot_groups.service import MAX_GROUP_MEMBERS, eligible_members
+
         require_owner()
         name = team_name.strip()
         names = [b.name.strip() for b in bots]
-        if not name or not bots or len(bots) > TEAM_MAX_BOTS:
+        existing = list(dict.fromkeys(existing_bot_ids or []))
+        if not name or not (bots or existing) or len(bots) > TEAM_MAX_BOTS:
             raise OctopError(
-                ErrorCode.SLASH_BAD_ARGS, f"team_name and 1-{TEAM_MAX_BOTS} bots required"
+                ErrorCode.SLASH_BAD_ARGS,
+                f"team_name and members required; at most {TEAM_MAX_BOTS} new bots per call",
             )
         if any(not n or not b.instructions.strip() for n, b in zip(names, bots, strict=True)):
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "every bot needs a name and instructions")
-        if len(set(names)) != len(names) or admin.strip() not in names:
-            raise OctopError(ErrorCode.SLASH_BAD_ARGS, "admin must name one of the new bots")
+        if len(set(names)) != len(names) or set(names).intersection(existing):
+            raise OctopError(ErrorCode.SLASH_BAD_ARGS, "new bot names must be unambiguous")
+        if admin.strip() not in names and admin.strip() not in existing:
+            raise OctopError(ErrorCode.SLASH_BAD_ARGS, "admin must be a team member")
+        if len(existing) + len(names) > MAX_GROUP_MEMBERS:
+            raise OctopError.localized(ErrorCode.TEAM_MEMBER_INVALID)
         if (
             len(name) > NAME_MAX
             or len(first_task) > FIRST_TASK_MAX
@@ -304,7 +337,11 @@ def chief_tools(
                 _team_locks.pop(idle, None)
             if thread and key in _recent_teams:
                 return {**_recent_teams[key][1], "reused": True}
-            result = await _create_team(name, bots, names, admin, first_task, reply_mode)
+            if existing:
+                await asyncio.to_thread(eligible_members, services, owner, existing)
+            result = await _create_team(
+                name, bots, names, existing, admin.strip(), first_task, reply_mode
+            )
             if thread and "group_id" in result:
                 _recent_teams[key] = (time.monotonic(), result)
             return result
@@ -313,6 +350,7 @@ def chief_tools(
         name: str,
         bots: list[TeamBot],
         names: list[str],
+        existing: list[str],
         admin: str,
         first_task: str,
         reply_mode: Literal["admin_first", "all_members"],
@@ -339,14 +377,14 @@ def chief_tools(
                     )
                 else:
                     await asyncio.to_thread(bot_appearance, services.settings_repo, row, chief_id)
-            admin_id = created[names.index(admin.strip())]
+            admin_id = admin if admin in existing else created[names.index(admin)]
             group = await asyncio.to_thread(
                 create_group,
                 services,
                 owner,
                 name=name,
                 admin_id=admin_id,
-                member_ids=[i for i in created if i != admin_id],
+                member_ids=[*created, *existing],
                 reply_mode=reply_mode,
             )
         except OctopError as exc:
@@ -358,7 +396,7 @@ def chief_tools(
             "name": group.name,
             "admin_id": admin_id,
             "bot_ids": created,
-            "section": name,
+            "member_ids": group.member_ids,
         }
         try:
             await asyncio.to_thread(
@@ -367,7 +405,15 @@ def chief_tools(
         except OctopError as exc:
             # The team exists either way; only filing it in the sidebar failed.
             result.update({"requested_section": name, "section_error": exc.code.value})
-        await asyncio.to_thread(note_onboarding_team, group.group_id, created, name, first_task)
+        else:
+            result["section"] = name
+        await asyncio.to_thread(
+            note_onboarding_team,
+            group.group_id,
+            [i for i in [*created, *existing] if i != chief_id],
+            result.get("section"),
+            first_task,
+        )
         return result
 
     def octop_bot_update_group(

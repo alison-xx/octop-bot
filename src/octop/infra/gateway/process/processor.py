@@ -106,6 +106,8 @@ from octop.infra.utils.turn_failure import log_failed_tool_results, log_turn_fai
 from octop.infra.utils.ulid import new_ulid
 
 if TYPE_CHECKING:
+    from octop_harness import HarnessAgent
+
     from octop.infra.agents.manager import AgentManager
     from octop.infra.db.repos.agents import AgentRepo
     from octop.infra.db.repos.audit import AuditRepo
@@ -346,6 +348,7 @@ class GlobalProcessor:
         thread_id: str,
         chunk: dict[str, Any],
         enabled: bool | None = None,
+        scoped_agent: HarnessAgent | None = None,
     ) -> None:
         if enabled is False:
             return
@@ -358,7 +361,7 @@ class GlobalProcessor:
         # and a context row finalizes any open assistant message — doing this
         # after the chunk would pin the previous prompt on the new turn and
         # split the reply that is still streaming.
-        self._sync_memory_prompt_trajectory(agent_id, thread_id)
+        self._sync_memory_prompt_trajectory(agent_id, thread_id, scoped_agent)
         try:
             service.observe_chunk(agent_id, thread_id, chunk)
         except Exception:
@@ -397,6 +400,7 @@ class GlobalProcessor:
         meta: dict[str, Any],
         phase: Literal["system", "context"] = "context",
         trajectory_enabled: bool | None = None,
+        scoped_agent: HarnessAgent | None = None,
     ) -> None:
         """Emit SYSTEM / CONTEXT from harness injection sources of truth."""
         if trajectory_enabled is False:
@@ -426,7 +430,8 @@ class GlobalProcessor:
                     turn_skills = [str(x) for x in request["skills"]]
                 elif "skills" in meta and isinstance(meta.get("skills"), list):
                     turn_skills = [str(x) for x in meta["skills"]]
-                enabled = await self._trajectory_enabled_skill_names(agent_id)
+                agent = scoped_agent or self._agent_manager.get_agent(agent_id)
+                enabled = await self._trajectory_enabled_skill_names(agent)
                 if enabled is not None:
                     skills = filter_turn_skill_names(
                         enabled,
@@ -434,10 +439,11 @@ class GlobalProcessor:
                         skills_filter_present=skills_filter_present,
                     )
                 mcp_names = _mcp_server_names(request.get("mcp_servers"))
-                captures_model_system = self._captures_model_system_prompt(agent_id)
+                captures_model_system = callable(getattr(agent, "model_system_prompt", None))
                 if not captures_model_system:
                     workspace_files = [
-                        (name, "") for name in await self._trajectory_workspace_files(agent_id)
+                        (name, "")
+                        for name in await self._trajectory_workspace_files(agent_id, agent)
                     ]
             for chunk in build_turn_start_chunks(
                 include_system=include_system,
@@ -454,7 +460,9 @@ class GlobalProcessor:
                     enabled=True,
                 )
             if phase == "context" and captures_model_system:
-                self._clear_captured_system_prompt(agent_id, thread_id)
+                # The fresh room harness may already hold this turn's first capture.
+                if scoped_agent is None:
+                    self._clear_captured_system_prompt(agent, thread_id)
                 self._pending_system_prompt.add(thread_id)
         except Exception:
             logger.exception(
@@ -481,15 +489,15 @@ class GlobalProcessor:
             return row.system_prompt
         return None
 
-    async def _trajectory_enabled_skill_names(self, agent_id: str) -> list[dict[str, str]] | None:
+    async def _trajectory_enabled_skill_names(
+        self, agent: HarnessAgent
+    ) -> list[dict[str, str]] | None:
         """Enabled skills from harness catalog (SoT for prompt skill section)."""
         try:
-            agent = self._agent_manager.get_agent(agent_id)
             summaries = await agent.list_skill_summaries()
         except Exception:
             logger.debug(
-                "trajectory skill catalog unavailable agent=%s",
-                agent_id,
+                "trajectory skill catalog unavailable",
                 exc_info=True,
             )
             return None
@@ -509,25 +517,15 @@ class GlobalProcessor:
             rows.append(item)
         return rows
 
-    def _captures_model_system_prompt(self, agent_id: str) -> bool:
-        """True when this harness build records the system message it sent."""
-        try:
-            agent = self._agent_manager.get_agent(agent_id)
-        except Exception:
-            return False
-        return callable(getattr(agent, "model_system_prompt", None))
-
-    async def _trajectory_workspace_files(self, agent_id: str) -> list[str]:
+    async def _trajectory_workspace_files(self, agent_id: str, agent: HarnessAgent) -> list[str]:
         """Existing memory paths, for harness builds that do not capture the prompt."""
         from octop.infra.history.trajectory.turn_context import memory_file_order  # noqa: PLC0415
 
-        workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
-        if workspace is None:
-            return []
-        out: list[str] = []
-        for name in memory_file_order():
+        workspace = agent.workspace
+
+        async def probe(name: str) -> bool:
             try:
-                exists = await workspace.aexists(name)
+                return bool(await workspace.aexists(name))
             except Exception:
                 logger.debug(
                     "trajectory workspace exists failed agent=%s path=%s",
@@ -535,28 +533,22 @@ class GlobalProcessor:
                     name,
                     exc_info=True,
                 )
-                continue
-            if not exists:
-                continue
-            out.append(name)
-        return out
+                return False
 
-    def _clear_captured_system_prompt(self, agent_id: str, thread_id: str) -> None:
-        """Drop the previous turn's captured system message before this turn runs."""
-        try:
-            agent = self._agent_manager.get_agent(agent_id)
-        except Exception:
-            logger.debug(
-                "trajectory system prompt clear skipped agent=%s",
-                agent_id,
-                exc_info=True,
-            )
-            return
+        # On hosted workspaces each check is a remote request before the first token.
+        names = memory_file_order()
+        found = await asyncio.gather(*(probe(name) for name in names))
+        return [name for name, exists in zip(names, found, strict=True) if exists]
+
+    @staticmethod
+    def _clear_captured_system_prompt(agent: HarnessAgent, thread_id: str) -> None:
         clear = getattr(agent, "clear_model_system_prompt", None)
         if callable(clear):
             clear(thread_id)
 
-    def _sync_memory_prompt_trajectory(self, agent_id: str, thread_id: str) -> None:
+    def _sync_memory_prompt_trajectory(
+        self, agent_id: str, thread_id: str, scoped_agent: HarnessAgent | None = None
+    ) -> None:
         """Store the system message from this turn's model request."""
         if thread_id not in self._pending_system_prompt:
             return
@@ -564,7 +556,7 @@ class GlobalProcessor:
         if service is None:
             return
         try:
-            agent = self._agent_manager.get_agent(agent_id)
+            agent = scoped_agent or self._agent_manager.get_agent(agent_id)
         except Exception:
             logger.debug(
                 "trajectory system prompt agent unavailable agent=%s",
@@ -589,7 +581,7 @@ class GlobalProcessor:
             return
         if recorded:
             self._pending_system_prompt.discard(thread_id)
-            self._clear_captured_system_prompt(agent_id, thread_id)
+            self._clear_captured_system_prompt(agent, thread_id)
 
     # -- TeamProcessor (delegates to TeamManager) ------------------------------
 
@@ -1534,18 +1526,27 @@ class GlobalProcessor:
             chunk={"type": "user", "content": msg.text or "", "source": channel_type},
             enabled=traj_on,
         )
-        await self._observe_turn_start_context(
-            agent_id=agent_id,
-            thread_id=thread_id,
-            request=request,
-            meta=meta,
-            phase="context",
-            trajectory_enabled=traj_on,
+        # The dashboard keeps its transport when the owner continues a member thread.
+        is_room = channel_type == ThreadRegistry.CHANNEL_BOT_GROUP or (
+            channel_type == ThreadRegistry.CHANNEL_DASHBOARD
+            and session_key.startswith(f"{agent_id}:{ThreadRegistry.CHANNEL_BOT_GROUP}:{user_id}:")
         )
+        if not is_room:
+            await self._observe_turn_start_context(
+                agent_id=agent_id,
+                thread_id=thread_id,
+                request=request,
+                meta=meta,
+                trajectory_enabled=traj_on,
+            )
 
         stream_ok = False
         failure_saved = False
-        harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
+        harness_workspace = (
+            None if is_room else harness_workspace_for_agent(self._agent_manager, agent_id)
+        )
+        room_agent = None
+        needs_room_context = is_room
         # Reads the agent and owner rows: off the event loop.
         host_files = await asyncio.to_thread(self._agent_manager.host_files_allowed, agent_id)
         usage_tracker = UsageTracker()
@@ -1566,6 +1567,21 @@ class GlobalProcessor:
                     agent_id, thread_id, next_decisions
                 ),
             ):
+                if needs_room_context:
+                    # The scoped harness exists only inside the stream. Do not scan the
+                    # member's private object store to describe a local room turn.
+                    needs_room_context = False
+                    room_agent = self._agent_manager.running_room_agent(agent_id, thread_id)
+                    if room_agent is not None:
+                        harness_workspace = room_agent.workspace
+                        await self._observe_turn_start_context(
+                            agent_id=agent_id,
+                            thread_id=thread_id,
+                            request=request,
+                            meta=meta,
+                            trajectory_enabled=traj_on,
+                            scoped_agent=room_agent,
+                        )
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
                 self._observe_trajectory(
@@ -1573,6 +1589,7 @@ class GlobalProcessor:
                     thread_id=thread_id,
                     chunk=chunk,
                     enabled=traj_on,
+                    scoped_agent=room_agent,
                 )
                 if chunk.get("type") == "hitl_required":
                     request_payload = chunk.get("request")
@@ -1656,6 +1673,8 @@ class GlobalProcessor:
             failure_saved = True
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
+            if is_room:
+                self._pending_system_prompt.discard(thread_id)
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
             if stream_ok:
                 history_tracker.note_turn_duration(_elapsed_ms(turn_started))

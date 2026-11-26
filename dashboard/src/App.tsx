@@ -174,9 +174,7 @@ function ThemedApp() {
               element={botOnly ? <BotClientSetupRoute /> : <SetupPage />}
             />
             {!botOnly && <Route path="/invite" element={<InvitePage />} />}
-            {!botOnly && (
-              <Route path="/share/:shareId" element={<SharePage />} />
-            )}
+            <Route path="/share/:shareId" element={<SharePage />} />
             <Route
               path="/*"
               element={

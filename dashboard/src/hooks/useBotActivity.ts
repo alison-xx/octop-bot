@@ -1,5 +1,5 @@
 import { App } from "antd";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createElement, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -7,6 +7,7 @@ import {
   type BotActivitySnapshot,
 } from "@/api/modules/botActivity";
 import { octopAgentsApi } from "@/api/modules/octopAgents";
+import type { BotWorkspace } from "@/api/modules/octopBot";
 import {
   advanceSeen,
   badgedTitle,
@@ -21,6 +22,9 @@ import {
   type SeenCursors,
 } from "@/utils/botActivity";
 import { getDesktopBridge } from "@/utils/desktopBridge";
+import BotActivityNotice, {
+  activityNoticeStyles,
+} from "@/components/BotActivityNotice";
 
 const SEEN_KEY = "octop-bot:activity-seen:v1";
 const PREFS_KEY = "octop-bot:notify-prefs:v1";
@@ -111,8 +115,7 @@ export interface BotActivityOptions {
   enabled: boolean;
   /** Conversation on screen now; it never counts as unread. */
   openTarget: ActivityTarget | null;
-  /** Display name of a bot or group, or null when it is not in the workspace. */
-  nameOf: (kind: "bot" | "group", id: string) => string | null;
+  workspace: Pick<BotWorkspace, "bots" | "groups"> | null;
   /** Open a conversation from a notification. */
   onOpen: (target: ActivityTarget) => void;
 }
@@ -136,7 +139,7 @@ export interface BotActivityState {
 export function useBotActivity({
   enabled,
   openTarget,
-  nameOf,
+  workspace,
   onOpen,
 }: BotActivityOptions): BotActivityState {
   const { t } = useTranslation();
@@ -150,44 +153,55 @@ export function useBotActivity({
   const seenRef = useRef<SeenCursors>(readJson<SeenCursors>(SEEN_KEY, {}));
   const countsRef = useRef<Record<ActivityTarget, number> | null>(null);
   const openRef = useRef(openTarget);
-  const nameRef = useRef(nameOf);
+  const workspaceRef = useRef(workspace);
   const openHandlerRef = useRef(onOpen);
   const tRef = useRef(t);
   const pollRef = useRef<() => void>(() => undefined);
   const baseTitle = useRef(document.title.replace(/^\(\d+\+?\) /, ""));
   openRef.current = openTarget;
-  nameRef.current = nameOf;
+  workspaceRef.current = workspace;
   openHandlerRef.current = onOpen;
   tRef.current = t;
 
   const announce = useCallback(
     (target: ActivityTarget, snapshot: BotActivitySnapshot, count: number) => {
       const parsed = parseTarget(target);
-      if (!parsed) return;
+      const ws = workspaceRef.current;
+      if (!parsed || !ws) return;
       const tr = tRef.current;
-      const title = nameRef.current(parsed.kind, parsed.id);
+      const group =
+        parsed.kind === "group"
+          ? ws.groups.find((g) => g.group_id === parsed.id)
+          : undefined;
+      const last =
+        group &&
+        snapshot.groups.find((g) => g.group_id === group.group_id)
+          ?.last_message;
+      const senderId = parsed.kind === "bot" ? parsed.id : last?.agent_id;
+      const sender = ws.bots.find((bot) => bot.agent_id === senderId);
+      const title = group?.name ?? sender?.name;
       if (!title) return;
       let body = tr("botNotify.botReplied");
-      if (parsed.kind === "group") {
-        const last = snapshot.groups.find((g) => g.group_id === parsed.id)
-          ?.last_message;
-        const speaker = last?.agent_id
-          ? nameRef.current("bot", last.agent_id)
-          : null;
+      if (group) {
         const text = last ? previewText(last.text) : "";
         body = text
-          ? speaker
-            ? `${speaker}: ${text}`
+          ? sender
+            ? `${sender.name}: ${text}`
             : text
           : tr("botNotify.groupFallback");
       }
-      if (count > 1)
-        body = `${tr("botNotify.newMessages", { count })} · ${body}`;
+      const countLabel = tr("botNotify.newMessages", { count });
       const prefs = readBotNotifyPrefs();
       const bridge = getDesktopBridge();
       if (windowInBackground() && prefs.system) {
+        const nativeBody = count > 1 ? `${countLabel} · ${body}` : body;
         if (bridge?.notify) {
-          bridge.notify({ title, body, target, silent: !prefs.sound });
+          bridge.notify({
+            title,
+            body: nativeBody,
+            target,
+            silent: !prefs.sound,
+          });
           return;
         }
         if (
@@ -196,7 +210,7 @@ export function useBotActivity({
         ) {
           try {
             const notice = new Notification(title, {
-              body,
+              body: nativeBody,
               tag: target,
               silent: !prefs.sound,
             });
@@ -212,16 +226,35 @@ export function useBotActivity({
         }
       }
       if (prefs.sound) playChime();
+      const key = `bot-activity-${target}`;
+      const close = () => notification.destroy(key);
       notification.open({
-        key: `bot-activity-${target}`,
+        key,
         placement: "topRight",
-        message: title,
-        description: body,
-        duration: 5,
-        onClick: () => {
-          notification.destroy(`bot-activity-${target}`);
-          openHandlerRef.current(target);
-        },
+        className: activityNoticeStyles.notice,
+        role: "status",
+        closeIcon: false,
+        pauseOnHover: true,
+        duration: 6,
+        message: createElement(BotActivityNotice, {
+          sender,
+          groupMembers:
+            group && !sender
+              ? group.member_ids.flatMap((id) =>
+                  ws.bots.filter((bot) => bot.agent_id === id),
+                )
+              : undefined,
+          title,
+          preview: body,
+          count,
+          countLabel,
+          closeLabel: tr("common.close"),
+          onClose: close,
+          onOpen: () => {
+            close();
+            openHandlerRef.current(target);
+          },
+        }),
       });
     },
     [notification],
@@ -255,9 +288,9 @@ export function useBotActivity({
         if (!last) continue;
         const target = groupTarget(group.group_id);
         times[target] = last.created_at;
-        const speaker = last.agent_id
-          ? nameRef.current("bot", last.agent_id)
-          : null;
+        const speaker = workspaceRef.current?.bots.find(
+          (bot) => bot.agent_id === last.agent_id,
+        )?.name;
         const text = previewText(last.text, 160);
         if (text) lines[target] = speaker ? `${speaker}: ${text}` : text;
       }

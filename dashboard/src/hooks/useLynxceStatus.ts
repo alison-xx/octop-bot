@@ -22,7 +22,11 @@ export function useLynxceStatus(enabled: boolean) {
     setError("");
     if (!enabled || !owner) return;
     window.addEventListener(changed, reload);
-    return () => window.removeEventListener(changed, reload);
+    window.addEventListener("focus", reload);
+    return () => {
+      window.removeEventListener(changed, reload);
+      window.removeEventListener("focus", reload);
+    };
   }, [enabled, owner, reload]);
   useEffect(() => {
     if (!enabled || !owner) return;
@@ -40,5 +44,7 @@ export function useLynxceStatus(enabled: boolean) {
       current = false;
     };
   }, [enabled, owner, revision, t]);
-  return { status, error, reload };
+  // The server resolves both Lynxce models and models selected with a personal vendor key.
+  const workspaceModel = enabled ? status?.selected_model ?? null : null;
+  return { status, workspaceModel, error, reload };
 }

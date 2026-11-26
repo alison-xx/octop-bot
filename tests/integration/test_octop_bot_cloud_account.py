@@ -141,6 +141,17 @@ def upstream(monkeypatch: pytest.MonkeyPatch) -> Upstream:
     return fake
 
 
+async def test_slow_model_catalog_does_not_hold_the_chat_key_check(monkeypatch) -> None:
+    async def slow_catalog(request: httpx.Request) -> httpx.Response:
+        await asyncio.Event().wait()
+        raise AssertionError("catalog should be cancelled")
+
+    monkeypatch.setattr(
+        cloud, "_client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(slow_catalog))
+    )
+    assert not await asyncio.wait_for(cloud.model_key_rejected("fixture"), timeout=4)
+
+
 async def test_password_login_encrypted_grants_are_local_owner_only(
     env_admin_alice: Env, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -571,8 +582,11 @@ async def test_only_the_disk_debit_can_confirm_insufficient_balance(
         )
 
 
+@pytest.mark.parametrize(
+    "legacy_url", ["http://wx.qlogo.cn/mmopen/avatar/132", "//wx.qlogo.cn/mmopen/avatar/132"]
+)
 async def test_cloud_reads_only_its_bound_profile_and_repairs_cached_empty_avatar(
-    env_admin_alice: Env, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+    env_admin_alice: Env, upstream: Upstream, monkeypatch: pytest.MonkeyPatch, legacy_url: str
 ) -> None:
     client, server, admin, alice = env_admin_alice
     uid = server.user_manager.get("alice").id
@@ -585,9 +599,10 @@ async def test_cloud_reads_only_its_bound_profile_and_repairs_cached_empty_avata
     monkeypatch.delenv("OCTOP_DESKTOP_SHELL")
     monkeypatch.setenv("OCTOP_BOT_CLOUD", "1")
     upstream.expired.add("access-a")
+    upstream.profile_avatar = legacy_url
     response = await client.get(API, headers=alice)
     assert response.status_code == 200
-    assert response.json()["avatar_url"] == upstream.profile_avatar
+    assert response.json()["avatar_url"] == "https://wx.qlogo.cn/mmopen/avatar/132"
     assert (await client.get(API, headers=admin)).json()["connected"] is False
     assert (
         await client.post(API, headers=alice, json={"account": "b", "password": "password"})

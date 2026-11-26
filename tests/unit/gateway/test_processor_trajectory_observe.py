@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -102,6 +103,33 @@ async def test_iter_turn_chunks_observes_tool_chunk() -> None:
     assert agent_id == "agent-1"
     assert thread_id == "thread-1"
     assert chunk["name"] == "read_file"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("channel_type", ["octop_bot_group", "dashboard"])
+async def test_room_stream_uses_room_skills_without_scanning_private_storage(
+    channel_type: str,
+) -> None:
+    service = _RecordingService()
+    processor = _processor(trajectory_service=service)
+    manager = processor._agent_manager
+    private_skills = AsyncMock(side_effect=AssertionError("private workspace read"))
+    manager.get_agent.return_value.list_skill_summaries = private_skills
+    room_skills = AsyncMock(return_value=[{"name": "room-skill"}])
+    local_exists = AsyncMock(return_value=False)
+    manager.running_room_agent.return_value = SimpleNamespace(
+        list_skill_summaries=room_skills, workspace=SimpleNamespace(aexists=local_exists)
+    )
+    msg = _dashboard_msg().model_copy(update={"channel_type": channel_type})
+    msg.metadata["session_key"] = "agent-1:octop_bot_group:1:room"
+
+    chunks = [chunk async for chunk in processor.iter_turn_chunks(msg)]
+
+    assert chunks[-1]["type"] == "done"
+    private_skills.assert_not_awaited()
+    room_skills.assert_awaited_once()
+    local_exists.assert_awaited()
+    assert any("room-skill" in str(chunk.get("content")) for _, _, chunk in service.calls)
 
 
 @pytest.mark.asyncio

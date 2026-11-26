@@ -218,7 +218,7 @@ def verify_package(unpacked: Path, node: str) -> None:
     sidecar = resources / "sidecar"
     if not (unpacked / "Octop Bot.exe").is_file():
         raise SystemExit("The packaged Windows executable is missing.")
-    for filename in ("bot-icon.ico", "bot-icon.png", "app.asar"):
+    for filename in ("bot-icon.ico", "bot-icon.png", "bot-tray.ico", "app.asar"):
         if not (resources / filename).is_file():
             raise SystemExit(f"Missing packaged resource: {filename}")
     if {p.name for p in sidecar.iterdir()} != {

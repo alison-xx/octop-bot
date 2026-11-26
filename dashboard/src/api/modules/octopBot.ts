@@ -157,7 +157,8 @@ function body(method: string, value: unknown): RequestInit {
 }
 
 export const octopBotApi = {
-  workspace: () => request<BotWorkspace>(root + "/workspace"),
+  workspace: () =>
+    request<BotWorkspace>(root + "/workspace", { cache: "no-store" }),
   saveLayout: (layout: BotLayout) =>
     request<BotLayout>(root + "/layout", body("PUT", layout)),
   createGroup: (group: Omit<BotGroup, "group_id">) =>

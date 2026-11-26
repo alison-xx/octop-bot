@@ -668,10 +668,7 @@ function ChatPageInner() {
     !activeThreadId || (!!composerSession && composerSession.owned !== false),
   );
 
-  const personalModel =
-    focused && !isManagedChat && account.status?.connected
-      ? account.status.selected_model
-      : null;
+  const personalModel = !isManagedChat ? account.workspaceModel : null;
   const selectedModel = personalModel ? null : sharedSelection;
   const defaultModel = personalModel
     ? null
@@ -2208,7 +2205,7 @@ function ChatPageInner() {
                       name: personalModel,
                       onOpen: () =>
                         navigate(BOT_SETTINGS, {
-                          state: { source: "lynxce", from: location.pathname },
+                          state: { from: location.pathname },
                         }),
                     }
                   : undefined

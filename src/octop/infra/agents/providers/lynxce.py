@@ -131,6 +131,14 @@ _key_checked: dict[int, float] = {}
 class CloudAccountModel(AccountModel):
     """Cloud mode: the tenant's own Lynxce personal API key, read on every request."""
 
+    def request(self, request: dict[str, Any]) -> dict[str, Any]:
+        routed = super().request(request)
+        if self.model_id == "tencent/auto" and request.get("source") == "octop_bot_group/octop-bot":
+            routed["configurable"].setdefault(
+                "octop_reasoning_overrides", {"extra_body": {"thinking": {"type": "disabled"}}}
+            )
+        return routed
+
     def provider(
         self, services: SharedServices | None, bot_id: str | None = None
     ) -> ProviderConfig:

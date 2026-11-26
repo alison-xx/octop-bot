@@ -243,8 +243,10 @@ function resourcesRoot(): string {
 
 function botWindowIcon(): string | undefined {
   if (!botOnly) return undefined;
-  const ext = process.platform === "win32" ? "ico" : "png";
-  return [`bot-icon.${ext}`, `icon.${ext}`]
+  const names = process.platform === "win32"
+    ? ["bot-icon.ico", "bot-icon.png", "icon.ico"]
+    : ["bot-icon.png", "icon.png"];
+  return names
     .map((name) => join(resourcesRoot(), name))
     .find((path) => existsSync(path));
 }
@@ -1540,7 +1542,22 @@ async function boot(): Promise<void> {
   }
 
   if (process.platform === "win32") {
-    app.setAppUserModelId(botOnly ? "com.tencent.octop.bot" : WINDOWS_APP_USER_MODEL_ID);
+    if (botOnly && !app.isPackaged) {
+      // Explorer otherwise groups the development windows under electron.exe.
+      const appId = "com.tencent.octop.bot.dev";
+      const launcher = join(app.getAppPath(), "scripts", "run-dev.ps1");
+      app.setAppUserModelId(appId);
+      app.on("browser-window-created", (_event, win) => {
+        win.setAppDetails({
+          appId,
+          appIconPath: join(resourcesRoot(), "bot-icon.ico"),
+          relaunchCommand: `powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "${launcher}" -Bot -NoBuild`,
+          relaunchDisplayName: productName,
+        });
+      });
+    } else {
+      app.setAppUserModelId(botOnly ? "com.tencent.octop.bot" : WINDOWS_APP_USER_MODEL_ID);
+    }
   }
   // Packaged builds only: a dev run must not take the scheme from the installed app.
   if (botOnly && app.isPackaged) app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);

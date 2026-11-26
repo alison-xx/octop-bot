@@ -6,6 +6,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from langchain.agents.middleware import ModelRequest
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from langchain_core.messages import SystemMessage
 from langchain_core.tools import StructuredTool
 
 from octop.infra.agents.middleware import bot_workspace
@@ -40,3 +43,23 @@ def test_computer_tools_show_on_every_turn_and_bot_chat_tools_only_in_bot_chat(
     )
     expected = {"cloud_computer", "read_file"} | ({"show_view"} if bot_turn else set())
     assert seen.names == expected  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(("chief", "bot_turn"), [(True, True), (True, False), (False, True)])
+def test_one_call_team_setup_guidance_follows_the_chief_tool_scope(
+    monkeypatch: pytest.MonkeyPatch, chief: bool, bot_turn: bool
+) -> None:
+    monkeypatch.setattr(
+        bot_workspace, "get_config", lambda: {"configurable": {"octop_bot_browser": bot_turn}}
+    )
+    tools = [_tool("octop_bot_create_team")] if chief else []
+    request = ModelRequest(
+        model=FakeListChatModel(responses=["ok"]),
+        tools=tools,
+        messages=[],
+        system_message=SystemMessage(content="Existing instructions."),
+    )
+    scoped = BotWorkspaceTools(tools)._scope(request)
+    assert scoped.system_message is not None
+    assert "Existing instructions." in scoped.system_message.text
+    assert ("existing_bot_ids" in scoped.system_message.text) == (chief and bot_turn)
