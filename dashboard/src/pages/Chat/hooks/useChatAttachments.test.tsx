@@ -74,6 +74,57 @@ describe("useChatAttachments drop", () => {
     expect(result.current.dragOver).toBe(false);
   });
 
+  it("keeps successful uploads and their sizes when a sibling fails", async () => {
+    const { result } = renderHook(() => useChatAttachments("agent-1"));
+    vi.mocked(uploadFile).mockRejectedValueOnce(new Error("failed"));
+    await act(async () => {
+      await result.current.processFiles([
+        new File(["bad"], "bad.zip"),
+        new File(["ok"], "good.zip"),
+      ]);
+    });
+    expect(result.current.attachments).toMatchObject([
+      { filename: "good.zip", size: 2 },
+    ]);
+    expect(message.error).toHaveBeenCalledWith(
+      expect.stringContaining("bad.zip"),
+    );
+    expect(result.current.uploading).toBe(false);
+  });
+
+  it("keeps a late upload out of the newly opened thread", async () => {
+    const { result, rerender } = renderHook(
+      ({ thread }) => useChatAttachments("agent-1", thread),
+      { initialProps: { thread: "first" } },
+    );
+    let finish!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    vi.mocked(uploadFile).mockImplementationOnce(async () => {
+      await wait;
+      return {
+        filename: "private.zip",
+        path: "inbound/private.zip",
+        workspace_path: "inbound/private.zip",
+        media_type: "application/zip",
+        access_url: "/files/private.zip",
+        url: "",
+      };
+    });
+    let batch!: Promise<void>;
+    act(() => {
+      batch = result.current.processFiles([new File(["a"], "private.zip")]);
+    });
+    rerender({ thread: "second" });
+    await act(async () => {
+      finish();
+      await batch;
+    });
+    expect(result.current.attachments).toEqual([]);
+    expect(result.current.uploading).toBe(false);
+  });
+
   it("keeps the drop highlight while the pointer is still inside the composer", () => {
     const { result } = renderHook(() => useChatAttachments("agent-1"));
     const shell = document.createElement("div");

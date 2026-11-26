@@ -343,6 +343,9 @@ class AgsDriver:
         )
         while True:
             rounds = max(1, min(_WAIT_SECONDS, int(deadline - time.monotonic())) * 2)
+            if script:  # Short commands often finish within the first 20 ms.
+                script += f"for d in 0.02 0.08 0.4; do [ -f {code} ] && break; sleep $d; done; "
+                rounds -= 1
             script += (
                 f"for i in $(seq 1 {rounds}); do [ -f {code} ] && break; sleep 0.5; done; "
                 f"if [ -f {code} ]; then {collect}; else echo {_PENDING}; fi"

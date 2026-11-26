@@ -18,6 +18,7 @@ import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { generateId } from "../../../utils/messageParser";
 import {
   parseDecisionNotice,
+  type MediaPhase,
   type ChatAttachment,
   type ChatMessage,
   type SessionSnapshot,
@@ -1688,6 +1689,7 @@ function handleHarnessChunk(
       updateContextUsageFromChunk(state, chunk);
       break;
     case "custom":
+      if (applyMediaProgress(state, chunk.data, speaker)) break;
       // Decision runs on the host model call and the frame has no speaker.
       // In a team room an unlabeled chip would sit on its own invisible turn.
       // A wrap-up evaluation is a new host turn, not a rewrite of the dispatch.
@@ -1702,6 +1704,50 @@ function handleHarnessChunk(
   }
   if (chunkPaintsImmediately(chunk.type)) notify(state);
   else notifyStreamingPaint(state);
+}
+
+const mediaPhases = new Set<MediaPhase>([
+  "submitting",
+  "queued",
+  "generating",
+  "finalizing",
+  "delivering",
+]);
+
+function applyMediaProgress(
+  state: SessionStreamState,
+  raw: unknown,
+  speaker?: string,
+): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  const data = raw as Record<string, unknown>;
+  if (data.kind !== "media_progress") return false;
+  const phase = data.phase as MediaPhase;
+  if (typeof data.call_id !== "string" || !mediaPhases.has(phase)) return true;
+  const id = state.toolCallIdIndex[speakerToolKey(speaker, data.call_id)];
+  if (!id) return true;
+  const percent =
+    typeof data.percent === "number" && data.percent >= 0 && data.percent <= 100
+      ? data.percent
+      : undefined;
+  state.messages = state.messages.map((m) =>
+    m.id === id && m.toolData && !m.toolData.output
+      ? {
+          ...m,
+          toolData: {
+            ...m.toolData,
+            mediaProgress: {
+              phase,
+              percent,
+              deliveryStartedAt:
+                m.toolData.mediaProgress?.deliveryStartedAt ??
+                (phase === "delivering" ? Date.now() : undefined),
+            },
+          },
+        }
+      : m,
+  );
+  return true;
 }
 
 /** Attach the latest decision result to this turn. One chip, updated in place. */
@@ -2417,6 +2463,7 @@ function closeToolCall(
   if (toolIdx < 0) return;
   const target = state.messages[toolIdx];
   const output = extractToolResultOutput(messages);
+  const deliveryStartedAt = target.toolData?.mediaProgress?.deliveryStartedAt;
   const artifact = extractToolResultArtifact(messages);
   const explicitToolError = messages.some(
     (raw) =>
@@ -2444,6 +2491,9 @@ function closeToolCall(
         ...(target.toolData ?? {}),
         output,
         errorCode,
+        ...(deliveryStartedAt !== undefined
+          ? { deliveryToChatMs: Math.max(0, Date.now() - deliveryStartedAt) }
+          : {}),
         ...(artifact != null ? { artifact } : {}),
       },
     },

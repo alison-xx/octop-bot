@@ -1860,6 +1860,22 @@
   max-width: 100%;
 }
 
+.userMsgColumn {
+  > .messageFiles,
+  > .messageImages,
+  > .messageMediaList {
+    justify-content: flex-end;
+    max-width: 100%;
+    margin-bottom: 0;
+  }
+  > .messageImages :global(.octop-image) {
+    max-width: 100%;
+  }
+  > * + * {
+    margin-top: 6px;
+  }
+}
+
 .userMsgActions {
   display: flex;
   align-items: center;

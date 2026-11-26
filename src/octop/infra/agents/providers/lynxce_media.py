@@ -12,8 +12,8 @@ Lynxce's gateway (``/api/v1``) is asynchronous for both kinds: ``POST /images/ge
 ``status`` is ``succeeded`` with ``data[].url`` (or ``b64_json``). A key needs the
 ``media:image`` / ``media:video`` scopes; an OAuth grant the ``media`` scope.
 
-Which model draws and which films is Lynxce's choice, not Octop's: Lynxce's admin orders its
-model catalog, and the first image and the first video model in ``GET /models`` are its
+Cloud tenants use GPT Image 2.6 and MiniMax H3. Other sign-ins follow Lynxce's ordered
+model catalog: the first image and the first video model in ``GET /models`` are its
 defaults (Lynxce's own MCP tools pick the same way). The adapter reads that list, keeps it for a
 few minutes, and falls back to fixed models only when the list cannot be read, so a new default
 set in Lynxce's admin reaches every Bot without an Octop release.
@@ -21,19 +21,26 @@ set in Lynxce's admin reaches every Bot without an Octop release.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
+import json
 import logging
+import re
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from contextvars import ContextVar
+from dataclasses import dataclass, field
+from functools import wraps
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import httpx
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
+from langgraph.prebuilt.tool_node import ToolCallRequest
+from langgraph.types import Command
 from octop_harness.media import MediaGenerationError
 from octop_harness.media.http import detect_media, response_error
 from octop_harness.media.models import (
@@ -46,16 +53,18 @@ from octop_harness.media.models import (
     RemoteArtifact,
     VideoGenerationRequest,
 )
+from pydantic import Field, create_model
 
+from octop.i18n import tr
 from octop.infra.auth.lynxce_cloud import LYNXCE_APP_HEADERS
+from octop.infra.utils.locale import DEFAULT_LOCALE, Locale
 
 if TYPE_CHECKING:
     from octop_harness.backends.workspace import BackendWorkspace
 
 logger = logging.getLogger(__name__)
 
-# Used only when Lynxce's model list cannot be read: the defaults Lynxce's admin had set on
-# 2026-11-25 (GPT Image 2.6 for images, MiniMax H3 for video), checked against GET /models.
+# Cloud tenant defaults, also used if other installations cannot read the catalog.
 IMAGE_MODEL = "gpt-image-2.6-flare"
 VIDEO_MODEL = "ucloud/MiniMax-H3"
 # How long one read of Lynxce's defaults is used, and how soon to try again after a failed read.
@@ -66,8 +75,51 @@ LYNXCE_HOSTS = frozenset({"api.lynxce.cn", "center.lynxce.cn"})
 # X-Lynxce-App (LYNXCE_APP_HEADERS) marks the call as Octop Bot's, as on model gateway calls.
 BOT_ID_HEADER = "X-Lynxce-Bot-Id"
 
-_RUNNING = frozenset({"pending", "submitting", "processing", "uncertain"})
+_LABEL_WAIT = 30 * 60
+_GENERATION_WAIT = 15 * 60
+_unlabelled = ContextVar("lynxce_media_unlabelled", default=False)
+
+_RUNNING = frozenset({"running", "queued", "pending", "submitting", "processing", "uncertain"})
 _FAILED = frozenset({"failed", "timeout", "cancelled"})
+
+
+@dataclass
+class _MediaRun:
+    call_id: str
+    write: Callable[[dict[str, Any]], None]
+    client: httpx.AsyncClient
+    started: float = field(default_factory=time.monotonic)
+    accepted: float | None = None
+    ready: float | None = None
+    last: tuple[str, int | None] | None = None
+
+    def report(self, phase: str, progress: object = None) -> None:
+        percent = (
+            int(progress)
+            if isinstance(progress, (int, float))
+            and not isinstance(progress, bool)
+            and 0 <= progress <= 100
+            else None
+        )
+        if self.last == (phase, percent):
+            return
+        self.last = (phase, percent)
+        self.write(
+            {"kind": "media_progress", "call_id": self.call_id, "phase": phase, "percent": percent}
+        )
+
+    def timings(self) -> dict[str, int]:
+        end = time.monotonic()
+        times = {"total_ms": round((end - self.started) * 1000)}
+        if self.accepted is not None:
+            times["submit_ms"] = round((self.accepted - self.started) * 1000)
+        if self.ready is not None:
+            times["delivery_ms"] = round((end - self.ready) * 1000)
+            times["ready_ms"] = round((self.ready - self.started) * 1000)
+        return times
+
+
+_media_run: ContextVar[_MediaRun | None] = ContextVar("lynxce_media_run", default=None)
 
 
 @dataclass(frozen=True)
@@ -166,7 +218,7 @@ class LynxceMediaProvider:
         image_references=True, video_first_frame=True, video_references=True
     )
     poll_interval_seconds = 4.0
-    task_timeout_seconds = 900.0
+    task_timeout_seconds = _GENERATION_WAIT + _LABEL_WAIT + 2 * poll_interval_seconds
 
     def __init__(
         self,
@@ -264,27 +316,47 @@ class LynxceMediaProvider:
         if method == "POST":
             # A retried submit must not start (and bill) a second task.
             headers["Idempotency-Key"] = uuid4().hex
+
+        async def send(client: httpx.AsyncClient) -> httpx.Response:
+            # Keep the same idempotency key and credential when a response is lost.
+            url = auth.base_url + path
+            try:
+                reply = await client.request(method, url, json=json, headers=headers)
+                if reply.status_code not in (502, 503, 504):
+                    return reply
+            except httpx.TransportError:
+                pass
+            await asyncio.sleep(0.25)
+            return await client.request(method, url, json=json, headers=headers)
+
         try:
-            if self._client is not None:
-                response = await self._client.request(
-                    method, auth.base_url + path, json=json, headers=headers
-                )
+            run = _media_run.get()
+            pooled = self._client or (run.client if run else None)
+            if pooled is not None:
+                response = await send(pooled)
             else:
                 async with httpx.AsyncClient(timeout=60) as client:
-                    response = await client.request(
-                        method, auth.base_url + path, json=json, headers=headers
-                    )
+                    response = await send(client)
         except httpx.HTTPError as exc:
             raise MediaGenerationError(
                 "Lynxce could not be reached.",
                 code="provider_unavailable",
-                retryable=True,
-                safe_to_resubmit=provider_task_id is None,
-                remediation="retry_later",
+                retryable=method == "GET",
+                safe_to_resubmit=False,
+                remediation="check_task_status",
                 provider_task_id=provider_task_id,
             ) from exc
         if response.is_error:
-            raise _error(response, provider_task_id=provider_task_id)
+            error = _error(response, provider_task_id=provider_task_id)
+            if method == "POST" and (
+                response.status_code >= 500
+                or error.provider_code == "idempotency_request_in_progress"
+            ):
+                error.safe_to_resubmit = False
+                error.model_instruction = (
+                    "Do not start another task: the submission may already have been accepted."
+                )
+            raise error
         try:
             body = response.json()
         except ValueError:
@@ -295,19 +367,48 @@ class LynxceMediaProvider:
             )
         return body
 
-    def _update(self, body: dict[str, Any], task_id: str | None) -> MediaJobUpdate:
+    def _update(self, body: dict[str, Any], task: ProviderTask) -> MediaJobUpdate:
         status = str(body.get("status") or "")
-        if status == "succeeded" and body.get("aigc_label_ready") is False:
-            # Still being labelled and rehosted: the links until then are temporary ones that
-            # Lynxce deletes, and fetching one can fail. Lynxce asks to poll again.
-            return MediaJobUpdate(status="running")
+        task_id = task.task_id
+        now = time.monotonic()
+        run = _media_run.get()
         if status == "succeeded":
+            if body.get("aigc_label_ready") is not True:
+                since = float(task.metadata.setdefault("finalizing_since", str(now)))
+                error = body.get("error")
+                failed = isinstance(error, dict) and error.get("code") == "aigc_label_failed"
+                if not failed and now - since < _LABEL_WAIT:
+                    if run:
+                        run.report("finalizing")
+                    return MediaJobUpdate(status="running")
+                from octop.infra.metrics import METRICS  # noqa: PLC0415
+
+                METRICS.inc("media_label_unavailable_total")
+                _unlabelled.set(True)
             artifacts = _artifacts(body)
             if artifacts:
+                if run:
+                    run.ready = now
+                    run.report("delivering")
                 return MediaJobUpdate(status="succeeded", artifacts=artifacts)
             raise MediaGenerationError("Lynxce returned no result.", provider_task_id=task_id)
         if status in _RUNNING:
-            return MediaJobUpdate(status="pending" if status == "pending" else "running")
+            if run:
+                run.report(
+                    "queued" if status in {"pending", "queued"} else "generating",
+                    body.get("progress"),
+                )
+            started = float(task.metadata.setdefault("started", str(now)))
+            if now - started >= _GENERATION_WAIT:
+                raise MediaGenerationError(
+                    "Lynxce generation timed out.",
+                    code="provider_timeout",
+                    safe_to_resubmit=False,
+                    provider_task_id=task_id,
+                )
+            return MediaJobUpdate(
+                status="pending" if status in {"pending", "queued"} else "running"
+            )
         error = body.get("error")
         message = (
             str(error.get("message") or error.get("code"))
@@ -329,12 +430,14 @@ class LynxceMediaProvider:
         if not isinstance(task_id, str) or not task_id:
             raise MediaGenerationError("Lynxce returned no task id.")
         model = str(payload["model"])
-        if body.get("status") == "succeeded" and (artifacts := _artifacts(body)):
-            return MediaSubmission(artifacts=artifacts)
-        self._update(body, task_id)  # raises when the task failed at once
-        return MediaSubmission(
-            task=ProviderTask(task_id=task_id, kind=kind, model=model)  # type: ignore[arg-type]
-        )
+        task = ProviderTask(task_id=task_id, kind=kind, model=model)  # type: ignore[arg-type]
+        run = _media_run.get()
+        if run:
+            run.accepted = time.monotonic()
+        update = self._update(body, task)
+        if update.status == "succeeded":
+            return MediaSubmission(artifacts=update.artifacts)
+        return MediaSubmission(task=task)
 
     async def submit_image(self, request: ImageGenerationRequest) -> MediaSubmission:
         payload: dict[str, Any] = {
@@ -343,7 +446,10 @@ class LynxceMediaProvider:
             "n": request.count,
         }
         if request.size:
-            payload["size"] = request.size
+            field = (
+                "aspect_ratio" if re.fullmatch(r"[1-9]\d?\s*:\s*[1-9]\d?", request.size) else "size"
+            )
+            payload[field] = request.size
         if request.reference_images:
             payload["images"] = list(request.reference_images)
         return await self._submit("image", "/images/generations", payload)
@@ -377,7 +483,7 @@ class LynxceMediaProvider:
         body = await self._request(
             "GET", f"/generations/{task.task_id}", provider_task_id=task.task_id
         )
-        return self._update(body, task.task_id)
+        return self._update(body, task)
 
     async def cancel(self, task: ProviderTask) -> None:
         """Lynxce has no cancel endpoint; an abandoned task still finishes (and bills)."""
@@ -436,10 +542,55 @@ _HARNESS_NOT_CONFIGURED = (
 )
 _AVAILABLE = (
     "Image and video generation are available: generate_image and generate_video, billed to "
-    "the user's Lynxce credits. A video takes a few minutes; before calling generate_video, "
-    "tell the user in one short sentence that it is being made and will take a few minutes. "
-    "The finished files reach the user as attachments; do not paste their paths or links."
+    "the user's Lynxce credits. For requests to create or edit images, call generate_image. "
+    "For 2 to 4 variations of the same prompt, use one call with the requested count. "
+    "For distinct scenes use their respective prompts. For a video, call generate_video. "
+    "For a request whose only deliverable is an image, a batch of variations, or one short "
+    "video, submit the media tool directly. Set final_delivery=true when offered for that "
+    "standalone request. Skip a separate task_plan or write_todos. "
+    "The tools call Lynxce directly and save deliverables to the workspace. For generation and "
+    "delivery use only these media tools; do not start a cloud computer, shell, or browser. "
+    "Before submitting a video, tell the user briefly that generation may take a few minutes. "
+    "Only report that a job has started after its tool has been called. "
+    "Completed tools attach the files to this conversation. Briefly report the actual number "
+    "returned, then finish. Only list or reopen those files if the user asked to inspect them. "
+    "Do not send the same files again, paste workspace paths, or resubmit a partial batch "
+    "automatically."
 )
+
+
+def _final_media_reply(request: ModelRequest[Any], locale: Locale) -> ModelResponse[Any] | None:
+    # Only a whole, successful tool batch explicitly designated for final delivery closes
+    # tool selection. A new user message or a compound task retains the normal toolset.
+    messages = request.messages
+    if not messages or not isinstance(messages[-1], ToolMessage):
+        return None
+    count = 0
+    for message in reversed(messages):
+        if not isinstance(message, ToolMessage):
+            break
+        if message.name not in {"generate_image", "generate_video"} or not isinstance(
+            message.content, str
+        ):
+            return None
+        try:
+            result = json.loads(message.content)
+        except ValueError:
+            return None
+        if not isinstance(result, dict) or result.get("final_delivery") is not True:
+            return None
+        files = result.get("images" if message.name == "generate_image" else "videos")
+        if not isinstance(files, list) or not files:
+            return None
+        count += len(files)
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            break
+        if isinstance(message, ToolMessage) and message.name == "task_plan":
+            return None
+    return ModelResponse(
+        result=[AIMessage(content=tr("octop_bot.media_delivered", locale, count=count))]
+    )
 
 
 def _with_media_prompt(request: ModelRequest[Any]) -> ModelRequest[Any]:
@@ -462,24 +613,73 @@ class LynxceMediaTools(AgentMiddleware[Any, Any]):
     generation is not configured. This middleware replaces that sentence.
     """
 
-    def __init__(self, tools: list[BaseTool]) -> None:
+    def __init__(self, tools: list[BaseTool], *, locale: Locale = DEFAULT_LOCALE) -> None:
         self.tools = tools
+        self.locale = locale
+
+    async def awrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
+    ) -> ToolMessage | Command[Any]:
+        call = request.tool_call
+        if call.get("name") not in {"generate_image", "generate_video"}:
+            return await handler(request)
+        async with httpx.AsyncClient(timeout=60) as client:
+            run = _MediaRun(str(call.get("id") or ""), request.runtime.stream_writer, client)
+            token = _media_run.set(run)
+            try:
+                run.report("submitting")
+                return await handler(request)
+            finally:
+                _media_run.reset(token)
 
     def wrap_model_call(
         self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], ModelResponse[Any]]
     ) -> ModelResponse[Any]:
-        return handler(_with_media_prompt(request))
+        return _final_media_reply(request, self.locale) or handler(_with_media_prompt(request))
 
     async def awrap_model_call(
         self,
         request: ModelRequest[Any],
         handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
     ) -> ModelResponse[Any]:
-        return await handler(_with_media_prompt(request))
+        return _final_media_reply(request, self.locale) or await handler(
+            _with_media_prompt(request)
+        )
+
+
+def _with_label_notice(
+    generate: Callable[..., Awaitable[dict[str, object]]],
+) -> Callable[..., Awaitable[dict[str, object]]]:
+    @wraps(generate)
+    async def deliver(*args: Any, **kwargs: Any) -> dict[str, object]:
+        token = _unlabelled.set(False)
+        try:
+            final_delivery = kwargs.pop("final_delivery", False)
+            result = await generate(*args, **kwargs)
+            if final_delivery and not _unlabelled.get() and result.get("status") == "completed":
+                result["final_delivery"] = True
+            run = _media_run.get()
+            if run is not None:
+                result["timing"] = run.timings()
+            if _unlabelled.get():
+                result["message"] = (
+                    f"{result['message']} Tell the user in their language that the AI-generated content label could not be added."
+                )
+            return result
+        finally:
+            _unlabelled.reset(token)
+
+    return deliver
 
 
 def lynxce_media_tools(
-    workspace: BackendWorkspace, auth: AuthSource, *, bot_id: str | None = None
+    workspace: BackendWorkspace,
+    auth: AuthSource,
+    *,
+    bot_id: str | None = None,
+    cloud_tenant: bool = False,
 ) -> list[Any]:
     """The harness's ``generate_image`` / ``generate_video`` tools, routed to Lynxce."""
     from octop_harness import MediaGenerationConfig  # noqa: PLC0415
@@ -490,8 +690,35 @@ def lynxce_media_tools(
 
     config = MediaGenerationConfig()
     manager = MediaManager(workspace, output_dir=config.output_dir)
-    manager.add_provider("lynxce", LynxceMediaProvider(auth, bot_id=bot_id))
-    return build_media_generation_tools(workspace, config, manager=manager)
+    manager.add_provider(
+        "lynxce",
+        LynxceMediaProvider(
+            auth,
+            bot_id=bot_id,
+            image_model=IMAGE_MODEL if cloud_tenant else None,
+            video_model=VIDEO_MODEL if cloud_tenant else None,
+        ),
+    )
+    tools = build_media_generation_tools(workspace, config, manager=manager)
+    for tool in tools:
+        if cloud_tenant:
+            tool.args_schema = create_model(
+                "Cloud" + tool.args_schema.__name__,
+                __base__=tool.args_schema,
+                final_delivery=(
+                    bool,
+                    Field(
+                        default=False,
+                        description=(
+                            "Set true when the generated attachments complete the user's request "
+                            "and only a short final reply remains. Leave false for intermediate "
+                            "assets, explicitly requested inspections, or other work still to do."
+                        ),
+                    ),
+                ),
+            )
+        tool.coroutine = _with_label_notice(tool.coroutine)
+    return tools
 
 
 __all__ = [

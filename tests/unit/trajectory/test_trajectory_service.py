@@ -330,6 +330,8 @@ def test_observe_tool_result_records_tool_duration_ms(
         "T1",
         {"type": "tool_call_chunk", "id": "c1", "name": "ls", "args": "{}"},
     )
+    clock["t"] = 1000.15
+    service.observe_chunk("A1", "T1", {"type": "tool_call_chunk", "id": "c1", "args": " "})
     clock["t"] = 1000.25
     service.observe_chunk(
         "A1",

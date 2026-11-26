@@ -35,6 +35,7 @@
     "thread_title": "Group · {room}"
   },
   "octop_bot": {
+    "media_delivered": "Generated files available to open or download in this chat ({count}).",
     "lynxce": {
       "callback_connected": "Connected to Lynxce",
       "callback_return": "Return to Octop Bot and choose a chat model to start your conversation.",
@@ -850,6 +851,7 @@
     "read_env_file": "Read env file",
     "write_env_file": "Write env file",
     "ask_user_question": "Ask the user",
+    "cloud_attachment_zip": "Process ZIP attachment",
     "generate_image": "Generate image",
     "generate_video": "Generate video",
     "bilibili_search_anime": "Search Bilibili anime",

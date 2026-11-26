@@ -243,7 +243,7 @@ def test_the_briefing_tells_the_bot_where_its_files_are_and_when_to_hand_over() 
 
     private = texts(cu.ComputerBriefing(), SystemMessage(content="You are Analyst."))
     assert private.startswith("You are Analyst.\n\n## Your cloud computer")
-    assert "file tools run on this computer" in private
+    assert "Run API work in Octop" in private and "Read skills/" in private
     assert "request_takeover" in private and "CAPTCHA" in private
     room = texts(cu.ComputerBriefing(room=True), None)
     assert room.startswith("## Your cloud computer")

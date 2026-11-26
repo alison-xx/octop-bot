@@ -43,6 +43,7 @@ export function MessageFileCard({
   workspacePath,
   mediaType,
   thumbnailUrl,
+  size: knownSize,
   rich,
 }: {
   url: string;
@@ -52,13 +53,14 @@ export function MessageFileCard({
   mediaType?: string;
   thumbnailUrl?: string;
   rich?: boolean;
+  size?: number;
 }) {
   const { t } = useTranslation();
   const filePreview = useChatFilePreview();
   const [loading, setLoading] = useState(false);
   const needsAuth = needsAuthBlobFetch(url) || isDataUrl(url);
   const label = filename || nameFromUrl(url) || url;
-  const size = useAttachmentSize(url);
+  const size = useAttachmentSize(url, knownSize);
 
   const resolvedPath = workspacePath || workspacePathFromAccessUrl(url) || "";
   const previewable = Boolean(

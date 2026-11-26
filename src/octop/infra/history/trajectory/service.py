@@ -401,15 +401,15 @@ def _merge_tool(current: TrajectoryEvent, incoming: TrajectoryEvent) -> Trajecto
         payload["args"] = _merge_args(payload.get("args"), incoming_payload.get("args"))
     if "result" in incoming_payload:
         payload["result"] = incoming_payload["result"]
-    start = current.ts if current.ts > 0 else incoming.ts
+    start = payload.setdefault("tool_started_at", current.ts if current.ts > 0 else incoming.ts)
     end = incoming.ts if incoming.ts > 0 else start
     duration = _duration_ms(start, end)
-    if duration is not None:
+    if duration is not None and "result" not in current.payload:
         payload["tool_duration_ms"] = duration
     name = str(payload.get("name") or "tool")
     return replace(
         current,
-        ts=end if end > 0 else current.ts,
+        ts=current.ts if "result" in current.payload else end,
         summary=f"tool {name}",
         payload=payload,
         is_error=current.is_error or incoming.is_error,

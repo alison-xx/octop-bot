@@ -41,7 +41,9 @@ export function loadAttachmentSize(url: string): Promise<number | null> {
     else
       pending = requestHead(apiPath(url))
         .then((headers) => {
-          const n = Number(headers.get("content-length"));
+          const raw = headers.get("content-length");
+          if (!raw) return null;
+          const n = Number(raw);
           return Number.isFinite(n) && n >= 0 ? n : null;
         })
         .catch(() => null);
@@ -72,9 +74,13 @@ export function loadAttachmentBlob(url: string): Promise<Blob> {
 }
 
 /** ``undefined`` while loading, then the size in bytes or ``null`` when unknown. */
-export function useAttachmentSize(url: string): number | null | undefined {
+export function useAttachmentSize(
+  url: string,
+  knownSize?: number,
+): number | null | undefined {
   const [size, setSize] = useState<number | null | undefined>(undefined);
   useEffect(() => {
+    if (knownSize !== undefined) return;
     let live = true;
     setSize(undefined);
     void loadAttachmentSize(url).then((n) => {
@@ -83,8 +89,8 @@ export function useAttachmentSize(url: string): number | null | undefined {
     return () => {
       live = false;
     };
-  }, [url]);
-  return size;
+  }, [url, knownSize]);
+  return knownSize ?? size;
 }
 
 /** Test hook: forget cached sizes and bytes. */

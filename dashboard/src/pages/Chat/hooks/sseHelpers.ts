@@ -12,7 +12,19 @@ import type {
 } from "../../../api/types";
 import type { ContentBlockItem } from "../../../utils/messageParser";
 
+export type MediaPhase =
+  | "submitting"
+  | "queued"
+  | "generating"
+  | "finalizing"
+  | "delivering";
 export interface ToolCallData {
+  mediaProgress?: {
+    phase: MediaPhase;
+    percent?: number;
+    deliveryStartedAt?: number;
+  };
+  deliveryToChatMs?: number;
   name?: string;
   displayName?: string;
   callId?: string;
@@ -47,6 +59,7 @@ export interface HitlRequestData {
 }
 
 export interface ChatAttachment {
+  size?: number;
   url: string;
   filename?: string;
   mediaType?: string;

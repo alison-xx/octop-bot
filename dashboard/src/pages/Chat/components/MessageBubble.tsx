@@ -256,7 +256,8 @@ function RefreshableImage({
         aria-hidden
         style={{
           width: 300,
-          height: 300,
+          maxWidth: "100%",
+          aspectRatio: "1",
           backgroundColor: "#f0f0f0",
           borderRadius: 8,
         }}
@@ -269,7 +270,8 @@ function RefreshableImage({
       <div
         style={{
           width: 300,
-          height: 300,
+          maxWidth: "100%",
+          aspectRatio: "1",
           backgroundColor: "#fff1f0",
           borderRadius: 8,
           display: "flex",
@@ -292,7 +294,7 @@ function RefreshableImage({
       className={styles.messageImage}
       width="auto"
       style={{
-        maxWidth: 300,
+        maxWidth: "min(300px, 100%)",
         maxHeight: 300,
         borderRadius: 8,
         objectFit: "contain",
@@ -354,6 +356,7 @@ function FileAttachmentList({
           agentId={agentId}
           workspacePath={file.workspacePath}
           mediaType={file.mediaType}
+          size={file.size}
         />
       ))}
     </div>
@@ -929,10 +932,7 @@ function MessageBubble({
                   </div>
                 </div>
               ) : (
-                <div
-                  className={cx(styles.userText, botOnly && botStyles.outgoing)}
-                  data-quote-body=""
-                >
+                <>
                   {imageAttachments.length > 0 && (
                     <ImageGallery images={imageAttachments} agentId={agentId} />
                   )}
@@ -972,15 +972,24 @@ function MessageBubble({
                       agentId={agentId}
                     />
                   )}
-                  {message.content &&
-                    (botOnly && message.content.startsWith("> ") ? (
-                      <div className={botStyles.quotedReply}>
-                        <Markdown content={message.content} />
-                      </div>
-                    ) : (
-                      <div>{message.content}</div>
-                    ))}
-                </div>
+                  {message.content && (
+                    <div
+                      className={cx(
+                        styles.userText,
+                        botOnly && botStyles.outgoing,
+                      )}
+                      data-quote-body=""
+                    >
+                      {botOnly && message.content.startsWith("> ") ? (
+                        <div className={botStyles.quotedReply}>
+                          <Markdown content={message.content} />
+                        </div>
+                      ) : (
+                        message.content
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

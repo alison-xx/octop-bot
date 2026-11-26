@@ -81,11 +81,20 @@ class Gateway:
             return httpx.Response(200, json={"id": "x", "status": "processing", "progress": 40})
         if req.url.path.endswith("/video-1"):
             data = [{"url": "https://cdn.example.com/out.mp4"}]
-            return httpx.Response(200, json={"status": "succeeded", "type": "video", "data": data})
+            return httpx.Response(
+                200,
+                json={
+                    "status": "succeeded",
+                    "aigc_label_ready": True,
+                    "type": "video",
+                    "data": data,
+                },
+            )
         return httpx.Response(
             200,
             json={
                 "status": "succeeded",
+                "aigc_label_ready": True,
                 "type": "image",
                 "data": [{"url": "https://cdn.example.com/a.png"}],
             },
@@ -184,6 +193,7 @@ def test_the_prompt_no_longer_says_media_is_not_configured() -> None:
 
     harness = "Base." + lynxce_media._HARNESS_NOT_CONFIGURED + " More."
     request = SimpleNamespace(
+        messages=[],
         system_message=SystemMessage(content=harness),
         override=lambda **kw: SimpleNamespace(**kw),
     )
@@ -336,3 +346,173 @@ def test_cloud_group_uses_direct_answers_unless_reasoning_is_explicit() -> None:
     )
     assert key not in model.request({"source": "dashboard/octop-ws"})["configurable"]
     assert key not in CloudAccountModel(1, "conn", "other").request(group)["configurable"]
+
+
+def test_final_media_receipt_preserves_followups_and_compound_tasks() -> None:
+    from langchain_core.messages import HumanMessage, ToolMessage
+
+    def result(name: str, body: dict[str, object]) -> ToolMessage:
+        return ToolMessage(content=json.dumps(body), name=name, tool_call_id=name)
+
+    completed = result(
+        "generate_image", {"final_delivery": True, "images": [{"path": "generated/ok.png"}]}
+    )
+    for messages in (
+        [completed, HumanMessage(content="继续编辑")],
+        [result("task_plan", {}), completed],
+        [completed, result("generate_video", {"status": "failed"})],
+        [result("generate_image", {"status": "completed"})],
+    ):
+        assert not lynxce_media._final_media_reply(SimpleNamespace(messages=messages), "zh")
+
+
+@pytest.mark.parametrize(
+    ("command", "kind", "count", "model"),
+    [
+        ("给我画一张海浪图", "image", 1, IMAGE_MODEL),
+        ("同一主题给我做三张海浪图", "image", 3, IMAGE_MODEL),
+        ("做一段海浪短视频", "video", 1, VIDEO_MODEL),
+    ],
+)
+async def test_cloud_graph_publishes_progress_and_delivers_every_artifact(
+    command: str, kind: str, count: int, model: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from unittest.mock import Mock
+
+    from deepagents.backends.filesystem import FilesystemBackend
+    from langchain.agents import create_agent
+    from langchain_core.messages import AIMessage, ToolMessage
+    from tests.support.fault_graph import FaultModel
+
+    from octop.infra.cloud.computers.backend import CloudComputer
+
+    posts = []
+    polls = iter(
+        [
+            {"status": "running", "progress": 35},
+            {"status": "succeeded", "aigc_label_ready": False},
+            {
+                "status": "succeeded",
+                "aigc_label_ready": True,
+                "data": [{"url": f"https://cdn.example.com/{i}"} for i in range(count)],
+            },
+        ]
+    )
+
+    def gateway(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "cdn.example.com":
+            assert "Authorization" not in request.headers
+            return httpx.Response(
+                200, content=(PNG if kind == "image" else MP4) + request.url.path.encode()
+            )
+        if request.method == "POST":
+            assert request.url.path.endswith(f"/{kind}s/generations")
+            posts.append(json.loads(request.content))
+            return httpx.Response(200, json={"id": "job", "status": "queued"})
+        assert request.url.path.endswith("/generations/job")
+        return httpx.Response(200, json={"id": "job", "type": kind, **next(polls)})
+
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kw: client_type(transport=httpx.MockTransport(gateway), **kw)
+    )
+    monkeypatch.setattr(LynxceMediaProvider, "poll_interval_seconds", 0.01)
+    # Only wake-hook registration is available: compute, desktop and shell I/O must never run.
+    computer_manager = Mock(spec_set=["on_wake"])
+    store = FilesystemBackend(root_dir=str(tmp_path), virtual_mode=True)
+    backend = CloudComputer(computer_manager, user_id=1, agent_id="qa", store=store)
+    workspace = BackendWorkspace(backend, str(tmp_path))
+    tools = lynxce_media_tools(workspace, _auth, cloud_tenant=True)
+    call = {
+        "name": f"generate_{kind}",
+        "id": "test-call",
+        "args": {
+            "prompt": command,
+            "final_delivery": True,
+            **({"count": count} if kind == "image" else {}),
+        },
+    }
+    graph = create_agent(
+        model=FaultModel(
+            mode="normal",
+            responses=[AIMessage(content="", tool_calls=[call]), AIMessage(content="已完成")],
+        ),
+        middleware=[lynxce_media.LynxceMediaTools(tools)],
+    )
+    frames, messages = [], []
+    async for stream, data in graph.astream(
+        {"messages": [("user", command)]}, stream_mode=["values", "custom"]
+    ):
+        if stream == "custom":
+            frames.append(data)
+        else:
+            messages = data["messages"]
+    assert [p["model"] for p in posts] == [model]
+    if kind == "image":
+        assert posts[0]["n"] == count
+    assert [f["phase"] for f in frames] == [
+        "submitting",
+        "queued",
+        "generating",
+        "finalizing",
+        "delivering",
+    ]
+    assert frames[2]["percent"] == 35 and all(f["call_id"] == "test-call" for f in frames)
+    reply = next(m for m in messages if isinstance(m, ToolMessage))
+    result = json.loads(reply.content)
+    assert result["status"] == "completed"
+    assert result["final_delivery"] is True
+    final = SimpleNamespace(messages=messages[: messages.index(reply) + 1])
+    assert lynxce_media._final_media_reply(final, "zh")
+    assert f"已交付 {count} 个生成文件" in messages[-1].content
+    files = result[kind + "s"]
+    assert len({row["path"] for row in files}) == count
+    assert [(tmp_path / row["path"]).read_bytes() for row in files] == [
+        (PNG if kind == "image" else MP4) + f"/{i}".encode() for i in range(count)
+    ]
+    timing = result["timing"]
+    assert 0 <= timing["submit_ms"] <= timing["ready_ms"] <= timing["total_ms"]
+    assert abs(timing["ready_ms"] + timing["delivery_ms"] - timing["total_ms"]) <= 1
+
+
+async def test_uncertain_media_submit_reuses_its_key() -> None:
+    keys: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        keys.append(request.headers["Idempotency-Key"])
+        if len(keys) == 1:
+            raise httpx.ReadTimeout("lost response")
+        return httpx.Response(200, json={"id": "original", "status": "running"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = LynxceMediaProvider(_auth, image_model=IMAGE_MODEL, client=client)
+        submission = await provider.submit_image(ImageGenerationRequest(prompt="猫"))
+    assert submission.task and submission.task.task_id == "original"
+    assert len(keys) == 2 and keys[0] == keys[1]
+
+
+@pytest.mark.parametrize("expired", [True, False])
+async def test_label_failure_or_deadline_delivers_with_notice(expired: bool) -> None:
+    from octop_harness.media.models import ProviderTask
+
+    provider = _provider(Gateway())
+    task = ProviderTask("id", "image", IMAGE_MODEL)
+    task.metadata["finalizing_since"] = str(
+        lynxce_media.time.monotonic() - (1801 if expired else 1)
+    )
+
+    async def generate() -> dict[str, object]:
+        update = provider._update(
+            {
+                "status": "succeeded",
+                "aigc_label_ready": False,
+                "error": None if expired else {"code": "aigc_label_failed"},
+                "data": [{"url": "https://cdn.example.com/image.png"}],
+            },
+            task,
+        )
+        assert update.status == "succeeded"
+        return {"message": "Generated an image."}
+
+    result = await lynxce_media._with_label_notice(generate)()
+    assert "label could not be added" in str(result["message"])

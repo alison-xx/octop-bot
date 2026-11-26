@@ -302,3 +302,40 @@ it("paints growing answer snapshots after reasoning before the server finishes",
     await sent;
   }
 });
+
+it("keeps concurrent media progress tied to its call and times delivery until the result frame", () => {
+  vi.spyOn(Date, "now").mockReturnValue(10000);
+  try {
+    for (const [index, id] of ["pic", "video"].entries())
+      ingestHarnessChunk(SESSION, {
+        type: "tool_call_chunk",
+        id,
+        index,
+        name: id === "pic" ? "generate_image" : "generate_video",
+        args: "{}",
+      });
+    const update = (id: string, phase: string) =>
+      ingestHarnessChunk(SESSION, {
+        type: "custom",
+        data: { kind: "media_progress", phase, call_id: id },
+      });
+    update("pic", "delivering");
+    update("video", "generating");
+    vi.mocked(Date.now).mockReturnValue(12400);
+    ingestHarnessChunk(SESSION, {
+      type: "tool_result",
+      messages: [{ tool_call_id: "pic", content: "done" }],
+    });
+    const messages = getSnapshot(SESSION).messages;
+    expect(
+      messages.find((m) => m.toolData?.callId === "pic")?.toolData
+        ?.deliveryToChatMs,
+    ).toBe(2400);
+    expect(
+      messages.find((m) => m.toolData?.callId === "video")?.toolData
+        ?.mediaProgress?.phase,
+    ).toBe("generating");
+  } finally {
+    vi.restoreAllMocks();
+  }
+});

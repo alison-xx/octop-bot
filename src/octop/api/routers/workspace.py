@@ -39,6 +39,7 @@ from octop.infra.gateway.media.backend_files import (
     resolve_preview_payload,
     tenant_workspace_path,
 )
+from octop.infra.gateway.media.inbound_store import display_name_from_stored
 from octop.infra.utils.doc_edit import DocConverter, get_doc_converter
 
 logger = logging.getLogger(__name__)
@@ -403,7 +404,18 @@ async def upload_file(
     return {"path": target, "size": len(data)}
 
 
-@router.get("/agents/{agent_id}/workspace/download")
+@router.get(
+    "/agents/{agent_id}/workspace/download",
+    summary="Download a workspace file",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
+            }
+        }
+    },
+)
 async def download_file(
     agent_id: str,
     path: str,
@@ -411,8 +423,8 @@ async def download_file(
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
-) -> StreamingResponse:
-    """Stream ``path`` back as application/octet-stream.
+) -> Response:
+    """Return ``path`` as application/octet-stream.
 
     See ``from_workspace``: workspace UI uses true; chat/tool downloads use false.
     ``file://`` and other host-absolute paths are allowed for this workspace,
@@ -422,8 +434,8 @@ async def download_file(
     fname, file_blob = await _read_download(
         agent_id, path, from_workspace=from_workspace, as_user=as_user, user=user, server=server
     )
-    return StreamingResponse(
-        iter([file_blob]),
+    return Response(
+        content=file_blob,
         media_type="application/octet-stream",
         headers={"Content-Disposition": content_disposition(fname)},
     )
@@ -477,7 +489,12 @@ async def _read_download(
         raise _missing(ws, io_path, f"cannot download {path!r}") from exc
     if file_blob is None:
         raise _missing(ws, io_path, f"cannot download {path!r}") from None
-    return io_path.rsplit("/", 1)[-1] or "download.bin", file_blob
+    return _download_filename(io_path), file_blob
+
+
+def _download_filename(path: str) -> str:
+    name = path.rsplit("/", 1)[-1] or "download.bin"
+    return display_name_from_stored(name) if path.lstrip("/").startswith("inbound/") else name
 
 
 class DownloadLink(BaseModel):
@@ -501,19 +518,9 @@ async def download_link(
     return a short-lived link, so the download comes straight from the store (or its CDN)."""
     if not bot_cloud_enabled():
         raise OctopError.localized(ErrorCode.NOT_FOUND)
-    ws = await require_agent_workspace(agent_id, user=user, as_user=None, server=server)
-    io_path = _workspace_io_path(path, from_workspace=from_workspace)
-    io_path = _guard_workspace_read(
-        io_path, ws.workspace_dir, host_files=_host_files(server, agent_id)
+    fname, file_blob = await _read_download(
+        agent_id, path, from_workspace=from_workspace, as_user=None, user=user, server=server
     )
-    _keep_computer_off(ws, io_path)
-    try:
-        file_blob = await ws.adownload_bytes(io_path)
-    except PermissionError as exc:
-        raise _missing(ws, io_path, f"cannot download {path!r}") from exc
-    if file_blob is None:
-        raise _missing(ws, io_path, f"cannot download {path!r}") from None
-    fname = io_path.rsplit("/", 1)[-1] or "download.bin"
     url = await asyncio.to_thread(
         cloud_files.publish_download,
         user.id,
@@ -603,7 +610,7 @@ async def preview_media(
     """Stream an image or video inline for dashboard tool-result previews."""
     path_agent = _agent_id_from_media_source(source)
     effective_agent = path_agent or agent_id
-    ws = await require_running_workspace(effective_agent, user=user, as_user=as_user, server=server)
+    ws = await require_agent_workspace(effective_agent, user=user, as_user=as_user, server=server)
     payload = await resolve_preview_payload(
         source=source,
         workspace=ws,

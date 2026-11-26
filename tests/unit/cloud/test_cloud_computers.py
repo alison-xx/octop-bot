@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import base64
+import io
+import shlex
+import subprocess
+import sys
 import threading
+import zipfile
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -598,14 +604,18 @@ def test_a_bots_first_computer_gets_its_existing_files_once(setup: Any, store: A
     manager, driver, billing, clock = setup
     computer = CloudComputer(manager, user_id=7, agent_id="bot1", store=store)
     computer.execute("ls")
-    assert driver.files == {f"{WORKSPACE}/notes/plan.md": b"old plan"}
+    assert driver.files == {
+        f"{WORKSPACE}/notes/plan.md": b"old plan",
+        f"{WORKSPACE}/inbound/photo.png": b"png",
+    }
     assert manager.record("bot1", 7).seeded
     # A later fresh computer (the old one was reclaimed) is not filled with stale copies.
     driver.states["ins-1"] = "gone"
     driver.files.clear()
     manager.tick()
     computer.execute("ls")
-    assert driver.calls[-1] == ("start", "bot1") and driver.files == {}
+    assert driver.calls[-1] == ("start", "bot1")
+    assert driver.files == {f"{WORKSPACE}/inbound/photo.png": b"png"}
 
 
 def test_deleting_follows_the_path_mapping(setup: Any, store: Any) -> None:
@@ -846,6 +856,150 @@ def test_deliverables_are_written_and_read_without_the_computer(setup: Any, stor
     assert "Report" in str(computer.read("/generated/report.md").file_data)
     assert driver.calls == [] and billing.reserved == []
     assert store.download_files(["/outbound/send.pdf"])[0].content == b"pdf"
+
+
+async def test_chat_attachment_zip_tool_round_trip_without_a_computer(
+    setup: Any, store: Any, tmp_path: Path
+) -> None:
+    from octop_harness.backends.workspace import BackendWorkspace
+
+    from octop.infra.cloud.attachment_zip import cloud_attachment_zip_tool
+
+    manager, driver, billing, _ = setup
+    backend = CloudComputer(manager, user_id=7, agent_id="bot1", store=store)
+    workspace = BackendWorkspace(backend, str(tmp_path))
+    tool = cloud_attachment_zip_tool(workspace)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as source:
+        source.writestr("素材/说明.txt", "Octop 云端 ZIP 验收 42")
+        source.writestr("素材/data.bin", b"\x00\xff\x01")
+    workspace.upload_bytes("inbound/验收.zip", buf.getvalue())
+    extracted = await tool.ainvoke({"action": "extract", "source": "/inbound/验收.zip"})
+    packed = await tool.ainvoke(
+        {
+            "action": "pack",
+            "source": extracted["directory"],
+            "members": extracted["members"],
+            "filename": "zip-result.zip",
+        }
+    )
+    result = workspace.download_bytes(packed["path"])
+    assert result is not None
+    with zipfile.ZipFile(io.BytesIO(result)) as z:
+        assert z.testzip() is None and len(z.namelist()) == 2
+        assert z.read("素材/说明.txt").decode() == "Octop 云端 ZIP 验收 42"
+        assert z.read("素材/data.bin") == b"\x00\xff\x01"
+    with zipfile.ZipFile(buf := io.BytesIO(), "w") as bad:
+        bad.writestr("../outside", "bad")
+    workspace.upload_bytes("inbound/bad.zip", buf.getvalue())
+    assert "relative" in await tool.ainvoke({"action": "extract", "source": "inbound/bad.zip"})
+    assert driver.calls == [] and billing.reserved == []
+
+
+async def test_cloud_skill_discovery_and_files_stay_in_octop(setup: Any, store: Any) -> None:
+    manager, driver, billing, _ = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1", store=store)
+    path = "/skills/report/SKILL.md"
+    store.upload_files([(path, b"Use the connected API")])
+    for pattern in ("skills/**/SKILL.md", "/skills/**/SKILL.md"):
+        result = await computer.aglob(pattern)
+        assert path in {item["path"] for item in result.matches}
+    assert (await computer.aread(path)).file_data is not None
+    assert driver.calls == [] and billing.reserved == []
+
+
+def test_commands_stage_archives_without_reading_unchanged_objects(
+    setup: Any, store: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager, driver, billing, _clock = setup
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1", store=store)
+    reads: list[str] = []
+    download = store.download_files
+
+    def count_reads(paths: list[str]) -> Any:
+        reads.extend(paths)
+        return download(paths)
+
+    monkeypatch.setattr(store, "download_files", count_reads)
+    monkeypatch.setattr(store, "glob", lambda *_: pytest.fail("glob downloads every S3 object"))
+    computer.upload_files([("/inbound/材料.zip", b"zip"), ("/generated/images/a.png", b"abc")])
+    assert not billing.reserved
+    computer.execute("first")
+    assert driver.files[f"{WORKSPACE}/inbound/材料.zip"] == b"zip"
+    reads.clear()
+    computer.execute("second")
+    assert reads == []
+    manager.pause("bot1", 7)
+    computer.execute("after resume")
+    assert reads == []
+    computer.upload_files([("/inbound/新.zip", b"new"), ("/generated/images/a.png", b"xyz")])
+    computer.execute("third")
+    assert sorted(reads) == ["/generated/images/a.png", "/inbound/新.zip"]
+    assert driver.files[f"{WORKSPACE}/generated/images/a.png"] == b"xyz"
+
+
+async def test_chat_zip_extract_and_repack_on_computer(
+    setup: Any,
+    store: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    from octop_harness.backends.workspace import BackendWorkspace
+
+    from octop.infra.gateway.media.inbound_store import (
+        resolve_inbound_attachment_path,
+        write_inbound,
+    )
+
+    manager, driver, _billing, _clock = setup
+    guest = tmp_path_factory.mktemp("guest")
+    host = tmp_path_factory.mktemp("control-plane")
+    computer = CloudComputer(manager, user_id=7, agent_id="bot1", store=store, root_dir=host)
+    workspace = BackendWorkspace(computer, host)
+    raw = io.BytesIO()
+    with zipfile.ZipFile(raw, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("第一版/说明.txt", "中文内容")
+    uploaded = await write_inbound(
+        workspace, raw.getvalue(), filename="项目 100%.ZIP", media_type="application/zip"
+    )
+    hint = resolve_inbound_attachment_path(workspace, uploaded.path)
+    assert hint == uploaded.path
+
+    def guest_path(path: str) -> Path:
+        return guest / path.removeprefix(WORKSPACE + "/")
+
+    def write(_instance: str, path: str, data: bytes) -> None:
+        local = guest_path(path)
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(data)
+
+    def run(_instance: str, command: str, _timeout: int) -> tuple[int, str]:
+        if "find generated outbound" in command:
+            return 0, "\n".join(
+                f"{p.stat().st_size} {p.stat().st_mtime} {p.relative_to(guest).as_posix()}"
+                for p in (guest / "generated").rglob("*")
+                if p.is_file()
+            )
+        proc = subprocess.run(
+            shlex.split(command), cwd=guest, capture_output=True, text=True, check=False
+        )
+        return proc.returncode, proc.stdout + proc.stderr
+
+    monkeypatch.setattr(driver, "write", write)
+    monkeypatch.setattr(driver, "read", lambda instance, path: guest_path(path).read_bytes())
+    monkeypatch.setattr(driver, "run", run)
+    cli = [sys.executable, "-m", "zipfile"]
+    extracted = computer.execute(shlex.join([*cli, "-e", hint, "展开"]))
+    assert extracted.exit_code == 0, extracted.output
+    assert (guest / "展开" / "第一版" / "说明.txt").read_text(encoding="utf-8") == "中文内容"
+    (guest / "generated").mkdir()
+    packed = computer.execute(shlex.join([*cli, "-c", "generated/交付.zip", "展开"]))
+    assert packed.exit_code == 0, packed.output
+    result = await workspace.adownload_bytes("generated/交付.zip")
+    assert result
+    with zipfile.ZipFile(io.BytesIO(result)) as saved:
+        assert saved.testzip() is None
+        assert saved.read("展开/第一版/说明.txt").decode() == "中文内容"
 
 
 def test_deliverables_follow_the_computer_both_ways(setup: Any, store: Any) -> None:

@@ -6,7 +6,7 @@ its own files) at hand. Path mapping follows octop-harness's Docker sandbox: fil
 virtual paths, the shell sees real ones.
 
 The Bot's context (SOUL, AGENTS, MEMORY and the other persona files, ``.octop/`` system files,
-memory, skills and chat attachments in ``inbound/``) stays in the P1 object store: the harness
+memory and skills) stays in the P1 object store: the harness
 reads it at every start and new conversation, and that must never wake (and bill) a computer.
 Only work on the computer starts it: ``execute`` and files outside those paths. The first time
 a Bot's computer starts, the files the Bot already had in the object store are copied onto it.
@@ -16,7 +16,8 @@ The Bot's deliverables (``generated/``: documents it writes, images and videos i
 ``outbound/``: files it sends the user) are kept in the object store too, so chatting, file
 cards and previews never wake the computer. They are mirrored onto the computer whenever it
 starts or resumes and before each command, and what a command leaves there is copied back to
-the store afterwards (``SHARED_DIRS``). Deleting a file on one side does not delete the other.
+the store afterwards (``SHARED_DIRS``). Chat uploads in ``inbound/`` are copied onto the
+computer in one direction so commands can open them. Deleting a file on one side does not delete the other.
 """
 
 from __future__ import annotations
@@ -163,9 +164,10 @@ class CloudComputer(BaseSandbox):
         # The agent's host workspace: the harness then shows the model "/" as its
         # working directory (the computer's workspace), never the host path.
         self.root_dir: Path | None = root_dir
-        # Deliverable mirroring: store path → size last copied onto the computer, and computer
-        # path → (size, mtime) last seen there.
-        self._pushed: dict[str, int] = {}
+        # Store revisions and payload digests are separate: S3 lists encoded envelope sizes.
+        self._pushed: dict[str, tuple[int | None, str]] = {}
+        self._mirror_instance: str | None = None
+        self._mirrored_digest: dict[str, bytes] = {}
         self._seen: dict[str, tuple[int, float]] = {}
         self._sync_lock = threading.Lock()
         if store is not None:
@@ -233,105 +235,150 @@ class CloudComputer(BaseSandbox):
 
     # -- deliverables: the store's copy and the computer's --------------------
 
-    def _store_shared(self) -> dict[str, int | None]:
-        """The store's deliverables: virtual path → size (None when the store does not say)."""
+    def _store_entries(
+        self, folders: tuple[str, ...], *, seed: bool = False
+    ) -> dict[str, tuple[int | None, str]]:
+        """List metadata only. The S3 backend's recursive glob downloads every object."""
         assert self._store is not None
-        found: dict[str, int | None] = {}
-        for folder in SHARED_DIRS:
-            listing = self._store.glob("**/*", folder.rstrip("/"))
-            for match in getattr(listing, "matches", None) or []:
-                path = "/" + str(match.get("path") or "").lstrip("/")
-                if match.get("is_dir") or not on_store(path) or len(found) >= MAX_SHARED_FILES:
+        pending = [folder.rstrip("/") or "/" for folder in folders]
+        found: dict[str, tuple[int | None, str]] = {}
+        while pending:
+            folder = pending.pop()
+            listing = self._store.ls(folder)
+            if listing.error and not listing.entries and "path_not_found" not in listing.error:
+                raise OSError(listing.error)
+            rows = listing.entries or []
+            if folder == "/inbound" and len(rows) > MAX_SHARED_FILES:
+                # Chat uploads are flat. Keep the newest available to commands at the limit.
+                rows = sorted(
+                    rows,
+                    key=lambda row: (str(row.get("modified_at") or ""), row["path"]),
+                    reverse=True,
+                )
+            for entry in rows:
+                path = str(entry.get("path") or "").rstrip("/")
+                if (
+                    not path
+                    or posixpath.normpath(path) != path
+                    or posixpath.dirname(path) != folder
+                    or (seed and on_store(path))
+                ):
                     continue
-                size = match.get("size")
-                found[path] = int(size) if isinstance(size, (int, float)) else None
+                if entry.get("is_dir"):
+                    pending.append(path)
+                    continue
+                found[path] = (entry.get("size"), str(entry.get("modified_at") or ""))
+                if not seed and len(found) >= MAX_SHARED_FILES:
+                    return found
         return found
 
-    def _push(self, write: Any, *, on_computer: dict[str, tuple[int, float]]) -> None:
-        """Copy the store's deliverables the computer lacks or has another version of."""
+    def _push(self, write: Any, entries: dict[str, tuple[int | None, str]]) -> bool:
+        """Push changed objects. Store sizes include the JSON envelope on S3."""
         assert self._store is not None
-        for path, size in self._store_shared().items():
-            there = on_computer.get(path)
-            if size is not None and (
-                self._pushed.get(path) == size or (there and there[0] == size)
-            ):
-                self._pushed[path] = size
+        wrote = False
+        for path, revision in entries.items():
+            if revision[1] and self._pushed.get(path) == revision:
                 continue
             got = self._store.download_files([path])[0]
-            if got.content is None or len(got.content) > MAX_SHARED_FILE_BYTES:
+            if got.content is None:
                 continue
-            if there is None or there[0] != len(got.content):
+            if len(got.content) > MAX_SHARED_FILE_BYTES:
+                self._pushed[path] = revision
+                continue
+            digest = hashlib.sha256(got.content).digest()
+            if self._mirrored_digest.get(path) != digest:
                 write(self._map_path(path), got.content)
-            self._pushed[path] = len(got.content)
+                self._mirrored_digest[path] = digest
+                wrote = True
+            self._pushed[path] = revision
+        return wrote
 
-    def _pull(self, read: Any, found: dict[str, tuple[int, float]], *, only_new: bool) -> None:
+    def _pull(
+        self,
+        read: Any,
+        found: dict[str, tuple[int, float]],
+        *,
+        known: dict[str, tuple[int | None, str]] | None = None,
+    ) -> None:
         """Copy deliverables from the computer into the store.
 
-        ``only_new``: just those the store does not have (a computer from before mirroring);
+        With a known store listing, only copy missing files (a computer from before mirroring);
         otherwise every file that changed since it was last seen.
         """
         assert self._store is not None
-        known = self._store_shared() if only_new else {}
         for path, stamp in found.items():
-            if (only_new and path in known) or (not only_new and self._seen.get(path) == stamp):
+            if known is not None and path in known:
+                continue
+            if known is None and self._seen.get(path) == stamp:
                 continue
             data = read(self._map_path(path))
             if data is None:
                 continue
-            self._store.upload_files([(path, data)])
-            self._pushed[path] = len(data)
+            digest = hashlib.sha256(data).digest()
+            if self._mirrored_digest.get(path) == digest:
+                continue
+            result = self._store.upload_files([(path, data)])[0]
+            if result.error:
+                raise OSError(result.error)
+            self._mirrored_digest[path] = digest
+            self._pushed.pop(path, None)
 
     def _on_wake(self, io: ComputerIO) -> None:
         """The computer just started or resumed: bring both copies of the deliverables level."""
         with self._sync_lock:
             found = _listing(io.run(_LIST_SHARED)[1])
-            self._pull(io.read, found, only_new=True)
-            self._push(io.write, on_computer=found)
-            self._seen = _listing(io.run(_LIST_SHARED)[1])
+            shared = self._store_entries(SHARED_DIRS)
+            if self._mirror_instance != io.instance_id:
+                self._pushed.clear()
+                self._mirrored_digest.clear()
+                self._mirror_instance = io.instance_id
+            else:
+                # On resume, preserve local edits to previously mirrored revisions.
+                for path, revision in list(shared.items()):
+                    if path not in found:
+                        self._pushed.pop(path, None)
+                        self._mirrored_digest.pop(path, None)
+                    elif self._pushed.get(path) == revision and self._seen.get(path) != found[path]:
+                        del shared[path]
+            self._pull(io.read, found, known=shared)
+            wrote = self._push(io.write, shared)
+            self._push(io.write, self._store_entries(("/inbound/",)))
+            self._seen = _listing(io.run(_LIST_SHARED)[1]) if wrote else found
 
     def _before_command(self) -> None:
-        """The store's newer deliverables onto the running computer, before a command uses them."""
         if self._store is None or not self._manager.is_running(self._agent_id, self._user_id):
-            return  # starting it runs ``_on_wake``
-        try:
+            return  # starting it runs _on_wake
+
+        def sync(driver: ComputerDriver, instance: str) -> None:
             with self._sync_lock:
-                self._push(
-                    lambda path, data: self._manager.write(
-                        self._agent_id, self._user_id, path, data
-                    ),
-                    on_computer={},
-                )
-        except Exception:  # noqa: BLE001 - the command still runs; copied next time
-            logger.warning("copying deliverables onto the computer of %s failed", self._agent_id)
+                entries = self._store_entries(SHARED_DIRS)
+                entries.update(self._store_entries(("/inbound/",)))
+                self._push(lambda path, data: driver.write(instance, path, data), entries)
+
+        self._manager.use(self._agent_id, self._user_id, sync, start=False)
 
     def _after_command(self) -> None:
-        """What the command left in the deliverable folders, back into the store."""
         if self._store is None:
             return
-        try:
+
+        def sync(driver: ComputerDriver, instance: str) -> None:
             with self._sync_lock:
-                _, output = self._manager.run(
-                    self._agent_id, self._user_id, _LIST_SHARED, WAKE_COMMAND_TIMEOUT
-                )
-                found = _listing(output)
-                self._pull(
-                    lambda path: self._manager.read(self._agent_id, self._user_id, path),
-                    found,
-                    only_new=False,
-                )
-                self._seen = found
+                code, output = driver.run(instance, _LIST_SHARED, WAKE_COMMAND_TIMEOUT)
+                if code == 0:
+                    found = _listing(output)
+                    self._pull(lambda path: driver.read(instance, path), found)
+                    self._seen = found
+
+        try:
+            self._manager.use(self._agent_id, self._user_id, sync, start=False)
         except Exception:  # noqa: BLE001 - the command worked; copied after the next one
             logger.warning("copying deliverables off the computer of %s failed", self._agent_id)
 
     def _seed(self, write: Any) -> None:
-        """First start of this Bot's computer: copy its object-store files (not context) onto it."""
+        """First start: skip context directories before descending into their contents."""
         if self._store is None:
             return
-        found = self._store.glob("**/*", "/")
-        for match in getattr(found, "matches", None) or []:
-            path = str(match.get("path") or "")
-            if not path or match.get("is_dir") or on_store(path):
-                continue
+        for path in self._store_entries(("/",), seed=True):
             got = self._store.download_files([path])[0]
             if got.content is not None:
                 write(self._map_path(path), got.content)
@@ -344,8 +391,8 @@ class CloudComputer(BaseSandbox):
         if self._manager.taken_over(self._agent_id, self._user_id):
             # Agent-facing: the user is signing in or solving a check on this computer.
             return ExecuteResponse(output=TAKEN_OVER, exit_code=1, truncated=False)
-        self._before_command()
         try:
+            self._before_command()
             exit_code, output = self._manager.run(
                 self._agent_id,
                 self._user_id,
@@ -353,6 +400,8 @@ class CloudComputer(BaseSandbox):
                 timeout or DEFAULT_COMMAND_TIMEOUT,
                 seed=self._seed,
             )
+        except ComputerUnavailable:
+            return ExecuteResponse(output=TAKEN_OVER, exit_code=1, truncated=False)
         except OctopError as exc:
             if exc.code != ErrorCode.BOT_COMPUTER_BUSY:
                 raise
@@ -399,7 +448,9 @@ class CloudComputer(BaseSandbox):
     def write(self, file_path: str, content: str) -> Any:
         if self._stored(file_path):
             assert self._store is not None
-            return self._store.write(file_path, content)
+            with self._sync_lock:
+                self._pushed.pop(file_path, None)
+                return self._store.write(file_path, content)
         result = super().write(self._map_path(file_path), content)
         if result.path:
             result.path = self._to_virtual_path(result.path)
@@ -410,7 +461,9 @@ class CloudComputer(BaseSandbox):
     ) -> Any:
         if self._stored(file_path):
             assert self._store is not None
-            return self._store.edit(file_path, old_string, new_string, replace_all=replace_all)
+            with self._sync_lock:
+                self._pushed.pop(file_path, None)
+                return self._store.edit(file_path, old_string, new_string, replace_all=replace_all)
         result = super().edit(
             self._map_path(file_path), old_string, new_string, replace_all=replace_all
         )
@@ -448,6 +501,11 @@ class CloudComputer(BaseSandbox):
         if path is not None and self._stored(path):
             assert self._store is not None
             return self._store.glob(pattern, path)
+        if self._store is not None and self._map_path(path) == WORKSPACE:
+            # Tool callers can also put the directory in the pattern: skills/**/SKILL.md.
+            folder, _, subpattern = pattern.removeprefix("/").partition("/")
+            if f"/{folder}/" in STORE_DIRS and subpattern and ".." not in subpattern.split("/"):
+                return self._store.glob(subpattern, f"/{folder}")
         result = super().glob(pattern, self._map_path(path))
         if result.matches:
             result.matches = [self._virtual(m) for m in result.matches]
@@ -562,7 +620,9 @@ class CloudComputer(BaseSandbox):
         for path, content in files:
             if self._stored(path):
                 assert self._store is not None
-                responses.extend(self._store.upload_files([(path, content)]))
+                with self._sync_lock:
+                    responses.extend(self._store.upload_files([(path, content)]))
+                    self._pushed.pop(path, None)
                 continue
             if self._manager.taken_over(self._agent_id, self._user_id):
                 responses.append(FileUploadResponse(path=path, error=TAKEN_OVER))

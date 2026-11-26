@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import mimetypes
 import re
+import secrets
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -344,7 +345,14 @@ def agent_facing_workspace_path(workspace: BackendWorkspace, path: str) -> str:
 
 def resolve_inbound_attachment_path(workspace: BackendWorkspace, path: str) -> str:
     """Agent-facing path for attachment hints (not a host ``root_dir`` join)."""
-    return agent_facing_workspace_path(workspace, path)
+    from octop.infra.cloud.computers.backend import CloudComputer
+
+    resolved = agent_facing_workspace_path(workspace, path)
+    backend = getattr(workspace.backend, "default", workspace.backend)
+    if isinstance(backend, CloudComputer) and resolved.startswith(("/inbound/", "/outbound/")):
+        # Both the file tools and bash (started in WORKSPACE) can open this path.
+        return resolved.lstrip("/")
+    return resolved
 
 
 def validate_inbound_size(data: bytes, *, max_bytes: int | None = None) -> None:
@@ -389,10 +397,14 @@ def sanitize_inbound_filename(filename: str) -> str:
     """Keep the original display name (including CJK); strip only dangerous chars."""
     base = (filename or "").replace("\\", "/").rsplit("/", 1)[-1].strip()
     base = _UNSAFE_FILENAME_CHARS.sub("_", base).strip(" .") or "upload.bin"
-    if len(base) > 180:
+    # Leave room for the storage prefix under the 255-byte filename limit.
+    if len(base.encode("utf-8")) > 180:
         suffix = Path(base).suffix
-        stem = base[: 180 - len(suffix)] if suffix else base[:180]
-        base = f"{stem}{suffix}" if suffix else stem
+        if len(suffix.encode("utf-8")) > 32:
+            suffix = ""
+        budget = 180 - len(suffix.encode("utf-8"))
+        stem = base.removesuffix(suffix).encode("utf-8")[:budget].decode("utf-8", "ignore")
+        base = stem + suffix
     return base or "upload.bin"
 
 
@@ -405,24 +417,9 @@ def display_name_from_stored(stored_name: str) -> str:
 
 
 def build_timestamped_inbound_name(filename: str, *, now: int | None = None) -> str:
-    """Return ``{unix_ts}_{sanitized_original}`` (matches outbound naming style)."""
-    display = sanitize_inbound_filename(filename)
+    """Keep a sortable numeric prefix and avoid check-then-write races across workers."""
     ts = int(time.time()) if now is None else now
-    return f"{ts}_{display}"
-
-
-async def _unique_inbound_path(workspace: BackendWorkspace, stored_name: str) -> str:
-    """Pick ``inbound/{name}``, or ``inbound/{stem}-{n}{suffix}`` on collision."""
-    candidate = f"{INBOUND_DIR}/{stored_name}"
-    if not await workspace.aexists(candidate):
-        return candidate
-    stem = Path(stored_name).stem
-    suffix = Path(stored_name).suffix
-    for index in range(2, 1000):
-        alt = f"{INBOUND_DIR}/{stem}-{index}{suffix}"
-        if not await workspace.aexists(alt):
-            return alt
-    raise OctopError(ErrorCode.INTERNAL_ERROR, f"cannot allocate unique path for {stored_name!r}")
+    return f"{ts}{secrets.randbits(80):025d}_{sanitize_inbound_filename(filename)}"
 
 
 async def write_inbound(
@@ -441,7 +438,7 @@ async def write_inbound(
     if not Path(display_name).suffix:
         display_name = f"{display_name}{inbound_extension(display_name, normalized_type)}"
     stored_name = build_timestamped_inbound_name(display_name)
-    path = await _unique_inbound_path(workspace, stored_name)
+    path = f"{INBOUND_DIR}/{stored_name}"
     await workspace.aupload_bytes(path, data)
     return InboundFile(
         path=path,

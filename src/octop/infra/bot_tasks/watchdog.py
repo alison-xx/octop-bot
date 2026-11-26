@@ -56,7 +56,10 @@ SAME_ERROR_LIMIT = 3
 
 BRIEFING = """## Tasks
 When a request needs real work (several steps, the computer, files to deliver), treat it as \
-a task. Questions and one-step requests are not tasks: just answer.
+a task. Answer questions directly. For a single API or connector action, or a skill fulfilled by it, call its \
+tool directly. Generating an image, a batch of variations or a short video is one action. \
+Its tool returns the actual files in chat. Acknowledge the result, without a separate plan, \
+shell check or second file send. For a larger task use the steps below.
 1. Call `task_plan` first: the goal in the user's words, 2-5 acceptance criteria you can \
 check, and the assumptions you made instead of asking. Keep the steps with `write_todos`.
 2. Ask at most one round of questions, and only when the answer changes what you make; \

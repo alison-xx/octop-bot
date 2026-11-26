@@ -12,6 +12,7 @@ class Metrics:
     stream_errors_total: int = 0
     cron_runs_total: int = 0
     cron_errors_total: int = 0
+    media_label_unavailable_total: int = 0
     agent_active: int = 0
     query_token_ws_total: int = 0
     query_token_sse_total: int = 0
@@ -33,6 +34,7 @@ class Metrics:
                 "messages_total": self.messages_total,
                 "stream_errors_total": self.stream_errors_total,
                 "cron_runs_total": self.cron_runs_total,
+                "media_label_unavailable_total": self.media_label_unavailable_total,
                 "cron_errors_total": self.cron_errors_total,
                 "agent_active": self.agent_active,
                 "query_token_ws_total": self.query_token_ws_total,

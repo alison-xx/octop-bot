@@ -16,9 +16,10 @@ const now = 1_800_000_000_000;
 const rules = { pillOnly: false, idleSinceMs: null, nowMs: now };
 
 describe("cloud computer float", () => {
-  it("opens the live window when the Bot starts working, unless kept as a pill", () => {
+  it("keeps background activity compact and opens the live window on request", () => {
     const busy = { ...running, busy: true, activity: "click" };
-    expect(nextMode("hidden", busy, rules)).toBe("window");
+    expect(nextMode("hidden", busy, rules)).toBe("pill");
+    expect(nextMode("hidden", busy, { ...rules, pinned: true })).toBe("window");
     expect(nextMode("pill", busy, { ...rules, pillOnly: true })).toBe("pill");
     expect(nextMode("expanded", busy, rules)).toBe("expanded");
   });

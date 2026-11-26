@@ -26,6 +26,7 @@ import { collectTurnToolMedia } from "../../utils/collectTurnToolMedia";
 import { collectTurnKnowledgeCitations } from "../../utils/collectTurnKnowledgeCitations";
 import { isPinnedToolUiMessage } from "../../plugins/toolRenderers/isPinnedToolUi";
 import { useAgent } from "../../context/AgentContext";
+import MediaTaskStatus, { isMediaTool } from "./MediaTaskStatus";
 import BotCreationEvents from "./BotCreationEvents";
 import { separateCreations } from "./creationEvents";
 import BotAskCard, { parseAskAnswers } from "./BotAskCard";
@@ -183,6 +184,9 @@ export default function BotTurnView({
       );
     }
     const tool = message.toolData;
+    if (tool && isMediaTool(tool.name)) {
+      return <MediaTaskStatus message={message} live={live} />;
+    }
     if (isTaskTool(tool?.name)) {
       // The card sits where the task started; the report where it finished.
       const id = tasks?.byMessage.get(message.id);
@@ -245,6 +249,7 @@ export default function BotTurnView({
     !remaining.some(
       (m) =>
         m.hitlData ||
+        isMediaTool(m.toolData?.name) ||
         m.toolData?.name === ASK_USER_TOOL_NAME ||
         (isTaskTool(m.toolData?.name) && parseTaskOutput(m.toolData?.output)) ||
         (m.toolData && isPinnedToolUiMessage(m)) ||
