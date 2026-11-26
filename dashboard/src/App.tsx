@@ -174,7 +174,10 @@ function ThemedApp() {
               />
             )}
             {isBotOnlyDesktop() && (
-              <Route path="/login/local" element={<LoginPage />} />
+              <>
+                <Route path="/login/local" element={<LoginPage />} />
+                <Route path="/setup/local" element={<SetupPage />} />
+              </>
             )}
             <Route path="/login/oidc/complete" element={<OidcComplete />} />
             {/* Phones open a Bot's cloud computer here with a one-time ticket. */}

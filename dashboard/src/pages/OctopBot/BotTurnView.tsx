@@ -22,7 +22,10 @@ import {
 } from "../Chat/utils/messageContent";
 import { messageSpeakerId } from "../Chat/utils/messageGrouping";
 import { isResumableHitl } from "../Chat/utils/pendingHitl";
-import { collectTurnToolMedia } from "../../utils/collectTurnToolMedia";
+import {
+  collectMessageToolMedia,
+  collectTurnToolMedia,
+} from "../../utils/collectTurnToolMedia";
 import { collectTurnKnowledgeCitations } from "../../utils/collectTurnKnowledgeCitations";
 import { isPinnedToolUiMessage } from "../../plugins/toolRenderers/isPinnedToolUi";
 import { useAgent } from "../../context/AgentContext";
@@ -85,7 +88,14 @@ export default function BotTurnView({
   );
   const full = useMemo(() => splitAssistantTurn(messages), [messages]);
   const media = useMemo(
-    () => collectTurnToolMedia(full, speakerId),
+    () =>
+      collectTurnToolMedia(
+        {
+          ...full,
+          tools: full.tools.filter((m) => !isMediaTool(m.toolData?.name)),
+        },
+        speakerId,
+      ),
     [full, speakerId],
   );
   const citations = useMemo(() => collectTurnKnowledgeCitations(full), [full]);
@@ -185,7 +195,20 @@ export default function BotTurnView({
     }
     const tool = message.toolData;
     if (tool && isMediaTool(tool.name)) {
-      return <MediaTaskStatus message={message} live={live} />;
+      const result = collectMessageToolMedia(
+        { ...message, toolData: { ...tool, arguments: undefined } },
+        message.speakerAgentId || speakerId,
+      );
+      if (result.images.length || result.videos.length) {
+        return (
+          <ToolMediaStrip {...result} agentId={speakerId} rich inlineMedia />
+        );
+      }
+      return result.files.length ? (
+        <ToolMediaStrip {...result} agentId={speakerId} rich />
+      ) : (
+        <MediaTaskStatus message={message} live={live} />
+      );
     }
     if (isTaskTool(tool?.name)) {
       // The card sits where the task started; the report where it finished.

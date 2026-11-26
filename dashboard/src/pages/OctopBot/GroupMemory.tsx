@@ -19,6 +19,7 @@ export default function GroupMemory({
   useEffect(() => {
     let live = true;
     setError("");
+    setText(null);
     void octopBotApi
       .memory(id)
       .then((v) => {
@@ -61,6 +62,7 @@ export default function GroupMemory({
         </Button>
       }
     >
+      <p>{t("octopBot.memoryScope")}</p>
       {error && (
         <Alert
           type="error"

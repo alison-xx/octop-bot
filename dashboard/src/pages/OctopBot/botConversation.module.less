@@ -135,13 +135,13 @@
   column-gap: 0;
   margin: 0 0 13px;
 }
-.botMessage.botMessage > .body {
+.conversation .botMessage > .body {
   grid-column: 1;
   grid-row: 1;
   justify-self: start;
   max-width: min(94%, 680px);
 }
-.userMessage.userMessage > .body {
+.conversation .userMessage > .body {
   grid-column: 1 / -1;
   justify-self: end;
   max-width: min(78%, 610px);
@@ -547,6 +547,26 @@
   border: 1px solid var(--bot-line, var(--fn-border));
   border-radius: 12px;
   color: var(--bot-ink, var(--fn-text-primary));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mediaTask[aria-busy="true"] {
+    background-image: linear-gradient(
+      105deg,
+      transparent 25%,
+      var(--fn-bg-secondary) 50%,
+      transparent 75%
+    );
+    background-size: 250% 100%;
+    animation: mediaGeneration 2.4s ease-in-out infinite;
+  }
+  @keyframes mediaGeneration {
+    from {
+      background-position: 150% 0;
+    }
+    to {
+      background-position: -50% 0;
+    }
+  }
 }
 .mediaTask > svg {
   flex-shrink: 0;
