@@ -26,12 +26,12 @@ class _Settings:
 
 
 def _setup(
-    monkeypatch: pytest.MonkeyPatch, *, steps: int = 10, bot_turn: bool = True
+    monkeypatch: pytest.MonkeyPatch, *, bot_turn: bool = True
 ) -> tuple[watchdog.BotTaskMiddleware, TaskStore, Task]:
     configurable = {"thread_id": "thr1", **({"octop_bot_browser": True} if bot_turn else {})}
     monkeypatch.setattr(watchdog, "get_config", lambda: {"configurable": configurable})
     store = TaskStore(_Settings())  # type: ignore[arg-type]
-    task = store.save("thr1", Task(goal="g", budget=Budget(steps=steps, minutes=30)))
+    task = store.save("thr1", Task(goal="g", budget=Budget(minutes=30)))
     return watchdog.BotTaskMiddleware(store), store, task
 
 
@@ -47,24 +47,41 @@ def _fail(request: Any) -> ToolMessage:
     return ToolMessage(content="No such file", tool_call_id="c1", status="error")
 
 
-def test_the_step_budget_warns_at_80_percent_then_refuses_work(
-    monkeypatch: pytest.MonkeyPatch,
+def test_legacy_task_past_step_limit_can_finish_writing_and_deliver(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
-    middleware, _store, _task = _setup(monkeypatch, steps=5)
-    contents = [str(middleware.wrap_tool_call(_call(), _ok).content) for _ in range(5)]
-    assert all("budget" not in c for c in contents[:3])
-    assert "has used 4 steps of its step budget (5 steps)" in contents[3]
-    assert contents[3].startswith("fine")
-    assert "budget" not in contents[4]  # warned once
-    refused = middleware.wrap_tool_call(_call(), _ok)
-    assert refused.status == "error" and "whole step budget (5 steps)" in str(refused.content)
-    # Talking to the user and closing the task still work.
-    for free in ("ask_user_question", "task_finish", "write_todos"):
-        assert middleware.wrap_tool_call(_call(free), _ok).content == "fine"
+    middleware, store, task = _setup(monkeypatch)
+    legacy = task.model_dump()
+    legacy["budget"]["steps"] = 60
+    legacy["steps_used"] = 150
+    store.save("thr1", Task.model_validate(legacy))
+    from deepagents.backends.filesystem import FilesystemBackend
+    from octop_harness.backends.workspace import BackendWorkspace
+    from octop_harness.builtin.tools.send_file import build_send_file_to_user_tool
+
+    backend = FilesystemBackend(root_dir=str(tmp_path), virtual_mode=True)
+    send_file = build_send_file_to_user_tool(BackendWorkspace(backend, tmp_path))
+    page = tmp_path / "company.html"
+
+    def write(request: Any) -> ToolMessage:
+        assert not backend.write(page.name, "<html><body>Company</body></html>").error
+        return _ok(request)
+
+    assert middleware.wrap_tool_call(_call("write_file"), write).content == "fine"
+
+    def deliver(request: Any) -> ToolMessage:
+        block = send_file.invoke({"file_path": page.name})
+        assert block["source"]["url"] == page.resolve().as_uri()
+        assert block["source"]["media_type"] == "text/html"
+        return ToolMessage(content=[block], name="send_file_to_user", tool_call_id="c1")
+
+    result = middleware.wrap_tool_call(_call("send_file_to_user"), deliver)
+    assert result.status == "success"
+    assert store.running("thr1").deliverables[-1].name == page.name
 
 
 def test_the_same_failure_three_times_gets_a_note(monkeypatch: pytest.MonkeyPatch) -> None:
-    middleware, store, _task = _setup(monkeypatch, steps=50)
+    middleware, store, _task = _setup(monkeypatch)
     results = [str(middleware.wrap_tool_call(_call(), _fail).content) for _ in range(3)]
     assert "failed the same way" not in results[1]
     assert "`execute` has now failed the same way 3 times" in results[2]
@@ -80,14 +97,16 @@ def test_the_same_failure_three_times_gets_a_note(monkeypatch: pytest.MonkeyPatc
 
 
 def test_the_note_reaches_a_tool_that_returns_a_command(monkeypatch: pytest.MonkeyPatch) -> None:
-    middleware, _store, _task = _setup(monkeypatch, steps=1)
+    middleware, store, task = _setup(monkeypatch)
+    task.started_at -= 25 * 60
+    store.save("thr1", task)
 
     def screen(request: Any) -> Command[Any]:
         return Command(
             update={"messages": [ToolMessage(content="Did click.", tool_call_id="c1"), "pic"]}
         )
 
-    # One step of one: the warning lands on the cloud_computer result inside the Command.
+    # Near the time limit: the warning lands on the cloud_computer result inside the Command.
     result = middleware.wrap_tool_call(_call("cloud_computer"), screen)
     tool_message, picture = result.update["messages"]
     assert "Did click." in tool_message.content and "Wrap up" in tool_message.content
@@ -97,7 +116,7 @@ def test_the_note_reaches_a_tool_that_returns_a_command(monkeypatch: pytest.Monk
 def test_without_a_running_task_or_off_bot_turns_nothing_is_counted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    middleware, store, task = _setup(monkeypatch, steps=1, bot_turn=False)
+    middleware, store, task = _setup(monkeypatch, bot_turn=False)
     for _ in range(3):
         assert middleware.wrap_tool_call(_call(), _ok).content == "fine"
     task.status = "done"
@@ -162,7 +181,7 @@ def test_the_briefing_is_added_on_bot_turns_only(monkeypatch: pytest.MonkeyPatch
 
 
 def test_a_review_sub_agent_is_recorded_on_a_deep_task(monkeypatch: pytest.MonkeyPatch) -> None:
-    middleware, store, task = _setup(monkeypatch, steps=50)
+    middleware, store, task = _setup(monkeypatch)
     task.tier = "deep"
     store.save("thr1", task)
 
@@ -216,7 +235,7 @@ def test_a_review_sub_agent_is_recorded_on_a_deep_task(monkeypatch: pytest.Monke
 def test_the_review_applies_only_to_the_verified_revision(
     monkeypatch: pytest.MonkeyPatch, changed: bool
 ) -> None:
-    middleware, store, task = _setup(monkeypatch, steps=50)
+    middleware, store, task = _setup(monkeypatch)
     task.tier = "deep"
     task.criteria = [Criterion(text="Rows verified", status="passed", evidence="Two rows")]
     store.save("thr1", task)
@@ -362,7 +381,7 @@ def test_failed_revision_is_reported_until_the_file_is_delivered(
 def test_delivered_files_are_kept_on_the_task_with_versions(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
-    middleware, store, _task = _setup(monkeypatch, steps=60)
+    middleware, store, _task = _setup(monkeypatch)
     send = _sent(tmp_path, "价格对比.csv", "公司,价格\nA,1\n".encode())
     for _ in range(33):
         result = middleware.wrap_tool_call(_call("send_file_to_user"), send)
@@ -373,8 +392,11 @@ def test_delivered_files_are_kept_on_the_task_with_versions(
 
 
 def test_reopening_the_task_does_not_grant_a_fresh_budget(monkeypatch: pytest.MonkeyPatch) -> None:
-    old, store, _task = _setup(monkeypatch, steps=1)
+    old, store, task = _setup(monkeypatch)
     assert old.wrap_tool_call(_call(), _ok).status == "success"
+    task = store.running("thr1")
+    task.started_at -= 31 * 60
+    store.save("thr1", task)
     reopened = watchdog.BotTaskMiddleware(store, always=True)
     assert reopened.wrap_tool_call(_call(), _ok).status == "error"
     assert store.running("thr1").steps_used == 1

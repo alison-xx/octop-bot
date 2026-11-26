@@ -97,7 +97,7 @@
       "observing": "观察第 {count}/3 次。选择「允许一次」会记录本次确认，拒绝会结束这条规则的观察。",
       "review_records": "前三次由你确认的操作如下。检查后可以启用这条规则。",
       "activate": "启用规则并允许",
-      "budget_detail": "总上限将从 {old_steps} 步、{old_minutes} 分钟调整为 {steps} 步、{minutes} 分钟。",
+      "budget_detail": "时间上限将从 {old_minutes} 分钟调整为 {minutes} 分钟。",
       "title": "需要你确认",
       "header": "确认",
       "question": "Bot 想要{action}：{target}\n{detail}",

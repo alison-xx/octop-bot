@@ -46,7 +46,7 @@ def test_a_task_cannot_be_called_done_without_a_verdict_on_every_criterion(kit: 
             }
         )
     )
-    assert planned["status"] == "running" and planned["budget"] == {"steps": 60, "minutes": 30}
+    assert planned["status"] == "running" and planned["budget"] == {"minutes": 30}
     refused = tools["task_finish"].invoke({"summary": "做完了"})
     assert refused.startswith("Refused: criteria 1, 2 have no verdict")
     assert (
@@ -89,7 +89,7 @@ def test_revising_a_running_task_keeps_unchanged_verdicts(kit: Any) -> None:
     )
     assert revised["id"] == first["id"]
     assert [c["status"] for c in revised["criteria"]] == ["passed", "pending"]
-    assert revised["budget"] == {"steps": 150, "minutes": 90}
+    assert revised["budget"] == {"minutes": 90}
 
 
 def test_an_abandoned_task_is_stopped_by_the_next_plan(kit: Any) -> None:
@@ -118,7 +118,7 @@ def test_a_conversation_keeps_only_its_latest_tasks() -> None:
 
     store = TaskStore(_Settings())  # type: ignore[arg-type]
     for i in range(KEEP_PER_THREAD + 3):
-        store.save("t", Task(goal=f"g{i}", budget=Budget(steps=1, minutes=1), status="done"))
+        store.save("t", Task(goal=f"g{i}", budget=Budget(minutes=1), status="done"))
     goals = [t.goal for t in store.tasks("t")]
     assert len(goals) == KEEP_PER_THREAD and goals[-1] == f"g{KEEP_PER_THREAD + 2}"
 
@@ -213,9 +213,9 @@ def test_budget_change_needs_a_decision_and_uses_absolute_totals(
     users = Mock()
     users.get.return_value.locale = "en"
     tool = budget.task_budget_tool(store, approvals.ApprovalRules(settings), users, "bot1", 7)
-    request = {"task_id": initial["id"], "steps": 70, "minutes": 30}
+    request = {"task_id": initial["id"], "minutes": 70}
     task = store.running("thr1")
-    task.steps_used = task.budget.steps
+    task.started_at -= 31 * 60
     store.save("thr1", task)
     choices = iter(["Deny", "Allow once"])
     cards = []
@@ -230,12 +230,12 @@ def test_budget_change_needs_a_decision_and_uses_absolute_totals(
     assert not cards
     del cfg["octop_scheduled_turn"]
     assert "said no" in tool.invoke(request)
-    assert store.running("thr1").budget.steps == 60
-    assert _task(tool.invoke(request))["budget"] == {"steps": 70, "minutes": 30}
-    assert _task(tool.invoke(request))["budget"]["steps"] == 70
+    assert store.running("thr1").budget.minutes == 30
+    assert _task(tool.invoke(request))["budget"] == {"minutes": 70}
+    assert _task(tool.invoke(request))["budget"]["minutes"] == 70
     assert len(cards) == 2
     question = cards[-1]["action_requests"][0]["args"]["questions"][0]
-    assert "60" in question["question"] and "70" in question["question"]
+    assert "30" in question["question"] and "70" in question["question"]
     assert [option["label"] for option in question["options"]] == ["Allow once", "Deny"]
 
 

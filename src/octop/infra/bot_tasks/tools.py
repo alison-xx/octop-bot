@@ -16,7 +16,7 @@ from langgraph.config import get_config
 from pydantic import ValidationError
 
 from octop.infra.bot_tasks.model import (
-    DEFAULT_BUDGET,
+    DEFAULT_MINUTES,
     MAX_CRITERIA,
     STALE_SECONDS,
     Budget,
@@ -93,7 +93,7 @@ def task_tools(store: TaskStore) -> list[StructuredTool]:
             current.finished_at = now
             store.save(thread, current)
             current = None
-        steps, minutes = DEFAULT_BUDGET[tier]
+        minutes = DEFAULT_MINUTES[tier]
         if current and current.tier != tier and current.budget_exhausted(now):
             return "The current budget is exhausted. Request a budget extension or finish the task."
         try:
@@ -103,7 +103,7 @@ def task_tools(store: TaskStore) -> list[StructuredTool]:
                     tier=tier,
                     criteria=[Criterion(text=t) for t in texts],
                     assumptions=_clean(assumptions or [], 10),
-                    budget=Budget(steps=steps, minutes=minutes),
+                    budget=Budget(minutes=minutes),
                 )
                 note = "Task started. Do the work, then task_check each criterion."
             else:
@@ -115,7 +115,7 @@ def task_tools(store: TaskStore) -> list[StructuredTool]:
                         "tier": tier,
                         "criteria": [kept.get(t) or Criterion(text=t) for t in texts],
                         "assumptions": _clean(assumptions or [], 10) or current.assumptions,
-                        "budget": Budget(steps=steps, minutes=minutes)
+                        "budget": Budget(minutes=minutes)
                         if tier != current.tier
                         else current.budget,
                         "updated_at": now,

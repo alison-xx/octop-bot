@@ -16,7 +16,7 @@ CheckStatus = Literal["pending", "passed", "failed", "skipped"]
 MAX_CRITERIA = 8
 MAX_TASK_STEPS = 500
 # Defaults until the user sets their own; a deep task gets more room.
-DEFAULT_BUDGET: dict[str, tuple[int, int]] = {"standard": (60, 30), "deep": (150, 90)}
+DEFAULT_MINUTES: dict[str, int] = {"standard": 30, "deep": 90}
 # A running task nobody touched for this long is treated as abandoned by the next plan.
 STALE_SECONDS = 6 * 60 * 60
 # A deep task is reviewed by an independent sub-agent before it may finish; after this many
@@ -43,7 +43,6 @@ class Deliverable(BaseModel):
 
 
 class Budget(BaseModel):
-    steps: int = Field(ge=1, le=500)
     minutes: int = Field(ge=1, le=600)
 
 
@@ -83,10 +82,7 @@ class Task(BaseModel):
     )
 
     def budget_exhausted(self, now: float) -> bool:
-        return (
-            self.steps_used >= self.budget.steps
-            or now - self.started_at >= self.budget.minutes * 60
-        )
+        return now - self.started_at >= self.budget.minutes * 60
 
     def unchecked(self) -> list[int]:
         """1-based numbers of criteria still without a verdict."""
