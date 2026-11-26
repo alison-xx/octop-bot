@@ -66,7 +66,7 @@ export interface BotTask {
     status: TodoListItem["status"];
     checkpoint?: string | null;
   }[];
-  budget: { steps: number; minutes: number };
+  budget: { minutes: number; steps?: number };
   started_at: number;
   updated_at: number;
   finished_at: number | null;

@@ -97,7 +97,7 @@
       "observing": "Observation {count}/3. Allow once records this approval. Denying ends observation of this rule.",
       "review_records": "Review the three actions you approved before enabling this rule.",
       "activate": "Enable rule and allow",
-      "budget_detail": "Total limits change from {old_steps} steps and {old_minutes} minutes to {steps} steps and {minutes} minutes.",
+      "budget_detail": "The time limit changes from {old_minutes} to {minutes} minutes.",
       "title": "Needs your OK",
       "header": "Confirm",
       "question": "The Bot wants to {action}: {target}\n{detail}",
