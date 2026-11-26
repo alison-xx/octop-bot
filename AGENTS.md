@@ -407,6 +407,12 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 
 ### Branching & release
 
+All agents working in the public `alison-xx/octop-bot` repository follow this workflow.
+
+- Before editing, fetch the base you intend to use and check the current branch, worktree status, and PR base. Leave another task's checkout and staged changes intact. Use a separate worktree when needed.
+- Create ordinary feature, bug-fix, test, and documentation branches from the latest `origin/develop`. Set the PR base to `develop` explicitly. Reserve `main` for release and urgent hotfix PRs as described below.
+- When cleaning up a temporary branch, verify its tip is included in the intended base and check for open PRs, active worktrees, CI, and release work that still use it. Keep unpublished changes and active prerelease branches. Review squash merges or equivalent patches separately before deletion.
+
 For the hosted Octop Bot website and cloud web app, follow the [production release guide](https://github.com/alison-xx/octop-bot-production#readme) in the private production repository. Land shared client and backend fixes here, then prepare the corresponding hosted changes there. A push to its `main` starts production verification. The branch and tag workflow below applies to the open-source distribution.
 
 ```
