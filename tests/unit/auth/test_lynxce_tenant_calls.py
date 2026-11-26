@@ -17,7 +17,9 @@ async def test_the_desktop_may_lift_its_own_keys_cap_but_not_bill_computers(
     monkeypatch.setattr(lynxce_cloud, "bot_desktop_enabled", lambda: True)
     monkeypatch.setattr(lynxce_cloud, "bot_cloud_enabled", lambda: False)
     services = SimpleNamespace(
-        paths=SimpleNamespace(root=tmp_path), secret_repo=SimpleNamespace(get=lambda key: None)
+        db=SimpleNamespace(dialect="sqlite"),
+        paths=SimpleNamespace(root=tmp_path),
+        secret_repo=SimpleNamespace(get=lambda key: None),
     )
 
     async def call(method: str, path: str) -> ErrorCode:

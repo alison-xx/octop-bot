@@ -2769,6 +2769,21 @@ def _expand_page_tab_permissions(db: DatabasePool) -> None:
             )
 
 
+def verify_activated_handoff(db: DatabasePool, target_id: str) -> None:
+    """Start a hosted slot only on the activated, DBA-initialized control plane."""
+    if db.dialect != "postgresql":
+        raise ValueError("A hosted database handoff requires PostgreSQL")
+    with db.connect() as conn:
+        active = conn.execute(
+            "SELECT target_id FROM octop_migration.state WHERE phase='active' AND target_id=?",
+            (target_id,),
+        ).fetchone()
+        versions = conn.execute("SELECT version FROM public._schema_version").fetchall()
+    expected = _discover("postgresql")[-1][0]
+    if active is None or len(versions) != 1 or versions[0]["version"] != expected:
+        raise ValueError("The hosted database handoff or schema version does not match this slot")
+
+
 def run_migrations(db: DatabasePool) -> None:
     if db.dialect == "sqlite":
         _repair_legacy_schema(db)

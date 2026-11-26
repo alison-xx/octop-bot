@@ -71,7 +71,12 @@ def load(services: SharedServices, user_id: int) -> ComputeGrant | None:
     blob = repo.get(key)
     if blob is None:
         return None
+    return _decrypt(services, key, blob)
+
+
+def _decrypt(services: SharedServices, key: str, blob: bytes) -> ComputeGrant:
     # This per-account key is erased on withdrawal; decryption must never recreate it.
+    repo = services.secret_repo
     raw = repo.get(key + ".fernet")
     if raw is None:
         raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED)
@@ -81,13 +86,28 @@ def load(services: SharedServices, user_id: int) -> ComputeGrant | None:
         raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED) from None
 
 
-def save(services: SharedServices, user_id: int, grant: ComputeGrant) -> None:
+def save(
+    services: SharedServices,
+    user_id: int,
+    grant: ComputeGrant,
+    *,
+    previous: ComputeGrant | None = None,
+) -> None:
     key = _key(user_id)
     repo = services.secret_repo
     # A consent can be withdrawn and reissued in the same process. Read its current
     # durable wrapping key even if this account was previously authorized by this worker.
-    raw = repo.get_or_create(key + ".fernet", Fernet.generate_key)
-    repo.put(key, Fernet(raw).encrypt(json.dumps(asdict(grant)).encode()))
+    data = json.dumps(asdict(grant)).encode()
+    if previous is None:
+        wrapping_key = repo.get_or_create(key + ".fernet", Fernet.generate_key)
+        repo.put(key, Fernet(wrapping_key).encrypt(data))
+    else:
+        original = repo.get(key)
+        raw = repo.get(key + ".fernet")
+        if original is None or raw is None or _decrypt(services, key, original) != previous:
+            raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED)
+        if not repo.replace_if_current(key, original, Fernet(raw).encrypt(data)):
+            raise OctopError.localized(ErrorCode.BOT_CLOUD_SESSION_REQUIRED)
     user = services.user_repo.get(user_id)
     if user is None or user.disabled:
         forget(services, user_id)

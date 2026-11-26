@@ -166,7 +166,6 @@ flowchart LR
 | [`src/octop`](src/octop/) | Python service: chats, Bot groups, scheduling, Lynxce integration |
 | [`mobile`](mobile/) | Native iOS (SwiftUI) and Android (Jetpack Compose) apps |
 | [`fnos`](fnos/), [`deploy/docker`](deploy/docker/) | fnOS FPK and Docker deployment |
-| [`website`](website/) | Product website source |
 | [`tests`](tests/) | Backend unit and integration tests |
 
 The agent loop, IM protocols, memory and browser control come from [octop-harness](https://github.com/TencentCloud/octop-harness), [octop-gateway](https://github.com/TencentCloud/octop-gateway), [octop-memory](https://github.com/TencentCloud/octop-memory) and [octop-browser](https://github.com/TencentCloud/octop-browser).

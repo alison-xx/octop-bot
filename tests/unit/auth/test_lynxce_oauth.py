@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Iterator
+from contextlib import AbstractAsyncContextManager
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
@@ -11,7 +12,6 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import pytest
 from aiohttp import web
-from filelock import AsyncFileLock
 
 from octop.config import OctopConfig
 from octop.infra.auth import lynxce
@@ -299,7 +299,7 @@ async def test_separate_runtime_reopens_encrypted_grant_and_serializes_rotation(
         peer_entered = asyncio.Event()
         original_lock = _grants.account_lock
 
-        def observed_lock(runtime: SharedServices, user_id: int) -> AsyncFileLock:
+        def observed_lock(runtime: SharedServices, user_id: int) -> AbstractAsyncContextManager:
             if runtime is peer:
                 loop.call_soon_threadsafe(peer_entered.set)
             return original_lock(runtime, user_id)
@@ -316,6 +316,27 @@ async def test_separate_runtime_reopens_encrypted_grant_and_serializes_rotation(
         assert len(issuer.refreshes) == 1
     finally:
         second_db.close()
+
+
+@pytest.mark.parametrize("failure", ["", "invalid_grant"])
+async def test_late_rotation_keeps_newer_consent(
+    services: SharedServices, issuer: SimpleNamespace, failure: str
+) -> None:
+    issuer.ttl = 1
+    await connect(services)
+    issuer.refresh_error = failure
+    issuer.hold = asyncio.Event()
+    issuer.entered.clear()
+    turn = asyncio.create_task(lynxce.get_access_token(services, 1))
+    await asyncio.wait_for(issuer.entered.wait(), 3)
+    # A version still draining or a DB session that lost its lock may finish late.
+    replacement = {**_grants._load(services, 1), "connection_id": "new-consent"}
+    _grants.save(services, 1, replacement)
+    issuer.hold.set()
+    with pytest.raises(OctopError) as refused:
+        await turn
+    assert refused.value.code == ErrorCode.CONNECTOR_AUTH_REQUIRED
+    assert _grants._load(services, 1) == replacement
 
 
 async def test_disconnect_during_code_exchange_cannot_restore_old_grant(

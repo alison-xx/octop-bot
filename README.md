@@ -166,7 +166,6 @@ flowchart LR
 | [`src/octop`](src/octop/) | Python 服务：会话、Bot 群组、定时调度、灵策接口 |
 | [`mobile`](mobile/) | iOS（SwiftUI）和 Android（Jetpack Compose）原生客户端 |
 | [`fnos`](fnos/)、[`deploy/docker`](deploy/docker/) | 飞牛 FPK 与 Docker 部署 |
-| [`website`](website/) | 产品官网源码 |
 | [`tests`](tests/) | 后端单元与集成测试 |
 
 Agent 循环、IM 协议、记忆和浏览器控制分别来自 [octop-harness](https://github.com/TencentCloud/octop-harness)、[octop-gateway](https://github.com/TencentCloud/octop-gateway)、[octop-memory](https://github.com/TencentCloud/octop-memory) 和 [octop-browser](https://github.com/TencentCloud/octop-browser)。
