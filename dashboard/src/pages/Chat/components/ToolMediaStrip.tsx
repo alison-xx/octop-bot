@@ -48,7 +48,11 @@ function RefreshableImage({
   );
 }
 
-function RefreshableVideo({ item }: { item: ToolMediaItem }) {
+function RefreshableVideo({
+  item,
+}: {
+  item: Pick<ToolMediaItem, "url" | "filename">;
+}) {
   const [src, setSrc] = useState<string>("");
 
   useLayoutEffect(() => {
@@ -114,6 +118,7 @@ export function ToolMediaStrip({
   files = [],
   agentId,
   rich,
+  inlineMedia,
 }: {
   images: ToolMediaItem[];
   videos: ToolMediaItem[];
@@ -121,6 +126,7 @@ export function ToolMediaStrip({
   agentId?: string | null;
   /** Octop Bot: larger images and file cards with a visual preview. */
   rich?: boolean;
+  inlineMedia?: boolean;
 }) {
   if (images.length === 0 && videos.length === 0 && files.length === 0) {
     return null;
@@ -143,18 +149,31 @@ export function ToolMediaStrip({
     return (
       <div className={styles.toolMediaStrip}>
         <div className={styles.messageFiles}>
-          {cards.map((file, idx) => (
-            <MessageFileCard
-              key={`${file.url}-${idx}`}
-              url={file.url}
-              filename={file.filename}
-              thumbnailUrl={file.thumbnailUrl}
-              mediaType={file.mimeType}
-              size={file.size}
-              agentId={agentId}
-              rich
-            />
-          ))}
+          {cards.map((file, idx) =>
+            inlineMedia && videos.some((video) => video.url === file.url) ? (
+              <RefreshableVideo key={file.url} item={file} />
+            ) : inlineMedia &&
+              images.some((image) => image.url === file.url) ? (
+              <RefreshableImage
+                key={file.url}
+                url={file.url}
+                filename={file.filename}
+                idx={idx}
+                large
+              />
+            ) : (
+              <MessageFileCard
+                key={`${file.url}-${idx}`}
+                url={file.url}
+                filename={file.filename}
+                thumbnailUrl={file.thumbnailUrl}
+                mediaType={file.mimeType}
+                size={file.size}
+                agentId={agentId}
+                rich
+              />
+            ),
+          )}
         </div>
       </div>
     );
