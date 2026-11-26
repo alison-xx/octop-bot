@@ -60,6 +60,7 @@ interface UseChatSendParams {
 
 /** Optional composer snapshot used when flushing a queued message. */
 export type ChatSendOverrides = {
+  reasoningMode?: UserComposerContext["reasoningMode"];
   selectedModel?: string | null;
   selectedConnectors?: string[];
   selectedKnowledgeBaseIds?: string[];
@@ -144,8 +145,7 @@ export function useChatSend({
           knowledgeBaseIds,
           targetAgents,
           selectedModel: modelSelection,
-          reasoningMode:
-            overrides?.composerContext?.reasoningMode ?? reasoningMode,
+          reasoningMode: overrides?.reasoningMode ?? reasoningMode,
           reasoningEffort:
             overrides?.composerContext?.reasoningEffort ?? reasoningEffort,
         });

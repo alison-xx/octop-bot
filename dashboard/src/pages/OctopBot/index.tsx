@@ -349,6 +349,10 @@ export default function OctopBotPage() {
         prev.includes(openedKey) ? prev : [...prev, openedKey],
       );
   }, [openedKey]);
+  const readyGroupId = guideTeam?.group_id;
+  useEffect(() => {
+    if (readyGroupId) void refresh();
+  }, [readyGroupId, refresh]);
   const prefilledGroup = useRef<string>();
   useEffect(() => {
     if (!guideTeam || !user || groupId !== guideTeam.group_id) return;
@@ -375,7 +379,10 @@ export default function OctopBotPage() {
   );
   const askChief = useCallback(
     (text: string) =>
-      navigate(location.pathname, { replace: true, state: { autoSend: text } }),
+      navigate(location.pathname, {
+        replace: true,
+        state: { autoSend: text, onboardingTeam: true },
+      }),
     [navigate, location.pathname],
   );
   const skipOnboarding = useCallback(() => {

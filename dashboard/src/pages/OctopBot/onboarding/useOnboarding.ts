@@ -4,7 +4,7 @@ import {
   type OnboardingChange,
   type OnboardingState,
 } from "../../../api/modules/botOnboarding";
-import { onStreamEvent } from "../../Chat/hooks/chatStore";
+import { onStreamEvent, onToolEvent } from "../../Chat/hooks/chatStore";
 import { botGuideSeenKey } from "../../../utils/botClientRoute";
 
 function stored(storage: () => Storage, key: string): string | null {
@@ -29,11 +29,6 @@ export function useOnboarding(
   userId: number | null,
 ): Onboarding {
   const [state, setState] = useState<OnboardingState | null>(null);
-  const reload = useCallback(async () => {
-    const next = await botOnboardingApi.read().catch(() => null);
-    if (next) setState(next);
-    return next;
-  }, []);
   useEffect(() => {
     if (!enabled || userId === null) return;
     let current = true;
@@ -53,13 +48,46 @@ export function useOnboarding(
       current = false;
     };
   }, [enabled, userId]);
-  const watching = state?.status === "active" && state.step === "ask";
+  const watching =
+    state?.show && state.status === "active" && state.step === "ask";
   useEffect(() => {
-    if (!watching) return;
-    return onStreamEvent((event) => {
-      if (event.kind === "streamEnd") void reload();
+    if (!enabled || userId === null || !watching) return;
+    let current = true;
+    let reading = false;
+    const refresh = async () => {
+      if (reading) return;
+      reading = true;
+      const next = await botOnboardingApi.read().catch(() => null);
+      reading = false;
+      if (current && next) {
+        setState((prev) =>
+          prev?.show && prev.status === "active" && prev.step === "ask"
+            ? next
+            : prev,
+        );
+      }
+    };
+    const stopTools = onToolEvent((event) => {
+      if (
+        event.kind === "toolDone" &&
+        event.toolName === "octop_bot_create_team"
+      )
+        void refresh();
     });
-  }, [watching, reload]);
+    const stopStream = onStreamEvent((event) => {
+      if (event.kind === "streamEnd") void refresh();
+    });
+    // The committed team remains available even if the socket missed its tool event.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, 3000);
+    return () => {
+      current = false;
+      window.clearInterval(timer);
+      stopTools();
+      stopStream();
+    };
+  }, [enabled, userId, watching]);
   const change = useCallback(async (next: OnboardingChange) => {
     try {
       const updated = await botOnboardingApi.change(next);
