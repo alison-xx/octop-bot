@@ -79,7 +79,7 @@ struct VoiceModeView: View {
         .onAppear {
             firstMessage = chat.messages.count
             model.showing(chat.bot)
-            chat.onReply = { text in speaker.speak(text, backend: model.backend) }
+            chat.onReply = { text in speaker.speak(text, backend: model.backend) { model.allowsAISharing } }
         }
         .onDisappear {
             chat.onReply = nil
@@ -103,7 +103,7 @@ struct VoiceModeView: View {
         Task {
             if recorder.isRecording {
                 transcribing = true
-                let text = await recorder.finish(backend: model.backend)
+                let text = await recorder.finish(backend: model.backend, mayShare: { model.allowsAISharing })
                 transcribing = false
                 guard let text, !text.isEmpty else { heard = L("voice.notHeard"); return }
                 heard = text

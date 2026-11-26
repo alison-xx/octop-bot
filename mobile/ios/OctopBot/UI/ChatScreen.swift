@@ -522,7 +522,7 @@ struct MessageRow: View {
         .contextMenu {
             Button("common.copy", systemImage: "doc.on.doc") { Clipboard.copy(message.text) }
             Button("chat.readAloud", systemImage: "speaker.wave.2") {
-                Speaker.shared.speak(message.text, backend: model.backend, id: message.id)
+                Speaker.shared.speak(message.text, backend: model.backend, id: message.id) { model.allowsAISharing }
             }
             ShareLink(item: message.text) { Label("common.share", systemImage: "square.and.arrow.up") }
             if isLast && chat.unsavedReplies[message.id] == nil && message.status != .streaming && !message.status.isStoppedByLynxce {
@@ -556,7 +556,7 @@ private struct ReplyActions: View {
                 if speaking {
                     speaker.stop()
                 } else {
-                    speaker.speak(message.text, backend: model.backend, id: message.id)
+                    speaker.speak(message.text, backend: model.backend, id: message.id) { model.allowsAISharing }
                 }
             }
             ShareLink(item: message.text) {
@@ -803,7 +803,7 @@ struct Composer: View {
     private func toggleDictation() {
         Task {
             if recorder.isRecording {
-                if let heard = await recorder.finish(backend: model.backend), !heard.isEmpty {
+                if let heard = await recorder.finish(backend: model.backend, mayShare: { model.allowsAISharing }), !heard.isEmpty {
                     chat.draft = chat.draft.isEmpty ? heard : chat.draft + " " + heard
                     focused = true
                 }

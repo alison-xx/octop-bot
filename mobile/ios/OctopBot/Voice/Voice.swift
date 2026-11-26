@@ -59,7 +59,7 @@ final class VoiceRecorder {
     }
 
     /// Stop and transcribe. Returns nil when nothing was understood.
-    func finish(backend: ChatBackend?) async -> String? {
+    func finish(backend: ChatBackend?, mayShare: () -> Bool) async -> String? {
         guard isRecording, let recorder else { return nil }
         recorder.stop()
         meter?.cancel()
@@ -67,9 +67,10 @@ final class VoiceRecorder {
         level = 0
         self.recorder = nil
         Task.detached { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
-        guard let audio = try? Data(contentsOf: file), audio.count > 2_000 else { return nil }
+        guard mayShare(), let audio = try? Data(contentsOf: file), audio.count > 2_000 else { return nil }
         if let backend, let text = try? await backend.transcribe(audio), !text.isEmpty { return text }
-        return await Self.onDevice(file)
+        guard mayShare() else { return nil }
+        return await Self.onDevice(file, mayShare: mayShare)
     }
 
     /// The failure note is shown briefly, not forever.
@@ -83,11 +84,11 @@ final class VoiceRecorder {
         level = 0
     }
 
-    private static func onDevice(_ url: URL) async -> String? {
+    private static func onDevice(_ url: URL, mayShare: () -> Bool) async -> String? {
         let status = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
         }
-        guard status == .authorized, let recognizer = SFSpeechRecognizer(locale: Preferences.shared.language.locale) ?? SFSpeechRecognizer(),
+        guard mayShare(), status == .authorized, let recognizer = SFSpeechRecognizer(locale: Preferences.shared.language.locale) ?? SFSpeechRecognizer(),
               recognizer.isAvailable else { return nil }
         let request = SFSpeechURLRecognitionRequest(url: url)
         request.shouldReportPartialResults = false
@@ -118,7 +119,7 @@ final class Speaker {
     private let synthesizer = AVSpeechSynthesizer()
     private var job: Task<Void, Never>?
 
-    func speak(_ markdown: String, backend: ChatBackend?, id: String? = nil) {
+    func speak(_ markdown: String, backend: ChatBackend?, id: String? = nil, mayShare: @escaping () -> Bool) {
         stop()
         let text = Self.plain(markdown)
         guard !text.isEmpty else { return }
@@ -129,6 +130,7 @@ final class Speaker {
             try? AVAudioSession.sharedInstance().setActive(true)
             for chunk in Self.chunks(text) {
                 if Task.isCancelled { return }
+                guard mayShare() else { stop(); return }
                 let speed = Preferences.shared.speechSpeed.rate
                 if let backend, let audio = try? await backend.speech(for: chunk), let player = try? AVAudioPlayer(data: audio) {
                     self.player = player

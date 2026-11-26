@@ -794,6 +794,7 @@ final class QueueTests: XCTestCase {
         let app = AppModel()
         let backend = FakeBackend()
         await app.use(backend)
+        app.allowAISharing(with: app.aiRecipient!)
         let chat = app.session(for: app.bots[0])
         chat.send("question")
         let reply = try XCTUnwrap(backend.replies.first)
@@ -829,6 +830,7 @@ final class QueueTests: XCTestCase {
         let app = AppModel()
         let backend = FakeBackend()
         await app.use(backend)
+        app.allowAISharing(with: app.aiRecipient!)
         let chat = app.session(for: app.bots[0])
         chat.send("question")
         let stream = try XCTUnwrap(backend.replies.first)
@@ -906,10 +908,32 @@ final class QueueTests: XCTestCase {
         XCTAssertNil(app.accountPhotoURL)
     }
 
+    func testAIConsentBlocksBeforeAllowAndAfterWithdrawalOrAccountChange() async throws {
+        let app = AppModel()
+        let backend = FakeBackend()
+        await app.use(backend)
+        let chat = app.session(for: app.bots[0])
+        chat.send("private", images: [Data([1, 2])])
+        XCTAssertTrue(backend.sent.isEmpty)
+        let recipient = try XCTUnwrap(app.aiRecipient)
+        app.allowAISharing(with: .init(destination: "another endpoint", official: false))
+        XCTAssertFalse(app.allowsAISharing)
+        app.allowAISharing(with: recipient)
+        chat.send("allowed")
+        XCTAssertEqual(backend.sent, ["allowed"])
+        app.revokeAISharing()
+        chat.send("withdrawn")
+        XCTAssertEqual(backend.sent, ["allowed"])
+        app.allowAISharing(with: recipient)
+        await app.use(FakeBackend())
+        XCTAssertFalse(app.allowsAISharing)
+    }
+
     func testPreparingAndFailedBotsDoNotSend() async {
         let app = AppModel()
         let backend = FakeBackend()
         await app.use(backend)
+        app.allowAISharing(with: app.aiRecipient!)
         let chat = app.session(for: app.bots[0])
         chat.bot.preparing = true
         chat.send("preparing")
@@ -925,6 +949,7 @@ final class QueueTests: XCTestCase {
         let app = AppModel()
         let backend = FakeBackend()
         await app.use(backend)
+        app.allowAISharing(with: app.aiRecipient!)
         app.notifyOnReply = false
         let chat = app.session(for: app.bots[0])
         chat.send("one")

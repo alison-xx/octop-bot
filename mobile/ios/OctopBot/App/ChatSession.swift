@@ -339,7 +339,7 @@ final class ChatSession {
     }
 
     func send(_ text: String, images: [Data] = []) {
-        guard bot.canSend else { return }
+        guard app?.allowsAISharing == true, bot.canSend else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let backend = app?.backend, !trimmed.isEmpty || !images.isEmpty else { return }
         // Never block: while a reply streams, queue the message and send it when the reply ends.
@@ -413,6 +413,7 @@ final class ChatSession {
 
     /// Run the pause's device tools on this phone and answer with their results; other tools are approved.
     private func runDevice(_ pause: HitlPause, note: String?) {
+        guard app?.allowsAISharing == true else { return }
         self.pause = nil
         isRunningDevice = true
         let conversation = conversationId
@@ -438,7 +439,7 @@ final class ChatSession {
     }
 
     private func resume(_ pause: HitlPause, decisions: [[String: Any]], echo: String? = nil, note: String? = nil) {
-        guard let backend = app?.backend, let conversationId, !isStreaming else { return }
+        guard app?.allowsAISharing == true, let backend = app?.backend, let conversationId, !isStreaming else { return }
         self.pause = nil
         if let note { messages.append(ChatMessage(role: .system, text: note)) }
         if let echo { messages.append(ChatMessage(role: .user, text: echo)) }
@@ -492,7 +493,7 @@ final class ChatSession {
                     if let onReply {
                         onReply(text)
                     } else if app?.readAloud == true, !text.isEmpty {
-                        Speaker.shared.speak(text, backend: backend, id: replyId)
+                        Speaker.shared.speak(text, backend: backend, id: replyId) { [weak app] in app?.allowsAISharing == true }
                     }
                     await reloadConversations()
                 }
