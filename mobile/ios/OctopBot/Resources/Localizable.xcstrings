@@ -3331,13 +3331,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connect my own server"
+            "value": "Open my own server"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "连接自己的服务器"
+            "value": "进入自建服务器"
           }
         }
       }
@@ -6419,13 +6419,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Use without signing in"
+            "value": "Use chats on this device"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "不登录，自己配置模型"
+            "value": "使用本机会话"
           }
         }
       }
@@ -8275,13 +8275,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sign in with your Lynxce account. New accounts are created for you."
+            "value": "To find cloud conversations, use the same Lynxce account you used on bot.lynxce.cn. For chats saved on this device or your own server, choose the matching option below."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "用灵策智算账号登录，没有账号会自动注册。"
+            "value": "查找官方云会话，请使用之前在 bot.lynxce.cn 使用的灵策账号。要打开保存在本机或自建服务器上的会话，请选择下方对应入口。"
           }
         }
       }
@@ -8291,13 +8291,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Syncs everywhere"
+            "value": "Account sign-in"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "推荐 · 多端同步"
+            "value": "账号登录"
           }
         }
       }

@@ -214,12 +214,12 @@ export const octopThreadsApi = {
   list: (
     agentId: string,
     limit = 50,
-    options?: { includeBotGroups?: boolean },
+    options?: { includeBotGroups?: boolean; offset?: number },
   ) =>
     request<OctopThread[]>(
       `/agents/${encodeURIComponent(agentId)}/threads?limit=${limit}${
         options?.includeBotGroups ? "&include_bot_groups=true" : ""
-      }`,
+      }${options?.offset ? `&offset=${options.offset}` : ""}`,
     ),
 
   create: (agentId: string, options?: { rebind?: boolean }) =>

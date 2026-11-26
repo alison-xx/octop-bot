@@ -121,6 +121,52 @@ describe("BotChat panels", () => {
     }
   });
 
+  it("advances by the raw page length and keeps overlapping threads once", async () => {
+    const firstPage = Array.from({ length: 30 }, (_, i) => ({
+      thread_id: String(i),
+      title: "Chat " + i,
+    }));
+    vi.mocked(octopThreadsApi.list)
+      .mockResolvedValueOnce([
+        ...firstPage,
+        { thread_id: "extra", title: "Extra" },
+      ] as never)
+      .mockResolvedValueOnce([
+        firstPage[29],
+        { thread_id: "old", title: "Older chat" },
+      ] as never);
+    chat();
+    fireEvent.click(screen.getByRole("button", { name: "octopBot.history" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "octopBot.more" }),
+    );
+    await screen.findByText("Older chat");
+    expect(octopThreadsApi.list).toHaveBeenLastCalledWith("writer", 31, {
+      includeBotGroups: true,
+      offset: 30,
+    });
+    expect(screen.getAllByText("Chat 29")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "octopBot.more" })).toBeNull();
+  });
+
+  it("can page an older server that ignores the offset", async () => {
+    const all = Array.from({ length: 32 }, (_, i) => ({
+      thread_id: String(i),
+      title: "Conversation " + i,
+    }));
+    vi.mocked(octopThreadsApi.list).mockImplementation(
+      async (_agent, limit) => all.slice(0, limit) as never,
+    );
+    chat();
+    fireEvent.click(screen.getByRole("button", { name: "octopBot.history" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "octopBot.more" }),
+    );
+    await screen.findByText("Conversation 31");
+    expect(screen.getAllByText("Conversation 0")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "octopBot.more" })).toBeNull();
+  });
+
   it("discovers a thread created on another client when the window regains focus", async () => {
     vi.mocked(octopThreadsApi.list)
       .mockResolvedValueOnce([{ thread_id: "old", title: "Existing" } as never])
