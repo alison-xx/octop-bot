@@ -132,7 +132,8 @@ describe("BotChat panels", () => {
         { thread_id: "extra", title: "Extra" },
       ] as never)
       .mockResolvedValueOnce([
-        firstPage[29],
+        { thread_id: "extra", title: "Extra" },
+        { thread_id: "extra", title: "Extra" },
         { thread_id: "old", title: "Older chat" },
       ] as never);
     chat();
@@ -145,11 +146,11 @@ describe("BotChat panels", () => {
       includeBotGroups: true,
       offset: 30,
     });
-    expect(screen.getAllByText("Chat 29")).toHaveLength(1);
+    expect(screen.getAllByText("Extra")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "octopBot.more" })).toBeNull();
   });
 
-  it("can page an older server that ignores the offset", async () => {
+  it("can page an older server after another client changes the first conversation", async () => {
     const all = Array.from({ length: 32 }, (_, i) => ({
       thread_id: String(i),
       title: "Conversation " + i,
@@ -159,9 +160,9 @@ describe("BotChat panels", () => {
     );
     chat();
     fireEvent.click(screen.getByRole("button", { name: "octopBot.history" }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "octopBot.more" }),
-    );
+    const more = await screen.findByRole("button", { name: "octopBot.more" });
+    all.unshift({ thread_id: "new", title: "New from another device" });
+    fireEvent.click(more);
     await screen.findByText("Conversation 31");
     expect(screen.getAllByText("Conversation 0")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "octopBot.more" })).toBeNull();

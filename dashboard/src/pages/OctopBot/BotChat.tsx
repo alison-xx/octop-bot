@@ -67,6 +67,7 @@ function ThreadHistory({
     agentId: string;
     limit: number;
     rows: OctopThread[];
+    nextId?: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -90,8 +91,13 @@ function ThreadHistory({
       if (!current) return;
       let pageSize = size;
       let prefix = append ? previous.rows : [];
-      if (offset && result[0]?.thread_id === prefix[0]?.thread_id) {
-        // Older servers ignore offset and return the first page again.
+      const loadedIds = new Set(prefix.map((row) => row.thread_id));
+      if (
+        append &&
+        (result[0]?.thread_id !== previous.nextId ||
+          result.some((row) => loadedIds.has(row.thread_id)))
+      ) {
+        // Re-read the visible prefix if the order changed or the server ignored offset.
         result = await octopThreadsApi.list(agentId, limit + 1, {
           includeBotGroups: true,
         });
@@ -103,7 +109,12 @@ function ThreadHistory({
       const next = Array.from(
         new Map(combined.map((row) => [row.thread_id, row])).values(),
       );
-      loaded.current = { agentId, limit, rows: next };
+      loaded.current = {
+        agentId,
+        limit,
+        rows: next,
+        nextId: result[pageSize]?.thread_id,
+      };
       setRows(next);
       setHasMore(result.length > pageSize);
     };
