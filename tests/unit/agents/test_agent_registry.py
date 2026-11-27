@@ -168,9 +168,10 @@ async def test_boot_start_timeout_marks_failed_and_continues(
         return await original(row)
 
     monkeypatch.setattr(registry, "_start_agent", maybe_hang)
-    monkeypatch.setattr("octop.infra.agents.manager._AGENT_BOOT_START_TIMEOUT", 0.05)
+    # The healthy agent still initializes a real workspace on the test filesystem.
+    monkeypatch.setattr("octop.infra.agents.manager._AGENT_BOOT_START_TIMEOUT", 2.0)
 
-    await asyncio.wait_for(registry.boot(), timeout=2)
+    await asyncio.wait_for(registry.boot(), timeout=10)
 
     slow = services.repos.agent_repo.get("slow1")
     ok = services.repos.agent_repo.get("ok1")

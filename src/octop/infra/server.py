@@ -28,7 +28,7 @@ from octop.infra.agents.subagents.catalog import SubagentCatalog, default_packag
 from octop.infra.control.mobile.config_probe import ensure_mobile_capabilities_probed
 from octop.infra.cron.manager import CronManager
 from octop.infra.db.factory import open_database, should_defer_control_plane_db
-from octop.infra.db.migrate import run_migrations
+from octop.infra.db.migrate import run_migrations, verify_activated_handoff
 from octop.infra.db.services import SharedServices, build_shared_services
 from octop.infra.gateway.gateway import Gateway
 from octop.infra.proactive.scheduler import ProactiveCareScheduler
@@ -479,7 +479,10 @@ class OctopServer:
         """Open the DB and boot the runtime; on failure, undo it so a retry starts clean."""
         db = open_database(config, self.paths)
         try:
-            run_migrations(db)
+            if handoff_target := os.environ.get("OCTOP_HOSTED_HANDOFF_TARGET"):
+                verify_activated_handoff(db, handoff_target)
+            else:
+                run_migrations(db)
             self.services = build_shared_services(db=db, paths=self.paths, config=config)
             from octop.infra.auth.captcha import boot_from_services  # noqa: PLC0415
 

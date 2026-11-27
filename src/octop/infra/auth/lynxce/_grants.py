@@ -5,12 +5,12 @@ from __future__ import annotations
 import asyncio
 import secrets
 import time
+from contextlib import AbstractAsyncContextManager
 from functools import partial
 from pathlib import Path
 from typing import Any
 
-from filelock import AsyncFileLock
-
+from octop.infra.auth.grant_lock import grant_lock
 from octop.infra.auth.lynxce import _provider
 from octop.infra.crypto.fernet import decrypt_json, encrypt_json
 from octop.infra.db.services import SharedServices
@@ -24,10 +24,8 @@ def grant_key(user_id: int) -> str:
     return f"lynxce.oauth.user.{user_id}"
 
 
-def account_lock(services: SharedServices, user_id: int) -> AsyncFileLock:
-    # Rotation invalidates the previous refresh token immediately. Also cover
-    # other loops/processes using this installation, not just parallel turns.
-    return AsyncFileLock(services.paths.root / f".lynxce-oauth-{user_id}.lock")
+def account_lock(services: SharedServices, user_id: int) -> AbstractAsyncContextManager[Any]:
+    return grant_lock(services, user_id, "oauth")
 
 
 def is_connected(services: SharedServices, user_id: int) -> bool:
@@ -137,9 +135,13 @@ def _fresh(grant: dict[str, Any]) -> bool:
 
 
 async def _rotate(services: SharedServices, user_id: int, expected_id: str) -> str:
-    loop = asyncio.get_running_loop()
     async with account_lock(services, user_id):
-        current = await loop.run_in_executor(None, _load, services, user_id)
+        repo = services.secret_repo
+        key = grant_key(user_id)
+        original = await asyncio.to_thread(repo.get, key)
+        if original is None:
+            raise auth_required()
+        current = await asyncio.to_thread(decrypt_json, repo, _PURPOSE, original)
         if current["connection_id"] != expected_id:
             raise auth_required()
         if _fresh(current):
@@ -153,10 +155,12 @@ async def _rotate(services: SharedServices, user_id: int, expected_id: str) -> s
             updated = grant_from_tokens(data, current["client_id"], current)
         except _provider.ProviderError as exc:
             if exc.reason in {"invalid_grant", "missing_chat_scope"}:
-                await loop.run_in_executor(None, services.secret_repo.delete, grant_key(user_id))
+                await asyncio.to_thread(repo.replace_if_current, key, original, None)
                 raise auth_required() from None
             raise OctopError.localized(ErrorCode.NETWORK_ERROR) from None
-        await loop.run_in_executor(None, save, services, user_id, updated)
+        sealed = await asyncio.to_thread(encrypt_json, repo, _PURPOSE, updated)
+        if not await asyncio.to_thread(repo.replace_if_current, key, original, sealed):
+            raise auth_required()
         return str(updated["access_token"])
 
 

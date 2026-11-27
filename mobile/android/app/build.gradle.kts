@@ -77,6 +77,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    sourceSets["test"].resources.srcDir("../../fixtures")
+
     buildFeatures {
         compose = true
         buildConfig = true

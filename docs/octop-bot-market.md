@@ -49,7 +49,7 @@ Bot 市场是一组按行业和岗位准备好的 Bot 模板，参考 Grok Bot �
    LYNXCE_API_KEY=... uv run python scripts/bot_market_avatars.py <slug>
    ```
    已有头像会跳过，`--force` 重画。
-3. 同步到官网：`uv run python scripts/export_bot_market.py`，然后按官网发布流程上传 `market.html`、`assets/market.*`、`market/`。
+3. 官网使用私有发布仓的市场导出工具，从同一版客户端目录生成网站数据。参见[生产发布流程](https://github.com/alison-xx/octop-bot-production#readme)。
 4. 跑测试：`uv run pytest tests/unit/agents/test_bot_market_catalog.py tests/integration/test_bot_market.py -q`。
 
 ## 内容边界

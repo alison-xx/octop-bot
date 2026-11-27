@@ -17,6 +17,7 @@ from octop.infra.auth.lynxce._grants import connection_id, get_access_token, is_
 from octop.infra.connectors.oauth.pkce import new_pkce_pair
 from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.async_tasks import finish
 
 __all__ = [
     "cancel_login",
@@ -146,9 +147,7 @@ async def start_login(services: SharedServices, user_id: int) -> tuple[str, str]
                     ):
                         attempt.finish("cancelled")
                         return reply(request, locale, "failed", 400)
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, _grants.save, services, user_id, grant
-                    )
+                    await finish(asyncio.to_thread(_grants.save, services, user_id, grant))
                     attempt.finish("connected")
                 return reply(request, locale, "connected")
             except _provider.ProviderError as exc:
@@ -182,14 +181,15 @@ async def start_login(services: SharedServices, user_id: int) -> tuple[str, str]
                 client_id = str(registration["client_id"])
             else:
                 client_id = await _provider.register(redirect)
-            await loop.run_in_executor(
-                None,
-                _grants.save_registration,
-                services,
-                user_id,
-                port,
-                client_id,
-                attempt.attempt_id,
+            await finish(
+                asyncio.to_thread(
+                    _grants.save_registration,
+                    services,
+                    user_id,
+                    port,
+                    client_id,
+                    attempt.attempt_id,
+                )
             )
             attempt.url = _provider.authorize_url(client_id, redirect, attempt.csrf, challenge)
             _attempts[attempt.attempt_id] = attempt
@@ -222,4 +222,4 @@ async def disconnect(services: SharedServices, user_id: int) -> None:
         pending = _active(services, user_id)
         if pending is not None:
             pending.finish("cancelled")
-        await asyncio.get_running_loop().run_in_executor(None, _grants.forget, services, user_id)
+        await finish(asyncio.to_thread(_grants.forget, services, user_id))

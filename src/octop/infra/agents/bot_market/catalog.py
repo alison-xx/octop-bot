@@ -3,7 +3,7 @@
 Each template is one ``templates/<slug>.json`` file holding every zh/en string, plus an
 optional ``avatars/<slug>.webp`` portrait. ``categories.json`` lists the industries and
 ``roles.json`` the job roles, each in display order; every template names one industry and
-one to three roles. The website exports the same files (``scripts/export_bot_market.py``), so
+one to three roles. The website release exports these same files, so
 the market on octop-bot.lynxce.cn and the one inside the app never drift apart.
 """
 

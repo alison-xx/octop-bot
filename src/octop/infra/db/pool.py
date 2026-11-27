@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import sqlite3
 import threading
-from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections import defaultdict
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+from octop.infra.utils.async_tasks import finish
 
 
 def qmark_to_pyformat(sql: str) -> str:
@@ -183,6 +187,10 @@ class PostgresPool:
     def __init__(self, conninfo: str, *, min_size: int = 1, max_size: int = 8) -> None:
         from psycopg_pool import ConnectionPool
 
+        self._conninfo = conninfo
+        self._lock_slots: defaultdict[str, threading.BoundedSemaphore] = defaultdict(
+            lambda: threading.BoundedSemaphore(max_size)
+        )
         self._pool = ConnectionPool(
             conninfo=conninfo,
             min_size=min_size,
@@ -190,6 +198,39 @@ class PostgresPool:
             kwargs={"row_factory": _compat_row_factory},
             open=True,
         )
+
+    @asynccontextmanager
+    async def advisory_lock(self, namespace: str, key: int) -> AsyncIterator[None]:
+        """Use bounded, independent DB sessions so lock waiters cannot starve repo queries."""
+        import psycopg
+
+        slots = self._lock_slots[namespace]
+        while not slots.acquire(blocking=False):
+            await asyncio.sleep(0.1)
+        conn: psycopg.Connection[Any] | None = None
+
+        def open_session() -> None:
+            nonlocal conn
+            conn = psycopg.connect(self._conninfo, autocommit=True, connect_timeout=10)
+
+        def try_lock() -> bool:
+            assert conn is not None
+            row = conn.execute(
+                "SELECT pg_try_advisory_lock(hashtextextended(%s, 0))", (f"{namespace}:{key}",)
+            ).fetchone()
+            return bool(row and row[0])
+
+        try:
+            await finish(asyncio.to_thread(open_session))
+            while not await asyncio.to_thread(try_lock):
+                await asyncio.sleep(0.1)
+            yield
+        finally:
+            try:
+                if conn is not None:
+                    await finish(asyncio.to_thread(conn.close))
+            finally:
+                slots.release()
 
     @contextmanager
     def connect(self) -> Iterator[_PgConnectionProxy]:

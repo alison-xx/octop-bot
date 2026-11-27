@@ -23,15 +23,13 @@ class SecretRepo:
             return existing
         value = factory()
         with self._db.transaction() as conn:
-            # Check again inside transaction to avoid race
-            r = conn.execute("SELECT v FROM secrets WHERE k = ?", (k,)).fetchone()
-            if r is not None:
-                return bytes(r["v"])
             conn.execute(
-                "INSERT INTO secrets(k, v, created_at) VALUES (?, ?, ?)",
+                "INSERT INTO secrets(k, v, created_at) VALUES (?, ?, ?) ON CONFLICT(k) DO NOTHING",
                 (k, value, now_ts()),
             )
-        return value
+            row = conn.execute("SELECT v FROM secrets WHERE k = ?", (k,)).fetchone()
+            assert row is not None
+            return bytes(row["v"])
 
     def put(self, k: str, value: bytes) -> None:
         now = now_ts()
@@ -55,6 +53,18 @@ class SecretRepo:
                 (k, value, now_ts()),
             )
         return int(getattr(cursor, "rowcount", 0) or 0) == 1
+
+    def replace_if_current(self, k: str, expected: bytes, value: bytes | None) -> bool:
+        """Change only the exact ciphertext read before an external credential rotation."""
+        with self._db.transaction() as conn:
+            if value is None:
+                cursor = conn.execute("DELETE FROM secrets WHERE k = ? AND v = ?", (k, expected))
+            else:
+                cursor = conn.execute(
+                    "UPDATE secrets SET v = ?, rotated_at = ? WHERE k = ? AND v = ?",
+                    (value, now_ts(), k, expected),
+                )
+            return bool(cursor.rowcount)
 
     def delete(self, k: str) -> bool:
         with self._db.transaction() as conn:

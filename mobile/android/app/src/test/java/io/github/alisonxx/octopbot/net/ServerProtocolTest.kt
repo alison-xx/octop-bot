@@ -183,6 +183,22 @@ class ServerProtocolTest {
     }
 
     @Test
+    fun sharedServerChatHistory() {
+        val resource = requireNotNull(javaClass.getResource("/server-chat-history.json"))
+        val fixture = Http.parse(resource.readText()).jsonObject
+        val expected = fixture.getValue("expected").jsonArray.map { message ->
+            val row = message.jsonObject
+            row.getValue("role").jsonPrimitive.content to row.getValue("text").jsonPrimitive.content
+        }
+        val pages = fixture.getValue("pages").jsonArray
+        assertTrue(expected.isNotEmpty() && pages.isNotEmpty())
+        for (page in pages) {
+            val actual = ServerProtocol.historyPage(page).messages.map { it.role.name.lowercase() to it.text }
+            assertEquals(expected, actual)
+        }
+    }
+
+    @Test
     fun historyMergesAssistantSegmentsAndSkipsToolRows() {
         val page = ServerProtocol.historyPage(
             Http.parse(

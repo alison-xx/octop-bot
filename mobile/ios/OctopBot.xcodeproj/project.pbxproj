@@ -43,6 +43,7 @@
 		856A4C7A9C1B74456161BF67 /* DeviceConnectorsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 343AF3E3336B6CFB100D14E9 /* DeviceConnectorsSection.swift */; };
 		871A5E282D3F9B836B3A0901 /* ServerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 853AB250E633AC85F64B4B8E /* ServerBackend.swift */; };
 		8AD1B6205CE7292AE3297C8A /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B26B5219B243FA949E1B4CC /* MarkdownText.swift */; };
+		934049397298EDFAC5372128 /* server-chat-history.json in Resources */ = {isa = PBXBuildFile; fileRef = E86DB03F9F2579B1AC377379 /* server-chat-history.json */; };
 		94F0BEE560698A2E757BFE90 /* ChatScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0D4BB60CF5FB920280CF55 /* ChatScreen.swift */; };
 		9AEA58AEBA2EEA3F4621653A /* CreditPacks.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 8B0D044DCA559D07FCE3738E /* CreditPacks.storekit */; };
 		A53EA84F3C4475B95A47F587 /* Voice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C235A1CAB3877508B396E0E7 /* Voice.swift */; };
@@ -148,6 +149,7 @@
 		E35158BD983E0060775BA507 /* FileOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOpener.swift; sourceTree = "<group>"; };
 		E4335F1C15013619D4383185 /* DeviceFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceFormat.swift; sourceTree = "<group>"; };
 		E47EB786F0FC7601BFB45245 /* ImageViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewer.swift; sourceTree = "<group>"; };
+		E86DB03F9F2579B1AC377379 /* server-chat-history.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "server-chat-history.json"; sourceTree = "<group>"; };
 		ED1E4C98857F2A9A92FA53F6 /* HTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTP.swift; sourceTree = "<group>"; };
 		EF7D3162679B1070B3004C72 /* AttachmentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentViews.swift; sourceTree = "<group>"; };
 		F27E10E2BDC532D8A8733A20 /* Characters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Characters.swift; sourceTree = "<group>"; };
@@ -159,6 +161,7 @@
 		11E2CC0CF7DA15013237715D = {
 			isa = PBXGroup;
 			children = (
+				B50B18819445C275010D061C /* mobile */,
 				AF1323D2375BE7D9A6DD5B99 /* OctopBot */,
 				124ECDFEEBECBE9BF37BF0C8 /* OctopBotStoreKitSetupTests */,
 				9D64B23DB0D3B0296C73026A /* OctopBotTests */,
@@ -270,6 +273,23 @@
 				3B0CEE8C9A18ED375976BA0A /* Voice */,
 			);
 			path = OctopBot;
+			sourceTree = "<group>";
+		};
+		B147A04E84ECC83195030D0A /* fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				E86DB03F9F2579B1AC377379 /* server-chat-history.json */,
+			);
+			path = fixtures;
+			sourceTree = "<group>";
+		};
+		B50B18819445C275010D061C /* mobile */ = {
+			isa = PBXGroup;
+			children = (
+				B147A04E84ECC83195030D0A /* fixtures */,
+			);
+			name = mobile;
+			path = ..;
 			sourceTree = "<group>";
 		};
 		CBB80F86FC24FBC28491DE50 /* Store */ = {
@@ -466,6 +486,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5D2AECE4E4D5170F8A22EECF /* CreditPacks.storekit in Resources */,
+				934049397298EDFAC5372128 /* server-chat-history.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -129,12 +129,6 @@ scripts/lh_image_install_octop_tencentos.sh
 # Local Claude Code state (worktrees, launch configs)
 .claude/
 
-# Website build outputs and large media (deployed by rsync, not tracked)
-website/media/*.mp4
-website/film-src/renders/
-website/film-src/assets/audio/
-website/film-src/node_modules/
-
 # Video tool caches (hold local paths)
 .hyperframes/
 

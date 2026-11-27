@@ -478,6 +478,20 @@ final class ServerTests: XCTestCase {
         XCTAssertEqual(ServerBackend.normalizedLook(shape: nil, color: nil, chief: true), .chief)
     }
 
+    func testSharedServerChatHistory() throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "server-chat-history", withExtension: "json"))
+        let fixture = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let expected = try XCTUnwrap(fixture["expected"] as? [[String: String]])
+        let pages = try XCTUnwrap(fixture["pages"] as? [[String: Any]])
+        XCTAssertFalse(expected.isEmpty)
+        XCTAssertFalse(pages.isEmpty)
+        for page in pages {
+            let rows = try XCTUnwrap(page["messages"] as? [[String: Any]])
+            let actual = ServerBackend.history(rows).map { ["role": $0.role.rawValue, "text": $0.text] }
+            XCTAssertEqual(actual, expected)
+        }
+    }
+
     func testHistoryFoldsToolRowsAndSegments() {
         let rows: [[String: Any]] = [
             ["role": "user", "content": [["type": "text", "text": "find it"]], "timestamp": 1_700_000_000_000.0],

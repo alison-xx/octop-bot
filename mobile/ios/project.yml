@@ -35,6 +35,8 @@ targets:
     platform: iOS
     sources:
       - path: OctopBotTests
+      - path: ../fixtures/server-chat-history.json
+        buildPhase: resources
     dependencies:
       - target: OctopBot
     settings:

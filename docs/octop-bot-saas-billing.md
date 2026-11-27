@@ -8,7 +8,7 @@
 - 「官网的那几个定价的你参考 lobster，跟他们类似，然后我们的根据实际情况来，把视频和作图模型也加进去」。
 - 「然后再把所有客户端的充值、积分、余额不足等等各种充值和开通的 ui 交互功能都做好设计好」。
 
-可点原型：[`docs/assets/octop-bot-saas-billing/prototype.html`](assets/octop-bot-saas-billing/prototype.html)（浏览器直接打开，顶部条切换页面；官网部分直接用 `website/assets/site.css`；客户端部分是桌面窗口和手机线框）。原型中的体验积分以本文为准：注册赠送 100 积分，14 天有效，仅限 Octop 使用。
+可点原型：[`docs/assets/octop-bot-saas-billing/prototype.html`](https://github.com/alison-xx/octop-bot-production/blob/main/docs/assets/octop-bot-saas-billing/prototype.html)（浏览器直接打开，顶部条切换页面；官网部分直接用 `website/assets/site.css`；客户端部分是桌面窗口和手机线框）。原型中的体验积分以本文为准：注册赠送 100 积分，14 天有效，仅限 Octop 使用。
 
 相关文档：
 - 灵策侧数据模型、工作量、发版模块：灵策仓库 `team/方案/2026-11-25-OctopBot运营后台设计.md`（2.3、2.4、3 节，下称「运营后台设计」）。
@@ -208,7 +208,7 @@
 微信、WorkBuddy 按钮带官方图标（用户 11-25 要求）：微信用微信官网（weixin.qq.com）公开的图标原文件（用户定），WorkBuddy 用 WorkBuddy 官网的站点图标原文件，都不改动、不自己画。桌面客户端取素材，放在团队共享目录的「登录页改版-方案/品牌图标」，官网 PR-C 复用，换掉稿里的占位。
 
 
-**登录页设计**（沿用桌面客户端登录改版的方向 B，等用户选定 App 的方向后对齐；可点稿 [`login-b.html`](assets/octop-bot-saas-billing/login-b.html)）：
+**登录页设计**（沿用桌面客户端登录改版的方向 B，等用户选定 App 的方向后对齐；可点稿 [`login-b.html`](https://github.com/alison-xx/octop-bot-production/blob/main/docs/assets/octop-bot-saas-billing/login-b.html)）：
 
 - 顶部是官网导航；左边是 Chief 舞台（大标题、三条卖点、团队头像轮动展示 Bot 刚干完的活），右边是不加卡片框的表单。手机上舞台缩成顶部横幅，只留 Chief 和标题。
 - 从定价、个人中心、结账跳来时，表单上方有一个「登录后回到「定价」」的提示，登录后回到原页面（`next` 参数，只接受本站路径）。
